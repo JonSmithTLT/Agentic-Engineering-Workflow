@@ -71,10 +71,10 @@ export function Shell({
           </div>
         </div>
         <nav aria-label="Main navigation">
-          {navigation.map(([path, label]) => (
+          {[...navigation.slice(0, 7), ...(caps?.history_search ? [['/history/search', 'Raw history search']] : []), ...navigation.slice(7)].map(([path, label]) => (
             <NavLink
               key={path}
-              end={path === '/'}
+              end={path === '/' || (path === '/history' && location.pathname === '/history/search')}
               to={path + search}
               onClick={() => setOpen(false)}
             >

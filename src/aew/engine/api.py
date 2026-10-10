@@ -11,6 +11,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -409,7 +410,7 @@ class Engine:
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
-                                          dispatch=dispatch)
+                                          dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
@@ -714,8 +715,8 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text)
+    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         return self._harness.harness_status(invocation)
@@ -1148,6 +1149,19 @@ class Engine:
         """Register F21's Arm B prototype: explicit raw-history search, only while switched on
         (``aew.engine.recall``)."""
         return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
+
+    def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
+                                 since: str | None = None, until: str | None = None, limit: int = 10,
+                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
+                                 enabled: bool, fts5: bool,
+                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+        """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
+        resets, discards or deletes the substrate, and answers within ``deadline``. ``enabled`` and ``fts5`` are the
+        caller's snapshot's answers, never re-read here."""
+        return self._history.history_search_committed(state, terms, kinds=kinds, since=since, until=until,
+                                                      limit=limit, deadline=deadline, budget_s=budget_s,
+                                                      budget_docs=budget_docs, candidates=candidates,
+                                                      enabled=enabled, fts5=fts5, fence_token=fence_token)
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)

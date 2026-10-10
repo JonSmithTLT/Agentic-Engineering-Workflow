@@ -1,0 +1,642 @@
+{
+ "experiment": "lbq-v2-deepseek-v4-1-flash",
+ "valid_runs": 6,
+ "newly_scored": [
+  "lbq-v2-deepseek-v4-1-flash/LBQ-2-raw-2",
+  "lbq-v2-deepseek-v4-1-flash/LBQ-3-raw-1",
+  "lbq-v2-deepseek-v4-1-flash/LBQ-3-raw-2",
+  "lbq-v2-deepseek-v4-1-flash/LBQ-1-raw-1",
+  "lbq-v2-deepseek-v4-1-flash/LBQ-1-raw-2",
+  "lbq-v2-deepseek-v4-1-flash/LBQ-2-raw-1"
+ ],
+ "unscored": [],
+ "retention_purged": [],
+ "tree_behaviours_shown": [],
+ "tree_behaviours_unobserved": [],
+ "session_behaviours": "scored later by the F19 session-database reader (delta D2) from the kept databases, under the definitions frozen in the preregistration",
+ "ceiling_state": "not_run (pending: the session-observable behaviours)",
+ "runs": [
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-2-raw-2",
+   "case": "LBQ-2",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "incomplete_cross_file_changes": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "d1284b51fc594310d34b52cca0d44fbea5b7bf25ce40b81a927c04613c675e09",
+    "state_dir": "<lane>/out/work/LBQ-2-raw-2/harness"
+   },
+   "charged_usd": 0.031597403999999996
+  },
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-3-raw-1",
+   "case": "LBQ-3",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "requirement_loss_on_longer_tasks": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "b7599e0473e66574b71255be8a01f791db9186f98115892599862f632e8278e8",
+    "state_dir": "<lane>/out/work/LBQ-3-raw-1/harness"
+   },
+   "charged_usd": 0.03395886000000001
+  },
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-3-raw-2",
+   "case": "LBQ-3",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "requirement_loss_on_longer_tasks": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "5721aa215afbacba964f2405ee63633e7b9985e9a1414b0af8d681b6546c0969",
+    "state_dir": "<lane>/out/work/LBQ-3-raw-2/harness"
+   },
+   "charged_usd": 0.046580963999999996
+  },
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-1-raw-1",
+   "case": "LBQ-1",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "dd54fe630bf7bbc3cde62aff3c26e7246e591d2da4b84734248fdf35d20f7559",
+    "state_dir": "<lane>/out/work/LBQ-1-raw-1/harness"
+   },
+   "charged_usd": 0.02556354
+  },
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-1-raw-2",
+   "case": "LBQ-1",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "5e2d2fcea419c5e35fcb89d6f73e345f5ba1f20349de0a178d440a700ef82c53",
+    "state_dir": "<lane>/out/work/LBQ-1-raw-2/harness"
+   },
+   "charged_usd": 0.039286428
+  },
+  {
+   "run": "lbq-v2-deepseek-v4-1-flash/LBQ-2-raw-1",
+   "case": "LBQ-2",
+   "scored": true,
+   "task_correct": true,
+   "in_scope": true,
+   "finished": true,
+   "truncated_why": [],
+   "cost_cap_ended_at_step": null,
+   "behaviours": {
+    "bad_search_root_selection": false,
+    "difficulty_recovering_after_distraction": false,
+    "incomplete_cross_file_changes": false
+   },
+   "session_db": {
+    "fields": [
+     {
+      "field": "session_message.seq",
+      "transform": "none"
+     },
+     {
+      "field": "session_message.type",
+      "transform": "none"
+     },
+     {
+      "field": "message.time.created",
+      "transform": "none"
+     },
+     {
+      "field": "message.model",
+      "transform": "none"
+     },
+     {
+      "field": "message.tokens",
+      "transform": "none"
+     },
+     {
+      "field": "message.cost",
+      "transform": "none"
+     },
+     {
+      "field": "message.error.type",
+      "transform": "none"
+     },
+     {
+      "field": "tool.name",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.status",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.filePath",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.path",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.pattern",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.include",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.offset",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.limit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.state.input.command",
+      "transform": "prefix_300"
+     },
+     {
+      "field": "tool.state.input.oldString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.input.newString",
+      "transform": "sha256"
+     },
+     {
+      "field": "tool.state.metadata.exit",
+      "transform": "none"
+     },
+     {
+      "field": "tool.time",
+      "transform": "none"
+     }
+    ],
+    "path": "harness/harness/xdg-data/opencode/opencode.db",
+    "retain_until": "2027-04-08",
+    "sha256": "b919ac75b93144e762251fc752adcb126eb4a402af25663d1a87ba84dc8f8f39",
+    "state_dir": "<lane>/out/work/LBQ-2-raw-1/harness"
+   },
+   "charged_usd": 0.019540236000000002
+  }
+ ]
+}

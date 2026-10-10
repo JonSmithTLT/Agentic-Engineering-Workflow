@@ -62,8 +62,10 @@ class HarnessAdapter(ABC):
     def terminate(self) -> None:
         """Stop the harness and every process it started (idempotent)."""
 
-    def send(self, text: str) -> None:
-        """Deliver a Lead message to the running agent (coordination-compatible; M3 exposes it to the Lead)."""
+    def send(self, text: str, delivery: str) -> None:
+        """Deliver a Lead message to the running agent (coordination-compatible; M3 exposes it to the Lead).
+        ``delivery`` is ``steer`` (at the agent's next step boundary, without interrupting it) or ``queue`` (after its
+        current turn): ``aew.harness.delivery.WHEN_DELIVERY`` maps the Lead's ``--when`` onto it (register E55)."""
         raise HarnessIncompatible(f"harness {self.name} does not support delivering messages to a running agent")
 
     def interrupt(self) -> None:

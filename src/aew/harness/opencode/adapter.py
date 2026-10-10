@@ -385,8 +385,12 @@ class OpenCodeAdapter(HarnessAdapter):
         self._wake.set()
         return mid
 
-    def send(self, text: str) -> None:
-        self._prompt(text, delivery="queue")  # after the current step, inside the same turn; never lost
+    def send(self, text: str, delivery: str) -> None:
+        # `steer`: at the next step boundary, inside the same turn; `queue`: only when the turn would end, after its
+        # last step (the F9-A MS0 probe, P1 and P2). Either way never lost.
+        if delivery not in ("steer", "queue"):
+            raise HarnessError(f"unknown delivery {delivery!r}: steer or queue")
+        self._prompt(text, delivery=delivery)
 
     def interrupt(self) -> None:
         assert self.client is not None

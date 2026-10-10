@@ -1,0 +1,3 @@
+# The upstream fixture is fetched (qualify.py fetch), pinned by commit and tree in upstream.yaml: never committed here.
+fixture/base/
+fixture/base.receipt.json

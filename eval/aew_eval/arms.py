@@ -5,9 +5,10 @@ An arm takes the built scratch repository and does the case's work in it; the ru
 
 * ``scripted``: no model and no provider. Its configuration is the exact edits to make, so a scripted cell is fully
   deterministic: the reference solution, a known-bad control, or the instrument's own end-to-end test.
-* ``aew`` (the headless Lead) and ``raw`` (the same harness alone): built by generalizing the M3 driver
-  (``eval/m3/dogfood/dogfood.py``), which still runs the M3 experiment as it was. Until then the runner refuses a
-  cell of either kind before anything is registered, so nothing is counted that never ran.
+* ``raw``: the harness alone (:mod:`aew_eval.raw`): OpenCode's own ``build`` agent, the pinned model, the case's
+  ``task`` as its only message, nobody answering; the M3 raw mode, generalized.
+* ``aew`` (the headless Lead): built by generalizing the M3 driver, which still runs the M3 experiment as it was.
+  Until then the runner refuses an ``aew`` cell before anything is registered, so nothing is counted that never ran.
 
 An arm's configuration is checked against its case before the attempt is registered (:meth:`Arm.check`), so a
 malformed configuration is a refusal, never a counted ``invalid_measurement`` that spends a retry.
@@ -15,12 +16,17 @@ malformed configuration is a refusal, never a counted ``invalid_measurement`` th
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
 from aew_eval import fixture
 from aew_eval.schemas import Invalid
+
+MODEL_REF = re.compile(r"^(?P<provider>[A-Za-z0-9][A-Za-z0-9._-]*)/(?P<model>[A-Za-z0-9][A-Za-z0-9._/-]*)"
+                       r"(?:#(?P<effort>[A-Za-z0-9._-]+))?$")
+MODEL_ARMS = frozenset({"aew", "raw"})  # arm kinds whose processes a model controls
 
 
 @dataclass
@@ -32,6 +38,7 @@ class ArmResult:
     harness: dict[str, Any] = field(default_factory=dict)
     aew_facts: dict[str, Any] = field(default_factory=dict)
     cost: dict[str, Any] = field(default_factory=dict)
+    invalid: str | None = None  # a reason code when the arm observed that its own measurement cannot count
 
 
 class Arm(Protocol):
@@ -39,7 +46,8 @@ class Arm(Protocol):
 
     def check(self, config: dict[str, Any], snap: fixture.Snapshot) -> None: ...
 
-    def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float) -> ArmResult: ...
+    def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float, task: str | None = None) -> ArmResult:
+        ...
 
 
 class ScriptedArm:
@@ -65,7 +73,7 @@ class ScriptedArm:
             if "write" in step and not isinstance(step.get("content", ""), str):
                 raise Invalid(f"scripted step {n}: content is text")
 
-    def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float) -> ArmResult:
+    def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float, task: str | None = None) -> ArmResult:
         root = repo.resolve()
         steps = config.get("steps") or []
         for n, step in enumerate(steps, 1):
@@ -81,11 +89,23 @@ class ScriptedArm:
         return ArmResult(outcome={"steps": len(steps)}, harness={"name": "scripted"})
 
 
+def model_ref(ref: Any) -> dict[str, str]:
+    """``provider/model[#effort]`` as the profile the harness pins: ``{provider, model[, effort]}``."""
+    found = MODEL_REF.match(ref) if isinstance(ref, str) else None
+    if found is None:
+        raise Invalid(f"a model is provider/model[#effort], not {ref!r}")
+    return {k: v for k, v in found.groupdict().items() if v}
+
+
 ARMS: dict[str, Arm] = {"scripted": ScriptedArm()}
 
 
 def arm_for(kind: str) -> Arm:
     """The arm for ``kind``, or a refusal naming what runs it today."""
+    if kind == "raw" and kind not in ARMS:
+        from aew_eval.raw import RawArm  # it builds on ArmResult and model_ref above
+
+        ARMS[kind] = RawArm()
     if kind not in ARMS:
         raise Invalid(f"arm kind {kind!r} is not built in the shared runner yet: the M3 driver "
                       "(eval/m3/dogfood/dogfood.py) runs it until it is generalized (design §8, step 2)")

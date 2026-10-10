@@ -12,6 +12,8 @@
     "schema": {"const": "aew/eval-prereg/v1"},
     "experiment": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
     "question": {"type": "string", "minLength": 1},
+    "purpose": {"enum": ["qualification", "treatment_effect"],
+                "description": "qualification: evidence that a profile, a fixture or the instrument behaves as a lane needs (agent-effectiveness adoption, synthesis 13.4); never reported as a treatment effect, and its experiment id is never reused for one. Absent on records made before the field existed."},
     "arms": {
       "type": "array", "minItems": 1,
       "items": {

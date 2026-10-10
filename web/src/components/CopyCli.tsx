@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { readOnlyCommand } from '../api/cli';
-export function CopyCli({ kind, id }: { kind: string; id: string }) {
-  const command = readOnlyCommand(kind, id);
+import { readOnlyCommand, readOnlyHistoryArgv } from '../api/cli';
+export function CopyCli({ kind, id, argv }: { kind: string; id: string; argv?: readonly string[] }) {
+  const command = argv ? readOnlyHistoryArgv(argv) : readOnlyCommand(kind, id);
   const [message, setMessage] = useState('');
   if (!command) return null;
   return (

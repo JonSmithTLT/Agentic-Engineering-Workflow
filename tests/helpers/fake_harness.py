@@ -81,9 +81,9 @@ class FakeAdapter(HarnessAdapter):
             pass
         self._out.close()
 
-    def send(self, text: str) -> None:
+    def send(self, text: str, delivery: str) -> None:
         with (self.run_dir / "harness" / "inbox.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"text": text}) + "\n")
+            fh.write(json.dumps({"text": text, "delivery": delivery}) + "\n")
 
     def collect(self) -> dict[str, Any]:
         if not hasattr(self, "transcript"):

@@ -21,7 +21,8 @@ from aew.dashboard.contract import Contract
 from aew.dashboard.contract import compile_problems as compiles
 
 MAPS = {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs", "/maps/diff"}
-STATUS = re.compile(r"^- \*\*Status:\*\*.*$", re.M)
+# The status bullet: its first line and its indented continuation lines.
+STATUS_BULLET = re.compile(r"^- \*\*Status:\*\*.*\n(?:  .*\n)*", re.M)
 
 
 def test_the_note_agrees_with_the_accepted_contract():
@@ -63,9 +64,16 @@ def test_every_count_the_appendix_types_is_within_javascripts_exact_integers():
         assert schema.get("maximum", 2**53) <= 2**53 - 1 and schema.get("minimum", -1) >= 0, schema
 
 
-def test_the_note_is_not_adopted_yet():
-    """S1 writes the adopted line; until then every added route is pending and the check is one-way."""
-    assert adopted(note_text()) is None
+def test_the_note_records_the_adoption_and_every_route_served_since():
+    """The adopted line names the adopted version and every added route this server serves (S2 serves the search; S1
+    adds the maps routes when it serves them), so a later minor version must keep each of them equal."""
+    from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES
+
+    line = adopted(note_text())
+    assert line is not None and line[0] == "0.1.3"
+    added = set(proposed(note_text(), base_contract())["paths"]) - set(base_contract()["paths"])
+    assert set(line[2]) == added & (set(ROUTES) | CONDITIONAL_ROUTES)
+    assert "/history/search" in line[2]
 
 
 # ---------------------------------------------------------------------------------------------- the modes
@@ -81,10 +89,15 @@ def v013(base) -> dict[str, Any]:
 
 
 def adopt(text: str, version: str = "0.1.3", routes: set[str] = MAPS) -> str:
-    """A scratch note whose status line records an adoption, as S1 will write it."""
+    """A scratch note whose status bullet records an adoption, as the first slice to serve a route writes it."""
     served = ", ".join(f"`{r}`" for r in sorted(routes))
-    line = f"- **Status:** as adopted in contract `{version}` at `0123456789ab`; served at adoption: {served}."
-    return STATUS.sub(line, text, count=1)
+    line = f"- **Status:** as adopted in contract `{version}` at `0123456789ab`; served at adoption: {served}.\n"
+    return STATUS_BULLET.sub(lambda _: line, text, count=1)
+
+
+def unadopted(text: str) -> str:
+    """A scratch note as it stood before adoption: its whole status bullet without an adopted line."""
+    return STATUS_BULLET.sub(lambda _: "- **Status:** proposed; Appendix A is not adopted yet.\n", text, count=1)
 
 
 def amended(base: dict[str, Any], mutate) -> dict[str, Any]:
@@ -104,7 +117,7 @@ def renamed_parameter_added_field_renamed_path(doc: dict[str, Any]) -> None:
 
 
 def test_one_way_before_adoption_any_amendment_of_the_additions_passes(base, v013):
-    text = note_text()
+    text = unadopted(note_text())
     assert note_problems(text, base, base) == []  # W1 not applied yet: the contract is still 0.1.2
     assert note_problems(text, v013, base) == []  # W1 as written
     assert note_problems(text, amended(v013, renamed_parameter_added_field_renamed_path), base) == []
@@ -114,7 +127,7 @@ def test_one_way_before_adoption_a_changed_0_1_2_shape_still_fails(base, v013):
     def change(doc: dict[str, Any]) -> None:
         doc["components"]["schemas"]["Work"]["properties"]["extra"] = {"type": "string"}
 
-    problems = note_problems(note_text(), amended(v013, change), base)
+    problems = note_problems(unadopted(note_text()), amended(v013, change), base)
     assert any("contract against 0.1.2" in p and "Work" in p for p in problems), problems
 
 
@@ -206,5 +219,6 @@ def test_a_contract_older_than_the_adopted_version_fails(base, v013):
 
 def test_prose_that_describes_the_adopted_line_is_not_an_adoption():
     """Only the status bullet counts: §3.3 quotes the line's form without adopting anything."""
-    assert "as adopted in contract `<V>` at `<sha>`" in note_text()
-    assert adopted(note_text()) is None
+    before = unadopted(note_text())
+    assert "as adopted in contract `<V>` at `<sha>`" in before
+    assert adopted(before) is None

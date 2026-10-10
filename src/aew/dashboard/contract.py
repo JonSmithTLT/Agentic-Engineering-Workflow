@@ -54,6 +54,7 @@ RESPONSE_SCHEMAS: dict[str, str] = {
     "/history/{id}": "HistoryResponse",
     "/attention": "AttentionListResponse",
     "/activity": "ActivityListResponse",
+    "/history/search": "HistorySearchResponse",  # conditional (register F20.8, S2)
 }
 ERROR_SCHEMA = "Error"
 METHODS = ("get", "head")

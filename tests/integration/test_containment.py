@@ -156,6 +156,21 @@ def test_secrets_are_hidden_and_a_masked_file_is_still_a_file(lab):
     assert done.stdout.strip() == "FILE"
 
 
+def test_provider_config_locations_read_empty_from_inside(lab):
+    (lab.home / ".claude.json").write_text('{"secret": "SECRET-CFG"}\n')
+    (lab.home / ".config" / "anthropic").mkdir(parents=True)
+    (lab.home / ".config" / "anthropic" / "credentials").write_text("SECRET-DIR\n")
+    (lab.home / ".claude.json.backup").write_text('{"secret": "SECRET-COPY"}\n')
+    f, d = lab.home / ".claude.json", lab.home / ".config" / "anthropic"
+    b = lab.home / ".claude.json.backup"
+    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b}; test -f {f} && test ! -s {f} && echo FILE; "
+                                          f"test -f {b} && test ! -s {b} && echo COPY; ls -A {d}; echo END")
+    assert done.returncode == 0, done.stderr
+    assert "SECRET" not in done.stdout and "credentials" not in done.stdout
+    assert done.stdout.split() == ["FILE", "COPY", "END"]
+    assert f.read_text() == '{"secret": "SECRET-CFG"}\n'  # the host's own file is untouched
+
+
 def test_another_runs_harness_state_is_invisible(lab):
     """Independent review (area 2, F2): a run must not read a sibling run's harness state, where OpenCode keeps that
     run's session environment (its bridge key). Every run's directory is hidden; only this run's own come back."""

@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 
 from aew_eval import arms, fixture, hidden, prereg, runner  # noqa: E402
+from aew_eval.schemas import Invalid  # noqa: E402
 
 FIX = {"write": "calc.py", "content": "def add(a, b):\n    return a + b\n"}
 WRONG = {"write": "NOTES.md", "content": "looked at it\n"}
@@ -153,9 +154,9 @@ def test_no_arm_sees_the_hidden_root(tmp_path, monkeypatch):
     seen = {}
     real = arms.ScriptedArm.run
 
-    def spy(self, repo, config, *, deadline_s):
+    def spy(self, repo, config, *, deadline_s, task=None):
         seen["root"] = os.environ.get(hidden.ENV)
-        return real(self, repo, config, deadline_s=deadline_s)
+        return real(self, repo, config, deadline_s=deadline_s, task=task)
 
     monkeypatch.setattr(arms.ScriptedArm, "run", spy)
     record = run(f, case, tmp_path)  # the root comes from the environment
@@ -454,3 +455,41 @@ def test_a_score_records_whether_it_was_contained(tmp_path):
 def test_only_one_well_formed_result_counts(stdout):
     assert hidden._parse(stdout) is None  # noqa: SLF001
     assert hidden._parse('{"checks": [{"name": "x", "ok": true, "detail": ""}]}')  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------------------------- deferred scoring
+
+
+def test_a_deferred_run_holds_no_oracle_and_is_scored_once_after_every_run_has_ended(tmp_path):
+    """The arm host never holds the oracle while a model runs: the run exports and hashes its final tree, and the
+    oracle scores it later, in a separate record (the run's own record is never edited)."""
+    f, case, secret = setup(tmp_path)
+    record = run(f, case, tmp_path, defer_scoring=True)
+    scoring = record["outcome"]["scoring"]
+    assert record["validity"]["status"] == "valid" and record["outcome"]["score"] is None
+    assert scoring["deferred"] and scoring["oracle_commitment"] == f["cases"][0]["hidden_sha256"]
+    entry = runner.score_run(f, ledger_dir=tmp_path / "ledger", run_id="demo/r1", hidden_root=secret)
+    assert entry["score"]["passed"] is True and entry["oracle_sha256"] == f["cases"][0]["hidden_sha256"]
+    assert runner.scores(tmp_path / "ledger") == {"demo/r1": entry}
+    with pytest.raises(Invalid, match="already scored"):
+        runner.score_run(f, ledger_dir=tmp_path / "ledger", run_id="demo/r1", hidden_root=secret)
+
+
+def test_deferred_scoring_refuses_a_hidden_root_on_the_arm_host(tmp_path):
+    f, case, secret = setup(tmp_path)
+    with pytest.raises(runner.Refused, match="no hidden root on the arm host"):
+        run(f, case, tmp_path, defer_scoring=True, hidden_root=secret)
+    assert not (tmp_path / "ledger" / "attempts.jsonl").exists()
+
+
+def test_a_changed_export_or_another_oracle_is_never_scored(tmp_path):
+    f, case, secret = setup(tmp_path)
+    record = run(f, case, tmp_path, defer_scoring=True)
+    other = make_oracle(tmp_path / "other", checks=CHECKS + "\n# another oracle\n")
+    with pytest.raises(Invalid, match="not the preregistered one"):
+        runner.score_run(f, ledger_dir=tmp_path / "ledger", run_id="demo/r1", hidden_root=other.parents[2])
+    (Path(record["outcome"]["scoring"]["export"]) / "calc.py").write_text("def add(a, b):\n    return 5\n",
+                                                                         encoding="utf-8")
+    with pytest.raises(Invalid, match="export of demo/r1 changed"):
+        runner.score_run(f, ledger_dir=tmp_path / "ledger", run_id="demo/r1", hidden_root=secret)
+    assert runner.scores(tmp_path / "ledger") == {}

@@ -212,11 +212,22 @@ sections:
       the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
       the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
       is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
-      input) and E55 (`harness send` to `steer`). **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):** two delivery
+      timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send
+      --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with
+      messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation
+      arm (F19''s arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged. **F9-B note (G3, amendment 2, decided):**
+      F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message
+      withdraw` is F9-B''s. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
       ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging:
       enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8''s P cell
       for worker replies (MCD-06; F38); D5, on a Codex adapter, steer''s cancel-and-restart of an in-flight model call satisfies
-      `--when next-step`, and held-session staging without message identity is refused (MCD-11, MCD-12; F24)'
+      `--when next-step`, and held-session staging without message identity is refused (MCD-11, MCD-12; F24). **Designer
+      decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
+      ledger MIC):** D5, F9 owns the Lead''s wake for worker replies, as a coordination lane in the existing `aew harness
+      wait --any`, with no second notifier: M4-E E7''s notifier stays the operator''s (MIC-09, MIC-10). It resolves the
+      wording of LWA-17 and the F9-A1 adoption ("the broker''s notifier", now `superseded-by:` MIC-09); until the lane lands
+      in a later F9 slice, the Lead learns of replies through the attention and resume projections'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -444,16 +455,25 @@ sections:
       (plan v3 §2.4):** `gates.requires_disposition` (legality-affecting, empty by default) marks non-required review findings
       by severity and verification claims by result; both ingests refuse to advance past an undisposed marked item (`DISPOSITION_REQUIRED`,
       in the guard query both paths share). Under the current outcome rules a listed claim result is always a gate failure
-      already, so the verification half marks nothing yet; designer decision D4 (2026-10-10, evening) is decided but pending
-      its definition (its design item, MIC-16, which PR 187 files in decisions due). The Lead disposes of it through `resolve`
-      (`accept_risk`, `follow_up`, `not_applicable`) or `aew work dispose`, recorded immutably beside the Ticket with a
-      hot pointer that archival pins. **Anomalies:** open ones are hot (`anomalies`, ids `ANM-n`), from `WORKSPACE_MUTATED`
-      and `OBSERVATION_MUTATED` refusals (a Lead transaction's by a follow-up commit, a worker's by a signal file the next
-      Lead commit validates) and contradictions live both before and after a Lead commit; a disposal moves one cold. A high
-      anomaly adds no guard and makes its subject's projected actions not auto-runnable. The dashboard's `requires_disposition`
-      is the real value. The corpus gains the unmigrated guard, stale evidence, pending disposition and high anomaly cases.
-      The normal advertised surface is 9,991 bytes, 13 tools (`resolve` exactly the 771 bytes §2.6 measured); the projection
-      with every M4-E tool built is unchanged at 11,805 of 11,900
+      already, so the verification half marks nothing yet; designer decision D4 (below) is decided but pending its definition
+      (MIC-16, this row's design item in decisions due). The Lead disposes of it through `resolve` (`accept_risk`, `follow_up`,
+      `not_applicable`) or `aew work dispose`, recorded immutably beside the Ticket with a hot pointer that archival pins.
+      **Anomalies:** open ones are hot (`anomalies`, ids `ANM-n`), from `WORKSPACE_MUTATED` and `OBSERVATION_MUTATED` refusals
+      (a Lead transaction's by a follow-up commit, a worker's by a signal file the next Lead commit validates) and contradictions
+      live both before and after a Lead commit; a disposal moves one cold. A high anomaly adds no guard and makes its subject's
+      projected actions not auto-runnable. The dashboard's `requires_disposition` is the real value. The corpus gains the
+      unmigrated guard, stale evidence, pending disposition and high anomaly cases. The normal advertised surface is 9,991
+      bytes, 13 tools (`resolve` exactly the 771 bytes §2.6 measured); the projection with every M4-E tool built is unchanged
+      at 11,805 of 11,900. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
+      ledger MIC):** D4 decided. It revises [M4-E plan v3](m4-e-plan-v3.md) §2.4's `gates.requires_disposition.unrequired_verification_results`
+      (this row carries the revision; the plan's text is not edited), keeping it only for unrequired claims whose verification
+      result is `inconclusive` or `not_run`, which, when the key lists them, become non-gating, failing neither the report's
+      outcome nor a gate and needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It
+      needs the claim-model definition first, which neither the code nor the documents have (a way to mark a claim unrequired
+      and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum
+      changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as
+      with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until
+      then the verification half marks nothing yet
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
@@ -533,7 +553,12 @@ sections:
       the mode as `steering.standing` and `steering.override` rather than the plan''s `effective` (the effective mode is
       derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release
       gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7),
-      the publication grants (E6b), delivery and the loop (E7)'
+      the publication grants (E6b), delivery and the loop (E7). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
+      ledger MIC):** D2, M4-H''s per-run ceremony through the constrained evaluator relay is an acceptable human-intent
+      channel for this row''s endpoint challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention
+      disposition table, drafted from E7''s event vocabulary, is exhaustive and sealed before calibration; a confirmation
+      is never pre-granted (MIC-04 to MIC-06; F19). D5, E7''s notifier stays the operator''s; the Lead''s wake for worker
+      replies is F9''s lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
 
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
@@ -925,7 +950,45 @@ sections:
       must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit,
       never `main`''s head implicitly. When F21''s A/B evaluation runs (after the knowledge adoption record''s §8 readiness
       package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies
-      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in)'
+      to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **D3''s lane
+      prepared (2026-10-10, PR #153), the run is the operator''s:** the `raw` arm (`raw.py`: OpenCode''s own agent through
+      the M3 headless session, the case''s new `task` its only message; the harness binary, the model and effort, and the
+      profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden
+      paths probed before OpenCode starts; its session database kept under the preregistered retention window and structured
+      field allowlist; a run on another model or harness, a provider value in retained state (deleted at once), a provider
+      error instead of a model step or ending the turn, or a failure after the session started is counted and not valid,
+      its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host
+      split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed
+      export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge
+      recorded); the preregistration''s `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/`
+      holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with
+      their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. Three
+      experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and
+      lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash`
+      (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage
+      and a second model family). `lbq-v1-deepseek-v4-1-flash` ran on 2026-10-10: its floor passed, but every ceiling attempt
+      was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the
+      runs beside each run inside the runs directory''s own tmpfs; fixed, and a run refused before launch is now charged
+      nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash`
+      (the same preregistration, a new id), and kept v1''s lane as the record. **Run 2026-10-10 (at ed98424; frozen records
+      and results committed in the lane):** `lbq-v1-gpt-5-nano` passed the floor and showed behaviour 5 (requirement loss
+      on longer tasks), so `opencode/gpt-5-nano#high` is qualified as the lower bound ($0.066 in all); `lbq-v2-deepseek-v4-1-flash`
+      passed the floor and solved all 6 ceiling runs with no tree-observable behaviour ($0.22), so its ceiling waits for
+      the session-observable half. The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
+      split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm
+      (arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while
+      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge. **Designer decisions of
+      2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):**
+      D1, F25''s G1 is approved, so M4-H''s counted cost is F25''s settled figure under its boundary, which F19 hashes into
+      the run record (MIC-01). D2 (F19''s G1), each counted AEW-arm run gets its own operator ceremony (the mode raise and
+      the publication grant) through the constrained evaluator relay, an acceptable human-intent channel under M4-E''s `guarantee:
+      dev`, for v1; a campaign-scoped grant (new authority) is revisited only if the ceremony proves impractical in calibration
+      (MIC-02). The relay''s conditions are binding: it shows the bound action verbatim, strips terminal control sequences,
+      and cannot answer a challenge itself, which a static test proves (MIC-03). D3 (F19''s G2), the request and attention
+      disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the
+      lead developer from M4-E E7''s event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation
+      is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the
+      Lead''s session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06)'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1006,7 +1069,10 @@ sections:
     Notes: 'S0 changes nothing served: every 0.1.2 route answers byte for byte, and the six routes stay pending (answered
       exactly as without them) until S1 and S2 serve them. The web developer may amend the additions in W1; the main line
       stays green whatever they amend, and S1 records the amendments in the note and marks it adopted. If #148''s merged
-      result lacks something the search additions need, they are amended in 0.1.4 before S2 serves the route.'
+      result lacks something the search additions need, they are amended in 0.1.4 before S2 serves the route. **W1 adopted
+      Appendix A unamended (#173). S2 built (2026-10-10):** `/history/search` is a conditional route, served while the adopted
+      policy switches the search on and answered exactly as before while it is off; the note''s adopted line names contract
+      0.1.3 and the routes served since adoption.'
 
   - '#': F21
     Work: 'The M6b knowledge system: capture and admission of reusable knowledge (K0 references, K1 Cases, K2 Lessons, K3
@@ -1089,7 +1155,10 @@ sections:
       role, and independence remains selector-controlled (the plan selectors of CEA-54; v0.8''s * kept for the Reviewer
       and the Verifier). The ledger marks CEA-36 superseded by MCD-04 for its `G_KNOWLEDGE_READ` cells and, as far as safe
       navigation goes, its `G_DERIVED_READ` cells; which derived reads are safe navigation is F38''s encoding to state,
-      and until then the Verifier''s P stands for the rest.'
+      and until then the Verifier''s P stands for the rest. **S2 built (2026-10-10):** `HistoryCommands.history_search_committed`
+      searches from the request''s committed snapshot with `may_reset=False`, one 1.25 s deadline, a catch-up budget and
+      a candidate budget, after checking the snapshot''s root and the tail together; the CLI''s `history search` output
+      is byte-identical to before (tested against the vendored pre-S2 module).'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1236,7 +1305,14 @@ sections:
       to support both, Codex first. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01,
       MCD-02); takes effect at M6; F40):** its runtime probe is where it is first observed whether Claude Code's native
       edit and write tools can be hidden or denied in a worker's model-visible schema; shell writes are stopped by the read-only
-      source, and the shell is kept; a cross-reference, not new scope
+      source, and the shell is kept; a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening, on this
+      row's runtime probe of Claude Code 2.1.296 ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
+      ledger MIC):** D6, the adapter runs Claude Code bare (`--bare`), and C1's pre-request gate is relay variant G, the
+      budget as a pre-egress check in AEW's provider relay (F28), since hooks passed with `--settings` do not run under
+      `--bare`; non-bare runs are not accepted (MIC-11, MIC-12). D7, a harness whose shell can write qualifies under M6a
+      §7 with a read-only source and mediated authoritative mutation (MCD-01, MCD-02), the same rule for every harness (MIC-13;
+      F40). D8, the adapter fails closed when the worker's tree has a project `.claude/settings*.json`, unless the project
+      is explicitly qualified by a named, recorded policy exception (MIC-14, MIC-15)
 
   - '#': F25
     Work: 'An engine-owned cost and usage ledger: per run (model/profile, token categories, wall time, provider-reported
@@ -1269,7 +1345,15 @@ sections:
       reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **Deterministic
       work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09;
       ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model
-      dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope.'
+      dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10,
+      evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25''s
+      settlement boundary (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts
+      F25''s live, settled, inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every
+      OpenCode server started for the run id and all its sessions from server start, relaunches included), the close at
+      every source final or 60 s after shutdown begins, late samples never changing the figure, and no experiment semantics
+      in F25 (MIC-01). The plan''s slice L7 records the ruling''s content (ledger CMB), amending EVC-14''s cost-block source
+      for M4-H only; with G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this
+      row''s item in [decisions due](decisions-due.md)) is a different question and stays open.'
 
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied
@@ -1387,7 +1471,16 @@ sections:
       frontier (Astra-class, the strongest available Lead model), mid (a qualified model through the operator''s OpenAI
       API account) and lower-bound (a qualified free or inexpensive OpenCode model, a stress specimen, never reported as
       a Laguna substitute), each pinned at preregistration; if Laguna becomes available, the same profile-neutral suite
-      runs on it'
+      runs on it. **Lower-bound availability (2026-10-10, OpenCode 2.0.18''s served catalog):** the chosen free models (`opencode/deepseek-v4-flash-free`,
+      the backup `opencode/minimax-m2.5-free`, and `opencode/laguna-s-2.1-free`) are deprecated in the catalog and not offered;
+      their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash#high`,
+      with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`).
+      Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still
+      lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary,
+      and to run `opencode/gpt-5-nano#high` after it, each as its own experiment (V4.1''s is now `lbq-v2-deepseek-v4-1-flash`,
+      after a containment defect refused its first ceiling). Result (2026-10-10): `opencode/gpt-5-nano#high` is the qualified
+      lower-bound profile; `opencode/deepseek-v4.1-flash#high` passed the floor, its ceiling pending the session-observable
+      behaviours (D2)'
 
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local
@@ -1580,7 +1673,10 @@ sections:
       MCD-01, MCD-02):** M6 supersedes ADR-0009/ADR-0006 native source mutation; the worker gets read-only source, writable
       scratch and mediated authoritative mutation, and keeps its shell (shell writes are stopped by the read-only source,
       not by a shell-less worker). The ADR-0009 and ADR-0006 amendments are due with this row when M6 lands; until then
-      both ADRs govern the current build unchanged. The model's adoption itself is still F38's item in [decisions due](decisions-due.md)
+      both ADRs govern the current build unchanged. The model's adoption itself is still F38's item in [decisions due](decisions-due.md).
+      **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
+      ledger MIC):** D7 confirms that a harness whose shell can write qualifies under §7 with a read-only source and mediated
+      authoritative mutation, the same rule for every harness (MIC-13; first applied to Claude Code, F24.2)
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
@@ -2036,19 +2132,34 @@ sections:
       F9-A did not wait for the answer'
 
   - '#': E55
-    Work: '`--when next-step|turn-end` on `aew harness send`, as on `aew message send`: `next-step` (the default) is OpenCode''s
-      `steer`, delivered at the next step boundary; `turn-end` is `queue`, delivered when the worker''s turn would end.
-      While a `turn-end` input is pending, the run''s final result ingest is refused (`PENDING_TURN_END_MESSAGE`) until
-      the worker submits again. The ingest check and the pending state are atomic (CAS-bound), so a report''s acceptance
-      never races a turn-end input''s admission. `harness send` today only files a supervisor request and records nothing
-      a CAS can read, so a `turn-end` send must first record its pending state where the ingest reads it'
-    Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34), on the F9-A MS0 probe (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
+    Work: '`--when next-step|turn-end` on `aew harness send` (the designer''s decision of 2026-10-10). The default is `next-step`
+      (OpenCode `steer`, at the agent''s next step boundary, without interrupting it). `turn-end` (OpenCode `queue`, after
+      the agent''s turn) goes only through the coordination store, as an F9 message, and is refused while messaging is off
+      (`TURN_END_NEEDS_MESSAGING`): M4-H has `next-step` only (G1, 2026-10-10). While messaging is on, every `harness send`
+      is recorded through the store, fails closed and still wakes a held session (G4); until F9-A''s MS5b builds that path,
+      it is refused (`HARNESS_SEND_NEEDS_STORE`), and a run whose launch snapshot of the switch disagrees with the project''s
+      is refused `MESSAGING_SNAPSHOT_MISMATCH` (the Lead relaunches it; with the project switched on, only once MS4 records
+      launch snapshots, and until then sending needs messaging switched off). The row also covers the help text and `harness_send`''s
+      docstring'
+    Source: designer decision, 2026-10-10 (steer vs queue, option B; ledger CMG-34, [record](../design/decisions-2026-10-10-f9-steer-vs-queue.md),
+      ledger SVQ); the G1 and G2 decisions ([record](../design/decisions-2026-10-10-f9-a-g1-g2.md), ledger MGT) and the
+      G4 and rename decisions ([record](../design/decisions-2026-10-10-f9-a-g4-rename.md), ledger MGR); F9-A plan v4 amendment
+      2 (CLEAR at v10) §3 and §4; the MS0 probe (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
       [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-28, CMG-33)
-    When: '**Unscheduled**: with F9-A, whose amendment 2 assigns the slice'
-    Notes: Replaces this row's earlier proposal to move `harness send` wholesale to `steer`, which would have removed the
-      only "after you finish" delivery. The default changes `harness send` from `queue` to `steer`, a change a Lead sees,
-      so it observes Q7 v0.3.1 §7's freeze rule. The row still owns the `harness send` help text (`cli/work_commands.py`).
-      Until it lands, ADR-0017 D8 and the harness-conformance §5 row state the true behaviour
+    When: '**Unscheduled** for the store path while messaging is on, with F9-A''s MS5b. **HS1** (F9-A plan amendment 2''s
+      slice, not an F9 slice), the rest, built 2026-10-10: before M4-H''s pre-calibration freeze, or with an M4-H manifest
+      amendment'
+    Notes: 'Supersedes this row''s earlier "move to `steer`" text. A treatment change: it is the Lead''s nudge timing and
+      help text, so it observes Q7 v0.3.1 §7''s freeze rule. M4-H''s frozen treatment, as G1 decided it: messaging off;
+      worker delivery available to the Lead `next-step` only (OpenCode `steer`, through `aew harness send`); `turn-end`
+      (queued) delivery unavailable, because it requires the F9 message store and messaging treatment, refused with `TURN_END_NEEDS_MESSAGING`;
+      no hidden exception (the old `queue` default is removed, not kept for M4-H). The turn-end path, and every `harness
+      send` while messaging is on, is enabled by F9-A''s MS5b; the `off_on` mismatch case (a run launched with messaging
+      on, the project since switched off) arrives with MS4, which writes the run''s snapshot. **Built (HS1, 2026-10-10):**
+      `aew harness send --when`, the help, the docstring, `OpenCodeAdapter.send(text, delivery)` replacing the hard-coded
+      `queue`, the two-value branch (`send_route`) with the three refusals, and the harness-conformance §5 row. The finality
+      rule this row carried until amendment 2 (`PENDING_TURN_END_MESSAGE`, atomic with the message state) is F9''s, built
+      in MS5b for both timings as `PENDING_LEAD_MESSAGE` (ledger CMG-34, MGR)'
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

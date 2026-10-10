@@ -152,9 +152,11 @@ def world(tmp_path_factory):
 
 
 def served_routes() -> list[str]:
-    """The contract's routes this server serves (a pending one is no route yet; register F20.8), less /attention,
-    which is 403 until F15.1."""
-    return sorted(r for r in CONTRACT.paths if (r in ROUTES or r in CONDITIONAL_ROUTES) and r != "/attention")
+    """The contract's routes this server always serves (a pending one is no route yet; register F20.8), less
+    /attention, which is 403 until F15.1. A conditional route is off here; its conditional requests are tested where
+    it is on (tests/integration/test_dashboard_history_search.py)."""
+    assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
+    return sorted(r for r in CONTRACT.paths if r in ROUTES and r != "/attention")
 
 
 def path_of(world: World, route: str) -> str:

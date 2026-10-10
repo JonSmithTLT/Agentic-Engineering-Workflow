@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aew.engine import recall
 from aew.engine.api import Engine
 from aew.engine.base import POLICY_PINS
 from aew.errors import AEWError
@@ -36,6 +37,9 @@ class Snapshot:
     manifest: dict[str, Any]
     gates: dict[str, Any]  # the gates policy, read lock-free with the manifest ({} when it cannot be read)
     generated_at: str
+    # Raw-history search's switch (register F20.8, S2), read from this snapshot's committed state: the conditional
+    # route and the ``history_search`` capability exist only while it is true.
+    history_search: bool = False
 
     @property
     def revision(self) -> int:
@@ -73,6 +77,7 @@ class StateReader:
         self._manifest: tuple[tuple[int, int, int] | None, dict[str, Any]] | None = None
         # keyed by the gates file's identity and its pin: adopting an edit changes what may be shown
         self._gates: tuple[tuple[tuple[int, int, int] | None, bool, str | None] | None, dict[str, Any]] | None = None
+        self._search: tuple[Any, bool] | None = None  # the search switch, by the identities it was read at
 
     def snapshot(self) -> Snapshot:
         store = self.engine.store
@@ -92,7 +97,20 @@ class StateReader:
             if self._gates is None or self._gates[0] != gates_identity:
                 self._gates = (gates_identity, self._read_gates(gates_path, pins is not None, gates_pin)
                                if gates_path else {})
-            return Snapshot(self.engine, self._state[1], self._manifest[1], self._gates[1], utc_now())
+            return Snapshot(self.engine, self._state[1], self._manifest[1], self._gates[1], utc_now(),
+                            history_search=self._search_switch(identity, self._state[1], manifest_identity,
+                                                               self._manifest[1]))
+
+    def _search_switch(self, identity: Any, state: dict[str, Any], manifest_identity: Any,
+                       manifest: dict[str, Any]) -> bool:
+        """``recall.search_enabled`` for the cached state, itself cached by the identities of control state, the
+        manifest and the execution policy file it names: adopting an edit, or making one nobody adopted, is a new
+        answer on the next request. It never raises (an unreadable file is off)."""
+        rel = recall.execution_policy_rel(manifest)  # the same expression the switch reads (PR #175 review, n1)
+        key = (identity, manifest_identity, _identity(self.engine.aew_root / rel) if isinstance(rel, str) else rel)
+        if self._search is None or self._search[0] != key:
+            self._search = (key, recall.search_enabled(self.engine.aew_root, state))
+        return self._search[1]
 
     @staticmethod
     def _read_gates(path: Path, pinned: bool, pin: str | None) -> dict[str, Any]:

@@ -1,0 +1,72 @@
+# The independent public repository the lane's fixture is built on (README.md, "The fixture"). Pinned by commit and
+# git tree hash: `qualify.py fetch` refuses anything else. The base is exported from the clone's tracked files
+# unchanged; the lane's seeded files (fixture/overlay/) are added beside them and never replace an upstream file.
+name: Python-Markdown
+url: https://github.com/Python-Markdown/markdown.git
+tag: "3.11.0"
+released: "2026-09-25"
+commit: 0ffbf00cf667971d46f43aafba825e8d25098bc5
+tree: a4ef60afea1f6d85e8c38e38451ad80673477238
+license: BSD-3-Clause
+file_count: 480
+bytes: 2480498          # uncompressed, from the tree listing; a depth-1 clone transfers less
+runtime_dependencies: []  # Python >= 3.11 standard library only; its tests run with `python -m unittest`
+listed_at: "2026-10-10"
+# The upstream files in the directories the overlay adds to, from the tree listing above: the overlay must not
+# replace any of them (`qualify.py check` also checks against the fetched base).
+paths_touching_overlay_dirs:
+  - docs/extensions/abbreviations.md
+  - docs/extensions/admonition.md
+  - docs/extensions/api.md
+  - docs/extensions/attr_list.md
+  - docs/extensions/code_hilite.md
+  - docs/extensions/definition_lists.md
+  - docs/extensions/extra.md
+  - docs/extensions/fenced_code_blocks.md
+  - docs/extensions/footnotes.md
+  - docs/extensions/index.md
+  - docs/extensions/legacy_attrs.md
+  - docs/extensions/legacy_em.md
+  - docs/extensions/md_in_html.md
+  - docs/extensions/meta_data.md
+  - docs/extensions/nl2br.md
+  - docs/extensions/sane_lists.md
+  - docs/extensions/smarty.md
+  - docs/extensions/tables.md
+  - docs/extensions/toc.md
+  - docs/extensions/wikilinks.md
+  - markdown/extensions/__init__.py
+  - markdown/extensions/abbr.py
+  - markdown/extensions/admonition.py
+  - markdown/extensions/attr_list.py
+  - markdown/extensions/codehilite.py
+  - markdown/extensions/def_list.py
+  - markdown/extensions/extra.py
+  - markdown/extensions/fenced_code.py
+  - markdown/extensions/footnotes.py
+  - markdown/extensions/legacy_attrs.py
+  - markdown/extensions/legacy_em.py
+  - markdown/extensions/md_in_html.py
+  - markdown/extensions/meta.py
+  - markdown/extensions/nl2br.py
+  - markdown/extensions/sane_lists.py
+  - markdown/extensions/smarty.py
+  - markdown/extensions/tables.py
+  - markdown/extensions/toc.py
+  - markdown/extensions/wikilinks.py
+  - tests/test_syntax/extensions/__init__.py
+  - tests/test_syntax/extensions/test_abbr.py
+  - tests/test_syntax/extensions/test_admonition.py
+  - tests/test_syntax/extensions/test_attr_list.py
+  - tests/test_syntax/extensions/test_code_hilite.py
+  - tests/test_syntax/extensions/test_def_list.py
+  - tests/test_syntax/extensions/test_fenced_code.py
+  - tests/test_syntax/extensions/test_footnotes.py
+  - tests/test_syntax/extensions/test_legacy_attrs.py
+  - tests/test_syntax/extensions/test_legacy_em.py
+  - tests/test_syntax/extensions/test_md_in_html.py
+  - tests/test_syntax/extensions/test_smarty.py
+  - tests/test_syntax/extensions/test_tables.py
+  - tests/test_syntax/extensions/test_toc.py
+  - tools/__init__.py
+  - tools/superfences_formaters.py

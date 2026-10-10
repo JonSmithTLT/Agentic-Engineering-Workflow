@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import type { ComponentType } from 'react';
+import { deferredScreen } from './components/DeferredScreen';
 import { Shell } from './components/Shell';
 import { queryClient, installVisibility } from './client/queries';
 import { DashboardProvider } from './client/dashboard';
@@ -16,6 +17,7 @@ import {
   KnowledgeDetailPage,
 } from './pages/Records';
 import { HistoryPage, HistoryDetailPage } from './pages/History';
+const HistorySearchPage = deferredScreen<object>('Raw history search', () => import('./pages/HistorySearch').then(module => ({ default: module.HistorySearchPage })));
 import { AttentionPage, QueuePage } from './pages/Attention';
 import './styles.css';
 async function start() {
@@ -95,6 +97,7 @@ async function start() {
               <Route path="knowledge" element={DemoKnowledge ? <DemoKnowledge Records={KnowledgePage} /> : <KnowledgePage />} />
               <Route path="knowledge/:id" element={<KnowledgeDetailPage />} />
               <Route path="history" element={<HistoryPage />} />
+              <Route path="history/search" element={<HistorySearchPage />} />
               <Route path="history/:id" element={<HistoryDetailPage />} />
               <Route path="attention" element={<AttentionPage />} />
               <Route path="queue" element={<QueuePage />} />

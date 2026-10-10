@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/eval-profile/v1",
+  "title": "A model profile's qualification record (agent-effectiveness synthesis 13.1 and 13.4; adoption record 10.3)",
+  "description": "One provider/model through one pinned harness, in one capability class, and how far it is qualified. Reusable across experiments: a preregistration pins the profile's `ref`, and a run records the profile id with its qualification state. `qualification_state` is derived from `availability`, `floor` and `ceiling` (aew_eval.profiles.derive_state) and must agree with them. Never holds a credential: `credential_env` names variables only.",
+  "type": "object",
+  "required": ["schema", "id", "class", "ref", "provider", "model", "harness", "effective_profile", "credential_env",
+               "cost_per_mtok_usd", "availability", "floor", "ceiling", "qualification_state"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/eval-profile/v1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "class": {"enum": ["frontier", "mid", "lower-bound"]},
+    "ref": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._/-]*(#[A-Za-z0-9._-]+)?$"},
+    "provider": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "effort": {"type": ["string", "null"]},
+    "plan_role": {"enum": ["primary", "replacement-primary", "backup", "paid-twin", "reference-note"],
+                  "description": "Where the lane's plan uses it: the profile under qualification, the profile that replaces it when it becomes unavailable (a new experiment id), its fallback, the stable paid twin of a free model, or a model recorded only as a note."},
+    "twin_of": {"type": ["string", "null"], "description": "The id of the free profile this one is the paid twin of."},
+    "harness": {
+      "type": "object", "required": ["name", "version"], "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "artifact_sha256": {"type": ["object", "null"],
+                            "description": "Per host platform, the sha256 of the pinned harness binary that was checked.",
+                            "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+      }
+    },
+    "effective_profile": {
+      "type": "object",
+      "description": "The AEW execution-profile settings a run of this profile uses (synthesis 13.2: context.orientation, tools.presentation); null where the arm has no AEW presentation (raw).",
+      "required": ["context.orientation", "tools.presentation"],
+      "additionalProperties": false,
+      "properties": {
+        "context.orientation": {"enum": ["minimal", "standard", "explicit", null]},
+        "tools.presentation": {"enum": ["raw-first", "neutral", "typed-first", null]}
+      }
+    },
+    "credential_env": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"},
+                       "description": "Names of the provider variables the harness server needs; empty for a free model. Never values."},
+    "cost_per_mtok_usd": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["input", "output", "source"],
+      "properties": {
+        "input": {"type": "number", "minimum": 0},
+        "output": {"type": "number", "minimum": 0},
+        "cache_read": {"type": ["number", "null"], "minimum": 0},
+        "source": {"type": "string"}
+      }
+    },
+    "availability": {
+      "type": "object", "required": ["checked_at", "offered_by_pinned_harness"], "additionalProperties": false,
+      "properties": {
+        "checked_at": {"type": ["string", "null"]},
+        "offered_by_pinned_harness": {"type": ["boolean", "null"],
+                                      "description": "Whether the pinned harness's served catalog offered the model when checked (null: not checked)."},
+        "catalog_status": {"type": ["string", "null"], "description": "The catalog's own status for the model (for example deprecated)."},
+        "checked_with": {"type": ["string", "null"], "description": "What the check needed: for a paid model, a placeholder value for its variable (no provider call is made)."},
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "floor": {
+      "type": "object", "required": ["state"], "additionalProperties": false,
+      "description": "The model completes the AEW bridge handshake and the typed submit path through the pinned harness.",
+      "properties": {
+        "state": {"enum": ["not_run", "passed", "failed"]},
+        "trials": {"type": "integer", "minimum": 0},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "ceiling": {
+      "type": "object", "required": ["state"], "additionalProperties": false,
+      "description": "Lower-bound class only: the model still shows the weak-worker behaviours on the seeded lane.",
+      "properties": {
+        "state": {"enum": ["not_run", "not_applicable", "behaviours_shown", "none_shown", "inconclusive",
+                           "pending_session_behaviours"],
+                  "description": "inconclusive: none of the observed behaviours was shown, and some behaviour could not be observed (listed in unobserved); none_shown requires every behaviour observed. pending_session_behaviours: the ceiling ran and its tree-observable behaviours were scored with none shown; the session-observable ones are not scored yet, so there is no ceiling verdict (not_run: the ceiling has not run)."},
+        "experiment": {"type": ["string", "null"]},
+        "behaviours": {"type": "array", "items": {"type": "string"}},
+        "unobserved": {"type": "array", "items": {"type": "string"},
+                       "description": "The behaviours no valid run could observe (for example, no finished run of their case)."},
+        "evidence": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "qualification_state": {"enum": ["unqualified", "unavailable", "floor_failed", "floor_passed",
+                                     "ceiling_inconclusive", "not_a_lower_bound", "qualified"]},
+    "notes": {"type": ["string", "null"]}
+  }
+}

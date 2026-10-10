@@ -97,3 +97,7 @@ Each checkpoint can be reverted independently. New routes cannot be claimed usab
 ## W1 prerequisite update (2026-10-10)
 
 S0 merged as `6f8cc28`; W1 starts from merged main `60a26c398dfd37dd2e5101d4e4ab09633838db99`. Preparation plan 1.0 received independent CLEAR at SHA-256 `d93aef31c08f721964abc2bc75e8cdfbe2b8287c2b2e88f7f6035fa6ad28afff`. The original preparation status above is historical. See [W1 adoption](../../implementation/maps-history-contract-adoption.md) for current scope and gates. Maps/Search UI still waits for served S1/S2 dependencies.
+
+## Search prerequisite update (2026-10-10)
+
+W1 #173 merged as `0c21d9c` and its exact main CI/CodeQL passed. S2 #175 merged as `d975a711e57b57e2a5637b0fdc13a6a91e85cf71`; the Search UI checkpoint starts directly from that merged commit on an independent branch. S1 #178 remains open at this checkpoint's start, so Maps runtime UI remains gated. The operator's existing approved workflow covers this checkpoint. Accepted/provisional artifacts, dependency lock and packaged frontend baseline are unchanged. This update records the prerequisite, not a UI/live acceptance result; exact committed-source evidence and independent review remain merge gates.

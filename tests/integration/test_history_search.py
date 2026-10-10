@@ -16,6 +16,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -644,7 +645,111 @@ def test_the_switch_is_operational_and_read_only_by_the_search(tmp_path):
     assert before["operational_digest"] != after["operational_digest"]
     src = Path(recall.__file__).resolve().parents[1]
     readers = sorted(path.relative_to(src).as_posix() for path in src.rglob("*.py")
-                     if "recall_search_enabled(" in path.read_text(encoding="utf-8")
+                     if "search_enabled(" in path.read_text(encoding="utf-8")
                      or '"raw_history_search"' in path.read_text(encoding="utf-8"))
-    # policy/execution.py names it only to refuse a YAML boolean there (validation, never a decision).
-    assert readers == ["cli/main.py", "engine/history_ops.py", "engine/recall.py", "policy/execution.py"], readers
+    # policy/execution.py names it only to refuse a YAML boolean there (validation, never a decision); the dashboard's
+    # reader reads it to serve its conditional route, the operator's (register F20.8, S2).
+    assert readers == ["cli/main.py", "dashboard/reader.py", "engine/history_ops.py", "engine/recall.py",
+                       "policy/execution.py"], readers
+
+
+# --------------------------------------------------------------------------------------------- the CLI, unchanged
+
+BEFORE_S2 = Path(__file__).resolve().parents[1] / "fixtures" / "recall" / "recall-before-s2.py.txt"
+BEFORE_S2_BLOB = "d0d825519a4adefada2b68304b2be4460a5161e9"  # src/aew/engine/recall.py at 0c21d9c, before S2
+
+
+def _module_before_s2(monkeypatch) -> Any:
+    """``aew.engine.recall`` as it was before the dashboard's slice S2 (register F20.8), from its vendored source
+    (registered while the test runs: its dataclass resolves its module)."""
+    import hashlib
+    import types
+
+    raw = BEFORE_S2.read_bytes()
+    assert hashlib.sha1(b"blob %d\0" % len(raw) + raw).hexdigest() == BEFORE_S2_BLOB  # noqa: S324 (git's blob id)
+    module = types.ModuleType("aew.engine.recall_before_s2")
+    module.__file__ = str(BEFORE_S2)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    exec(compile(raw.decode("utf-8"), str(BEFORE_S2), "exec"), module.__dict__)  # noqa: S102 (a vendored test copy)
+    return module
+
+
+def _cli_outputs(p: Project, engine: Engine, module: Any, monkeypatch) -> list[str]:
+    """Every scenario's `aew history search` output, rendered as the CLI renders it, with ``module`` as the engine's
+    recall module and a deterministic fence token: a budgeted build, filters, a forged row (stale, reset, rebuilt), a
+    busy file, a corrupt file, another substrate version, a foreign watermark and a tampered evidence file."""
+    import contextlib
+    import io
+    import itertools
+    import secrets
+
+    from aew.cli.main import emit
+    from aew.engine import history_ops
+
+    tokens = itertools.count(1)
+    outputs: list[str] = []
+
+    def run(*terms: str, **kw: Any) -> dict:
+        out = engine.history_search(list(terms), **kw)
+        rendered = io.StringIO()
+        with contextlib.redirect_stdout(rendered):
+            emit(out, as_json=True)  # exactly what `aew history search` writes
+        outputs.append(rendered.getvalue())
+        return out
+
+    with monkeypatch.context() as m:
+        m.setattr(history_ops, "recall", module)
+        m.setattr(secrets, "token_hex", lambda n=8: f"{next(tokens):0{2 * n}x}")
+        m.setattr(module, "BUILD_BUDGET_DOCS", 1)
+        for _ in range(30):  # a budgeted build from nothing, call by call
+            if not run("Quokkafacts")["coverage_incomplete"]:
+                break
+        m.setattr(module, "BUILD_BUDGET_DOCS", 500)
+        run("Quokkafacts", "zanzibar arithmetic")
+        run("subtract implemented", kinds=["evidence"])
+        run("subtract implemented", kinds=["unit"], since="2000-01-01T00:00:00Z", until="2999-01-01T00:00:00Z")
+        run("Reviewed the diff", limit=1)
+        with db(p) as conn:
+            conn.execute("UPDATE docs SET source = 'engine' WHERE doc_id = ?", (p.extra["record"],))
+        for _ in range(5):  # stale and reset, then rebuilt
+            run("Quokkafacts")
+        with db(p) as conn:
+            conn.execute("DELETE FROM docs WHERE seq = (SELECT MAX(seq) FROM docs)")
+            conn.execute("UPDATE meta SET value = CAST(value AS INTEGER) - 1 WHERE key = 'count'")
+        with db(p) as holder:
+            holder.execute("BEGIN IMMEDIATE")
+            run("Quokkafacts")
+            holder.execute("ROLLBACK")
+        with db(p) as conn:
+            conn.execute("UPDATE meta SET value = '0' WHERE key = 'substrate_version'")
+        run("Quokkafacts")
+        run("Quokkafacts")
+        with db(p) as conn:
+            conn.execute("UPDATE meta SET value = ? WHERE key = 'h'", ("c" * 64,))
+        for _ in range(3):  # a foreign watermark: reset and rebuilt
+            run("Quokkafacts")
+        (p.root / ".aew" / recall.SUBSTRATE_REL).write_bytes(b"this is not a database" * 100)
+        for _ in range(3):
+            run("Quokkafacts")
+        evidence = next((p.root / ".aew/evidence" / p.extra["investigation"]).glob(f"{p.extra['record']}*.md"))
+        evidence.write_bytes(evidence.read_bytes().replace(b"Quokkafacts", b"Quokkafakes"))
+        run("Quokkafacts")  # unverified
+    return outputs
+
+
+def test_the_clis_search_output_is_byte_identical_to_before_s2(built, tmp_path, monkeypatch):
+    """S2's engine changes are additive (register F20.8): with their defaults, the CLI's `aew history search` gives,
+    byte for byte, what the recall module before S2 gave, in every scenario the CLI meets, on two copies of one
+    project."""
+    before = _module_before_s2(monkeypatch)
+    outputs = []
+    for name, module in (("before", before), ("after", recall)):
+        p, engine = copy_of(built, tmp_path / name)
+        (p.root / ".aew" / recall.SUBSTRATE_REL).unlink(missing_ok=True)  # each builds from nothing
+        p.extra.update(record=built["record"], investigation=built["investigation"])
+        outputs.append(_cli_outputs(p, engine, module, monkeypatch))
+    assert len(outputs[0]) >= 15
+    seen = "".join(outputs[1])
+    for reason in ('"budget"', '"stale"', '"busy"', '"rebuilding"', '"unverified"'):  # every scenario was met
+        assert reason in seen, reason
+    assert outputs[0] == outputs[1]

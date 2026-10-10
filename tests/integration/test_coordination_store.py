@@ -121,14 +121,15 @@ def pin(root: Path) -> None:
 def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False) -> World:
     root = make_git_repo(tmp_path / "repo", CP.FILES)
     Engine.initialize(root, project_id="calc")
-    if messaging is not None:
-        set_messaging(root, messaging)
     if checks:
         (root / ".aew/policy/checks.yaml").write_text(util.dump_yaml(QUICK_CHECKS), encoding="utf-8", newline="\n")
     pin(root)
     e = Engine.discover(root)
     token = e.lead_acquire(expect_rev=0, session_label="lead-a")["token"]
     w = World(root, e, token, "", "", "", root)
+    if messaging is not None:  # the operator's adoption, which also registers the project when it enables (MS2, D-39)
+        set_messaging(root, messaging)
+        e.manifest_adopt(token=token, expect_rev=w.rev(), reason=f"messaging {messaging}", authorization=OPERATOR)
 
     w.wid = w.lead("work_create", kind="ticket", title="Add subtract()", risk_class=1, mutating=True,
                    scope_paths=["calc/**", "tests/**"], goal_backwards=["calc.core.subtract(5, 3) == 2"],
@@ -478,8 +479,9 @@ def test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_sta
     monkeypatch.setattr(C.Coordination, "_ensure_marker", racing)
     with pytest.raises(IntegrityError, match="removed or replaced"):
         w.send("from writer A")
-    assert raced["other"] == f"MSG-{w.inv}-3"
-    assert [m["body"] for m in w.e.message_thread(w.inv)["messages"]] == ["first", "ack", "from writer B"]
+    # A worker's text is labelled untrusted in the read (MS2).
+    assert [m.get("body", m.get("untrusted_text")) for m in w.e.message_thread(w.inv)["messages"]] == \
+        ["first", "ack", "from writer B"]
     assert w.send("a later message")["message"]["id"] == f"MSG-{w.inv}-4"
 
 
@@ -920,4 +922,9 @@ def test_legality_modules_never_import_coordination():
     assert offenders == []
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
-    assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py"}
+    # MS2: the store's seal check and archival's seal pins know only the leaf layout's paths and keys (plan D-16).
+    assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
+                         "aew/engine/archive_ops.py"}
+    for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py"):
+        assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",
+                                                                                 "aew.coordination.layout"}, leaf_only

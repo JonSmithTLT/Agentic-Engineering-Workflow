@@ -269,5 +269,21 @@ def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine)
     # record (before archival, so a retired candidate's run is recorded before the unit leaves); then ADR-0011 R6.
     assert [named(step) for step in engine._k.finalizers.steps] == [
         "StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize", "UsageCopy.finalize",
-        "Archive.finalize"]
+        "Coordination.finalize", "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7
+
+
+# The finalizers that can end an invocation: the queue's retires an entry and ends its custodian and the custodian's
+# children (M4-D). A later one that can (F4 S4b's generation-change step, E6a) is added here and placed before the seal.
+ENDS_INVOCATIONS = ("Queue.finalize",)
+
+
+def test_the_seal_finalizer_runs_after_every_finalizer_that_can_end_an_invocation_and_before_archival(engine):
+    """F9-A plan D-16 (N1): the coordination seal runs after every finalizer that can end an invocation, so it sees
+    every ending, and immediately before archival, so the seal's pointer is on its unit when archival bundles it. The
+    store's commit check seals through the same function (R3), injected by the composition root."""
+    order = [named(step) for step in engine._k.finalizers.steps]
+    seal = order.index("Coordination.finalize")
+    assert order[seal + 1] == "Archive.finalize" and seal + 2 == len(order)
+    assert all(order.index(name) < seal for name in ENDS_INVOCATIONS)
+    assert named(engine._k.store.seal) == "Coordination.seal_ending"

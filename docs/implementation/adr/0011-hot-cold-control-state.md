@@ -244,6 +244,20 @@ Independent document review identified one substantive gap and several tightenin
 - migration requires quiescence;
 - historical context retains its original trust classification and load provenance.
 
+## Note of 2026-10-10: coordination seal records are cold records the bundle pins (F9-A)
+
+F9-A's sealing slice ([ADR-0017](0017-coordination-messages.md) D7, MS2) adds one more kind of cold record. When a
+commit ends an invocation that has a coordination thread, a seal record is written beside the thread
+(`work/<T>/coordination/<INV>.seal-<sha12>.yaml`): immutable, content-addressed, written before the commit and
+referenced by path and hash (`Session.prewritten`, as R8's migration records are), so the redo record never holds
+thread bytes. The unit's pointer to it (`coordination`) is set in the working state by a transaction finalizer that runs
+immediately before archival, so archival serializes the pointer into the unit's bundle in the same commit, and the
+commit still appends to the history once: there is no annotation path, because a unit turning terminal ends its
+invocations in that same transaction. The bundle pins each seal (`pinned_records`), and a seal, once its schema
+validates, pins its thread by path and hash (`evidence_pins`), as an evidence record pins its log, so `history audit
+--full` covers the thread's bytes. A seal record from a commit that never landed is an unreferenced object, benign as
+above.
+
 ## Alternatives considered
 
 - **Deduplicate pinned role cards** (store each card version once). This is smaller in effect (about 14%) and does not address growth. It may be part of the implementation.

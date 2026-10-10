@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/coordination-seal/v1",
+  "title": "AEW coordination seal",
+  "description": "F9-A (ADR-0017 D7; plan v4 D-16, D-38): .aew/work/<T>/coordination/<INV>.seal-<sha12>.yaml, written once, immutable and content-addressed, by the commit that ends the invocation, before that commit, and referenced from the unit's pointer by path and hash. It pins the thread's bytes as sealed, so a full history verification covers them; the thread accepts nothing afterwards.",
+  "type": "object",
+  "required": ["schema", "invocation", "work_unit", "closed_rev", "thread", "head", "lines", "messages", "damaged", "undeliverable", "unseen_by_lead"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/coordination-seal/v1"},
+    "invocation": {"type": "string", "pattern": "^INV-[0-9]+$"},
+    "work_unit": {"type": "string", "minLength": 1},
+    "closed_rev": {"description": "The control revision of the commit that ended the invocation.", "type": "integer", "minimum": 1},
+    "thread": {
+      "description": "The thread file exactly as sealed: its path under .aew, the sha256 of all its bytes, and their number.",
+      "type": "object",
+      "required": ["path", "sha256", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "pattern": "^work/[^/]+/coordination/INV-[0-9]+\\.jsonl$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 0}
+      }
+    },
+    "head": {"description": "The chain hash after the last verified line (the genesis hash when none verified).", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "lines": {"description": "The number of verified lines.", "type": "integer", "minimum": 0},
+    "messages": {"description": "The number of messages among the verified lines.", "type": "integer", "minimum": 0},
+    "damaged": {"description": "True when the file holds bytes after its verified prefix: a torn final line, or a line that breaks the chain. The seal never refuses the ending commit (F13a).", "type": "boolean"},
+    "verified_bytes": {"description": "When damaged: the length of the verified prefix.", "type": "integer", "minimum": 0},
+    "undeliverable": {
+      "description": "Lead messages that never reached the worker: never posted, never delivered and never replied to (D-13, D-14).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["message", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "message": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
+          "reason": {"enum": ["invocation_ended", "sender_superseded"]}
+        }
+      }
+    },
+    "unseen_by_lead": {
+      "description": "Worker messages no Lead generation was shown (D-38).",
+      "type": "array",
+      "items": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"}
+    }
+  },
+  "if": {"properties": {"damaged": {"const": true}}},
+  "then": {"required": ["verified_bytes"]},
+  "else": {"not": {"required": ["verified_bytes"]}}
+}

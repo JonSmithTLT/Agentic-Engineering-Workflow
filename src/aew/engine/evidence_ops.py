@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from aew.engine.ports import (
         ArchivePort,
         ContextPacksPort,
+        CoordinationPort,
         DispatchPort,
         GatesPort,
         InputsPort,
@@ -453,10 +454,12 @@ class EvidenceCommands:
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
                  inputs: InputsPort, packs: ContextPacksPort, gates: GatesPort, nm: NonMutatingPort,
-                 kinds: KindRegistry, archive: ArchivePort, dispatch: DispatchPort, queue: QueuePort) -> None:
+                 kinds: KindRegistry, archive: ArchivePort, dispatch: DispatchPort, queue: QueuePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.dispatch = dispatch
         self.queue = queue
+        self.coordination = coordination
         self.units = units
         self.roles = roles
         self.invocations = invocations
@@ -687,6 +690,10 @@ class EvidenceCommands:
                 meta["check"]["baseline_known_failure"] = True
             if inv.get("attempt") is not None:
                 meta["attempt"] = inv["attempt"]  # engine-bound: the non-mutating attempt it belongs to
+            # F9-A plan D-35, every evidence kind: a Lead message can steer which checks run (PR #167 review, nit 5).
+            inputs = self.coordination.evidence_inputs(work_id, inv_id)
+            if inputs:
+                meta["coordination_inputs"] = inputs
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": log_rel}
@@ -767,6 +774,12 @@ class EvidenceCommands:
                                              "plan_revision", "evaluated_snapshot", "method", "claim", "result",
                                              "evidence") if k in meta}
             ordered.update({k: v for k, v in meta.items() if k not in ordered})
+            # F9-A plan D-35: the Lead messages this invocation had before it submitted, recorded on its evidence so
+            # whoever judges the report's independence sees the Lead text it received. Provenance only, read under
+            # the lock this submission holds; absent where none (always, while messaging was never enabled).
+            inputs = self.coordination.evidence_inputs(work_id, inv_id)
+            if inputs:
+                ordered["coordination_inputs"] = inputs
             path = self.k.aew_root / f"evidence/{work_id}/{meta['id']}.md"
             create_exclusive(path, E.seal(ordered, body))
         return {"ok": True, "evidence": meta["id"], "result": meta["result"],

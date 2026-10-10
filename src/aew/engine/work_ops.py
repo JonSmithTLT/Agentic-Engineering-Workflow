@@ -19,7 +19,7 @@ from aew.workspace import git
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, InvocationsPort, RolesPort, WorkUnitsPort
+    from aew.engine.ports import ArchivePort, CoordinationPort, InvocationsPort, RolesPort, WorkUnitsPort
     from aew.engine.seams import GuardTable, StateHooks
 
 RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
@@ -328,12 +328,13 @@ class WorkCommands:
     """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 archive: ArchivePort) -> None:
+                 archive: ArchivePort, coordination: CoordinationPort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
         self.invocations = invocations
         self.archive = archive
+        self.coordination = coordination
 
     def work_create(
         self,
@@ -684,12 +685,19 @@ class WorkCommands:
         record_path = self.k.aew_root / unit["record"]
         children = sorted({k for k, v in state["work"].items() if v.get("parent") == work_id}
                           | set(self.archive.archived_child_ids(state, work_id)))
-        return {"id": work_id, "revision": state["revision"], "control": unit,
-                "record": record_path.read_text(encoding="utf-8") if record_path.exists() else None,
-                "allowed_transitions": transitions.allowed_from(unit["state"]),
-                "children": children,
-                "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" and work_id in state["work"]
-                else None}
+        out = {"id": work_id, "revision": state["revision"], "control": unit,
+               "record": record_path.read_text(encoding="utf-8") if record_path.exists() else None,
+               "allowed_transitions": transitions.allowed_from(unit["state"]),
+               "children": children,
+               "rollup": self.units.rollup(state, work_id) if unit["kind"] != "ticket" and work_id in state["work"]
+               else None}
+        # F9-A (plan D-24, D-31): the unit's coordination threads, only while the switch is on or a thread exists, so
+        # a project that never enabled messaging shows exactly what it showed before. Display only: nothing here is
+        # read by a gate or a transition.
+        threads = self.coordination.unit_threads(state, work_id, unit)
+        if threads is not None:
+            out["coordination"] = threads
+        return out
 
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
         """The hot units, and finished ones: the most recent (bounded) when unfiltered, and every archived unit in a

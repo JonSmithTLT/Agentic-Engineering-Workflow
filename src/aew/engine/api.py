@@ -32,7 +32,7 @@ from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
-from aew.engine.ports import ArchivePort, RolesPort, SteeringPort
+from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -79,11 +79,13 @@ def _slug(name: str) -> str:
 class ProjectAdmin:
     """The project's authority registry, manifest adoption and `aew doctor`."""
 
-    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort, archive: ArchivePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.roles = roles
         self.steering = steering
         self.archive = archive
+        self.coordination = coordination
 
     def authority_list(self) -> dict[str, Any]:
         self.k.store.read()  # recovery + integrity
@@ -160,8 +162,11 @@ class ProjectAdmin:
                                                                         recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
             ctx.state[POLICY_PINS] = pins
+            policy = self.k._execution_policy(manifest, pins)[0]
             # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
-            self.steering.on_adopt(ctx, self.k._execution_policy(manifest, pins)[0])
+            self.steering.on_adopt(ctx, policy)
+            # Adopting messaging switched on registers the project (F9-A plan D-39), in this same commit.
+            self.coordination.on_adopt(ctx, policy, decision)
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
@@ -354,6 +359,12 @@ class ProjectAdmin:
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
         add("operator-endpoint", *self._endpoint_doctor(state))
+        try:  # absent where messaging was never enabled and no thread exists (F9-A: off means absent)
+            coordination = self.coordination.doctor_check(state)
+        except Exception as exc:  # report, never crash
+            coordination = ("FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
+        if coordination is not None:
+            add("coordination", *coordination)
         proposed = [c["id"] for c in self.k.manifest["authority"]["candidates"] if c["status"] == "proposed"]
         if proposed:
             add("authority", "WARN", f"unclassified authority candidates: {proposed}")
@@ -367,8 +378,10 @@ class Engine:
         k = self._k = Kernel(repo_root, aew_root)
         hooks, guards, kinds = StateHooks(), GuardTable(), KindRegistry()
         self._archive = archive = Archive(k)
+        # Coordination messages (F9-A): recording commits nothing; sealing joins the finalizers and the direct paths.
+        self._coordination = coordination = Coordination(k, archive=archive)
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
-        self._history = history = HistoryCommands(k, units=units, archive=archive)
+        self._history = history = HistoryCommands(k, units=units, archive=archive, coordination=coordination)
         self._roles = roles = Roles(k, units=units)
         self._invocations = invocations = Invocations(k, roles=roles)
         self._queue = queue = Queue(k, invocations=invocations)
@@ -377,7 +390,8 @@ class Engine:
         self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
-        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive)
+        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,
+                                         coordination=coordination)
         self._assignment = assignment = Assignment(k, units=units, roles=roles, invocations=invocations,
                                                    inputs=inputs, packs=packs, dispatch=dispatch)
         self._nm = nm = NonMutating(k, units=units, roles=roles, invocations=invocations, inputs=inputs, packs=packs,
@@ -387,23 +401,22 @@ class Engine:
                                                 dispatch=dispatch)
         self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
                                                      inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds,
-                                                     archive=archive, dispatch=dispatch, queue=queue)
+                                                     archive=archive, dispatch=dispatch, queue=queue,
+                                                     coordination=coordination)
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates,
                                                       dispatch=dispatch, queue=queue)
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
                                           dispatch=dispatch)
-        self._lead = lead = Lead(k, archive=archive, queue=queue)
+        self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
-        self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive)
-        self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
+        self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
+        self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         self._stages = stages = StageIntents(k, archive=archive)
-        # Coordination messages (F9-A MS1): recording commits nothing, so the collaborator joins no seam.
-        self._coordination = Coordination(k, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -428,9 +441,15 @@ class Engine:
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
         # (F25 R5) runs just before archival, so a bundle carries every run's usage into the cold state. The stage
         # journal comes first (M4-E E3): a stage step is refused for what it is (STALE_POLICY, a stale owner) before
-        # any other finalizer judges the commit, and a completed stage's record is on its unit before archival.
+        # any other finalizer judges the commit, and a completed stage's record is on its unit before archival. The
+        # coordination seal (F9-A plan D-16) runs after every finalizer that can end an invocation (the queue's ends a
+        # custodian and its children) and immediately before archival, so a seal's pointer is on its unit when
+        # archival bundles it; a finalizer added later that can end an invocation goes before it.
         k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
-                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, archive.finalize])
+                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, coordination.finalize,
+                                   archive.finalize])
+        # Session.commit's seal check seals a missed ending through it (D-16, R3).
+        k.store.seal = coordination.seal_ending
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
@@ -802,6 +821,20 @@ class Engine:
 
     def message_thread(self, invocation: str) -> dict[str, Any]:
         return self._coordination.message_thread(invocation)
+
+    def message_list(self, work_id: str) -> dict[str, Any]:
+        return self._coordination.message_list(work_id)
+
+    def message_unseen(self, *, token: str | None = None) -> dict[str, Any]:
+        return self._coordination.message_unseen(token=token)
+
+    def message_mark_shown(self, *, token: str, messages: list[str]) -> dict[str, Any]:
+        return self._coordination.message_mark_shown(token=token, messages=messages)
+
+    def coordination_reads_on(self) -> bool:
+        """Whether the coordination reads exist for this project (F9-A plan D-31): the switch is on or a thread
+        exists. The CLI registers `aew message` only then."""
+        return self._coordination.reads_on(self._k.store.read_committed())
 
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,

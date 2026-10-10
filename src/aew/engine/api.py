@@ -984,6 +984,12 @@ class Engine:
     def history_reindex(self) -> dict[str, Any]:
         return self._history.history_reindex()
 
+    def history_search(self, terms: list[str], *, kinds: list[str] | None = None, since: str | None = None,
+                       until: str | None = None, limit: int = 10) -> dict[str, Any]:
+        """Register F21's Arm B prototype: explicit raw-history search, only while switched on
+        (``aew.engine.recall``)."""
+        return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
+
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)
 

@@ -67,6 +67,14 @@
         "max_output_bytes": {"x-aew-class": "operational", "type": "integer", "minimum": 1, "maximum": 65536}
       }
     },
+    "recall": {
+      "type": "object",
+      "description": "Register F21's Arm B prototype (the lead developer's plan v6). raw_history_search \"off\" (the default, also when absent; quote it, since YAML reads a bare off as a boolean, which is refused with its cause and fix) leaves `aew history search` unregistered and creates no search index; explicit registers it for an operator terminal or a Lead shell, never inside an invocation. Read only from the adopted bytes of this file: an edit counts once the operator adopts it. Operational: it changes no dispatch, gate, transition, pack or resume.",
+      "additionalProperties": false,
+      "properties": {
+        "raw_history_search": {"x-aew-class": "operational", "enum": ["off", "explicit"], "default": "off"}
+      }
+    },
     "description": {"x-aew-class": "operational", "type": "string"},
     "maps": {
       "type": "object",

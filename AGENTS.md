@@ -14,10 +14,16 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
 - **The finding format:** severity (blocker, major or minor); `file:line`; the guarantee broken; a concrete scenario;
   the fix; reproduced or not (with the command); confidence. No style findings, and no redesign unless a guarantee
   cannot be met otherwise. Add a "what looks sound" list.
+- **One pass raises everything.** A review lists every finding and nit it would raise at that commit. Nothing is held
+  back as "optional" for a later round.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
 - A review of an earlier commit does not cover later commits. After fixes, the reviewer (or a new independent one)
   checks the fixes and posts a new verdict at the new head.
+- **Exception: nits after a CLEAR** (operator, 2026-10-10). When the verdict is `Review: CLEAR` and its only open
+  points are nits, the author fixes them without a new review. The fix commits change only what the nits name. The
+  author posts a comment listing each nit with how it was fixed, ending with `Nits fixed at <sha>`. A blocker, major
+  or minor finding is never a nit, and a fix that changes anything beyond the nits needs a new review.
 
 ## 2. Findings are fixed in the same pull request
 
@@ -39,7 +45,8 @@ finding answers it on the pull request, and the reviewer either withdraws it or 
 
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
-- the latest review verdict is `Review: CLEAR` at that commit;
+- the latest review verdict is `Review: CLEAR` at that commit, or at an earlier commit followed only by nit fixes
+  under §1's exception, with the author's `Nits fixed at <sha>` comment naming this commit;
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, and the pull request is not a draft.
 

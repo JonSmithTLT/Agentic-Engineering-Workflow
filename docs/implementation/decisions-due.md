@@ -101,6 +101,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** -
 
+### E54
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** A known gap in a legality bound, asked once (F9-A plan v4, amendment 1, §Q): OpenCode 2.0.18's `steps` restarts at each delivered input (`harness send` since M3, and F9 messages once on), so the adopted `max_steps` (ADR-0010) bounds each input, not the run; the run's deadline stays run-wide. Recommended: accept for now (the deadline binds every run, `harness send` has the same property today, and messaging is off by default and in M4-H). The alternative: a run-wide step count enforced by the adapter (count `session.step.started`, interrupt at `max_steps`), planned under ADR-0010. F9-A does not wait for the answer
+
+**Blocks:** -
+
 ### Q4
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision

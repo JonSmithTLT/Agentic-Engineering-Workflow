@@ -5,10 +5,10 @@
   D5's derived facts (`RECORDED`, `ACKNOWLEDGED`, `REPLIED_TO`) and the reader of fact lines, but no fact writer; and
   D6's switch read from adopted bytes, its off state, the marker and the defaults, but not its snapshots. **MS2 built**
   (2026-10-10, the sealing slice): D7, D11's engine side, D12, D9's evidence inputs and the operator reads, as the
-  amendment of 2026-10-10 records. Everything else is stated here as decided and lands with the slice the build-status
-  table names. The transport section (D8)
-  waits for MS0's live-delivery probe; each later slice adds a dated amendment section when it lands. Number: the next
-  free one at MS1 (ADR-0016 is held by F4).
+  amendment of 2026-10-10 records. **MS0 done** (2026-10-10): the live-delivery probe decided D8's transport, which D8
+  now states with its evidence; D8's `delivery: queue` is corrected to `steer` by name. Everything else is stated here
+  as decided and lands with the slice the build-status table names. Each later slice adds a dated amendment section
+  when it lands. Number: the next free one at MS1 (ADR-0016 is held by F4).
 - **Resolves:** the implementation choices F9-A1 leaves open for F9-A: where messages live and how they are identified,
   how a retry is recognized, what a reply and a ref may name, the bounds, the switch and its off state, when a thread is
   sealed, and what the rollback, delivery and independence rules are.
@@ -148,12 +148,82 @@ evidence record pins its log.
 
 ### D8. Delivery and the continuation
 
-Live delivery is provisional on MS0's probe of OpenCode 2.0.18 (the operator's decision): `POSTED` before the
-transport call and `DELIVERED` on admission, with a deterministic transport id, at the next step boundary (`delivery:
-queue`) and never an interrupt (D-28). An adapter without live delivery reports `unsupported`, and messages wait for the
-continuation (invariant 16). A relaunch's continuation carries the current generation's never-posted messages, labelled
-unconfirmed posts and unresolved earlier ones (at most 10), and the launch contract records exactly the ids it carried
-(D-29). MS0 adds the transport section here.
+Live delivery was provisional on MS0's probe of OpenCode 2.0.18 (the operator's decision), which has decided it (the
+transport below): `POSTED` before the transport call and `DELIVERED` on admission, with a deterministic transport id,
+at the next step boundary (`delivery: steer`) and never an interrupt (D-28). *Corrected 2026-10-10 by MS0: this read
+`delivery: queue`, which OpenCode admits only at the end of the worker's turn.* An adapter without live delivery reports
+`unsupported`, and messages wait for the continuation (invariant 16). A relaunch's continuation carries the current
+generation's never-posted messages, labelled unconfirmed posts and unresolved earlier ones (at most 10), and the launch
+contract records exactly the ids it carried (D-29).
+
+#### The transport (MS0's probe, 2026-10-10)
+
+**Evidence:** [the probe's evidence](evidence/f9a-delivery-probe-2026-10-10/README.md): OpenCode 2.0.18 against a
+scripted loopback model, 31 cases, each run twice on Windows and on the Rocky 8 reference host under AEW's bubblewrap
+layout (124 runs, all agreeing). The F9-A plan v4's amendment 1 (CLEAR at v5) turns it into the rules below (A1 to A7);
+each is built with the slice named.
+
+- **Steer, and why.** A `queue` input is admitted only when the agent loop would otherwise end, after the model's
+  final, tool-free step: the end of the worker's turn, 1 to 3 further model requests after the step it was posted
+  during. A `steer` input is admitted at the next step boundary, 0.04 to 0.08 s after the running step ends, with no
+  model request between; it never aborted or truncated a running tool or model call, and steer inputs keep their order.
+  So `deliver` posts `POST /api/session/{id}/prompt` with `delivery: "steer"`, the deterministic id and D-23's
+  `metadata`. The capability probe will require `steer`, `resume` and `metadata` on the prompt operation and refuse a
+  release that drops one (MS5).
+- **`harness send` stays `queue` (D-30 unchanged), so its inputs and F9 messages are not ordered with respect to each
+  other:** steer overtakes queue (the probe's `p4-mixed`). F9 messages never mix modes; they are always `steer`. Moving
+  `harness send` to `steer` is a separate, unscheduled register row (E55), which also owns its help text: "after its
+  current step" is true only for `steer`.
+- **The held case.** An F9 message to a session the Lead's interrupt holds is staged with `resume: false` and never
+  wakes it; OpenCode keeps it until the next wake and delivers it first. The staged post leaves the adapter's turn and
+  its watched ids alone, so the run stays `held` (MS5).
+- **Duplicates and conflicts** (A2; MS5). Posting an id is idempotent per session: a re-post never gets a 409, but 200
+  with the first post's item, whatever text or delivery it carries. So a 200 means OpenCode holds the id for this
+  session, queued or admitted, and records no `DELIVERED`. The supervisor compares the returned text with what it
+  rendered; a mismatch is a delivery failure, `delivery_mismatch`, and that handle is never confirmed afterwards.
+  `DELIVERED via: live` is written only when `GET /api/session/{id}/message/{msgID}` answers 200 (unchanged). A 409
+  `ConflictError` means the id belongs to another record: `id_conflict`, never retried. A failure is a bounded
+  `message_delivery_failed {message, reason}` event in the run's log, with no text and no fact, and the message stays
+  `POSTED`. A post that got no answer is retried once at the next tick, after the GET check (a 200 records `DELIVERED`
+  without posting), and a re-post while the turn is not `running` is staged, so it cannot wake a held session.
+- **Session loss** (A5; MS5). A 404 `SessionNotFoundError` is session loss: nothing is recorded, and D-29 carries the
+  message as "sent to an earlier run; delivery unconfirmed". A 404 `MessageNotFoundError` means not yet admitted. An
+  untagged 404 falls back to the adapter's session check.
+- **`message.wait`'s bound, and `client_gone`** (A3; MS4). OpenCode's shell tool kills a foreground command after a
+  fixed 120,000 ms unless the model passes another `timeout` (0 disables it), so the wait's bound is
+  min(600, 120 − 30) = 90 s. A wait whose caller is gone records nothing: the bridge watches the wait's connection, and
+  binds the wait to the shell call or calls open when it starts, with the open step as backstop. When a bound call
+  completes, any step ends or another starts, the event stream reconnects or the run ends while the wait is pending, the
+  wait ends `client_gone`: no fact, the hold on live delivery released, the connection closed. A wait with no open shell
+  call after a 2 s grace is refused (`WAIT_OUTSIDE_A_STEP`), and an adapter that reports no steps refuses
+  `message.wait` (`WAIT_UNSUPPORTED`). Before recording `DELIVERED via: wait`, the bridge checks the bound call, step and
+  connection once more under the delivery lock. **The residuals:** a reply sent to an orphan within the event stream's
+  latency between a step's end and its frame; and a client killed after the reply is written but before it reads it.
+  Whether a shell-timeout kill also ends the shell's children was not measured; U1's S0 probe measures it, and its
+  result is recorded here as information, since the rule holds either way.
+- **The step-limit residual** (A4). OpenCode's `steps` limit, the profile's `max_steps`, restarts at every promoted
+  input, so each delivered input grants up to `max_steps − 1` further steps. D-22 therefore reads: the run's deadline
+  still applies run-wide; OpenCode's step limit restarts at each delivered input. `harness send` has had the same
+  property since M3, and F9 adds volume that D4's caps bound only weakly; the run's deadline is the real bound. F9-A
+  adds no run-wide step enforcement. The gap is in an operator-adopted legality bound, so it is ADR-0010's and the
+  harness's: register row E54, put to the operator once, with "accept for now" recommended.
+- **A message delivered into a turn that ends before a step completes** (A7; MS5, with the second of MS5 and C1's
+  CC7). `DELIVERED` keeps its meaning. D-29 selects a message whose latest `DELIVERED` fact has no completed step after
+  its admission, in the run that delivered it, and that has no `REPLIED_TO` or `ACKNOWLEDGED` fact. A completed step is
+  an `opencode.session.step.ended` on a later line of that run's `events.jsonl` than the admission event (for `live`
+  and `continuation`, the `inbox.delivered` event whose `inboxID` is the fact's `transport_ref`); without that event, a
+  `step.ended` whose `at` is strictly later than the fact's, at whole seconds; for `via: wait`, a `step.started`
+  strictly later than the fact, followed by its own `step.ended`. A missing log selects the message. A selected message
+  rides D-29's uncapped second category as "(delivered to a turn that ended before a step completed)", category
+  `failed_turn`, once in each successor, and leaves the third category's cap of 10. It still frees its slot under D4's
+  limit of 16. C5 checks the same rule, and reports a message whose log is absent as unverifiable.
+- **The departure from MS0's plan.** MS0 specified a free model through `AEW_LIVE_ROUTING`; the probe used a scripted
+  loopback model instead, by the plan owner's brief (no provider spend or credential, deterministic slow steps). The
+  mechanics and timings it measured are OpenCode's own. It leaves unmeasured how a real model responds to D-23's
+  framing, and how it spends the steps a queued input waits behind. MS7's live qualification adds
+  `test_live_a_steer_message_is_admitted_at_the_next_boundary`, with a real free model on both hosts, and takes over the
+  operator action of a free-model provider key on the Rocky 8 host. The probe itself is
+  `tests/live/f9a_delivery_probe/`, run by hand and never collected in CI.
 
 ### D9. Independence: confirmers, and inputs on evidence
 
@@ -268,7 +338,7 @@ left to the implementation, and what this slice adds beside them:
 
 | Slice | What | Status |
 |---|---|---|
-| MS0 | The OpenCode 2.0.18 live-delivery probe; D8's transport | Not built |
+| MS0 | The OpenCode 2.0.18 live-delivery probe; D8's transport | **Done (2026-10-10)**: D8's transport, its evidence, and the probe under `tests/live/f9a_delivery_probe/` |
 | MS1 | The coordination store: D1 to D4; D5's derived facts and the fact reader (no fact writer); D6's switch read from adopted bytes, off state, marker and defaults (no snapshots); the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
 | MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | **Built (2026-10-10)**: the amendment of 2026-10-10 |
 | MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | Not built (after M4-E's E4 and MS2) |

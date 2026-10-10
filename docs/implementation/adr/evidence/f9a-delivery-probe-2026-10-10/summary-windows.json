@@ -1,0 +1,4934 @@
+[
+ {
+  "run": "p1-queue-model-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc069f3effemR6TOOHekyx35L",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.067
+  },
+  "files": {},
+  "n_model_requests": 3,
+  "tools": [
+   [
+    15.949,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.911,
+    "s_enqueued_ev": 4.928,
+    "s_delivered_ev": 15.973,
+    "s_rest_200": 16.007,
+    "rest_404s": 53,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 15.973,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "2ad4a6",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p1-queue-model-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc065ccaffeVzT7Cxt0673lrJ",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.051
+  },
+  "files": {},
+  "n_model_requests": 3,
+  "tools": [
+   [
+    16.192,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.158,
+    "s_enqueued_ev": 5.166,
+    "s_delivered_ev": 16.214,
+    "s_rest_200": 16.277,
+    "rest_404s": 53,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 16.215,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "868f9d",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p1-queue-model-multi-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0619e7ffel9ofOHbuV4JxUO",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.055
+  },
+  "files": {},
+  "n_model_requests": 5,
+  "tools": [
+   [
+    16.278,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.31,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.343,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.241,
+    "s_enqueued_ev": 5.255,
+    "s_delivered_ev": 16.374,
+    "s_rest_200": 16.374,
+    "rest_404s": 53,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 16.374,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "00a2d9",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p1-queue-model-multi-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc05d6a7ffetV8YOql8kjcLFU",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.054
+  },
+  "files": {},
+  "n_model_requests": 5,
+  "tools": [
+   [
+    16.345,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.371,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.397,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.312,
+    "s_enqueued_ev": 5.327,
+    "s_delivered_ev": 16.419,
+    "s_rest_200": 16.609,
+    "rest_404s": 54,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 16.419,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "409144",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p1-queue-shell-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc089eebffeWro4Ge5rsD7Vb9",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.06
+  },
+  "files": {
+   "step-a.end": 31.827,
+   "step-a.start": 1.746
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    31.868,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.809,
+    "s_enqueued_ev": 6.815,
+    "s_delivered_ev": 31.889,
+    "s_rest_200": 31.988,
+    "rest_404s": 120,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 31.889,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "53ff67",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.746,
+   "end_file_s": 31.827314138412476,
+   "tool_result_s": 31.868,
+   "tool_duration_s": 30.122,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p1-queue-shell-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc081eb4ffeRvhhzmz6XiG4ef",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.056
+  },
+  "files": {
+   "step-a.end": 32.743,
+   "step-a.start": 2.673
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    32.782,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 7.727,
+    "s_enqueued_ev": 7.741,
+    "s_delivered_ev": 32.804,
+    "s_rest_200": 32.995,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 32.804,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "046da5",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 2.673,
+   "end_file_s": 32.74269652366638,
+   "tool_result_s": 32.782,
+   "tool_duration_s": 30.109,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p1-queue-shell-multi-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc079cb4ffebrX6yCSzhye96h",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.054
+  },
+  "files": {
+   "step-a.end": 31.499,
+   "step-a.start": 1.407
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    31.54,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    31.567,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    31.593,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.445,
+    "s_enqueued_ev": 6.449,
+    "s_delivered_ev": 31.616,
+    "s_rest_200": 31.78,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 31.617,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "2707c1",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.407,
+   "end_file_s": 31.49891996383667,
+   "tool_result_s": 31.54,
+   "tool_duration_s": 30.133,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p1-queue-shell-multi-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc071de7ffexamx4fjS67n4mP",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.062
+  },
+  "files": {
+   "step-a.end": 31.542,
+   "step-a.start": 1.48
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    31.585,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    31.617,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    31.654,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.543,
+    "s_enqueued_ev": 6.548,
+    "s_delivered_ev": 31.684,
+    "s_rest_200": 31.843,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 31.685,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "87f3a5",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.48,
+   "end_file_s": 31.5421359539032,
+   "tool_result_s": 31.585,
+   "tool_duration_s": 30.105,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-model-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0395fbffe6mPqjx8Zu32fiP",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.061
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [
+   [
+    16.36,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.315,
+    "s_enqueued_ev": 5.322,
+    "s_delivered_ev": 16.36,
+    "s_rest_200": 16.372,
+    "rest_404s": 53,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.36,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "501718",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p2-steer-model-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc035352ffeVXYZrJcsS0NOa1",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.063
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [
+   [
+    16.254,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.21,
+    "s_enqueued_ev": 5.226,
+    "s_delivered_ev": 16.254,
+    "s_rest_200": 16.278,
+    "rest_404s": 53,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.254,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "a0e3ea",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p2-steer-model-multi-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc03101cffeojMT22ZrI79bHw",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.074
+  },
+  "files": {},
+  "n_model_requests": 4,
+  "tools": [
+   [
+    16.372,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.406,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.44,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.33,
+    "s_enqueued_ev": 5.336,
+    "s_delivered_ev": 16.373,
+    "s_rest_200": 16.492,
+    "rest_404s": 54,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.373,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "4466c8",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p2-steer-model-multi-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc02ccc4ffejB6gixcKEKIna3",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {},
+  "n_model_requests": 4,
+  "tools": [
+   [
+    16.374,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.41,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    16.443,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 5.332,
+    "s_enqueued_ev": 5.34,
+    "s_delivered_ev": 16.375,
+    "s_rest_200": 16.517,
+    "rest_404s": 54,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.375,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "5dd37d",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p2-steer-parallel-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc028a3cffe6WD48GvsMW2WCS",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.069
+  },
+  "files": {
+   "step-a.end": 31.95,
+   "step-a.start": 1.855,
+   "step-b.end": 7.922,
+   "step-b.start": 3.851
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    7.947,
+    "session.tool.success",
+    "call_ms0_1_1",
+    null,
+    "slept 4 s (b)\r\n"
+   ],
+   [
+    31.996,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    32.031,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "P1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 8.959,
+    "s_enqueued_ev": 8.965,
+    "s_delivered_ev": 31.996,
+    "s_rest_200": 32.032,
+    "rest_404s": 111,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.996,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "0e2f6f",
+   "P1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-P1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.855,
+   "end_file_s": 31.950135707855225,
+   "tool_result_s": 7.947,
+   "tool_duration_s": 6.092,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 4 s (b)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-parallel-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0208bfffe58OzfEM7ZjX23f",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.end": 31.887,
+   "step-a.start": 1.81,
+   "step-b.end": 6.255,
+   "step-b.start": 2.182
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    6.278,
+    "session.tool.success",
+    "call_ms0_1_1",
+    null,
+    "slept 4 s (b)\r\n"
+   ],
+   [
+    31.932,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    31.97,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "P1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 7.268,
+    "s_enqueued_ev": 7.284,
+    "s_delivered_ev": 31.933,
+    "s_rest_200": 32.066,
+    "rest_404s": 119,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.933,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "a2955b",
+   "P1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-P1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.81,
+   "end_file_s": 31.886637926101685,
+   "tool_result_s": 6.278,
+   "tool_duration_s": 4.468,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 4 s (b)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-shell-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0594b9ffeuk1hzt0cKKTAlF",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.073
+  },
+  "files": {
+   "step-a.end": 31.686,
+   "step-a.start": 1.622
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    31.733,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.66,
+    "s_enqueued_ev": 6.667,
+    "s_delivered_ev": 31.734,
+    "s_rest_200": 31.857,
+    "rest_404s": 122,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.734,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "b74248",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.622,
+   "end_file_s": 31.68579125404358,
+   "tool_result_s": 31.733,
+   "tool_duration_s": 30.111,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-shell-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0513e2ffezKEwYbCRfjxGRL",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.end": 31.91,
+   "step-a.start": 1.838
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    31.954,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.88,
+    "s_enqueued_ev": 6.886,
+    "s_delivered_ev": 31.955,
+    "s_rest_200": 32.078,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.955,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "dd004d",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.838,
+   "end_file_s": 31.909538507461548,
+   "tool_result_s": 31.954,
+   "tool_duration_s": 30.116,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-shell-multi-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc04957affeDHlBkG5jl7HwPA",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.072
+  },
+  "files": {
+   "step-a.end": 31.474,
+   "step-a.start": 1.402
+  },
+  "n_model_requests": 4,
+  "tools": [
+   [
+    31.521,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    31.557,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    31.594,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.444,
+    "s_enqueued_ev": 6.45,
+    "s_delivered_ev": 31.521,
+    "s_rest_200": 31.595,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.521,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "6b2d95",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.402,
+   "end_file_s": 31.473830699920654,
+   "tool_result_s": 31.521,
+   "tool_duration_s": 30.119,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steer-shell-multi-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc041656ffefFfaCyY9iz4DSP",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.202
+  },
+  "files": {
+   "step-a.end": 31.725,
+   "step-a.start": 1.64
+  },
+  "n_model_requests": 4,
+  "tools": [
+   [
+    31.778,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 30 s (a)\r\n"
+   ],
+   [
+    31.817,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    31.852,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.705,
+    "s_enqueued_ev": 6.711,
+    "s_delivered_ev": 31.779,
+    "s_rest_200": 31.879,
+    "rest_404s": 121,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 31.778,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "fd2005",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.64,
+   "end_file_s": 31.72458553314209,
+   "tool_result_s": 31.778,
+   "tool_duration_s": 30.138,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 30 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steps-none-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0188d7ffebXRKRj7Tsby1jd",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.067
+  },
+  "files": {
+   "step-a.end": 9.851,
+   "step-a.start": 1.77
+  },
+  "n_model_requests": 4,
+  "tools": [
+   [
+    9.897,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 8 s (a)\r\n"
+   ],
+   [
+    9.934,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.974,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.991,
+    "session.tool.failed",
+    "call_ms0_4_0",
+    {
+     "type": "tool.execution",
+     "message": "Tools are disabled after the maximum agent steps"
+    },
+    ""
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "d4faa8"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.77,
+   "end_file_s": 9.851174116134644,
+   "tool_result_s": 9.897,
+   "tool_duration_s": 8.127,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 8 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steps-none-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc015e3dffeusbCCa8y6HMhyo",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.068
+  },
+  "files": {
+   "step-a.end": 9.918,
+   "step-a.start": 1.838
+  },
+  "n_model_requests": 4,
+  "tools": [
+   [
+    9.961,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 8 s (a)\r\n"
+   ],
+   [
+    10.001,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    10.037,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    10.059,
+    "session.tool.failed",
+    "call_ms0_4_0",
+    {
+     "type": "tool.execution",
+     "message": "Tools are disabled after the maximum agent steps"
+    },
+    ""
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "926143"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.838,
+   "end_file_s": 9.917539119720459,
+   "tool_result_s": 9.961,
+   "tool_duration_s": 8.123,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 8 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steps-steer-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc01342dffegFxKwoBolnUPJ0",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.07
+  },
+  "files": {
+   "step-a.end": 9.845,
+   "step-a.start": 1.773
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    9.893,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 8 s (a)\r\n"
+   ],
+   [
+    9.933,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.969,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    10.005,
+    "session.tool.success",
+    "call_ms0_4_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    10.022,
+    "session.tool.failed",
+    "call_ms0_5_0",
+    {
+     "type": "tool.execution",
+     "message": "Tools are disabled after the maximum agent steps"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.822,
+    "s_enqueued_ev": 6.837,
+    "s_delivered_ev": 9.893,
+    "s_rest_200": 9.97,
+    "rest_404s": 15,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 9.893,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "2370b7",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.773,
+   "end_file_s": 9.845160484313965,
+   "tool_result_s": 9.893,
+   "tool_duration_s": 8.12,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 8 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p2-steps-steer-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0109f2ffebngsYxgcTGbhno",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.07
+  },
+  "files": {
+   "step-a.end": 9.817,
+   "step-a.start": 1.729
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    9.866,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 8 s (a)\r\n"
+   ],
+   [
+    9.907,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.942,
+    "session.tool.success",
+    "call_ms0_3_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.979,
+    "session.tool.success",
+    "call_ms0_4_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ],
+   [
+    9.994,
+    "session.tool.failed",
+    "call_ms0_5_0",
+    {
+     "type": "tool.execution",
+     "message": "Tools are disabled after the maximum agent steps"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "Q1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 6.792,
+    "s_enqueued_ev": 6.808,
+    "s_delivered_ev": 9.867,
+    "s_rest_200": 9.955,
+    "rest_404s": 15,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 9.868,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "914094",
+   "Q1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-Q1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.729,
+   "end_file_s": 9.817249774932861,
+   "tool_result_s": 9.866,
+   "tool_duration_s": 8.137,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 8 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p3a-held-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd477a9ffewcvcuLaAhkRwvd",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded (aborted: Step interrupted)"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.start": 1.698
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    4.79,
+    "session.tool.failed",
+    "call_ms0_1_0",
+    {
+     "type": "aborted",
+     "message": "Tool execution interrupted"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "H1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 6.987,
+    "s_enqueued_ev": 6.992,
+    "s_delivered_ev": 15.032,
+    "s_rest_200": 15.1,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 15.032,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "H2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 15.006,
+    "s_enqueued_ev": 15.031,
+    "s_delivered_ev": 15.058,
+    "s_rest_200": 15.235,
+    "rest_404s": 1,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 15.058,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "47d69a",
+   "H1",
+   "H2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-H1",
+   "LEADMSG-H2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.698,
+   "end_file_s": null,
+   "tool_result_s": 4.79,
+   "tool_duration_s": 3.092,
+   "tool_event": "session.tool.failed",
+   "tool_error": {
+    "type": "aborted",
+    "message": "Tool execution interrupted"
+   },
+   "result_tail": ""
+  }
+ },
+ {
+  "run": "p3a-held-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd438f0ffeaWMz6B8x6HmXwC",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded (aborted: Step interrupted)"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.start": 1.651
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    4.747,
+    "session.tool.failed",
+    "call_ms0_1_0",
+    {
+     "type": "aborted",
+     "message": "Tool execution interrupted"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "H1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 6.845,
+    "s_enqueued_ev": 6.85,
+    "s_delivered_ev": 14.893,
+    "s_rest_200": 15.007,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 14.893,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "H2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 14.866,
+    "s_enqueued_ev": 14.892,
+    "s_delivered_ev": 14.92,
+    "s_rest_200": 15.106,
+    "rest_404s": 1,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 14.92,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "7dc812",
+   "H1",
+   "H2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-H1",
+   "LEADMSG-H2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.651,
+   "end_file_s": null,
+   "tool_result_s": 4.747,
+   "tool_duration_s": 3.096,
+   "tool_event": "session.tool.failed",
+   "tool_error": {
+    "type": "aborted",
+    "message": "Tool execution interrupted"
+   },
+   "result_tail": ""
+  }
+ },
+ {
+  "run": "p3a-held-steer-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd3fc39ffex1519hDoipzkpP",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded (aborted: Step interrupted)"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.063
+  },
+  "files": {
+   "step-a.start": 1.578
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    4.67,
+    "session.tool.failed",
+    "call_ms0_1_0",
+    {
+     "type": "aborted",
+     "message": "Tool execution interrupted"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "H1",
+    "delivery": "steer",
+    "resume": false,
+    "status": 200,
+    "s_post": 6.867,
+    "s_enqueued_ev": 6.872,
+    "s_delivered_ev": 14.923,
+    "s_rest_200": 14.981,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 14.923,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "H2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 14.886,
+    "s_enqueued_ev": 14.922,
+    "s_delivered_ev": 14.923,
+    "s_rest_200": 14.925,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 14.923,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "ad5097",
+   "H1",
+   "H2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-H1",
+   "LEADMSG-H2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.578,
+   "end_file_s": null,
+   "tool_result_s": 4.67,
+   "tool_duration_s": 3.092,
+   "tool_event": "session.tool.failed",
+   "tool_error": {
+    "type": "aborted",
+    "message": "Tool execution interrupted"
+   },
+   "result_tail": ""
+  }
+ },
+ {
+  "run": "p3a-held-steer-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd3bef6ffeGPl1JmlNxAM57W",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded (aborted: Step interrupted)"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.061
+  },
+  "files": {
+   "step-a.start": 1.433
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    4.525,
+    "session.tool.failed",
+    "call_ms0_1_0",
+    {
+     "type": "aborted",
+     "message": "Tool execution interrupted"
+    },
+    ""
+   ]
+  ],
+  "posts": [
+   {
+    "label": "H1",
+    "delivery": "steer",
+    "resume": false,
+    "status": 200,
+    "s_post": 6.734,
+    "s_enqueued_ev": 6.739,
+    "s_delivered_ev": 14.788,
+    "s_rest_200": 14.802,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 14.788,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "H2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 14.763,
+    "s_enqueued_ev": 14.787,
+    "s_delivered_ev": 14.788,
+    "s_rest_200": 14.788,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 14.788,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "ec6f59",
+   "H1",
+   "H2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-H1",
+   "LEADMSG-H2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.433,
+   "end_file_s": null,
+   "tool_result_s": 4.525,
+   "tool_duration_s": 3.092,
+   "tool_event": "session.tool.failed",
+   "tool_error": {
+    "type": "aborted",
+    "message": "Tool execution interrupted"
+   },
+   "result_tail": ""
+  }
+ },
+ {
+  "run": "p3b-closing-after-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc002b04ffeax14PNiHOjRqxS",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 1.199,
+    "s_enqueued_ev": 1.23,
+    "s_delivered_ev": 1.24,
+    "s_rest_200": 1.241,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 1.231,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "11b618",
+   "C2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3b-closing-after-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0022f9ffeCfwlDHEHHCVlro",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.059
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 1.234,
+    "s_enqueued_ev": 1.271,
+    "s_delivered_ev": 1.284,
+    "s_rest_200": 1.285,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 1.272,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "d4258f",
+   "C2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3b-closing-inflight-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc009883ffeMP6DgOpVljk6JX",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.062
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.114,
+    "s_enqueued_ev": 4.129,
+    "s_delivered_ev": 13.146,
+    "s_rest_200": 13.146,
+    "rest_404s": 43,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 13.146,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "f00b22",
+   "C1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3b-closing-inflight-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc0061b7fferQTuo7A9oGd01J",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.061
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.183,
+    "s_enqueued_ev": 4.189,
+    "s_delivered_ev": 13.215,
+    "s_rest_200": 13.365,
+    "rest_404s": 44,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 13.215,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "df3fb7",
+   "C1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3b-closing-inflight-steer-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd3823fffeiPkh5yUfBHFFpU",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.057
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.958,
+    "s_enqueued_ev": 3.975,
+    "s_delivered_ev": 12.987,
+    "s_rest_200": 13.1,
+    "rest_404s": 44,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 12.986,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "cb1022",
+   "C1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3b-closing-inflight-steer-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd34bb5ffe1gm1zuAz1BVYgs",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.06
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "C1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.175,
+    "s_enqueued_ev": 4.192,
+    "s_delivered_ev": 13.209,
+    "s_rest_200": 13.294,
+    "rest_404s": 44,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 13.209,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "188061",
+   "C1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-C1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3c-busy-noresume-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbffb3fcffeC60foZ4m6BRi2y",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.063
+  },
+  "files": {
+   "step-a.end": 21.787,
+   "step-a.start": 1.711
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    21.83,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 20 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "B1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 4.763,
+    "s_enqueued_ev": 4.769,
+    "s_delivered_ev": 21.857,
+    "s_rest_200": 21.857,
+    "rest_404s": 82,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 21.857,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "1b4285",
+   "B1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-B1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.711,
+   "end_file_s": 21.78742003440857,
+   "tool_result_s": 21.83,
+   "tool_duration_s": 20.119,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 20 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p3c-busy-noresume-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbff5039ffeFHBpOmaxA3XP8R",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.066
+  },
+  "files": {
+   "step-a.end": 21.424,
+   "step-a.start": 1.357
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    21.463,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 20 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "B1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 4.409,
+    "s_enqueued_ev": 4.425,
+    "s_delivered_ev": 21.489,
+    "s_rest_200": 21.627,
+    "rest_404s": 83,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 21.489,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "d678bf",
+   "B1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-B1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.357,
+   "end_file_s": 21.424323081970215,
+   "tool_result_s": 21.463,
+   "tool_duration_s": 20.106,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 20 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p3c-idle-noresume-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edc001bdfffejuSphaWQEZEynY",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.06
+  },
+  "files": {},
+  "n_model_requests": 3,
+  "tools": [],
+  "posts": [
+   {
+    "label": "R1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 2.15,
+    "s_enqueued_ev": 2.163,
+    "s_delivered_ev": 10.296,
+    "s_rest_200": 10.298,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.296,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "R2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 10.27,
+    "s_enqueued_ev": 10.295,
+    "s_delivered_ev": 10.323,
+    "s_rest_200": 10.511,
+    "rest_404s": 1,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 10.323,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "0fe34e",
+   "R1",
+   "R2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-R1",
+   "LEADMSG-R2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3c-idle-noresume-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbffe7b2ffegGiOReh4TaK7oa",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.062
+  },
+  "files": {},
+  "n_model_requests": 3,
+  "tools": [],
+  "posts": [
+   {
+    "label": "R1",
+    "delivery": "queue",
+    "resume": false,
+    "status": 200,
+    "s_post": 2.375,
+    "s_enqueued_ev": 2.389,
+    "s_delivered_ev": 10.55,
+    "s_rest_200": 10.732,
+    "rest_404s": 40,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.55,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "R2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 10.525,
+    "s_enqueued_ev": 10.55,
+    "s_delivered_ev": 10.575,
+    "s_rest_200": 10.763,
+    "rest_404s": 1,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 10.575,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "fcf493",
+   "R1",
+   "R2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-R1",
+   "LEADMSG-R2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3c-idle-noresume-steer-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd3150cffeOyMJq4nc9nFkpJ",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.063
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "R1",
+    "delivery": "steer",
+    "resume": false,
+    "status": 200,
+    "s_post": 2.354,
+    "s_enqueued_ev": 2.359,
+    "s_delivered_ev": 10.525,
+    "s_rest_200": 10.527,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.525,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "R2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 10.485,
+    "s_enqueued_ev": 10.524,
+    "s_delivered_ev": 10.525,
+    "s_rest_200": 10.526,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.525,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "92a6df",
+   "R1",
+   "R2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-R1",
+   "LEADMSG-R2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p3c-idle-noresume-steer-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd2e107ffenVEEO5wRfni3b6",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.06
+  },
+  "files": {},
+  "n_model_requests": 2,
+  "tools": [],
+  "posts": [
+   {
+    "label": "R1",
+    "delivery": "steer",
+    "resume": false,
+    "status": 200,
+    "s_post": 2.36,
+    "s_enqueued_ev": 2.373,
+    "s_delivered_ev": 10.509,
+    "s_rest_200": 10.54,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.509,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "R2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 10.479,
+    "s_enqueued_ev": 10.508,
+    "s_delivered_ev": 10.509,
+    "s_rest_200": 10.51,
+    "rest_404s": 0,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 10.509,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "391fd2",
+   "R1",
+   "R2"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-R1",
+   "LEADMSG-R2"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": []
+ },
+ {
+  "run": "p4-five-queue-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfeec05ffeXTaexi7VjAiDua",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.end": 16.945,
+   "step-a.start": 1.877
+  },
+  "n_model_requests": 7,
+  "tools": [
+   [
+    16.987,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "O1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.961,
+    "s_enqueued_ev": 3.977,
+    "s_delivered_ev": 17.012,
+    "s_rest_200": 17.157,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 17.012,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "O2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.977,
+    "s_enqueued_ev": 3.984,
+    "s_delivered_ev": 17.039,
+    "s_rest_200": 17.039,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 4,
+    "s_first_seen": 17.038,
+    "requests_between": 2,
+    "response": null
+   },
+   {
+    "label": "O3",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.984,
+    "s_enqueued_ev": 3.998,
+    "s_delivered_ev": 17.064,
+    "s_rest_200": 17.143,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 17.064,
+    "requests_between": 3,
+    "response": null
+   },
+   {
+    "label": "O4",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.998,
+    "s_enqueued_ev": 4.004,
+    "s_delivered_ev": 17.094,
+    "s_rest_200": 17.149,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 6,
+    "s_first_seen": 17.094,
+    "requests_between": 4,
+    "response": null
+   },
+   {
+    "label": "O5",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.001,
+    "s_enqueued_ev": 4.016,
+    "s_delivered_ev": 17.118,
+    "s_rest_200": 17.119,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 7,
+    "s_first_seen": 17.118,
+    "requests_between": 5,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "17245c",
+   "O1",
+   "O2",
+   "O3",
+   "O4",
+   "O5"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-O1",
+   "LEADMSG-O2",
+   "LEADMSG-O3",
+   "LEADMSG-O4",
+   "LEADMSG-O5"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.877,
+   "end_file_s": 16.944648504257202,
+   "tool_result_s": 16.987,
+   "tool_duration_s": 15.11,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p4-five-queue-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfea730ffePwKMpJuDNeTNbj",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.068
+  },
+  "files": {
+   "step-a.end": 16.629,
+   "step-a.start": 1.533
+  },
+  "n_model_requests": 7,
+  "tools": [
+   [
+    16.669,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "O1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.594,
+    "s_enqueued_ev": 3.611,
+    "s_delivered_ev": 16.696,
+    "s_rest_200": 16.697,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 16.697,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "O2",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.611,
+    "s_enqueued_ev": 3.617,
+    "s_delivered_ev": 16.722,
+    "s_rest_200": 16.872,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 4,
+    "s_first_seen": 16.721,
+    "requests_between": 2,
+    "response": null
+   },
+   {
+    "label": "O3",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.618,
+    "s_enqueued_ev": 3.622,
+    "s_delivered_ev": 16.745,
+    "s_rest_200": 16.872,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 16.745,
+    "requests_between": 3,
+    "response": null
+   },
+   {
+    "label": "O4",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.622,
+    "s_enqueued_ev": 3.627,
+    "s_delivered_ev": 16.771,
+    "s_rest_200": 16.847,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 6,
+    "s_first_seen": 16.771,
+    "requests_between": 4,
+    "response": null
+   },
+   {
+    "label": "O5",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.628,
+    "s_enqueued_ev": 3.633,
+    "s_delivered_ev": 16.798,
+    "s_rest_200": 16.826,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 7,
+    "s_first_seen": 16.798,
+    "requests_between": 5,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "9a6e05",
+   "O1",
+   "O2",
+   "O3",
+   "O4",
+   "O5"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-O1",
+   "LEADMSG-O2",
+   "LEADMSG-O3",
+   "LEADMSG-O4",
+   "LEADMSG-O5"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.533,
+   "end_file_s": 16.629006147384644,
+   "tool_result_s": 16.669,
+   "tool_duration_s": 15.136,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p4-five-steer-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd2ad05ffePtTGZt8Fzmrmhd",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.067
+  },
+  "files": {
+   "step-a.end": 16.879,
+   "step-a.start": 1.814
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    16.928,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ],
+   [
+    16.973,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "S1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.854,
+    "s_enqueued_ev": 3.869,
+    "s_delivered_ev": 16.929,
+    "s_rest_200": 16.947,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.929,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.87,
+    "s_enqueued_ev": 3.876,
+    "s_delivered_ev": 16.929,
+    "s_rest_200": 16.931,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.929,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S3",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.875,
+    "s_enqueued_ev": 3.889,
+    "s_delivered_ev": 16.93,
+    "s_rest_200": 16.93,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.929,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S4",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.889,
+    "s_enqueued_ev": 3.896,
+    "s_delivered_ev": 16.93,
+    "s_rest_200": 16.949,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.929,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S5",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.894,
+    "s_enqueued_ev": 3.901,
+    "s_delivered_ev": 16.93,
+    "s_rest_200": 16.93,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.929,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "a79a36",
+   "S1",
+   "S2",
+   "S3",
+   "S4",
+   "S5"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-S1",
+   "LEADMSG-S2",
+   "LEADMSG-S3",
+   "LEADMSG-S4",
+   "LEADMSG-S5"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.814,
+   "end_file_s": 16.878864288330078,
+   "tool_result_s": 16.928,
+   "tool_duration_s": 15.114,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p4-five-steer-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd268a8ffeIBmydr8oTAF4Ve",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.063
+  },
+  "files": {
+   "step-a.end": 16.666,
+   "step-a.start": 1.602
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    16.717,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ],
+   [
+    16.755,
+    "session.tool.success",
+    "call_ms0_2_0",
+    null,
+    " ipsum\r\n43: lorem ipsum\r\n44: lorem ipsum\r\n45: lorem ipsum\r\n46: lorem ipsum\r\n47: lorem ipsum\r\n48: lorem ipsum\r\n49: lorem ipsum\r\n50: lorem ipsum\r\n51: lorem ipsum\r"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "S1",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.683,
+    "s_enqueued_ev": 3.697,
+    "s_delivered_ev": 16.717,
+    "s_rest_200": 16.769,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.718,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S2",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.698,
+    "s_enqueued_ev": 3.702,
+    "s_delivered_ev": 16.718,
+    "s_rest_200": 16.766,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.718,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S3",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.702,
+    "s_enqueued_ev": 3.707,
+    "s_delivered_ev": 16.718,
+    "s_rest_200": 16.769,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.718,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S4",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.706,
+    "s_enqueued_ev": 3.721,
+    "s_delivered_ev": 16.718,
+    "s_rest_200": 16.771,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.718,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "S5",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.721,
+    "s_enqueued_ev": 3.726,
+    "s_delivered_ev": 16.718,
+    "s_rest_200": 16.77,
+    "rest_404s": 63,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.718,
+    "requests_between": 0,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "835517",
+   "S1",
+   "S2",
+   "S3",
+   "S4",
+   "S5"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-S1",
+   "LEADMSG-S2",
+   "LEADMSG-S3",
+   "LEADMSG-S4",
+   "LEADMSG-S5"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.602,
+   "end_file_s": 16.66594672203064,
+   "tool_result_s": 16.717,
+   "tool_duration_s": 15.115,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p4-mixed-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfe6175ffe4KcDEKGWmZ67Wx",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.064
+  },
+  "files": {
+   "step-a.end": 16.779,
+   "step-a.start": 1.686
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    16.824,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "M1q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.769,
+    "s_enqueued_ev": 3.775,
+    "s_delivered_ev": 16.853,
+    "s_rest_200": 16.989,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 16.853,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "M2s",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.775,
+    "s_enqueued_ev": 3.793,
+    "s_delivered_ev": 16.825,
+    "s_rest_200": 16.998,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.825,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "M3q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.793,
+    "s_enqueued_ev": 3.799,
+    "s_delivered_ev": 16.882,
+    "s_rest_200": 17.028,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 4,
+    "s_first_seen": 16.882,
+    "requests_between": 2,
+    "response": null
+   },
+   {
+    "label": "M4s",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.798,
+    "s_enqueued_ev": 3.802,
+    "s_delivered_ev": 16.825,
+    "s_rest_200": 16.98,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.825,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "M5q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.803,
+    "s_enqueued_ev": 3.809,
+    "s_delivered_ev": 16.908,
+    "s_rest_200": 17.027,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 16.908,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "cf01ab",
+   "M2s",
+   "M4s",
+   "M1q",
+   "M3q",
+   "M5q"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-M2s",
+   "LEADMSG-M4s",
+   "LEADMSG-M1q",
+   "LEADMSG-M3q",
+   "LEADMSG-M5q"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.686,
+   "end_file_s": 16.779020309448242,
+   "tool_result_s": 16.824,
+   "tool_duration_s": 15.138,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p4-mixed-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfe1d46ffePK0D6jGa6XvxK7",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.073
+  },
+  "files": {
+   "step-a.end": 16.502,
+   "step-a.start": 1.431
+  },
+  "n_model_requests": 5,
+  "tools": [
+   [
+    16.553,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 15 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "M1q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.479,
+    "s_enqueued_ev": 3.485,
+    "s_delivered_ev": 16.586,
+    "s_rest_200": 16.682,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 16.586,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "M2s",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.485,
+    "s_enqueued_ev": 3.49,
+    "s_delivered_ev": 16.554,
+    "s_rest_200": 16.682,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.554,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "M3q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.489,
+    "s_enqueued_ev": 3.495,
+    "s_delivered_ev": 16.614,
+    "s_rest_200": 16.657,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 4,
+    "s_first_seen": 16.614,
+    "requests_between": 2,
+    "response": null
+   },
+   {
+    "label": "M4s",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.495,
+    "s_enqueued_ev": 3.501,
+    "s_delivered_ev": 16.554,
+    "s_rest_200": 16.713,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 2,
+    "s_first_seen": 16.554,
+    "requests_between": 0,
+    "response": null
+   },
+   {
+    "label": "M5q",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.499,
+    "s_enqueued_ev": 3.506,
+    "s_delivered_ev": 16.64,
+    "s_rest_200": 16.657,
+    "rest_404s": 64,
+    "posted_during_request": 1,
+    "first_seen_by_request": 5,
+    "s_first_seen": 16.64,
+    "requests_between": 3,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "be2272",
+   "M2s",
+   "M4s",
+   "M1q",
+   "M3q",
+   "M5q"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-M2s",
+   "LEADMSG-M4s",
+   "LEADMSG-M1q",
+   "LEADMSG-M3q",
+   "LEADMSG-M5q"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.431,
+   "end_file_s": 16.501898765563965,
+   "tool_result_s": 16.553,
+   "tool_duration_s": 15.122,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 15 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p5-duplicate-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfdd6f2ffeZQ9CFrsjPuRqVl",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.077
+  },
+  "files": {
+   "step-a.end": 22.013,
+   "step-a.start": 1.932
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    22.062,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 20 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "X-1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.016,
+    "s_enqueued_ev": 4.022,
+    "s_delivered_ev": 22.094,
+    "s_rest_200": 22.169,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.094,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "X-2-same",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.023,
+    "s_enqueued_ev": 4.022,
+    "s_delivered_ev": 22.094,
+    "s_rest_200": 22.266,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.094,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "X-3-changed",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.026,
+    "s_enqueued_ev": 4.022,
+    "s_delivered_ev": 22.094,
+    "s_rest_200": 22.268,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": null
+   },
+   {
+    "label": "X-4-after-delivery",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 23.222,
+    "s_enqueued_ev": 4.022,
+    "s_delivered_ev": 22.094,
+    "s_rest_200": 23.241,
+    "rest_404s": 0,
+    "posted_during_request": 3,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.094,
+    "requests_between": -1,
+    "response": null
+   },
+   {
+    "label": "X-5-other-session",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.285,
+    "s_enqueued_ev": 4.022,
+    "s_delivered_ev": 22.094,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_28013508f9dfa1b23b30658b",
+     "resource": "msg_28013508f9dfa1b23b30658b"
+    }
+   },
+   {
+    "label": "X-6-assistant-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.3,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_12402293f001UhgABMXCEgocZr",
+     "resource": "msg_12402293f001UhgABMXCEgocZr"
+    }
+   },
+   {
+    "label": "X-7-idle-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.302,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_124027a04001bN4SjzahBjJSWO",
+     "resource": "msg_124027a04001bN4SjzahBjJSWO"
+    }
+   },
+   {
+    "label": "X-8-no-session",
+    "delivery": "queue",
+    "resume": null,
+    "status": 404,
+    "s_post": 29.303,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_00000000000000000000000000",
+     "message": "Session not found: ses_00000000000000000000000000"
+    }
+   },
+   {
+    "label": "X-9-bad-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 400,
+    "s_post": 29.304,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "InvalidRequestError",
+     "message": "Expected a string starting with \"msg_\"\n  at [\"id\"]",
+     "kind": "Payload"
+    }
+   }
+  ],
+  "delivered_order": [
+   "7ec03a",
+   "X-1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-D1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.932,
+   "end_file_s": 22.012657403945923,
+   "tool_result_s": 22.062,
+   "tool_duration_s": 20.13,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 20 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p5-duplicate-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfd522effeOSrL9z9fc6pT7g",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.078
+  },
+  "files": {
+   "step-a.end": 22.022,
+   "step-a.start": 1.929
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    22.071,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 20 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "X-1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.982,
+    "s_enqueued_ev": 3.989,
+    "s_delivered_ev": 22.101,
+    "s_rest_200": 22.199,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.1,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "X-2-same",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.989,
+    "s_enqueued_ev": 3.989,
+    "s_delivered_ev": 22.101,
+    "s_rest_200": 22.246,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.1,
+    "requests_between": 1,
+    "response": null
+   },
+   {
+    "label": "X-3-changed",
+    "delivery": "steer",
+    "resume": null,
+    "status": 200,
+    "s_post": 3.994,
+    "s_enqueued_ev": 3.989,
+    "s_delivered_ev": 22.101,
+    "s_rest_200": 22.231,
+    "rest_404s": 88,
+    "posted_during_request": 1,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": null
+   },
+   {
+    "label": "X-4-after-delivery",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 23.174,
+    "s_enqueued_ev": 3.989,
+    "s_delivered_ev": 22.101,
+    "s_rest_200": 23.183,
+    "rest_404s": 0,
+    "posted_during_request": 3,
+    "first_seen_by_request": 3,
+    "s_first_seen": 22.1,
+    "requests_between": -1,
+    "response": null
+   },
+   {
+    "label": "X-5-other-session",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.21,
+    "s_enqueued_ev": 3.989,
+    "s_delivered_ev": 22.101,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_3d825e2f5d3fd378ad642dd3",
+     "resource": "msg_3d825e2f5d3fd378ad642dd3"
+    }
+   },
+   {
+    "label": "X-6-assistant-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.224,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_12402ae10001osDrbqMKBikjVR",
+     "resource": "msg_12402ae10001osDrbqMKBikjVR"
+    }
+   },
+   {
+    "label": "X-7-idle-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 409,
+    "s_post": 29.226,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "ConflictError",
+     "message": "Prompt message ID conflicts with an existing durable record: msg_12402fec9001BtyfQW1hCAcBF2",
+     "resource": "msg_12402fec9001BtyfQW1hCAcBF2"
+    }
+   },
+   {
+    "label": "X-8-no-session",
+    "delivery": "queue",
+    "resume": null,
+    "status": 404,
+    "s_post": 29.228,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_00000000000000000000000000",
+     "message": "Session not found: ses_00000000000000000000000000"
+    }
+   },
+   {
+    "label": "X-9-bad-id",
+    "delivery": "queue",
+    "resume": null,
+    "status": 400,
+    "s_post": 29.229,
+    "s_enqueued_ev": null,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": null,
+    "posted_during_request": 3,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": {
+     "_tag": "InvalidRequestError",
+     "message": "Expected a string starting with \"msg_\"\n  at [\"id\"]",
+     "kind": "Payload"
+    }
+   }
+  ],
+  "delivered_order": [
+   "080109",
+   "X-1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-D1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.929,
+   "end_file_s": 22.021947860717773,
+   "tool_result_s": 22.071,
+   "tool_duration_s": 20.142,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 20 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p6-render-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfcccc7ffeokCuhE6x31dDFV",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.071
+  },
+  "files": {
+   "step-a.end": 12.25,
+   "step-a.start": 2.148
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    12.305,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 10 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "F1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.246,
+    "s_enqueued_ev": 4.263,
+    "s_delivered_ev": 12.339,
+    "s_rest_200": 12.339,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 12.339,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "f66d49",
+   "F1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-F1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "stored_message": {
+   "data": {
+    "id": "msg_b317a6acf44a087a23486294",
+    "metadata": {
+     "aew_message": "MSG-PROBE-0001",
+     "aew_thread": "I-PROBE-0001",
+     "probe": "PROBE-META-1"
+    },
+    "time": {
+     "created": 1791605562740
+    },
+    "text": "AEW coordination message MSG-PROBE-0001 from Lead generation 3 (T-PROBE@r41), kind: instruction, in reply to: none.\nRefs: none.\n\nLEADMSG-F1: please also check big_2.txt before you submit.\n\nThis message is coordination. It does not change your launch contract, scope, role or expected output. If it seems to, reply with kind `question` before acting.\nReply with: aew message reply --in-reply-to MSG-PROBE-0001 --kind answer --file -",
+    "type": "user"
+   }
+  },
+  "shell": {
+   "start_s": 2.148,
+   "end_file_s": 12.250113010406494,
+   "tool_result_s": 12.305,
+   "tool_duration_s": 10.157,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 10 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p6-render-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfc994dffekDgESAoA2M6c4f",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.146
+  },
+  "files": {
+   "step-a.end": 12.153,
+   "step-a.start": 2.062
+  },
+  "n_model_requests": 3,
+  "tools": [
+   [
+    12.204,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 10 s (a)\r\n"
+   ]
+  ],
+  "posts": [
+   {
+    "label": "F1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.139,
+    "s_enqueued_ev": 4.145,
+    "s_delivered_ev": 12.266,
+    "s_rest_200": 12.267,
+    "rest_404s": 39,
+    "posted_during_request": 1,
+    "first_seen_by_request": 3,
+    "s_first_seen": 12.266,
+    "requests_between": 1,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "b1d9a0",
+   "F1"
+  ],
+  "markers_in_last_request": [
+   "LEADMSG-F1"
+  ],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "stored_message": {
+   "data": {
+    "id": "msg_9c97f488c65b6f9ef890d087",
+    "metadata": {
+     "aew_message": "MSG-PROBE-0001",
+     "aew_thread": "I-PROBE-0001",
+     "probe": "PROBE-META-1"
+    },
+    "time": {
+     "created": 1791605575903
+    },
+    "text": "AEW coordination message MSG-PROBE-0001 from Lead generation 3 (T-PROBE@r41), kind: instruction, in reply to: none.\nRefs: none.\n\nLEADMSG-F1: please also check big_2.txt before you submit.\n\nThis message is coordination. It does not change your launch contract, scope, role or expected output. If it seems to, reply with kind `question` before acting.\nReply with: aew message reply --in-reply-to MSG-PROBE-0001 --kind answer --file -",
+    "type": "user"
+   }
+  },
+  "shell": {
+   "start_s": 2.062,
+   "end_file_s": 12.153302907943726,
+   "tool_result_s": 12.204,
+   "tool_duration_s": 10.142,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 10 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p7-kill-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 1,
+   "session": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+   "turn": "ended",
+   "detail": "the OpenCode server exited (1) during the run"
+  },
+  "lease_close": {
+   "exit_code": 1,
+   "s": 0.0
+  },
+  "files": {
+   "step-a.start": 2.151
+  },
+  "n_model_requests": 1,
+  "tools": [],
+  "posts": [
+   {
+    "label": "K1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.234,
+    "s_enqueued_ev": 4.253,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": 10,
+    "posted_during_request": 1,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "a1d62a"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "kill": {
+   "t_kill": 1791605583.1160002,
+   "detected_s": 1.052,
+   "turn": "ended",
+   "inspect": {
+    "alive": false,
+    "exit_code": 1,
+    "session": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+    "turn": "ended",
+    "detail": "the OpenCode server exited (1) during the run"
+   },
+   "rest_after": "OpenCodeUnavailable: GET /api/session/ses_edbfc65c6ffe53svV0CAE9sAbp/inbox: URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+  },
+  "same_state_restart": {
+   "session": true,
+   "inbox": [
+    [
+     "msg_54a4b3bb5bf0f878e5978e72"
+    ],
+    [
+     "msg_54a4b3bb5bf0f878e5978e72"
+    ],
+    [
+     "msg_54a4b3bb5bf0f878e5978e72"
+    ]
+   ],
+   "active": [
+    false,
+    false,
+    false
+   ],
+   "k1_delivered": {
+    "status": 404,
+    "body": {
+     "_tag": "MessageNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "messageID": "msg_54a4b3bb5bf0f878e5978e72",
+     "message": "Message not found: msg_54a4b3bb5bf0f878e5978e72"
+    }
+   },
+   "unknown_message_404": {
+    "status": 404,
+    "body": {
+     "_tag": "MessageNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "messageID": "msg_000000000000000000000000",
+     "message": "Message not found: msg_000000000000000000000000"
+    }
+   },
+   "messages": [
+    {
+     "type": "user",
+     "id": "msg_b2e2c04c84a0387f18a1d62a",
+     "text": "# AEW harness run R-PROBE-0001\n\nYou are AEW invocation **I-PROBE-0001**: a bounded `investigator` (role card `investigat",
+     "outcome": null
+    },
+    {
+     "type": "assistant",
+     "id": "msg_124039a84001V7p6GRYDPaA0iW",
+     "text": "",
+     "outcome": null
+    }
+   ]
+  },
+  "fresh_state": {
+   "/api/session/ses_edbfc65c6ffe53svV0CAE9sAbp": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "message": "Session not found: ses_edbfc65c6ffe53svV0CAE9sAbp"
+    }
+   },
+   "/api/session/ses_edbfc65c6ffe53svV0CAE9sAbp/message/msg_54a4b3bb5bf0f878e5978e72": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "message": "Session not found: ses_edbfc65c6ffe53svV0CAE9sAbp"
+    }
+   },
+   "/api/session/ses_edbfc65c6ffe53svV0CAE9sAbp/inbox": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "message": "Session not found: ses_edbfc65c6ffe53svV0CAE9sAbp"
+    }
+   },
+   "prompt": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc65c6ffe53svV0CAE9sAbp",
+     "message": "Session not found: ses_edbfc65c6ffe53svV0CAE9sAbp"
+    }
+   }
+  },
+  "shell": {
+   "start_s": 2.151,
+   "end_file_s": null,
+   "tool_result_s": null,
+   "tool_duration_s": null,
+   "tool_event": null,
+   "tool_error": null,
+   "result_tail": null
+  }
+ },
+ {
+  "run": "p7-kill-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 1,
+   "session": "ses_edbfc0059ffemM3mOMnvoafP1S",
+   "turn": "ended",
+   "detail": "the OpenCode server exited (1) during the run"
+  },
+  "lease_close": {
+   "exit_code": 1,
+   "s": 0.0
+  },
+  "files": {
+   "step-a.start": 1.97
+  },
+  "n_model_requests": 1,
+  "tools": [],
+  "posts": [
+   {
+    "label": "K1",
+    "delivery": "queue",
+    "resume": null,
+    "status": 200,
+    "s_post": 4.046,
+    "s_enqueued_ev": 4.053,
+    "s_delivered_ev": null,
+    "s_rest_200": null,
+    "rest_404s": 10,
+    "posted_during_request": 1,
+    "first_seen_by_request": null,
+    "s_first_seen": null,
+    "requests_between": null,
+    "response": null
+   }
+  ],
+  "delivered_order": [
+   "24ff61"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "kill": {
+   "t_kill": 1791605608.924821,
+   "detected_s": 2.063,
+   "turn": "ended",
+   "inspect": {
+    "alive": false,
+    "exit_code": 1,
+    "session": "ses_edbfc0059ffemM3mOMnvoafP1S",
+    "turn": "ended",
+    "detail": "the OpenCode server exited (1) during the run"
+   },
+   "rest_after": "OpenCodeUnavailable: GET /api/session/ses_edbfc0059ffemM3mOMnvoafP1S/inbox: URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+  },
+  "same_state_restart": {
+   "session": true,
+   "inbox": [
+    [
+     "msg_20eb5fcef2f9c076727d9a70"
+    ],
+    [
+     "msg_20eb5fcef2f9c076727d9a70"
+    ],
+    [
+     "msg_20eb5fcef2f9c076727d9a70"
+    ]
+   ],
+   "active": [
+    false,
+    false,
+    false
+   ],
+   "k1_delivered": {
+    "status": 404,
+    "body": {
+     "_tag": "MessageNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "messageID": "msg_20eb5fcef2f9c076727d9a70",
+     "message": "Message not found: msg_20eb5fcef2f9c076727d9a70"
+    }
+   },
+   "unknown_message_404": {
+    "status": 404,
+    "body": {
+     "_tag": "MessageNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "messageID": "msg_000000000000000000000000",
+     "message": "Message not found: msg_000000000000000000000000"
+    }
+   },
+   "messages": [
+    {
+     "type": "user",
+     "id": "msg_ddb512c0deb65e05e724ff61",
+     "text": "# AEW harness run R-PROBE-0001\n\nYou are AEW invocation **I-PROBE-0001**: a bounded `investigator` (role card `investigat",
+     "outcome": null
+    },
+    {
+     "type": "assistant",
+     "id": "msg_12403ffd7001pNhMiCxqON1mbo",
+     "text": "",
+     "outcome": null
+    }
+   ]
+  },
+  "fresh_state": {
+   "/api/session/ses_edbfc0059ffemM3mOMnvoafP1S": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "message": "Session not found: ses_edbfc0059ffemM3mOMnvoafP1S"
+    }
+   },
+   "/api/session/ses_edbfc0059ffemM3mOMnvoafP1S/message/msg_20eb5fcef2f9c076727d9a70": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "message": "Session not found: ses_edbfc0059ffemM3mOMnvoafP1S"
+    }
+   },
+   "/api/session/ses_edbfc0059ffemM3mOMnvoafP1S/inbox": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "message": "Session not found: ses_edbfc0059ffemM3mOMnvoafP1S"
+    }
+   },
+   "prompt": {
+    "status": 404,
+    "body": {
+     "_tag": "SessionNotFoundError",
+     "sessionID": "ses_edbfc0059ffemM3mOMnvoafP1S",
+     "message": "Session not found: ses_edbfc0059ffemM3mOMnvoafP1S"
+    }
+   }
+  },
+  "shell": {
+   "start_s": 1.97,
+   "end_file_s": null,
+   "tool_result_s": null,
+   "tool_duration_s": null,
+   "tool_event": null,
+   "tool_error": null,
+   "result_tail": null
+  }
+ },
+ {
+  "run": "p9-120-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbfb99d8ffetd27sqM7r1n5D7",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.069
+  },
+  "files": {
+   "step-a.start": 1.794
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.809,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "00c15a"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.794,
+   "end_file_s": null,
+   "tool_result_s": 121.809,
+   "tool_duration_s": 120.015,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-120-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf9bb03fferoaRcyNhlliIgs",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.058
+  },
+  "files": {
+   "step-a.start": 1.947
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.948,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "f7e6b6"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.947,
+   "end_file_s": null,
+   "tool_result_s": 121.948,
+   "tool_duration_s": 120.001,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-300-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf7db6cffeobcrQOe7mO93eV",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.066
+  },
+  "files": {
+   "step-a.start": 2.053
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    122.15,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "ee0b19"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 2.053,
+   "end_file_s": null,
+   "tool_result_s": 122.15,
+   "tool_duration_s": 120.097,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-300-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf5fb21ffecPNjPf9ZBT9YtR",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.071
+  },
+  "files": {
+   "step-a.start": 2.078
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    122.039,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "fbbbb6"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 2.078,
+   "end_file_s": null,
+   "tool_result_s": 122.039,
+   "tool_duration_s": 119.961,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-300-t360-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf05cadffeYHLAhg110mnYqM",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.061
+  },
+  "files": {
+   "step-a.end": 301.957,
+   "step-a.start": 1.886
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    301.999,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 300 s (a)\r\n"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "f08a5e"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.886,
+   "end_file_s": 301.9572539329529,
+   "tool_result_s": 301.999,
+   "tool_duration_s": 300.113,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 300 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p9-300-t360-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbebbe62ffeWxl2dw7t69Xy6B",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.06
+  },
+  "files": {
+   "step-a.end": 301.871,
+   "step-a.start": 1.803
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    301.915,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 300 s (a)\r\n"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "0714fd"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.803,
+   "end_file_s": 301.87058091163635,
+   "tool_result_s": 301.915,
+   "tool_duration_s": 300.112,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 300 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p9-600-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf41b70ffeolYoOCcxkJMcK9",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.066
+  },
+  "files": {
+   "step-a.start": 2.008
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.999,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "a1c2ef"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 2.008,
+   "end_file_s": null,
+   "tool_result_s": 121.999,
+   "tool_duration_s": 119.991,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-600-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbf23c55ffe8PI24IEuiYaCYU",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.07
+  },
+  "files": {
+   "step-a.start": 1.869
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.788,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "4b28b0"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.869,
+   "end_file_s": null,
+   "tool_result_s": 121.788,
+   "tool_duration_s": 119.919,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-600-t0-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbe720caffeoUMFt2rGYrYj54",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.07
+  },
+  "files": {
+   "step-a.end": 604.909,
+   "step-a.start": 1.615
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    604.962,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 600 s (a)\r\n"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "637aaa"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.615,
+   "end_file_s": 604.9093058109283,
+   "tool_result_s": 604.962,
+   "tool_duration_s": 603.347,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 600 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p9-600-t0-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbdde122ffe3FNimqz8st40E9",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.068
+  },
+  "files": {
+   "step-a.end": 602.518,
+   "step-a.start": 2.417
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    602.571,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "slept 600 s (a)\r\n"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "e751a9"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 2.417,
+   "end_file_s": 602.5180943012238,
+   "tool_result_s": 602.571,
+   "tool_duration_s": 600.154,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "slept 600 s (a)\r\n"
+  }
+ },
+ {
+  "run": "p9-killcheck-1",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbd2230bffel9s1z5lluBqkY0",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.073
+  },
+  "files": {
+   "step-a.start": 1.664
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.704,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "01e31e"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.664,
+   "end_file_s": null,
+   "tool_result_s": 121.704,
+   "tool_duration_s": 120.04,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ },
+ {
+  "run": "p9-killcheck-2",
+  "version": "2.0.18",
+  "error": null,
+  "driver_error": null,
+  "inspect": {
+   "alive": false,
+   "exit_code": 0,
+   "session": "ses_edbcff732ffePm5rorMjR79Npt",
+   "turn": "ended",
+   "detail": "the agent's turn ended: succeeded"
+  },
+  "lease_close": {
+   "exit_code": 0,
+   "s": 0.073
+  },
+  "files": {
+   "step-a.start": 1.761
+  },
+  "n_model_requests": 2,
+  "tools": [
+   [
+    121.825,
+    "session.tool.success",
+    "call_ms0_1_0",
+    null,
+    "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+   ]
+  ],
+  "posts": [],
+  "delivered_order": [
+   "cd1691"
+  ],
+  "markers_in_last_request": [],
+  "metadata_visible_any": false,
+  "model_client_gone": [],
+  "shell": {
+   "start_s": 1.761,
+   "end_file_s": null,
+   "tool_result_s": 121.825,
+   "tool_duration_s": 120.064,
+   "tool_event": "session.tool.success",
+   "tool_error": null,
+   "result_tail": "(no output)\n\nCommand exceeded timeout of 120000 ms. Retry with a larger timeout if the command is expected to take longer.Timed out before completion"
+  }
+ }
+]

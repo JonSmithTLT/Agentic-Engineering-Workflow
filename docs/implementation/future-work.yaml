@@ -208,7 +208,11 @@ sections:
       registers the project (`coordination_store`), which an older engine refuses and recording now needs; evidence records
       the Lead messages its invocation had (`coordination_inputs`); `work show`, `history show` and the operator''s `aew
       message thread|list|unseen` read threads, only while messaging is on or a thread exists; oracle rules 52 to 58. The
-      shared diff helper''s exclusion waits for the slice that creates the helper (E5a, E7 or F4 S2a)'
+      shared diff helper''s exclusion waits for the slice that creates the helper (E5a, E7 or F4 S2a). **MS0 done (2026-10-10):**
+      the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
+      the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
+      is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
+      input) and E55 (`harness send` to `steer`)'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -1795,6 +1799,34 @@ sections:
       2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes, a refreshed marginal
       estimate of at least 8 %; entry condition V2-8). Expected saving of Phase 1a: about 12.5 % of PR runner-minutes on
       the 27-PR sample (#117, #119, #120 and #145)'
+
+  - '#': E54
+    Work: 'OpenCode 2.0.18''s `steps` resets at each promoted input (`harness send`, F9 messages): the operator-adopted
+      `max_steps` (a legality-classed key) bounds each delivered input, not the run. Options: accept for now (the run''s
+      deadline is run-wide and binds every run), or have the adapter enforce a run-wide count (count `session.step.started`
+      and interrupt at `max_steps`) under its own plan'
+    Source: F9-A MS0 probe, 2026-10-10 (`p2-steps-none` against `p2-steps-steer`; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
+      [ADR-0010](adr/0010-execution-profiles.md); [harness conformance](harness-conformance.md) §5; [ADR-0017](adr/0017-coordination-messages.md)
+      D8, the step-limit residual (ledger CMG-31)
+    When: '**Unscheduled**: the operator''s decision first (decisions-due), "accept for now" recommended'
+    Notes: 'Not an F9 question: F9-A adds no new capability (`harness send` has restarted the counter since M3), only volume,
+      which its caps bound weakly; U1 is observation-only, so it cannot host enforcement. AEW already treats a changed step
+      limit as access-widening (the adapter''s projection check refuses one), so the gap belongs to ADR-0010 and the harness.
+      F9-A does not wait for the answer'
+
+  - '#': E55
+    Work: 'Move `harness send` from OpenCode''s `queue` delivery to `steer`: today a nudge waits for the end of the worker''s
+      turn, which defeats its purpose. Its own plan handles the ordering change (steer and queue are not ordered with respect
+      to each other) and D-30''s text'
+    Source: F9-A MS0 probe, 2026-10-10 (P1, P4; [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md));
+      [ADR-0017](adr/0017-coordination-messages.md) D8 (ledger CMG-28, CMG-33)
+    When: '**Unscheduled**'
+    Notes: 'Outside F9-A. The row also owns the `harness send` help text ("deliver a message to a running agent after its
+      current step", `cli/work_commands.py`): moved to `steer`, the help becomes true as written; declined, it is corrected
+      to "after its current turn" in this row''s place. (`harness_send`''s docstring is not help bytes: F9-A''s MS5 corrects
+      it beside the adapter''s `send` comment.) Either way it changes `aew --help` bytes with messaging off, which no F9
+      slice may do, and it is text a Lead reads, so its change observes Q7 v0.3.1 §7''s freeze rule. Until then ADR-0017
+      D8 and the harness-conformance §5 row state the true behaviour'
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

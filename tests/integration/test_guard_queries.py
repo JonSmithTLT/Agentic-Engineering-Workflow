@@ -304,3 +304,42 @@ def test_guard_query_matches_execute_work_create(ready):
     created = args["found"]["work_id"]
     assert created not in before["work"] and created in engine.store.read()["work"]
     assert args["found"]["unit"]["depends_on"] == engine.store.read()["work"][created]["depends_on"]
+
+
+# ---------------------------------------------------------------------------------------------- plan.propose
+
+
+def _propose(engine: Engine, p: Any, wid: str, fields: dict[str, Any]) -> Callable[[int], Any]:
+    return lambda rev: engine.plan_propose(token=p.token, expect_rev=rev, work_id=wid, **fields)
+
+
+def test_guard_query_matches_execute_plan_propose(ready):
+    """`plan.propose`: a body, a hot unfinished unit, a declared assurance whose cards fill their slots, and the
+    reason a revision that supersedes the accepted plan needs."""
+    p, wid, engine = ready
+    plan = {"body": "1. Revise the approach.\n", "no_assurance": True}
+    for target, fields, code in ((wid, {**plan, "body": "  "}, "USAGE"),
+                                 ("T-0099", plan, "NOT_FOUND"),
+                                 (wid, {**plan, "no_assurance": False}, "USAGE"),  # no assurance declared
+                                 (wid, {**plan, "no_assurance": False, "review": ["verifier"]}, "USAGE"),  # wrong slot
+                                 (wid, plan, "USAGE")):  # supersedes plan v1 without a reason
+        answer = equivalent(engine, "plan.propose", target, dict(fields), _propose(engine, p, target, fields))
+        assert answer["reason_codes"] == [code], (fields, answer)
+    fields = {**plan, "reason": "the approach changed"}
+    equivalent(engine, "plan.propose", wid, dict(fields), _propose(engine, p, wid, fields))
+    assert [x["status"] for x in engine.store.read()["work"][wid]["plans"]] == ["accepted", "proposed"]
+
+
+def test_ticket_draft_is_composed_from_the_creation_and_the_unit_it_produces(ready):
+    """The plan step's guard is asked of the unit step 1 would create; nothing is created by asking."""
+    p, _wid, engine = ready
+    draft = {"title": "Add multiply()", "risk_class": 1, "scope": ["calc/**"], "goal": ["multiply works"]}
+    before = engine.store.read()
+    ok = R.run_tool(engine, CTX, "explain", {"stage": "ticket_draft", "arguments": {
+        **draft, "plan": {"body": "1. Add multiply.\n", "assurance": "none"}}})["result"]
+    assert ok["availability"] == AVAILABLE and ok["steps"][1]["produced_by"] == {"unit": 1}
+    undeclared = R.run_tool(engine, CTX, "explain", {"stage": "ticket_draft", "arguments": {
+        **draft, "plan": {"body": "1. Add multiply.\n", "assurance": {}}}})["result"]
+    assert [s["availability"] for s in undeclared["steps"]] == [AVAILABLE, BLOCKED]
+    assert undeclared["availability"] == BLOCKED and undeclared["reason_codes"] == ["USAGE"]
+    assert engine.store.read()["counters"] == before["counters"] and engine.store.read()["work"] == before["work"]

@@ -247,24 +247,34 @@ class WorkUnits:
                 author: dict[str, Any] | None = None,
                 source_evidence: dict[str, Any] | None = None) -> tuple[str, int]:
         """Write plan revision N+1 (proposed). Only the Lead's plan.accept moves the accepted pointer."""
-        revision = len(unit["plans"]) + 1
-        supersedes = (unit.get("plan") or {}).get("accepted")
-        if supersedes and not reason:
-            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
-        record = plan_record(
-            work_unit=work_id, revision=revision, created_at=utc_now(),
+        revision, supersedes, text, path = self.plan_draft(
+            work_id, unit, body=body, reason=reason, affected_paths=affected_paths, assurance=assurance,
             author=author or {"role": "lead", "session_label": ctx.actor.get("session_label"),
                               "generation": ctx.actor["generation"]},
-            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
-            source_evidence=source_evidence, assurance=assurance,
-        )
-        text = record.render()
-        path = f"work/{work_id}/plan-v{revision}.md"
+            source_evidence=source_evidence)
         ctx.session.write(path, text)
         ctx.refs.append(path)
         unit["plans"].append({"revision": revision, "path": path, "sha256": sha256_text(text),
                               "supersedes": supersedes, "status": "proposed", "assurance": assurance})
         return path, revision
+
+    @staticmethod
+    def plan_draft(work_id: str, unit: dict[str, Any], *, body: str, reason: str | None,
+                   affected_paths: list[str] | None, assurance: dict[str, list[str]], author: dict[str, Any],
+                   source_evidence: dict[str, Any] | None = None) -> tuple[int, int | None, str, str]:
+        """Plan revision N+1 of ``unit`` as it would be written, changing nothing: (revision, the accepted revision it
+        supersedes, its record text, its path). A revision that supersedes an accepted plan states its reason, and
+        the record matches the plan schema."""
+        revision = len(unit["plans"]) + 1
+        supersedes = (unit.get("plan") or {}).get("accepted")
+        if supersedes and not reason:
+            raise UsageError("a plan revision that supersedes an accepted plan must state its reason")
+        record = plan_record(
+            work_unit=work_id, revision=revision, created_at=utc_now(), author=author,
+            body=body, supersedes=supersedes, reason=reason, affected_paths=affected_paths,
+            source_evidence=source_evidence, assurance=assurance,
+        )
+        return revision, supersedes, record.render(), f"work/{work_id}/plan-v{revision}.md"
 
     @staticmethod
     def rollup(state: dict[str, Any], work_id: str) -> dict[str, Any]:
@@ -529,18 +539,41 @@ class WorkCommands:
                      no_assurance: bool = False) -> dict[str, Any]:
         if not body.strip():
             raise UsageError("plan body is empty")
+        args: dict[str, Any] = {"body": body, "reason": reason, "affected_paths": affected_paths, "review": review,
+                                "verify": verify, "no_assurance": no_assurance}
         with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason) as ctx:
-            unit = self.units.unit(ctx.state, work_id)
-            if unit["state"] in transitions.TERMINAL:
-                raise IllegalTransition(f"{work_id} is {unit['state']}")
-            assurance = self.roles.resolve_plan_assurance(
-                unit, review=review, verify=verify, none=no_assurance)
+            require(self.propose_query(ctx.state, work_id, args))  # the guard (M4-E E4), then the write
+            unit = ctx.state["work"][work_id]
+            assurance = args["found"]["assurance"]
             path, revision = self.units.propose(ctx, work_id, unit, body=body, reason=reason,
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
                 "revision": ctx.session.committed_revision}
+
+    def propose_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``plan.propose`` (M4-E E4: its guard as a query): a non-empty body, for a hot unit that is not finished,
+        with its assurance declared (cards that fill their slots and are not forbidden, or ``none``), and a revision
+        whose record is valid (one that supersedes an accepted plan states its reason). It records the resolved
+        assurance as ``found["assurance"]``."""
+        def check() -> None:
+            body = args.get("body") or ""
+            if not body.strip():
+                raise UsageError("plan body is empty")
+            unit = self.units.unit(state, work_id)
+            if unit["state"] in transitions.TERMINAL:
+                raise IllegalTransition(f"{work_id} is {unit['state']}")
+            assurance = self.roles.resolve_plan_assurance(unit, review=args.get("review"), verify=args.get("verify"),
+                                                          none=bool(args.get("no_assurance")))
+            lead = state.get("lead") or {}
+            self.units.plan_draft(work_id, unit, body=body, reason=args.get("reason"),
+                                  affected_paths=args.get("affected_paths"), assurance=assurance,
+                                  author={"role": "lead", "session_label": lead.get("session_label"),
+                                          "generation": lead.get("generation")})
+            args.setdefault("found", {})["assurance"] = assurance
+
+        return checked(check)
 
     def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:

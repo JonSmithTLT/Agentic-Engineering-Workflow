@@ -283,7 +283,11 @@ sections:
       the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`,
       immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after
       every pinned route. **E3b (2026-10-09)** adds the surface's executor (`surface/stage.py`), running §3.4 rules 1 to
-      7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. Next is E3c (`resume`, `resolve`)
+      7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. Next is E3c (`resume`, `resolve`).
+      E3b leaves two obligations from the review of pull request 142. E3c's `continue` treats a launching step whose supervisor
+      never started or has ended as `launch_failed`, never completing the stage over a run that did not start. E5a reconciles
+      the `dispatch.launch` step catalogued for `ticket_start` with the launch inside the assignment step; until then it
+      fails closed, since the primitive is undeclared
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport

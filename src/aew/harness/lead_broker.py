@@ -101,7 +101,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "integrate validate",
     "invoke cancel", "invoke create", "lead handoff cancel",
     "lead mode lower",  # a restriction the Lead makes for its own generation (A1 §1.2)
-    "map generate",  # derived map state under .aew/local/maps/ only, never control state (ADR-0015)
+    "map generate", "map select-architecture",  # derived map state under .aew/local/maps/ only (ADR-0015)
     "plan accept", "plan adopt",
     "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",

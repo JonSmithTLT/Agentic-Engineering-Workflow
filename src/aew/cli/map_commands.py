@@ -46,6 +46,13 @@ def _diff(a: argparse.Namespace) -> Any:
     return _text(service.diff(_engine(a), a.operands or []), a.json)
 
 
+def _select_architecture(a: argparse.Namespace) -> Any:
+    from aew.maps import service
+
+    return _text(service.select_architecture(_engine(a), token=_lead_token(a), evidence_id=a.evidence_id,
+                                             expect=a.expect_map_rev), a.json)
+
+
 def register(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("map", help="the structural codebase map: derived navigation context, never authority")
     msub = p.add_subparsers(dest="map_cmd", required=True)
@@ -62,6 +69,15 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
     _add_json(q)
     q.set_defaults(handler=_generate)
+
+    q = msub.add_parser("select-architecture", help="select an existing discovery record as the architecture "
+                                                    "navigation reference (Lead); asserts nothing about its content")
+    q.add_argument("evidence_id", metavar="EVIDENCE-ID")
+    q.add_argument("--expect-map-rev", metavar="EPOCH:REV", required=True,
+                   help="the map registry's revision this selection is based on, as `aew map show` prints it")
+    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    _add_json(q)
+    q.set_defaults(handler=_select_architecture)
 
     q = msub.add_parser("show", help="the selected (or named) structural map with its freshness against a commit "
                                      "(read-only)")

@@ -237,7 +237,7 @@ ENDINGS: dict[str, Ending] = {
 def test_every_invocation_ending_commit_seals_its_thread(tmp_path, monkeypatch, path):
     """D-16 (F1, N1): whichever path ends a messaged invocation seals its thread in that same commit: the seal record
     pins the thread's bytes, the unit (hot, or in its bundle once archived) points at it, the commit's refs name it, and
-    no seal came from the commit check's fallback. The oracle (rules 51 to 57) holds after."""
+    no seal came from the commit check's fallback. The oracle (rules 52 to 58) holds after."""
     w = world(tmp_path, checks=path in ("transition", "queue_retirement_ends_custodian_children"))
     ended = ENDINGS[path](w, monkeypatch)
     for wid, inv in ended:
@@ -1003,7 +1003,7 @@ def test_no_known_ending_path_needs_the_seal_fallback(tmp_path, monkeypatch):
 @pytest.mark.parametrize("how", ["shown_live_before_seal", "lead_replied_before_seal"])
 def test_marking_a_sealed_message_the_seal_does_not_list_records_nothing(w, how):
     """Review finding 1: after the seal, only a message its seal lists as unseen goes to the seen log. One a Lead was
-    shown live, or answered, before the seal is `already`: no line, the seen log stays bounded, and rule 55 holds."""
+    shown live, or answered, before the seal is `already`: no line, the seen log stays bounded, and rule 56 holds."""
     _, (reply,) = talk(w, w.inv, w.worker)
     if how == "shown_live_before_seal":
         w.e.message_mark_shown(token=w.token, messages=[reply])
@@ -1094,4 +1094,21 @@ def test_migrating_a_v1_project_that_adopted_messaging_registers_it(tmp_path):
     assert state(w)["coordination_store"] == {"since_rev": out["revision"], "decision": None, "via": "migrate"}
     assert w.send()["ok"]
     assert next(c for c in w.e.doctor_checks() if c["check"] == "coordination")["status"] == "PASS"
+    assert_control_invariants(w)
+
+
+def test_resolving_a_stage_ends_no_invocation_and_needs_no_seal(w):
+    """M4-E E3c's resolutions (`stage abandon`, `stage continue`) are Lead transactions that change only the intent:
+    a `launch_failed` stop leaves the invocation active (a relaunch is `harness.launch`). So they are not ending paths
+    for the seal test; the seal finalizer runs in them all the same, and an abandon over a messaged unit seals
+    nothing and records no fallback."""
+    wid, inv, token = non_mutating(w)
+    talk(w, inv, token)
+    si = w.e.stage_open(token=w.token, expect_rev=w.rev(), tool="probe", contract_digest=ZERO, arguments={},
+                        judgment_inputs=["supersession_reason"], base_class="JUDGMENT_BEARING",
+                        effective_class="JUDGMENT_BEARING", plan=[{"primitive": "work.redispatch"}], subject=wid,
+                        ingress="test")["intent"]
+    w.e.stage_abandon(token=w.token, expect_rev=w.rev(), intent=si, rationale="not wanted after all")
+    assert state(w)["invocations"][inv]["status"] == "active" and pointer(w, wid, inv) is None
+    assert fallback_events(w) == []
     assert_control_invariants(w)

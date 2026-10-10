@@ -27,6 +27,19 @@ state (§2.7):
 A stop the runner cannot record leaves the intent ACTIVE, for ``resume`` and the Lead's ``resolve``: a crash, a seat
 lost to a takeover, or policy drift pending adoption (every Lead commit is refused then, ``lead_txn``).
 
+Resolving an ACTIVE intent (E3c) is the current Lead's explicit choice, never inferred from state (rule 8):
+
+- **abandon** ends it ABANDONED; committed steps are never undone;
+- **continue** rechecks it (:meth:`StageIntents.recheck`, the one function ``resume`` reads too): the legality digest it
+  bound, the stage contract and plan the surface re-resolves now, the subject unit as its last step left it (another
+  primitive moved it: refused), and the run of a launching last step. Authority is the caller's credential and its
+  revision the CAS of ``lead_txn``. It then rebinds the intent to the current Lead generation (F18 §14), recorded in
+  ``rebound``, and the surface resumes from the first uncommitted step. A launching step's run with no supervisor
+  record, or one that is no longer starting or running, is ``launch_failed``: the continue stops the intent there in
+  the same commit and never completes it over a run that never started. It never relaunches: a relaunch is the Lead's
+  ``harness.launch``, which rotates the credential, so the one lost with the crashed launcher is never used (#142
+  review).
+
 The engine never imports the typed surface (tests/unit/test_surface_contract.py): the surface hands the engine plain
 data, and this module checks it against the engine's own primitive declarations.
 """
@@ -44,7 +57,9 @@ import yaml
 
 from aew.engine import primitives as P
 from aew.engine.base import TxnContext
-from aew.errors import IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
+from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
+from aew.harness import contract as K
+from aew.harness import runlog
 from aew.knowledge.records import format_id
 from aew.schemas import validate
 from aew.util import load_yaml, sha256_bytes, utc_now
@@ -55,6 +70,9 @@ COMPLETED, STOPPED, REFUSED, ABANDONED = "COMPLETED", "STOPPED_AT_BOUNDARY", "RE
 TERMINAL = (COMPLETED, STOPPED, REFUSED, ABANDONED)
 RECORDS_DIR = "records/stage-intents"
 MAX_STEPS = 16
+MAX_REBINDS = 16  # explicit continues of one intent (the schema's bound); past it, abandon and decide anew
+LIVE_RUN = (K.STARTING, K.RUNNING)  # a launching step's run its supervisor still holds; anything else: launch_failed
+OK, NOT_APPLICABLE = "ok", "not_applicable"
 CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
 OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, and what a later step may name
 REFERENCE = "$from"  # a planned argument {"$from": [m, field]}: the one id step m recorded under field
@@ -242,6 +260,156 @@ class StageIntents:
             revision = ctx.session.revision + 1
         return {"intent": intent, "status": ABANDONED, "revision": revision}
 
+    def continue_(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
+                  plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+        """The current Lead's explicit continue (rule 8; F18 §14): every recheck must pass now, or nothing commits and
+        the intent stays ACTIVE for another choice. ``contract_digest`` and ``plan`` are the stage contract and plan
+        the surface re-resolved from its catalog now (``None``: it has none for this tool any more).
+
+        The commit rebinds the intent to the current generation. With steps still to run it stays ACTIVE, and the
+        surface runs them from the first uncommitted one. With every step committed, it ends here: COMPLETED when the
+        last step launched nothing or its run's supervisor still holds it, and STOPPED_AT_BOUNDARY as
+        ``launch_failed`` when that run has no supervisor record or has ended (a crash between the launching
+        assignment's commit and its supervisor's start: #142 review). A launching step followed by others is checked
+        the same way, so no later step runs over a run that never started."""
+        if not (rationale and rationale.strip()):
+            raise UsageError("continuing a stage needs a rationale")
+        with self.k.lead_txn(token, expect_rev, "stage.continue") as ctx:
+            state = ctx.state
+            si = self._active(state, intent)
+            check = self.recheck(state, si, contract_digest=contract_digest, plan=plan)
+            _refuse_unless_continuable(si, check)
+            rev = ctx.session.revision + 1
+            generation = state["lead"]["generation"]
+            at = utc_now()
+            si["rebound"].append({"from_generation": si["generation"], "to_generation": generation, "rev": rev,
+                                  "at": at, "rationale": rationale.strip()[:2000]})
+            si["generation"] = generation
+            si["resolution"] = {"choice": "continue", "rationale": rationale.strip()[:2000], "generation": generation,
+                                "rev": rev, "at": at}
+            done, planned = len(si["steps"]), len(si["plan"])
+            launch = check["checks"]["launch"]
+            if launch["status"] not in (OK, NOT_APPLICABLE):
+                si["stopped"] = {"n": done + 1 if done < planned else done, "boundary": "launch_failed",
+                                 "error": {"code": "HARNESS_LAUNCH_FAILED", "message": launch["message"][:2000],
+                                           "reason": launch["status"]},
+                                 "rev": rev, "at": at}
+                self._end(ctx, si, STOPPED)
+                status = STOPPED
+            elif done == planned:
+                self._end(ctx, si, COMPLETED)
+                status = COMPLETED
+            else:
+                self._validate(si)
+                status = ACTIVE
+            ctx.summary = (f"stage {si['tool']} ({intent}) continued by Lead generation {generation}: "
+                           + {ACTIVE: f"from step {done + 1}", COMPLETED: "completed",
+                              STOPPED: "its launch failed"}[status])
+            ctx.refs.append(intent)
+        return {"intent": intent, "status": status, "revision": rev, "next": done + 1, "generation": generation,
+                "launch": launch}
+
+    # ------------------------------------------------------------------ the rechecks (continue and resume)
+
+    def recheck(self, state: dict[str, Any], si: dict[str, Any], *, contract_digest: str | None,
+                plan: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """What continuing ``si`` would meet now, read from committed state and the run telemetry of its launching
+        step: each recheck's status (``ok``, ``not_applicable`` or why not, with a message), the owning and current
+        generations, the next planned step, and the boundary a continue would stop at (``None``: it runs the next
+        step; ``completed``: nothing is left to run). The continue's own commit calls this on its transaction's state,
+        and ``resume`` on the committed state, so the two never disagree. The guard of the next step is the
+        surface's to ask (its availability); this reads no guard."""
+        steps, planned = si["steps"], si["plan"]
+        checks: dict[str, dict[str, Any]] = {}
+        try:
+            current = self.k.policy_digests()["legality_digest"]
+        except IntegrityError as exc:  # a policy edit nobody adopted yet: every Lead commit is refused meanwhile
+            checks["policy"] = {"status": "pending_adoption", "message": exc.message}
+        except AEWError as exc:
+            checks["policy"] = {"status": "unreadable", "message": exc.message}
+        else:
+            bound = si["binding"]["legality_digest"]
+            checks["policy"] = {"status": OK, "message": "the legality digest it bound is in force"} if (
+                current == bound) else {"status": "stale_policy", "bound": bound, "current": current,
+                                        "message": "the legality policy changed since it opened"}
+        if contract_digest is None:
+            checks["contract"] = {"status": "unknown_stage",
+                                  "message": f"the surface no longer has a stage {si['tool']} to continue"}
+        elif contract_digest != si["contract_digest"]:
+            checks["contract"] = {"status": "changed", "message": f"stage {si['tool']}'s contract changed since "
+                                                                  "it opened"}
+        elif plan is not None and _plan_of(plan) != _plan_of(si["plan"]):
+            checks["contract"] = {"status": "plan_changed", "message": f"stage {si['tool']} now plans other steps "
+                                                                       "for the same call"}
+        else:
+            checks["contract"] = {"status": OK, "message": "the stage contract and plan re-resolve unchanged"}
+        subject = si["subject"]
+        if subject["kind"] != "unit":
+            checks["subject"] = {"status": NOT_APPLICABLE, "message": "a project stage"}
+        else:
+            unit = state["work"].get(subject["id"])
+            expected = steps[-1]["subject_after"] if steps else subject["start"]
+            if unit is None:
+                checks["subject"] = {"status": "gone", "message": f"{subject['id']} is no longer in flight"}
+            elif unit_state(unit) != expected:
+                checks["subject"] = {"status": "moved", "expected": expected, "now": unit_state(unit),
+                                     "message": f"{subject['id']} changed since the stage's last step (another "
+                                                "primitive moved it)"}
+            else:
+                checks["subject"] = {"status": OK, "message": f"{subject['id']} is as the last step left it"}
+        checks["launch"] = self._launch_check(steps[-1] if steps else None)
+        checks["rebinds"] = {"status": OK, "message": f"{len(si['rebound'])} of {MAX_REBINDS} continues used"} if (
+            len(si["rebound"]) < MAX_REBINDS) else {"status": "exhausted",
+                                                     "message": f"continued {MAX_REBINDS} times already"}
+        nxt = planned[len(steps)] if len(steps) < len(planned) else None
+        boundary = None
+        if checks["policy"]["status"] == "stale_policy":
+            boundary = "stale_policy"
+        elif checks["policy"]["status"] != OK:
+            boundary = "error"
+        elif any(checks[c]["status"] not in (OK, NOT_APPLICABLE) for c in ("contract", "subject", "rebinds")):
+            boundary = "refused"
+        elif checks["launch"]["status"] not in (OK, NOT_APPLICABLE):
+            boundary = "launch_failed"
+        elif nxt is None:
+            boundary = "completed"
+        return {"intent": si["id"], "checks": checks, "owner_generation": si["generation"],
+                "current_generation": state["lead"]["generation"],
+                "rebind": si["generation"] != state["lead"]["generation"],
+                "next_step": None if nxt is None else {k: nxt[k] for k in ("n", "primitive", "operation_class", "key")}
+                | ({"args": nxt["args"]} if "args" in nxt else {}),
+                "boundary": boundary}
+
+    def recheck_active(self, state: dict[str, Any], intent: str, *, contract_digest: str | None,
+                       plan: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """:meth:`recheck` of the unfinished intent ``intent`` (NOT_FOUND when it has ended or never existed)."""
+        return self.recheck(state, self._active(state, intent), contract_digest=contract_digest, plan=plan)
+
+    def _launch_check(self, last: dict[str, Any] | None) -> dict[str, Any]:
+        """The run of a launching last step: its supervisor must still hold it (starting or running). No record
+        means no supervisor ever ran; any other status means the run is not live. Only the last committed step can
+        hold a run that never started: the executor runs no further step until a launch is in its supervisor's
+        custody (#142 review, finding 1)."""
+        runs = (last or {}).get("outputs", {}).get("runs") or []
+        if not runs:
+            return {"status": NOT_APPLICABLE, "message": "its last committed step launched no run"}
+        for run in runs:
+            observed, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+            if observed not in LIVE_RUN:
+                step_n = last["n"] if last else "?"
+                if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
+                    return {"status": "no_supervisor", "run": run, "observed": observed,
+                            "message": f"step {step_n} recorded {run}, but no supervisor ever recorded it: the launch "
+                                       "failed. Relaunch it with `aew harness launch` (the credential rotates), or "
+                                       "abandon"}
+                # The run started and ended (it may have finished its work): still not a stage to complete, but a
+                # relaunch could redo finished work (#166 review, finding 3).
+                return {"status": "not_live", "run": run, "observed": observed,
+                        "message": f"step {step_n} recorded {run}, and its run ended ({observed}): the stage stops "
+                                   f"here. Read `harness_status` and the run's report before deciding whether to "
+                                   "relaunch it (`aew harness launch`) or go on from its evidence"}
+        return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
+
     # ------------------------------------------------------------------ the step finalizer
 
     def finalize(self, ctx: TxnContext) -> None:
@@ -409,6 +577,30 @@ def _check_references(n: int, args: dict[str, Any]) -> None:
             raise UsageError(f"step {n}'s argument {name} comes from step {m}, which is not an earlier step: a step "
                              "uses only what the steps before it recorded", reason="reference_not_earlier", step=n,
                              argument=name, source=m)
+
+
+def _plan_of(plan: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """A plan as its steps' primitives and arguments, for comparing a re-resolved plan with the recorded one."""
+    return [(p["primitive"], json.dumps(p.get("args") or {}, sort_keys=True, default=str)) for p in plan]
+
+
+def _refuse_unless_continuable(si: dict[str, Any], check: dict[str, Any]) -> None:
+    """Refuse a continue that a recheck forbids: nothing commits and the intent stays ACTIVE. A failed launch is not
+    refused here: the continue records it as the stage's ``launch_failed`` stop."""
+    checks = check["checks"]
+    policy = checks["policy"]
+    if policy["status"] == "stale_policy":
+        raise StalePolicy(f"the legality policy changed since {si['id']} opened: it is not continued. Abandon it and "
+                          "decide anew from the projection", intent=si["id"], bound=policy["bound"],
+                          current=policy["current"])
+    if policy["status"] != OK:
+        raise IntegrityError(f"{si['id']} cannot be continued: {policy['message']}", intent=si["id"])
+    for name in ("contract", "subject", "rebinds"):
+        if checks[name]["status"] not in (OK, NOT_APPLICABLE):
+            reason = {"contract": "contract_changed", "subject": "subject_moved", "rebinds": "continued_too_often"}
+            raise IllegalTransition(f"{si['id']} cannot be continued: {checks[name]['message']}. Abandon it "
+                                    "(committed steps stand) and decide anew from the projection",
+                                    reason=reason[name], intent=si["id"], check=checks[name]["status"])
 
 
 def _runs(state: dict[str, Any]) -> set[str]:

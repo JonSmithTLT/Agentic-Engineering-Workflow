@@ -209,7 +209,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "beyond the class path. Accepting the plan makes them required gates; a review promised only in the "
         "plan's text binds nothing.",
         "3. Start the implementer: `aew work assign <T> --launch --expect-rev N`, then "
-        "`aew work transition <T> --to RUNNING --expect-rev N`. Follow the run with `aew harness wait <run>`.",
+        "`aew work transition <T> --to RUNNING --expect-rev N`. Follow the run with `aew harness wait <run>` (exit 20: "
+        "it ended without its expected output; read the headline).",
         "4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks "
         "are in, `aew work transition <T> --to <STATE> --expect-rev N`, where STATE is REVIEW_PENDING if the class "
         "requires review, VERIFY_PENDING if it requires only verification, and COMMIT_READY if it requires neither. "

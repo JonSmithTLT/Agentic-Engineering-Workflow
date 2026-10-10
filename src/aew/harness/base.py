@@ -54,7 +54,9 @@ class HarnessAdapter(ABC):
 
     @abstractmethod
     def inspect(self) -> dict[str, Any]:
-        """``{"alive": bool, "exit_code": int | None, "session": str | None, ...}`` without side effects."""
+        """``{"alive": bool, "exit_code": int | None, "session": str | None, ...}`` without side effects. Once the
+        harness has ended, ``reason_code`` (from ``aew.harness.contract``, for example ``provider_auth_failed``) says
+        why, when the adapter can tell; the supervisor records it on the run."""
 
     @abstractmethod
     def terminate(self) -> None:

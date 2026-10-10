@@ -17,6 +17,11 @@ used in evidence ids, rather than `check_result`. A check result is never ingest
 
 UAT-3. Every role's briefing said to use `aew check run <check>`, including reviewers, who may not run checks: the
 first reviewer run tried `aew check run guardrails`, was refused, read six files and gave up without a review.
+
+U8 (the Lead's debrief). A run that ended without its expected output came back from `aew harness wait` as a normal
+result: exit 0, status `ended_without_evidence`, a reason and a relaunch action, easy to read past. `wait` now exits
+with its own documented status for it, and the result starts with a one-line headline; the typed surface's
+`harness_wait` result keeps its shape and carries the same headline.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from pathlib import Path
 
 import pytest
 from aewflow import SUBTRACT_PATCH, Role, create_planned_ticket, create_unit, dispatch, sample_project, submit_record
+from conftest import run_aew
 from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
 
@@ -222,3 +228,43 @@ def test_a_role_is_told_only_the_aew_commands_it_may_use():
     assert "aew check run" not in reviewer and "`aew submit --kind <kind> --file <file>`" in reviewer, reviewer
     assert "`aew check run <check>`" in verifier, verifier
 
+
+def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab, tmp_path):
+    from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT
+    from aew.engine.api import Engine
+    from aew.surface import run as surface_run
+    from aew.surface.context import SurfaceContext
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("R-INV-0001-1", [{"do": "exit", "code": 0}])  # the agent stops without submitting anything
+    lab.lead("work", "assign", wid, "--launch")
+    res = run_aew("-C", str(lab.root), "harness", "wait", "R-INV-0001-1", "--timeout", "120", env=lab.env, timeout=240)
+    assert res.returncode == WAIT_NO_EVIDENCE_EXIT == 20, (res.returncode, res.stderr)  # not an error's (1-10)
+    out = res.json  # printed as for any other ending: callers that read the result still read it
+    assert list(out)[0] == "headline" and len(out["headline"].splitlines()) == 1, out
+    headline = out["headline"]
+    assert headline.startswith("R-INV-0001-1 ENDED WITHOUT EVIDENCE") and "implementation_report" in headline, out
+    assert out["status"] == "ended_without_evidence" and out["evidence"] == [] and not out["timed_out"], out
+    assert out["reason"] and "aew harness launch INV-0001" in out["next_action"], out
+    assert "error" not in res.stderr and not res.stderr.strip(), res.stderr  # an outcome, not a refusal
+    # the typed surface: the same StageResult as any call, its result carrying the headline (no new field elsewhere)
+    engine = Engine.discover(lab.root)
+    typed = surface_run.run_tool(engine, SurfaceContext.outside_session(), "harness_wait",
+                                 {"runs": ["R-INV-0001-1"], "timeout_s": 5})
+    status = surface_run.run_tool(engine, SurfaceContext.outside_session(), "status", {})
+    assert set(typed) == set(status) and typed["ok"], typed
+    assert typed["result"]["headline"] == out["headline"] and typed["result"]["status"] == "ended_without_evidence"
+
+    # A run that ended with its evidence exits 0, with no headline: nothing else changes.
+    lab.script("R-INV-0001-2", IMPLEMENT)
+    lab.lead("harness", "launch", "INV-0001")
+    res = run_aew("-C", str(lab.root), "harness", "wait", "R-INV-0001-2", "--timeout", "120", env=lab.env, timeout=240)
+    assert res.returncode == 0 and res.json["status"] == "ended_with_evidence", res.stdout
+    assert "headline" not in res.json and list(res.json)[0] == "run", res.json
+    # a timed-out wait on a run still going is not an ending: exit 0, as before
+    lab.script("R-INV-0001-3", [{"do": "hang"}])
+    lab.lead("harness", "launch", "INV-0001")
+    res = run_aew("-C", str(lab.root), "harness", "wait", "R-INV-0001-3", "--timeout", "1", env=lab.env, timeout=240)
+    assert res.returncode == 0 and res.json["timed_out"] and "headline" not in res.json, res.stdout
+    lab.ok("harness", "stop", "R-INV-0001-3", "--reason", "test over", "--token", lab.project.token)
+    assert_control_invariants(lab.project)

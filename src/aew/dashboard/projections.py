@@ -1,4 +1,5 @@
-"""Contract 0.1.2's projections, built from one :class:`~aew.dashboard.reader.Snapshot` (design note §4.10, §4.11).
+"""The dashboard contract's projections, built from one :class:`~aew.dashboard.reader.Snapshot` (design note §4.10,
+§4.11).
 
 Every projection is built **field by field from an allowlist**: an engine record is never passed through, so no
 storage path, run directory, workspace, environment, verifier or credential can reach a response (Q06). The engine
@@ -9,6 +10,10 @@ Capabilities (R18, as the designer decided on 2026-10-05): ``overview``, ``work`
 syncs; ``queue`` is UNSUPPORTED (no route in 0.1.2); ``action_projection`` is UNSUPPORTED until the typed Lead
 surface's ``ActionProjection`` (F15.1) is its source, so ``/attention`` answers 403 meanwhile, while ``/overview``'s
 bounded ``attention`` list and ``Work.has_attention`` carry the engine facts the backend already provides.
+
+Each route's envelope carries the version of the contract that defined its response (:data:`ENVELOPE_VERSION`;
+register F20.8): a minor version only adds routes, so every 0.1.2 route keeps emitting ``0.1.2`` and a client built
+against 0.1.2 keeps parsing it.
 
 Wherever a projection needs the snapshot's time it writes :data:`~aew.dashboard.etag.SNAPSHOT_TIME`; the server
 computes the validator over that and then stamps the real time in (F20.4), so the time of a read never changes an
@@ -38,7 +43,16 @@ from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 
-SCHEMA_VERSION = "0.1.2"
+# Route -> the ``schema_version`` its envelope carries: the const of the route's response schema in the accepted
+# contract (tests/unit/test_dashboard_contract.py holds every served route to it). A route a later minor version
+# adds carries that version; the 0.1.2 routes never change theirs (the change note's compatibility rule).
+ENVELOPE_VERSION: dict[str, str] = {
+    route: "0.1.2" for route in (
+        "/project", "/capabilities", "/overview", "/history/integrity", "/work", "/work/{id}", "/runs", "/runs/{id}",
+        "/evidence", "/evidence/{id}", "/knowledge", "/knowledge/{id}", "/history", "/history/{id}", "/attention",
+        "/activity")
+}
+BASE_ENVELOPE = "0.1.2"  # a projector built without a route (a test's) speaks the base version
 OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 LIMIT_DEFAULT, LIMIT_MAX = 100, 250
 OVERVIEW_WORK, OVERVIEW_RUNS, OVERVIEW_ATTENTION, OVERVIEW_ACTIVITY, OVERVIEW_RECENT = 6, 6, 6, 10, 20
@@ -140,8 +154,9 @@ def check_timestamp(name: str, value: str | None, *, lower_bound: bool = False) 
 class Projector:
     """Every projection of one snapshot. Nothing here writes."""
 
-    def __init__(self, snapshot: Snapshot) -> None:
+    def __init__(self, snapshot: Snapshot, *, route: str | None = None) -> None:
         self.s = snapshot
+        self.route = route  # the contract route being answered: it decides the envelope's version
         self.state = snapshot.state
         self.engine = snapshot.engine
         self.archive = snapshot.engine.archive
@@ -153,7 +168,8 @@ class Projector:
     # ---------------------------------------------------------------- the envelope
 
     def envelope(self, data: Any) -> dict[str, Any]:
-        return {"schema_version": SCHEMA_VERSION, "project_id": self.s.project_id,
+        version = ENVELOPE_VERSION[self.route] if self.route is not None else BASE_ENVELOPE
+        return {"schema_version": version, "project_id": self.s.project_id,
                 "control_revision": str(self.s.revision), "generated_at": SNAPSHOT_TIME, "data": data}
 
     def listing(self, items: list[dict[str, Any]], next_cursor: str | None) -> dict[str, Any]:

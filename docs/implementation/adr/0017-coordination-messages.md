@@ -257,12 +257,12 @@ left to the implementation, and what this slice adds beside them:
   every evidence kind an invocation produces: its submissions and its check results (`check run`).
 - **Rollback.** The downgrade test vendors main's control and transition schemas from before this slice. That schema
   leaves a unit's keys open, so the unit's seal pointer alone would pass it; the registration key, which every state
-  holding a thread or a pointer holds (oracle rule 56), is what an older engine refuses. A v1 project cannot hold the
+  holding a thread or a pointer holds (oracle rule 57), is what an older engine refuses. A v1 project cannot hold the
   v2-only key, so its adoption of `enabled` registers nothing; `aew migrate` registers it in the v1-to-v2 commit
   (`{since_rev, decision: null, via: migrate}`).
 - **Not here.** The shared diff helper does not exist yet (E5a, E7 and F4 S2a have not merged), so its named exclusion
   and the stage-step equivalence test land with whichever creates it (the plan's coupling table). The oracle rules are
-  51 to 57 (C1 to C7, `tests/helpers/invariants.py`).
+  52 to 58 (C1 to C7, `tests/helpers/invariants.py`; 51 is E3c's).
 
 ## Build status
 

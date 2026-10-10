@@ -99,6 +99,7 @@ aew harness launch INV-0001 --expect-rev N      # a new run of the same invocati
 ```
 
 - **A run's end moves nothing.** Whatever a run reports, the Ticket advances only when the Lead ingests evidence and makes the transition, as before.
+- **A run that ended without its expected output is not progress.** `aew harness wait` then exits 20 (every other ending, and a wait that timed out, exit 0) and its result starts with a one-line `headline`; the result is printed either way. A run whose provider rejected the key says so: `reason_code: provider_auth_failed`, with what to do in its next action.
 - **Relaunching** starts a fresh session with the same pack plus a continuation built from AEW's durable state: earlier runs, this invocation's evidence and the workspace's changes. It rotates the invocation's credential, so the old run, if it is still somewhere, has no authority. If the old run may still be alive, the launch refuses (`RUN_LIVE`) unless you add `--replace`.
 - **Each run is private.** Its own OpenCode server, state directories and database, under `.aew/local/harness/runs/<run>/`. A reviewer never sees an implementer's conversation; what passes between roles is AEW state.
 
@@ -131,7 +132,8 @@ Until real containment exists (`docs/design/proposals/execution-workspace-and-is
 |---|---|---|
 | The TUI crashed or was closed | runs continue; nothing is lost | `aew opencode` again, then `/aew-resume` |
 | A run is `lost` or `crashed` | the harness died; the Ticket and credential are unchanged | `aew harness launch INV --expect-rev N`, or `aew invoke cancel` |
-| A run is `ended_without_evidence` | it stopped without its expected output | `aew harness send` a nudge while it runs, relaunch, or cancel |
+| A run is `ended_without_evidence`; `aew harness wait` exits 20 and its result starts with a `headline` | it stopped without its expected output | `aew harness send` a nudge while it runs, relaunch, or cancel |
+| A run is `crashed` with `reason_code: provider_auth_failed` | the model provider rejected the key (an expired or revoked key: a 401, which OpenCode does not retry) | put a valid key in the variable the policy's `provider_env` names, then relaunch. A relaunch's server reads the key from the environment of the process that launches it: from inside `aew opencode`, that is the session's own, so restart `aew opencode` with the new key first |
 | `HARNESS_INCOMPATIBLE` | no binary, a version that is not V2, a missing API capability, or the pinned model or variant missing from the catalog | the message names the gap; check `AEW_OPENCODE_BIN`, the policy's model ids, and `provider_env` |
 | `RUN_LIVE` | the latest run may still be running | wait for it, or relaunch with `--replace` |
 | `STALE_AUTHORITY` naming a rotation | an old run's credential was replaced | expected: only the latest run can act |

@@ -104,7 +104,9 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "map generate", "map select-architecture",  # derived map state under .aew/local/maps/ only (ADR-0015)
     "message unseen",  # a read; with the Lead's credential it records what it showed (F9-A plan D-38, R1)
     "plan accept", "plan adopt",
-    "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
+    "plan propose", "plan reconfirm", "review ingest",
+    "stage abandon", "stage continue",  # the typed `resolve` tool's CLI form: the current Lead's own choice (E3c)
+    "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",

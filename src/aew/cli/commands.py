@@ -99,6 +99,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), expect_rev=a.expect_rev))
 
     _register_lead(sub)
+    _register_stage(sub)
     _register_authority(sub)
 
     p = sub.add_parser("manifest", help="project manifest maintenance")
@@ -213,6 +214,36 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
                    help="print the Lead projection and the environment names; start nothing")
     p.add_argument("opencode_args", nargs=argparse.REMAINDER, help="-- further OpenCode TUI arguments")
     p.set_defaults(handler=_opencode)
+
+
+def _register_stage(sub: argparse._SubParsersAction) -> None:
+    """``aew stage continue|abandon``: the typed ``resolve`` tool's CLI form (M4-E plan v3 E3; §3.4 rule 8). The same
+    runner and result: one semantic implementation (typed surface §5)."""
+    p = sub.add_parser("stage", help="resolve an unfinished stage that `aew resume` lists: continue or abandon it")
+    ssub = p.add_subparsers(dest="stage_cmd", required=True)
+    for choice, text in (("continue", "recheck it, rebind it to this Lead generation and run its remaining steps"),
+                         ("abandon", "end it; its committed steps stand")):
+        q = ssub.add_parser(choice, help=text)
+        q.add_argument("intent", help="the stage intent id, e.g. SI-0003")
+        q.add_argument("--rationale", required=True, help="why (recorded on the intent)")
+        _add_lead(q)
+        q.set_defaults(handler=_stage_resolve, choice=choice)
+
+
+def _stage_resolve(args: argparse.Namespace) -> Any:
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+    from aew.surface.errors import AdapterInputError
+
+    arguments = {"expect_rev": args.expect_rev, "subject": args.intent, "choice": args.choice,
+                 "rationale": args.rationale}
+    try:
+        return run.run_tool(_engine(args), SurfaceContext.outside_session(), "resolve", arguments,
+                            token=_lead_token(args))
+    except AdapterInputError as exc:
+        err = UsageError(exc.message, **exc.details)
+        err.code = exc.code  # the adapter's own code: an input error, never an engine refusal
+        raise err from None
 
 
 def _register_authority(sub: argparse._SubParsersAction) -> None:
@@ -344,9 +375,11 @@ def _opencode(args: argparse.Namespace) -> Any:
 
 def _resume(args: argparse.Namespace) -> Any:
     from aew.harness import lead_broker
+    from aew.surface import stage
 
     engine = _engine(args)
     report = engine.resume(session=lead_broker.session_authority())
+    report["stage_intents"] = stage.unfinished(engine)  # as the typed `resume` lists them (M4-E E3c)
     return report if args.json else engine.render_resume(report)
 
 

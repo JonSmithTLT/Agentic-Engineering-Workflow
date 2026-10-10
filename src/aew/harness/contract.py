@@ -33,6 +33,9 @@ TERMINAL = frozenset({LAUNCH_FAILED, ENDED_WITH_EVIDENCE, ENDED_WITHOUT_EVIDENCE
 # Derived from local observation only (never written by a supervisor):
 UNCONFIRMED = "unconfirmed"  # recorded in control state, but no supervisor ever took custody
 LOST = "lost"                # a supervisor took custody and stopped reporting (killed, crashed, machine lost)
+# Why a run ended, where an adapter can tell more than its status says: the record's `reason_code`, beside `status`
+# and `reason`. Telemetry like the rest of the record, so it never decides anything.
+PROVIDER_AUTH_FAILED = "provider_auth_failed"  # the model provider rejected the credential (register V1)
 
 # Any AEW credential string. Custody scans look for it in every file a run leaves behind.
 CREDENTIAL_RE = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")

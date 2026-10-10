@@ -361,11 +361,19 @@ class Supervisor:
         self.record["exit_code"] = code
         if status.get("detail"):
             self.record["harness_outcome"] = status["detail"]
+        reason_code = status.get("reason_code")
+        if isinstance(reason_code, str) and reason_code:
+            self.record["reason_code"] = reason_code
         if outputs:
             return self._finish(K.ENDED_WITH_EVIDENCE, f"harness exited ({code}) after recording {', '.join(outputs)}")
         if code == 0:
             return self._finish(K.ENDED_WITHOUT_EVIDENCE, "harness exited successfully without recording its expected "
                                 f"output ({', '.join(sorted(expected))}); no AEW state changed")
+        if reason_code == K.PROVIDER_AUTH_FAILED:  # its own reason, in the existing status (register V1)
+            names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
+            return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
+                                "the harness exited without recording its expected output; check the key in "
+                                f"{names or 'the variables'} (the execution policy's provider_env), then relaunch")
         return self._finish(K.CRASHED, f"harness exited with {code} without recording its expected output")
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:

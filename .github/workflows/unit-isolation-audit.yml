@@ -1,0 +1,129 @@
+name: unit-isolation-audit
+
+# The audit cross-check of the fast tier's static guard (CI plan v7 §7, V3-3; testing-and-ci-strategy.md §3). Run by
+# hand, once, before PR 1b enforces the fast tier: about 260 runner-minutes. Never a merge gate.
+#
+# It collects only tests/integration, tests/regression and tests/acceptance, split as ci.yml splits its lanes
+# (sharded jobs under xdist without the serial tests, then the serial tests once per OS without xdist), under a
+# test-only plugin (tools/ci/unit_isolation_audit.py) whose audit hook records every import of a unit module's name,
+# every open of a .py or .pyc under tests/unit and every subprocess naming one. Since no unit module is collected,
+# any such event is a violation, at collection or at runtime. The static guard is what makes the fast tier safe; this
+# run checks it against reality.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  parallel:
+    name: audit ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # ci.yml runs these directories' tests in 11 lane jobs per OS; 10 shards per OS is the same work.
+        include:
+          - {os: ubuntu-latest, python: "3.11", shard: 1, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 2, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 3, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 4, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 5, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 6, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 7, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 8, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 9, of: 10}
+          - {os: ubuntu-latest, python: "3.11", shard: 10, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 1, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 2, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 3, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 4, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 5, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 6, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 7, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 8, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 9, of: 10}
+          - {os: windows-latest, python: "3.13", shard: 10, of: 10}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: heavy directories, shard ${{ matrix.shard }}/${{ matrix.of }}, under the audit hook
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tools/ci
+        run: >-
+          python -m pytest tests/integration tests/regression tests/acceptance
+          -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal
+          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600
+          -p unit_isolation_audit --unit-isolation-dir tests/unit
+          --unit-isolation-report "${{ runner.temp }}/audit"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unit-isolation-audit-${{ runner.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/audit/
+          retention-days: 14
+
+  serial:
+    name: audit serial (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: heavy directories' serial tests, without xdist, under the audit hook
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tools/ci
+        run: >-
+          python -m pytest tests/integration tests/regression tests/acceptance
+          -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600
+          -p unit_isolation_audit --unit-isolation-dir tests/unit
+          --unit-isolation-report "${{ runner.temp }}/audit"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unit-isolation-audit-${{ runner.os }}-serial
+          path: ${{ runner.temp }}/audit/
+          retention-days: 14
+
+  result:
+    # Clean means: every job reported, and no report holds a violation.
+    needs: [parallel, serial]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: unit-isolation-audit-*
+          path: audit
+      - name: Every audited job reported, and none recorded a violation
+        env:
+          PARALLEL: ${{ needs.parallel.result }}
+          SERIAL: ${{ needs.serial.result }}
+        run: |
+          echo "parallel: $PARALLEL, serial: $SERIAL"
+          python tools/ci/unit_isolation_audit.py --check audit
+          # A shard that stopped at collection or crashed still writes a clean report: every audited job must have
+          # succeeded, so a clean audit means every heavy test ran under the hook (PR #163 review, V7-4).
+          test "$PARALLEL" = success
+          test "$SERIAL" = success
+          test "$(ls audit | wc -l)" = 22

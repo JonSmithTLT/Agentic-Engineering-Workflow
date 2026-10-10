@@ -143,3 +143,150 @@ def test_the_lane_files_are_consistent(qualify):
     qualify.check_profiles(report, plan)
     assert report["profiles"]["lb-deepseek-v4-flash"] == "unqualified"
     assert all(yaml.safe_load(p.read_text(encoding="utf-8"))["hidden_sha256"] for p in qualify.CASES.values())
+
+
+# ---------------------------------------------------------------------------------------------- provider failures
+
+# A floor trial's record exactly as the live test wrote it when the provider rejected the key: the implementer
+# crashed, the harness outcome names the provider's error, and the model produced nothing. The test still passed.
+AUTH_RUN = {"role": "implementer", "status": "crashed",
+            "harness_outcome": "the agent's turn ended: failed (provider.auth: Invalid API key.)",
+            "reason": "harness exited with 1 without recording its expected output", "steps": 1,
+            "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}, "cost": 0,
+            "bridge": {"requests": 0, "refused": 0, "outcomes": {}}, "evidence": [], "model_check": "no_model_step"}
+PASSING_RUN = {"role": "implementer", "status": "ended_with_evidence", "harness_outcome": "ended", "steps": 9,
+               "tokens": {"input": 4000, "output": 300}, "cost": 0.01, "bridge": {"requests": 2},
+               "evidence": [{"id": "ev-1", "kind": "implementation_report", "result": "pass"}]}
+FAILING_RUN = {**AUTH_RUN, "tokens": {"input": 5200, "output": 410}, "steps": 12,
+               "harness_outcome": "the agent's turn ended: failed (provider.overloaded: try again later)"}
+
+
+def trial_of(run: dict) -> dict:
+    return {"schema": "aew/live-model-trial/v1", "scenario": "lifecycle", "trial": 0, "runs": [run], "lead": {}}
+
+
+def write_results(path: Path, run: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trial_of(run), sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def lane(qualify, tmp_path, monkeypatch):
+    """``cmd_floor`` with the frozen record, the profile and the live trial faked: ``runs`` lists the implementer
+    run each successive trial records (a placeholder key; no provider is called)."""
+    frozen = {"thresholds": {"budget": {"floor_cap_usd": 1.0}, "floor": {"trials": 2}}}
+    monkeypatch.setattr(qualify, "frozen_record", lambda: frozen)
+    monkeypatch.setattr(qualify, "worker_profile", lambda f: {"id": "lb-fake", "ref": "opencode/fake",
+                                                              "credential_env": ["OPENCODE_API_KEY"]})
+    monkeypatch.setenv("OPENCODE_API_KEY", qualify.PLACEHOLDER)
+    calls: list[Path] = []
+    runs: list[dict] = []
+
+    def fake_trial(where, record, names, *, cap, spent_before):
+        calls.append(where)
+        results = write_results(where / "results.jsonl", runs.pop(0))
+        return 0, qualify.read_results(results), 0.0, []  # pytest passed, as it did on the real run
+
+    monkeypatch.setattr(qualify, "floor_trial", fake_trial)
+    out = tmp_path / "lane" / "out"
+    return SimpleNamespace(out=out, calls=calls, runs=runs,
+                           floor=lambda: qualify.cmd_floor(SimpleNamespace(), out, None),
+                           state=lambda: json.loads((out / "floor" / "floor.json").read_text(encoding="utf-8")))
+
+
+def test_a_provider_auth_failure_is_a_lane_error_not_a_failed_trial(qualify):
+    got = qualify.floor_verdict([trial_of(AUTH_RUN)])
+    assert got["state"] == qualify.LANE_ERROR
+    assert got["reason_code"] == "PROVIDER_AUTH_FAILED"
+    assert got["provider_error"] == {"type": "provider.auth", "message": "Invalid API key."}
+
+
+def test_a_provider_auth_failure_never_uses_a_floor_trial(qualify, lane):
+    lane.runs.append(AUTH_RUN)
+    with pytest.raises(SystemExit):
+        lane.floor()
+    state = lane.state()
+    assert [t["verdict"] for t in state["trials"]] == ["lane_error"]
+    assert state["trials"][0]["reason_code"] == "PROVIDER_AUTH_FAILED"
+    assert qualify.counted_trials(state) == []
+
+
+def test_the_floor_stops_at_once_on_a_rejected_key(qualify, lane):
+    lane.runs.extend([AUTH_RUN, PASSING_RUN])  # a second trial is there to take, and is never taken
+    with pytest.raises(SystemExit) as stop:
+        lane.floor()
+    assert len(lane.calls) == 1
+    message = str(stop.value.code)
+    assert message.startswith("refused: the provider rejected the key (provider.auth: Invalid API key.)")
+    assert "OPENCODE_API_KEY" in message and "no floor trial was used" in message
+
+
+def test_a_rerun_after_fixing_the_key_runs_the_floor_fresh(qualify, lane):
+    lane.runs.append(AUTH_RUN)
+    with pytest.raises(SystemExit):
+        lane.floor()
+    lane.runs.extend([FAILING_RUN, FAILING_RUN])  # both preregistered trials are still there to use
+    assert lane.floor() == 3
+    assert [t["verdict"] for t in lane.state()["trials"]] == ["lane_error", "failed", "failed"]
+    assert len(lane.calls) == 3 and lane.calls[-1].name == "trial-3"  # every trial keeps its own directory
+
+
+def test_trials_a_rejected_key_used_up_before_this_fix_are_read_as_lane_errors(qualify, lane):
+    """The recovery for a lane directory whose two trials were recorded ``failed`` on a rejected key: the next run
+    reads them from their stored results as the lane errors they were, and runs the floor."""
+    floor = lane.out / "floor"
+    old = [{"trial": n, "verdict": "failed", "pytest_exit": 0, "charged_usd": 0.0, "cost_known": True, "stopped": [],
+            "results": str(write_results(floor / f"trial-{n}" / "results.jsonl", AUTH_RUN)),
+            "session_state": str(floor / f"trial-{n}" / "tmp")} for n in (1, 2)]
+    (floor / "floor.json").write_text(json.dumps({"trials": old, "charged_usd": 0.0}), encoding="utf-8")
+    state = qualify.floor_state(lane.out)
+    assert [(t["verdict"], t["reclassified_from"]) for t in state["trials"]] == [("lane_error", "failed")] * 2
+    lane.runs.append(PASSING_RUN)
+    assert lane.floor() == 0
+    assert [t["verdict"] for t in lane.state()["trials"]] == ["lane_error", "lane_error", "passed"]
+
+
+def test_a_model_that_acted_and_failed_still_uses_a_floor_trial(qualify):
+    assert qualify.floor_verdict([trial_of(FAILING_RUN)])["state"] == "failed"  # tokens: the model acted
+    crashed = {**AUTH_RUN, "harness_outcome": "the agent's turn ended: failed"}  # no provider error named
+    assert qualify.floor_verdict([trial_of(crashed)])["state"] == "failed"
+    assert qualify.floor_verdict([trial_of(PASSING_RUN), trial_of(AUTH_RUN)])["state"] == "passed"
+
+
+@pytest.mark.parametrize("outcome, reason", [
+    ("the agent's turn ended: failed (provider.auth: Invalid API key.)", "PROVIDER_AUTH_FAILED"),
+    ("the agent's turn ended: failed (provider.api: HTTP 401 Unauthorized)", "PROVIDER_AUTH_FAILED"),
+    ("the agent's turn ended: failed (UnknownError: status 403 forbidden)", "PROVIDER_AUTH_FAILED"),
+    ("the agent's turn ended: failed (provider.rate_limit: slow down)", "NO_MODEL_STEP"),
+])
+def test_a_provider_failure_is_named_for_its_remedy(qualify, outcome, reason):
+    got = qualify.floor_verdict([trial_of({**AUTH_RUN, "harness_outcome": outcome})])
+    assert (got["state"], got["reason_code"]) == ("lane_error", reason)
+
+
+def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypatch):
+    out = tmp_path / "lane" / "out"
+    (out / "floor").mkdir(parents=True)
+    (out / "floor" / "floor.json").write_text(json.dumps({"trials": [{"trial": 1, "verdict": "passed"}],
+                                                          "charged_usd": 0.1}), encoding="utf-8")
+    frozen = {"profiles": {"budget_usd": 5.0}, "thresholds": {"budget": {"overshoot_margin_usd": 0.05}},
+              "arms": [{"id": "raw", "config": {"cap_usd": 0.75, "provider_env": ["OPENCODE_API_KEY"]}}],
+              "validity_rules": {"retry_policy": {"max_retries": 2, "allowed_for": ["invalid_measurement"]}},
+              "assignment": {"order": [{"cell": "LBQ-1/raw/1", "arm": "raw"}, {"cell": "LBQ-2/raw/1", "arm": "raw"}]}}
+    monkeypatch.setattr(qualify, "frozen_record", lambda: frozen)
+    monkeypatch.setattr(qualify, "AttemptLedger", lambda d, f: SimpleNamespace(attempts=dict, status=dict))
+    cells: list[str] = []
+
+    def run_cell(frozen, *, cell, **kw):
+        cells.append(cell)
+        return {"run_id": f"x/{cell}", "validity": {"status": "invalid_measurement", "reason_code": "NO_MODEL_STEP"},
+                "cost": {"charged_usd": 0.0}, "outcome": {"truncated_why": [], "model_steps": 0, "errors": [
+                    {"type": "provider.auth", "message": "Invalid API key."}]}}
+
+    monkeypatch.setattr(qualify.runner, "run_cell", run_cell)
+    with pytest.raises(SystemExit) as stop:
+        qualify.cmd_ceiling(SimpleNamespace(deadline_s=60), out, None)
+    assert cells == ["LBQ-1/raw/1"]  # no retry of the cell, no later cell
+    assert str(stop.value.code).startswith("refused: the provider rejected the key (provider.auth")
+    assert qualify.ceiling_stop({"validity": {"status": "valid", "reason_code": None}}) is None

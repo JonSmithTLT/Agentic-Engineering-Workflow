@@ -162,6 +162,19 @@ there cannot be contained, so the lane does not run models there.
 
 `qualify.py run --by NAME` runs everything up to the end of `ceiling` (every step that runs a model).
 
+**A provider failure is a lane error, never a floor trial.** When the provider fails before the model produces
+anything (every token count zero, and the harness outcome naming a provider error), the trial measured the provider,
+not the model. It is recorded with verdict `lane_error` and a reason: `PROVIDER_AUTH_FAILED` when the provider
+rejected the key (`provider.auth`, or an HTTP 401/403), else `NO_MODEL_STEP` (the raw arm's reason: a rate limit, an
+outage). It does not count toward the floor's two trials, and the floor stops at once, exiting non-zero with what the
+provider said and what to do (for a rejected key: check `OPENCODE_API_KEY`, rerun). The ceiling stops the same way on
+its first `NO_MODEL_STEP` attempt, which stays in the ledger as the preregistration defines it (an
+`invalid_measurement`, retried under the frozen policy when the ceiling is rerun). The lane reads this from the
+trial's run records, not from the live test's exit code: the live test passes when its implementer crashes, because
+the model's outcome is recorded there and only AEW's side is asserted. A floor trial recorded `failed` by an earlier
+version of the lane whose stored results show such a failure is read as a lane error on the next run, so the same
+`--out` directory runs the floor again once the key is fixed.
+
 **Run state** goes to `--out`, outside every repository: the ledger, every run's scratch directory (**with its kept
 session database**), and the floor's records. The lane's reader may extract only the preregistered fields. Retention
 is enforced, not only recorded: a database past its 180 days is refused, then purged, and the purge is recorded.

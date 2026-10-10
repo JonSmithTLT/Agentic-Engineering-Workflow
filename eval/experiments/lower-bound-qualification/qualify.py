@@ -26,6 +26,10 @@ A model run (``floor``, ``ceiling``, ``run``) refuses while an oracle is on this
 or the lane's documented copy (``<out>/../hidden``) present. Every attempt counts against ``budget_usd``: a run's
 reported cost, or its cap when that is unknown or the run was lost; the floor's trials are capped by a watcher that
 ends the trial (its processes and its runs' supervisors) when the floor's cap is reached.
+
+A provider failure before the model produced anything (a rejected key, an outage) is a lane error, not a model's
+failure: it never counts as a floor trial, and the floor or the ceiling stops at once, exiting non-zero with what the
+provider said (``floor_verdict``, ``ceiling_stop``).
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import shutil
 import signal
 import sqlite3
@@ -493,16 +498,71 @@ def worker_profile(frozen: dict[str, Any]) -> dict[str, Any]:
     return next(r for r in profiles.load(PROFILES) if r["ref"] == ref)
 
 
+# A trial in which the provider failed before the model produced anything measures the provider, not the model: a
+# lane error, recorded and never counted as a floor trial. The floor stops at once (a rejected key does not fix itself,
+# and a retry into an outage measures nothing). The reason reuses the raw arm's NO_MODEL_STEP ("no assistant step
+# without a provider error"), refined to PROVIDER_AUTH_FAILED when the provider rejected the key, since the operator's
+# remedy differs. The ceiling stops on the same signal (``ceiling_stop``).
+LANE_ERROR = "lane_error"
+PROVIDER_AUTH_FAILED = "PROVIDER_AUTH_FAILED"
+NO_MODEL_STEP = "NO_MODEL_STEP"
+TURN_ERROR = re.compile(r"\(([\w.-]+): (.*)\)\s*$", re.S)  # the adapter's "...: <outcome> (<type>: <message>)"
+HTTP_AUTH = re.compile(r"\b40[13]\b")
+
+
+def token_total(tokens: Any) -> float:
+    """Every count in a run's token usage (nested: input, output, reasoning, cache read and write); none is 0."""
+    if isinstance(tokens, dict):
+        return sum(token_total(v) for v in tokens.values())
+    return float(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) else 0.0
+
+
+def provider_reason(error: dict[str, Any]) -> str:
+    """PROVIDER_AUTH_FAILED for a rejected key (``provider.auth``, or an HTTP 401/403 from the provider), else
+    NO_MODEL_STEP."""
+    text = f"{error.get('type') or ''} {error.get('message') or ''}"
+    return PROVIDER_AUTH_FAILED if error.get("type") == "provider.auth" or HTTP_AUTH.search(text) else NO_MODEL_STEP
+
+
+def provider_failure(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The provider error that ended a live-lane run before the model produced anything, if one did: every token
+    count is zero and the harness outcome names a provider error. The live test records such a run and passes (the
+    implementer's outcome is the model's side, recorded, not asserted), so the lane reads it from the run's record,
+    never from the test's exit code."""
+    if not run or token_total(run.get("tokens")):
+        return None
+    m = TURN_ERROR.search(str(run.get("harness_outcome") or ""))
+    if not m:
+        return None
+    error = {"type": m[1], "message": m[2][:300]}
+    reason = provider_reason(error)
+    if not error["type"].startswith("provider.") and reason != PROVIDER_AUTH_FAILED:
+        return None
+    return {**error, "reason_code": reason}
+
+
 def floor_verdict(trials: list[dict[str, Any]]) -> dict[str, Any]:
     """rubric.md §2: the floor passes when, in at least one trial, the implementer's run ended with its typed
-    submission accepted as evidence (``implementation_report``) after at least one request through the run's bridge."""
-    passing = []
+    submission accepted as evidence (``implementation_report``) after at least one request through the run's bridge.
+
+    Without a pass, an implementer run the provider failed before the model produced anything (``provider_failure``)
+    makes the result a lane error, with its reason and the provider's error, not a failed trial."""
+    passing, lane = [], None
     for t in trials:
         impl = next((r for r in t.get("runs") or [] if r.get("role") == "implementer"), None)
         if impl and impl.get("status") == "ended_with_evidence" and (impl.get("bridge") or {}).get("requests") \
                 and any(e.get("kind") == "implementation_report" for e in impl.get("evidence") or []):
             passing.append(t.get("trial"))
+        lane = lane or provider_failure(impl)
+    if not passing and lane:
+        return {"state": LANE_ERROR, "trials": len(trials), "passing_trials": [],
+                "reason_code": lane["reason_code"], "provider_error": {k: lane[k] for k in ("type", "message")}}
     return {"state": "passed" if passing else "failed", "trials": len(trials), "passing_trials": passing}
+
+
+def read_results(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] \
+        if path.exists() else []
 
 
 def session_costs(root: Path) -> float | None:
@@ -571,8 +631,68 @@ def end_trial(tree: Any, basetemp: Path) -> list[int]:
 
 
 def floor_state(out: Path) -> dict[str, Any]:
+    """The floor's record. A trial recorded ``failed`` before lane errors existed whose stored results show the
+    provider failing before the model produced anything is read as the lane error it was (``reclassified_from``), so
+    a lane directory whose trials a rejected key used up runs the floor again once the key is fixed."""
     path = out / "floor" / "floor.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"trials": [], "charged_usd": 0.0}
+    state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"trials": [], "charged_usd": 0.0}
+    for t in state["trials"]:
+        if t.get("verdict") == "failed" and t.get("results"):
+            got = floor_verdict(read_results(Path(t["results"])))
+            if got["state"] == LANE_ERROR:
+                t.update(verdict=LANE_ERROR, reclassified_from="failed", reason_code=got["reason_code"],
+                         provider_error=got["provider_error"])
+    return state
+
+
+def counted_trials(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """The trials that count toward the floor's ``trials`` threshold: every one but a lane error."""
+    return [t for t in state["trials"] if t.get("verdict") != LANE_ERROR]
+
+
+def lane_error_message(error: dict[str, Any], key_env: list[str], *, where: str, again: str) -> str:
+    """The operator's message for a lane error: what the provider said, and what to do."""
+    said = f"{(error.get('provider_error') or {}).get('type')}: {(error.get('provider_error') or {}).get('message')}" \
+        if error.get("provider_error") else "no model step"
+    if error.get("reason_code") == PROVIDER_AUTH_FAILED:
+        key = key_env[0] if key_env else "the provider's key"
+        return f"refused: the provider rejected the key ({said}); check {key} and rerun `{again}`; {where}"
+    return f"refused: the provider failed before the model acted ({said}); rerun `{again}` when it answers; {where}"
+
+
+def floor_trial(where: Path, record: dict[str, Any], names: list[str], *, cap: float,
+                spent_before: float) -> tuple[int, list[dict[str, Any]], float | None, list[str]]:
+    """Run one floor trial (the live lane's lifecycle scenario, once): its pytest exit code, its results, the cost its
+    sessions report (``None`` when unreadable), and why the cost watcher stopped it, if it did."""
+    from aew.harness import procs
+
+    results = where / "results.jsonl"
+    env = {k: v for k, v in os.environ.items() if k != hidden.ENV}
+    env.update(AEW_LIVE_OPENCODE_MODEL=record["ref"], AEW_LIVE_RESULTS=str(results), AEW_LIVE_MODEL_TRIALS="1",
+               PYTHONPATH=os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(os.pathsep))
+    if names:
+        env["AEW_LIVE_PROVIDER_KEY_ENV"] = names[0]
+    tree = procs.ProcessTree()
+    log = (where / "pytest.log").open("w", encoding="utf-8")
+    proc = tree.spawn([sys.executable, "-m", "pytest", "--live", LIVE_TEST, "-p", "no:xdist", "-p",
+                       "no:cacheprovider", "-q", "--basetemp", str(where / "tmp")], cwd=str(ROOT), env=env,
+                      stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    stopped: list[str] = []
+
+    def watch() -> None:
+        reason = watch_floor(lambda: proc.poll() is None, lambda: session_costs(where / "tmp"),
+                             spent_before=spent_before, cap=cap)
+        if reason:
+            stopped.append(reason)
+            end_trial(tree, where / "tmp")
+
+    watcher = threading.Thread(target=watch, daemon=True)
+    watcher.start()
+    code = proc.wait()
+    watcher.join(timeout=POLL_S * 2)
+    log.close()
+    tree.close()
+    return code, read_results(results), session_costs(where / "tmp"), stopped
 
 
 def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
@@ -589,57 +709,35 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
     if any(t.get("verdict") == "passed" for t in state["trials"]):
         say(floor="passed earlier", trials=state["trials"], charged_usd=state["charged_usd"])
         return 0
-    from aew.harness import procs
-
     (out / "floor").mkdir(parents=True, exist_ok=True)
-    while len(state["trials"]) < trials_max:
+    while len(counted_trials(state)) < trials_max:
         if state["charged_usd"] >= cap:
             break
-        n = len(state["trials"]) + 1
+        n = len(state["trials"]) + 1  # every trial keeps its own directory, a lane error's too
         where = out / "floor" / f"trial-{n}"
         where.mkdir(parents=True, exist_ok=True)
-        results = where / "results.jsonl"
-        env = {k: v for k, v in os.environ.items() if k != hidden.ENV}
-        env.update(AEW_LIVE_OPENCODE_MODEL=record["ref"], AEW_LIVE_RESULTS=str(results), AEW_LIVE_MODEL_TRIALS="1",
-                   PYTHONPATH=os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(os.pathsep))
-        if names:
-            env["AEW_LIVE_PROVIDER_KEY_ENV"] = names[0]
-        tree = procs.ProcessTree()
-        log = (where / "pytest.log").open("w", encoding="utf-8")
-        proc = tree.spawn([sys.executable, "-m", "pytest", "--live", LIVE_TEST, "-p", "no:xdist", "-p",
-                           "no:cacheprovider", "-q", "--basetemp", str(where / "tmp")], cwd=str(ROOT), env=env,
-                          stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
-        stopped: list[str] = []
-
-        def watch(tree: Any = tree, proc: Any = proc, where: Path = where, stopped: list[str] = stopped) -> None:
-            reason = watch_floor(lambda: proc.poll() is None, lambda: session_costs(where / "tmp"),
-                                 spent_before=state["charged_usd"], cap=cap)
-            if reason:
-                stopped.append(reason)
-                end_trial(tree, where / "tmp")
-
-        watcher = threading.Thread(target=watch, daemon=True)
-        watcher.start()
-        code = proc.wait()
-        watcher.join(timeout=POLL_S * 2)
-        log.close()
-        tree.close()
-        trials = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines() if line.strip()] \
-            if results.exists() else []
-        spent = session_costs(where / "tmp")
+        code, trials, spent, stopped = floor_trial(where, record, names, cap=cap, spent_before=state["charged_usd"])
         unread = any("unreadable" in s for s in stopped)
         # unknown, now or while it ran: charge what remains of the floor's cap
         cost = spent if spent is not None and not unread else max(cap - state["charged_usd"], 0.0)
-        verdict = floor_verdict(trials)["state"]
+        judged = floor_verdict(trials)
+        verdict = judged["state"]
         if stopped:
             verdict = "cost_unreadable" if unread else "cost_cap"
         elif code != 0:  # AEW's side failed an assertion: the floor is not established either way
             verdict = "aew_side_failure" if trials else "not_run"
-        state["trials"].append({"trial": n, "verdict": verdict, "pytest_exit": code, "charged_usd": round(cost, 6),
-                                "cost_known": spent is not None, "stopped": stopped, "results": str(results),
-                                "session_state": str(where / "tmp")})
+        trial = {"trial": n, "verdict": verdict, "pytest_exit": code, "charged_usd": round(cost, 6),
+                 "cost_known": spent is not None, "stopped": stopped, "results": str(where / "results.jsonl"),
+                 "session_state": str(where / "tmp")}
+        if verdict == LANE_ERROR:
+            trial.update(reason_code=judged["reason_code"], provider_error=judged["provider_error"])
+        state["trials"].append(trial)
         state["charged_usd"] = round(state["charged_usd"] + cost, 6)
         (out / "floor" / "floor.json").write_text(json.dumps(state, indent=1), encoding="utf-8")
+        if verdict == LANE_ERROR:  # no retry: the provider ended it, not the model
+            say(floor=LANE_ERROR, profile=record["id"], **state)
+            raise SystemExit(lane_error_message(trial, names, where="no floor trial was used",
+                                                again="qualify.py floor"))
         if verdict == "passed" or verdict == "aew_side_failure":
             break
     passed = any(t["verdict"] == "passed" for t in state["trials"])
@@ -665,6 +763,21 @@ def spent_so_far(out: Path, ledger: AttemptLedger, caps: dict[str, float]) -> fl
         record = json.loads((ledger.runs / (attempt.run_id.split("/", 1)[1] + ".json")).read_text(encoding="utf-8"))
         total += charged(record, cap)
     return total
+
+
+def frozen_arm(frozen: dict[str, Any], arm_id: str) -> dict[str, Any]:
+    return next(a for a in frozen["arms"] if a["id"] == arm_id)
+
+
+def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
+    """A ceiling attempt the provider failed before the model acted (the raw arm's ``NO_MODEL_STEP``): the lane error
+    that stops the ceiling at once, as it stops the floor, instead of spending every later cell's attempts and this
+    cell's retries on a rejected key or an outage."""
+    if (record.get("validity") or {}).get("reason_code") != NO_MODEL_STEP:
+        return None
+    errors = [e for e in (record.get("outcome") or {}).get("errors") or [] if isinstance(e, dict)]
+    error = {"type": errors[0].get("type"), "message": str(errors[0].get("message"))[:300]} if errors else None
+    return {"reason_code": provider_reason(error) if error else NO_MODEL_STEP, "provider_error": error}
 
 
 def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
@@ -699,6 +812,12 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
                 raise SystemExit(f"refused (nothing registered): {exc}") from None
             say(run=record["run_id"], validity=record["validity"], charged_usd=record["cost"].get("charged_usd"),
                 truncated=record["outcome"].get("truncated_why"))
+            stop = ceiling_stop(record)
+            if stop:  # the provider, not the model: every later cell would fail the same way
+                raise SystemExit(lane_error_message(
+                    stop, list(frozen_arm(frozen, entry["arm"])["config"]["provider_env"]),
+                    where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP} (one of its preregistered retries "
+                          "is used); no later cell ran", again="qualify.py ceiling"))
     say(ceiling="done", ledger=str(ledger_dir), status=ledger.status(),
         spent_usd=round(spent_so_far(out, ledger, caps), 4),
         next="copy the oracles in, then `qualify.py score` (README.md, operator steps)")

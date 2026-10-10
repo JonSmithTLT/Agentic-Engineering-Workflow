@@ -7,9 +7,10 @@ workflow (``progression``: the only rows a stage runner may ever auto-run), its 
 that offer it. Transports render their tool lists from this table and call :mod:`aew.surface.run`; conformance
 tests enumerate it against the dispatch registry.
 
-F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. The stages
-and the publication decision tool are ``DESIGNED``: their full contract is here so the tests pin it today, they are
-never listed, and a call is refused before the runner (F15.2 builds them over the StageIntent journal, §12.5).
+F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. F15.2 builds
+the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``. The other
+stages and the publication decision tool are ``DESIGNED``: their full contract is here so the tests pin it today,
+they are never listed, and a call is refused before the runner.
 """
 
 from __future__ import annotations
@@ -42,8 +43,10 @@ UNIT = "unit"  # the unit an earlier step creates (`work.create`)
 STATE = "state"  # the state an earlier step leaves the unit in (a transition, an assignment, an ingest)
 IMPLEMENTER = "implementer"  # the active implementer an earlier step's dispatch creates (`work.assign`)
 EVIDENCE = "evidence"  # the report an earlier step ingested, as the unit's evidence reference
+ACCEPTANCE = "acceptance"  # the COMMIT_READY acceptance an earlier transition records (its gated snapshot, its seq)
+CANDIDATE = "candidate"  # the prepared integration candidate and the lease an earlier `integrate.prepare` produces
 DISPATCH = "dispatch"  # an earlier step's dispatch decision, which covers this step (a launch): it has no query
-STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, DISPATCH)
+STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, ACCEPTANCE, CANDIDATE, DISPATCH)
 
 
 class Tool(NamedTuple):
@@ -217,7 +220,8 @@ TOOLS: dict[str, Tool] = _catalog(
                "stdin": {"type": "string", "description": "text for an argument given as '-'"}},
               ("argv",)),
          required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
-    # ---- designed in F15.1, built by F15.2 over the StageIntent journal
+    # ---- designed in F15.1, built by F15.2 over the StageIntent journal: M4-E E5a builds `ticket_draft` and
+    # `ticket_start`; the others stay DESIGNED until E5b and E6a
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
          _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
@@ -229,12 +233,12 @@ TOOLS: dict[str, Tool] = _catalog(
                "plan": PLAN},
               ("expect_rev", "title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
-         mutates=True, progression=True, status=DESIGNED, produced_by=((), ((UNIT, 1),))),
+         mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
     Tool("ticket_start", STAGE, POLICY_RESOLVED,
          "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
          expands_to=("work.assign", "dispatch.launch", "work.transition"), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         dispatches=True, mutates=True, progression=True,
          produced_by=((), ((DISPATCH, 1),), ((STATE, 1), (IMPLEMENTER, 1)))),
     Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",
@@ -257,14 +261,17 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
          required_judgments=("accept_verification",), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED),
+         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         # Steps 4 and 5 (the integration verifier and its launch) are planned in verifier mode only (plan v3 §2.3).
+         produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2)),
+                      ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2), (CANDIDATE, 3)), ((DISPATCH, 4),))),
     Tool("integration_publish", DECISION, JUDGMENT_BEARING,
          "Publish the prepared integration candidate: calling this is your publication decision.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
                "prepared_candidate": {"type": "string", "minLength": 1}},
               ("expect_rev", "work_id", "prepared_candidate")),
          expands_to=("integrate.publish",), required_judgments=("publish_candidate",),
-         mutates=True, progression=True, status=DESIGNED),
+         mutates=True, progression=True, status=DESIGNED, produced_by=((),)),
 )
 
 

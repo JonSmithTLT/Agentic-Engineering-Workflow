@@ -282,7 +282,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
     """M4-E E3 (plan v3 E3, §2.7; typed surface §3.4).
 
     47: every hot intent is ACTIVE and schema-valid, owned by a generation that has existed, and its steps are a
-        prefix of its plan under the keys ``<SI>:<n>``, at strictly increasing revisions after it opened and none past
+        prefix of its plan under the keys ``<SI>:<n>``, at strictly increasing revisions after it opened (a launch its
+        dispatch covers, E5a, at its dispatch's revision, as the step right after it) and none past
         the current revision; a unit has at most one, and so does the project (a stage with no unit).
     48: every step carries the legality digest the intent bound (nothing commits under drift); a step is retried after
         a stale revision only when it and the stage are non-judgment, and the intent says so iff some step was; a stop
@@ -292,6 +293,7 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
         note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
     51: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
+    from aew.engine import primitives as P
     from aew.engine import stage_intents as S
     from aew.schemas import validate
 
@@ -311,7 +313,27 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
                 problems.append(f"{where}: judgment-bearing step {n} was retried")
         if len(si["steps"]) > len(si["plan"]):
             problems.append(f"{where}: more steps than planned")
-        revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"])]
+        for n, done in enumerate(si["steps"], start=1):
+            # A launch is recorded in its dispatch's commit (E5a): the step after a dispatch it covers, at its revision.
+            covered, coverers = done.get("covered_by"), P.COVERED_BY_PREVIOUS.get(done["primitive"])
+            if (covered is not None) != (coverers is not None) or (covered is not None and not (
+                    covered == n - 1 >= 1 and si["steps"][n - 2]["primitive"] in (coverers or ())
+                    and si["steps"][n - 2]["revision"] == done["revision"])):
+                problems.append(f"{where}: step {n} ({done['primitive']}) is not a launch its dispatch's commit covers")
+            elif covered is not None:
+                # ...of the dispatch planned with launch, and each of its runs is run 1 of an invocation that dispatch
+                # created (PR #177 review, finding 7: what `_covered_step` enforces, checked independently).
+                coverer = si["steps"][n - 2]
+                if not (si["plan"][n - 2].get("args") or {}).get("launch"):
+                    problems.append(f"{where}: step {n} covers a dispatch that was not planned with launch")
+                invocations = full.get("invocations") or {}
+                known = [invocations[i] for i in coverer["outputs"]["invocations"] if i in invocations]
+                first = {(inv.get("runs") or [{}])[0].get("run") for inv in known}
+                if not done["outputs"]["runs"] or (len(known) == len(coverer["outputs"]["invocations"])
+                                                   and not set(done["outputs"]["runs"]) <= first):
+                    problems.append(f"{where}: step {n}'s runs {done['outputs']['runs']} are not run 1 of the "
+                                    f"invocations step {n - 1} created ({sorted(map(str, first))})")
+        revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"] if s.get("covered_by") is None)]
         if revs != sorted(set(revs)):
             problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
         if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):

@@ -37,6 +37,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** U9
 
+### F38
+
+**Due by:** M6 · **Owner:** operator · **Needs:** adoption
+
+**What:** The M6a capability and effect authorization model (v0.8, overlaid by v0.9 for Gate A encoding; designer candidates, concept frozen at v0.9) adopted as governing. The points where it differed from accepted or adopted text are decided (designer, 2026-10-10; decision record `decisions-2026-10-10-m6a-conflicts-and-codex.md`, ledger MCD) and the adoption takes them with it; D1, v0.9 §7 over ADR-0009 and ADR-0006 at M6, with read-only source, writable scratch, mediated authoritative mutation and the shell kept (MCD-01, MCD-02; the ADR amendments are due with F40 when M6 lands); D2, knowledge and safe navigation C for every admitted role over v0.8's P* and P cells, independence selector-controlled (MCD-03 to MCD-05; F21); D3, the messaging switch as an approved authorization overlay or profile carrying `G_AEW_COORDINATE` (MCD-06; ADR-0017, F9)
+
+**Blocks:** F39, F40
+
 ### Q8
 
 **Due by:** M6 · **Owner:** designer · **Needs:** decision
@@ -101,14 +109,6 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** -
 
-### E54
-
-**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
-
-**What:** A known gap in a legality bound, asked once (F9-A plan v4, amendment 1, §Q): OpenCode 2.0.18's `steps` restarts at each delivered input (`harness send` since M3, and F9 messages once on), so the adopted `max_steps` (ADR-0010) bounds each input, not the run; the run's deadline stays run-wide. Recommended: accept for now (the deadline binds every run, `harness send` has the same property today, and messaging is off by default and in M4-H). The alternative: a run-wide step count enforced by the adapter (count `session.step.started`, interrupt at `max_steps`), planned under ADR-0010. F9-A does not wait for the answer
-
-**Blocks:** -
-
 ### Q4
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
@@ -156,5 +156,9 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 - **F12** waits for Q11 (decision, designer, by M6)
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
+
+- **F39** waits for F38 (adoption, operator, by M6)
+
+- **F40** waits for F38 (adoption, operator, by M6)
 
 - **U9** waits for F26 (design, designer, by M6)

@@ -23,8 +23,10 @@ def lead_txn_ops() -> set[str]:
 def test_every_declared_primitive_is_a_runnable_step_or_refused_at_opening():
     ops = lead_txn_ops()
     assert {"checkpoint", "work.assign", "steering.lower", "invoke.create"} <= ops  # the scan finds the engine's ops
+    # A launch commits in its dispatch's transaction, recorded there as the next step (M4-E E5a): its coverers' ops.
     missing = {p: sorted(P.commit_ops(p) - ops) for p in P.SPECS
-               if p not in P.NOT_STEPS and P.commit_ops(p) - ops}
+               if p not in P.NOT_STEPS and p not in P.COVERED_BY_PREVIOUS and P.commit_ops(p) - ops}
+    assert all(set(c) <= set(P.SPECS) for c in P.COVERED_BY_PREVIOUS.values())
     assert not missing, f"primitives whose commit op no Lead transaction is entered under: {missing}"
     assert set(P.NOT_STEPS) <= set(P.SPECS)  # only declared primitives are listed as not steps
     assert P.BY_DECISION <= {p for p in P.SPECS if P.SPECS[p].guard_id == p}  # each has a decision of its own name

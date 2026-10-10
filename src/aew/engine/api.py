@@ -437,6 +437,10 @@ class Engine:
         queries.register("review.ingest", evidence.review_ingest_query)
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
+        queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
+        queries.register("integrate.prepare", integration.prepare_query)
+        queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
+        queries.register("integrate.publish", integration.publish_query)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
@@ -612,6 +616,15 @@ class Engine:
     def gate_memo(self) -> AbstractContextManager[None]:
         """Within this block, a gate context asked again of the same control state is reused (a read-only answer)."""
         return self._gates.memo()
+
+    def validation_mode(self, work_id: str | None, *, state: dict[str, Any] | None = None) -> str | None:
+        """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None."""
+        return self._integration.validation_mode(self._k.store.read() if state is None else state, work_id or "")
+
+    def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
+        stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
+        return self._integration.candidate_overlay(state, work_id)
 
     def guard_queries(self) -> list[str]:
         """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
@@ -1125,9 +1138,12 @@ class Engine:
         return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
                                               classification=classification, reason=reason)
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """``scope``: the primitive's (``ticket``: `verify.ingest`, ``integration``: `verify.ingest.integration`), whose
+        query must pass; None (the CLI): the report's own scope decides."""
         return self._evidence.verify_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
-                                            evidence_id=evidence_id)
+                                            evidence_id=evidence_id, scope=scope)
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None) -> dict[str, Any]:

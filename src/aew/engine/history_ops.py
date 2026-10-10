@@ -290,10 +290,15 @@ class HistoryCommands:
     def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
                                  since: str | None = None, until: str | None = None,
                                  limit: int = recall.LIMIT_DEFAULT, deadline: float, budget_s: float,
-                                 budget_docs: int, candidates: int,
+                                 budget_docs: int, candidates: int, enabled: bool, fts5: bool,
                                  fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
         """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2),
         answering from ``state``, the committed state it already read.
+
+        The switch (``enabled``) and the FTS5 answer (``fts5``) are the caller's, read with its snapshot: policy is
+        never re-read from disk here, so an edit that lands after the snapshot cannot contradict the capability the
+        same snapshot showed (PR #175 review, m2). The invocation guard stays as defence in depth: it reads this
+        process's environment, as the caller's capability does, and its refusal carries its reason.
 
         Without the lock, the root and the tail cannot be copied together, which is the premise under which a search
         may reset the substrate. So the root comes from ``state``, the tail's bytes are read once, and the two are
@@ -303,7 +308,7 @@ class HistoryCommands:
         indexed, with ``history_moved``. Either way the substrate is searched with ``may_reset=False``, under the
         caller's ``deadline``, catch-up budget and candidate budget, and the fence takes its token from
         ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail."""
-        if not recall.search_enabled(self.k.aew_root, state):
+        if not enabled:
             raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
                                         "recall.raw_history_search: explicit", reason="switched_off")
         recall.refuse_in_invocations()
@@ -319,7 +324,7 @@ class HistoryCommands:
                     _epoch(stamp)
                 except ValueError:
                     raise UsageError(f"{name} must be a UTC timestamp like 2026-10-02T00:00:00Z") from None
-        if not recall.fts5_available():
+        if not fts5:
             raise Unavailable("this Python's SQLite has no usable FTS5, which raw-history search needs; nothing "
                               "else is affected", reason="fts5_unavailable")
         self._require_v2(state)

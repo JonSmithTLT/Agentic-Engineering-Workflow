@@ -24,7 +24,6 @@ from aew.engine.api import Engine
 from aew.engine.base import POLICY_PINS
 from aew.errors import AEWError
 from aew.knowledge.manifest import MANIFEST, load_manifest
-from aew.policy.execution import REL_PATH as EXECUTION_REL
 from aew.schemas import validate
 from aew.util import load_yaml, sha256_bytes, utc_now
 
@@ -107,10 +106,8 @@ class StateReader:
         """``recall.search_enabled`` for the cached state, itself cached by the identities of control state, the
         manifest and the execution policy file it names: adopting an edit, or making one nobody adopted, is a new
         answer on the next request. It never raises (an unreadable file is off)."""
-        policy = manifest.get("policy")
-        named = policy.get("execution") if isinstance(policy, dict) else None
-        rel = named if isinstance(named, str) else EXECUTION_REL
-        key = (identity, manifest_identity, _identity(self.engine.aew_root / rel))
+        rel = recall.execution_policy_rel(manifest)  # the same expression the switch reads (PR #175 review, n1)
+        key = (identity, manifest_identity, _identity(self.engine.aew_root / rel) if isinstance(rel, str) else rel)
         if self._search is None or self._search[0] != key:
             self._search = (key, recall.search_enabled(self.engine.aew_root, state))
         return self._search[1]

@@ -814,3 +814,123 @@ def test_the_acceptance_projects_search_variant_serves_the_search(tmp_path):
             if body["data"]["coverage"]["complete"]:
                 break
         assert body["data"]["hits"] and body["data"]["coverage"]["complete"]
+
+
+# ---------------------------------------------------------------------------------------------- PR #175 review
+
+
+@pytest.mark.parametrize("count", ["\u00b2", "9" * 20])
+def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the_cli(built, tmp_path, count):
+    """m1: a count that is not ASCII digits within BoundedCount ("²" passes ``str.isdigit`` and fails ``int``; 20
+    digits overflow the contract's bound) is damage: the dashboard reports it unusable and keeps the file, with
+    ``indexed_through`` never out of bounds; the CLI reports it and rebuilds, instead of crashing."""
+    p = copy_of(built, tmp_path)
+    with tamper(p) as conn:
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'count'", (count,))
+    before = capture(p)
+    with served(p.root) as s:
+        body = s.ok(q("Quokkafacts"))
+        assert codes(body) == ["SEARCH_SUBSTRATE_UNUSABLE"] and body["data"]["hits"] == []
+        assert body["data"]["coverage"]["indexed_through"] is None
+        assert capture(p) == before
+        res = p.aew("history", "search", "Quokkafacts")  # its own process: the CLI may rebuild
+        assert res.returncode == 0, res.stderr
+        assert "rebuilding" in res.json["coverage"]["reasons"]
+        through = res.json["coverage"]["indexed_through"]
+        assert through is None or 0 <= through <= recall.COUNT_MAX
+        for _ in range(20):
+            if not p.ok("history", "search", "Quokkafacts")["coverage_incomplete"]:
+                break
+        assert ids(s.ok(q("Quokkafacts"))) == [built["record"]]
+
+
+def test_an_unadopted_edit_after_the_snapshot_is_answered_from_the_snapshot(built, tmp_path, monkeypatch):
+    """m2: the engine takes the snapshot's switch and FTS5 answer rather than re-reading policy, so an unadopted edit
+    that lands between the snapshot and the engine call cannot turn the snapshot's AVAILABLE into a 403."""
+    from aew.engine.history_ops import HistoryCommands
+
+    p = copy_of(built, tmp_path)
+    policy = p.root / ".aew/policy/execution.yaml"
+    original = HistoryCommands.history_search_committed
+    edited: list[bool] = []
+
+    def edit_first(self, *args, **kwargs):
+        policy.write_text(policy.read_text(encoding="utf-8").replace("raw_history_search: explicit",
+                                                                     'raw_history_search: "off"'),
+                          encoding="utf-8", newline="\n")
+        edited.append(True)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(HistoryCommands, "history_search_committed", edit_first)
+    with served(p.root) as s:
+        body = s.ok(q("Quokkafacts"))
+        assert edited and ids(body) == [built["record"]] and body["data"]["coverage"]["complete"]
+        status, after = s.json(q("Quokkafacts"))  # the next snapshot sees the unadopted edit: off, the template's
+        assert (status, after["code"]) == (400, "INVALID_REQUEST")
+    assert not recall.recall_search_enabled(p.root / ".aew")
+
+
+def many_evidence_hits(monkeypatch, built, copies: int = 50) -> None:
+    """The engine's result for "sharedmarker" with its evidence hits repeated to ``copies`` hits in all (two units'
+    records), so that link resolution meets many evidence hits in one request."""
+    from aew.engine.history_ops import HistoryCommands
+
+    original = HistoryCommands.history_search_committed
+
+    def repeated(self, *args, **kwargs):
+        out = original(self, *args, **kwargs)
+        evidence = [h for h in out["hits"] if h["kind"] == "evidence"]
+        assert {h["id"] for h in evidence} == {built["record"], built["record2"]}
+        out["hits"] = [dict(evidence[i % len(evidence)]) for i in range(copies)]
+        return out
+
+    monkeypatch.setattr(HistoryCommands, "history_search_committed", repeated)
+
+
+def test_many_evidence_links_are_memoized_and_stay_within_the_deadline(built, tmp_path, monkeypatch):
+    """m3: each archived unit's bundle is read once per request however many of its evidence hits there are (a cheap
+    existence check, no evidence body read), so fifty links cost two bundle reads and the request stays within the
+    deadline plus a small margin."""
+    from aew.engine.archive_ops import Archive
+
+    p = copy_of(built, tmp_path)
+    many_evidence_hits(monkeypatch, built)
+    bundle, reads = Archive.bundle, []
+
+    def slow_bundle(self, state, work_id):
+        reads.append(work_id)
+        time.sleep(0.1)  # unmemoized, fifty links would take five seconds
+        return bundle(self, state, work_id)
+
+    monkeypatch.setattr(Archive, "bundle", slow_bundle)
+    with served(p.root) as s:
+        s.ok(q("sharedmarker", limit=50))  # warm the server and the substrate
+        reads.clear()
+        took, body = timed(s, q("sharedmarker", limit=50))
+    hits = body["data"]["hits"]
+    assert len(hits) == 50
+    assert all((h["expand"]["link"] or {}).get("id") == h["id"] and h["expand"]["link"]["kind"] == "evidence"
+               for h in hits), [h["expand"]["link"] for h in hits][:3]
+    assert sorted(reads) == sorted({built["investigation"], built["investigation2"]})
+    assert took < P.SEARCH_DEADLINE_S + 1.5, took
+
+
+def test_evidence_links_after_the_deadline_are_null(built, tmp_path, monkeypatch):
+    from aew.engine.archive_ops import Archive
+
+    p = copy_of(built, tmp_path)
+    many_evidence_hits(monkeypatch, built)
+    bundle = Archive.bundle
+
+    def slow_bundle(self, state, work_id):
+        time.sleep(0.6)
+        return bundle(self, state, work_id)
+
+    with served(p.root) as s:
+        s.ok(q("sharedmarker", limit=50))  # warm, before the slow bundle
+        monkeypatch.setattr(Archive, "bundle", slow_bundle)
+        with deadline(monkeypatch, 0.3):
+            took, body = timed(s, q("sharedmarker", limit=50))
+    links = [h["expand"]["link"] for h in body["data"]["hits"]]
+    assert len(links) == 50 and links.count(None) >= 48  # at most the one unit read before the deadline passed
+    assert took < 0.3 + 0.6 + 1.5, took

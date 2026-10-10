@@ -37,6 +37,7 @@ document's text is its string leaves, with credential verifiers and every creden
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -73,6 +74,9 @@ LABEL = ("raw history: archived records as they were written, not admitted Knowl
 # (``time_budget``, ``candidate_budget``), or was told the history moved under its snapshot (``history_moved``).
 COVERAGE_REASONS = ("budget", "busy", "rebuilding", "stale", "history_unreadable",
                     "foreign", "unusable", "time_budget", "candidate_budget", "history_moved")
+# The largest count a watermark may hold: the contract's BoundedCount (JavaScript's exact integers).
+COUNT_MAX = 2**53 - 1
+_ASCII_DIGITS = re.compile(r"[0-9]{1,16}")
 PROGRESS_STEPS = 1000  # SQLite virtual-machine steps between two deadline checks of a ranked query
 
 _TABLES = ("meta", "docs", "doc_text")
@@ -105,6 +109,16 @@ def recall_search_enabled(aew_root: Path) -> bool:
     return search_enabled(aew_root, state)
 
 
+def execution_policy_rel(manifest: dict[str, Any]) -> Any:
+    """The execution policy's path exactly as ``policy_files`` names it (the key of its pin), from a parsed manifest.
+    The one expression for it: the switch and the dashboard's cache of the switch both use it (PR #175 review, n1).
+    It may be a value of another type in a malformed manifest; callers check it is a string."""
+    from aew.policy import execution as X
+
+    named = manifest.get("policy") or {}
+    return (named.get("execution") if isinstance(named, dict) else None) or X.REL_PATH
+
+
 def search_enabled(aew_root: Path, state: dict[str, Any]) -> bool:
     """:func:`recall_search_enabled` for committed state the caller already read (the dashboard's request snapshot,
     register F20.8 S2), so that the switch, the capability and the response's ``control_revision`` all come from one
@@ -124,9 +138,7 @@ def search_enabled(aew_root: Path, state: dict[str, Any]) -> bool:
         manifest = load_yaml(raw_manifest.decode("utf-8"), source=MANIFEST)
         if not isinstance(manifest, dict):
             return False
-        named = manifest.get("policy") or {}
-        # The path exactly as ``policy_files`` names it, which is the key of its pin.
-        rel = (named.get("execution") if isinstance(named, dict) else None) or X.REL_PATH
+        rel = execution_policy_rel(manifest)
         pin = pins.get(rel)
         if not isinstance(rel, str) or not isinstance(pin, str):
             return False
@@ -320,6 +332,10 @@ class _Busy(Exception):
     """Another process holds the substrate's write lock (it is building), or has just moved its watermark."""
 
 
+class _ForgedWatermark(sqlite3.DatabaseError):
+    """The watermark's count is not a bounded count of ASCII digits: the file is damaged (or forged)."""
+
+
 class _Unusable(Exception):
     """The substrate is damaged, of another version or missing tables, and this caller may not delete it."""
 
@@ -428,9 +444,16 @@ class Substrate:
 
     @staticmethod
     def _watermark(conn: sqlite3.Connection) -> dict[str, Any]:
+        """The substrate's watermark; the genesis when there is none. A count that is not ASCII digits within
+        ``COUNT_MAX`` (``"²"``, a 20-digit value, a blob) is damage, never an exception of another kind (PR #175
+        review, m1): ``_ForgedWatermark`` is a ``sqlite3.DatabaseError``, so every caller treats it as a damaged file
+        (the CLI rebuilds it; the dashboard reports it unusable)."""
         meta = dict(conn.execute("SELECT key, value FROM meta WHERE key IN ('count', 'h')").fetchall())
         count, h = meta.get("count"), meta.get("h")
-        if isinstance(count, str) and count.isdigit() and isinstance(h, str) and len(h) == 64:
+        if "count" in meta and not (isinstance(count, str) and _ASCII_DIGITS.fullmatch(count)
+                                    and int(count) <= COUNT_MAX):
+            raise _ForgedWatermark("the substrate's watermark count is not a bounded count")
+        if isinstance(count, str) and isinstance(h, str) and len(h) == 64:
             return {"count": int(count), "h": h}
         return {"count": 0, "h": M.GENESIS_H}
 

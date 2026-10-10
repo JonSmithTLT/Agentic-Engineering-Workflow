@@ -208,6 +208,10 @@ class Projector:
         self.archive = snapshot.engine.archive
         self.units = snapshot.engine.units
         self._capabilities: dict[str, Any] | None = None
+        # This request's memo for a search's evidence links (PR #175 review, m3): the unit each evidence id belongs
+        # to, and the evidence ids each archived unit's bundle records (None: no bundle).
+        self._evidence_units: dict[str, str | None] = {}
+        self._archived_ids: dict[str, frozenset[str] | None] = {}
         self._attention: list[dict[str, Any]] | None = None
         self._observed: dict[str, tuple[str, dict[str, Any] | None]] = {}
 
@@ -638,18 +642,7 @@ class Projector:
     def evidence(self, evidence_id: str) -> dict[str, Any]:
         self.require("evidence")
         check_id(evidence_id)
-        match = EVIDENCE_PRODUCER.match(evidence_id)
-        inv_id = match.group(1) if match else None
-        inv = self.state["invocations"].get(inv_id) if inv_id else None
-        wid = inv["work_unit"] if inv else None
-        if wid is None and inv_id and is_v2(self.state):
-            archived = self.archive.archived_invocation(self.state, inv_id)
-            wid = archived["work_unit"] if archived else None
-        if wid is None:  # a check result a Lead ingested by hand, or an id of another shape: the hot units' dirs
-            for candidate in sorted(self.state["work"]):
-                if (E.evidence_dir(self.s.aew_root, candidate) / f"{evidence_id}.md").is_file():
-                    wid = candidate
-                    break
+        wid = self._evidence_unit(evidence_id)
         if wid is None:
             raise NotFound(f"no evidence {evidence_id}")
         unit = self.state["work"].get(wid)
@@ -664,6 +657,41 @@ class Projector:
             if meta["id"] == evidence_id:
                 return self.envelope(self.evidence_item(meta, body, unit))
         raise NotFound(f"no evidence {evidence_id}")
+
+    def _evidence_unit(self, evidence_id: str) -> str | None:
+        """The work unit an evidence record belongs to, as ``/evidence/{id}`` locates it (memoized per request)."""
+        if evidence_id in self._evidence_units:
+            return self._evidence_units[evidence_id]
+        match = EVIDENCE_PRODUCER.match(evidence_id)
+        inv_id = match.group(1) if match else None
+        inv = self.state["invocations"].get(inv_id) if inv_id else None
+        wid = inv["work_unit"] if inv else None
+        if wid is None and inv_id and is_v2(self.state):
+            archived = self.archive.archived_invocation(self.state, inv_id)
+            wid = archived["work_unit"] if archived else None
+        if wid is None:  # a check result a Lead ingested by hand, or an id of another shape: the hot units' dirs
+            for candidate in sorted(self.state["work"]):
+                if (E.evidence_dir(self.s.aew_root, candidate) / f"{evidence_id}.md").is_file():
+                    wid = candidate
+                    break
+        self._evidence_units[evidence_id] = wid
+        return wid
+
+    def _evidence_exists(self, evidence_id: str) -> bool:
+        """Whether ``/evidence/{id}`` finds this record, checked cheaply: a hot unit's file exists, or the archived
+        unit's bundle (read once per unit and request) records it. No body is read or hashed; the search already
+        authenticated the hit's text."""
+        wid = self._evidence_unit(evidence_id)
+        if wid is None:
+            return False
+        if wid in self.state["work"]:
+            return (E.evidence_dir(self.s.aew_root, wid) / f"{evidence_id}.md").is_file()
+        if wid not in self._archived_ids:
+            bundle = self.archive.bundle(self.state, wid) if is_v2(self.state) else None
+            self._archived_ids[wid] = (None if bundle is None else
+                                       frozenset(str(r["id"]) for r in bundle["unit"].get("evidence") or []))
+        ids = self._archived_ids[wid]
+        return ids is not None and evidence_id in ids
 
     # ---------------------------------------------------------------- knowledge (decision records)
 
@@ -806,12 +834,13 @@ class Projector:
         chosen = sorted(set(kinds))
         query = {"terms": list(terms), "kinds": chosen, "since": since, "until": until, "limit": n}
         root_h = str(self.state["cold"]["root"]["head_h"])
-        started = time.monotonic()
+        deadline = time.monotonic() + SEARCH_DEADLINE_S
         try:
             out = self.engine.history_search_committed(
                 self.state, list(terms), kinds=chosen or None, since=since, until=until, limit=n,
-                deadline=started + SEARCH_DEADLINE_S, budget_s=SEARCH_BUILD_S, budget_docs=SEARCH_BUILD_DOCS,
-                candidates=SEARCH_CANDIDATES, fence_token=lambda snippets: fence_token(query, root_h, snippets))
+                deadline=deadline, budget_s=SEARCH_BUILD_S, budget_docs=SEARCH_BUILD_DOCS,
+                candidates=SEARCH_CANDIDATES, enabled=self.s.history_search, fts5=recall.fts5_available(),
+                fence_token=lambda snippets: fence_token(query, root_h, snippets))
         except errors.UsageError as exc:
             raise InvalidRequest(exc.message) from None
         except errors.CapabilityUnavailable as exc:  # the engine's own guard, behind the capability's
@@ -825,25 +854,31 @@ class Projector:
         if unverified:
             reasons.append(reason("SEARCH_UNVERIFIED"))
         through = coverage["indexed_through"]
+        if through is not None and not (isinstance(through, int) and 0 <= through <= recall.COUNT_MAX):
+            # never outside BoundedCount (PR #175 review, m1): the engine refuses such a watermark; this is the guard
+            through = None
+            reasons.append(reason("SEARCH_SUBSTRATE_UNUSABLE"))
         return self.envelope({
             "label": recall.LABEL, "trust_label": TRUST_LABEL, "query": query, "fence": out["fence"],
-            "hits": [self._search_hit(h) for h in out["hits"] if _searchable_id(h.get("id"))],
-            "coverage": {"complete": not reasons, "indexed_through": through if isinstance(through, int) else None,
+            "hits": [self._search_hit(h, deadline) for h in out["hits"] if _searchable_id(h.get("id"))],
+            "coverage": {"complete": not reasons, "indexed_through": through,
                          "history_entries": int(coverage["history_entries"]), "reasons": _bounded(reasons)},
             "unverified": {"count": unverified} if unverified else None,
         })
 
-    def _search_hit(self, hit: dict[str, Any]) -> dict[str, Any]:
+    def _search_hit(self, hit: dict[str, Any], deadline: float) -> dict[str, Any]:
         """One authenticated hit, as the engine built it, with its expansion typed: the CLI command as an argv array,
         and a link only to a page that exists (``/evidence/{id}`` when the projector locates the record,
-        ``/history/{id}`` for a history entry's own record), so there are no dead links."""
+        ``/history/{id}`` for a history entry's own record), so there are no dead links. An evidence link is checked
+        cheaply and memoized per request; once the search's deadline has passed it is null (PR #175 review, m3)."""
         hid, subject = str(hit["id"]), hit.get("subject")
+        link: dict[str, Any] | None = None
         if hit["kind"] == "evidence":
-            try:
-                self.evidence(hid)
-                link: dict[str, Any] | None = entity(hid, "evidence")
-            except (AEWError, OSError):
-                link = None
+            if time.monotonic() < deadline:
+                try:
+                    link = entity(hid, "evidence") if self._evidence_exists(hid) else None
+                except (AEWError, OSError):
+                    link = None
         else:
             link = entity(hid, "history")
         return {"id": hid, "kind": str(hit["kind"]), "at": str(hit["at"]),

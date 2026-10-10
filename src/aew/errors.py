@@ -241,6 +241,13 @@ class IntegrityError(AEWError):
     exit_code = 6
 
 
+class HistoryMoved(IntegrityError):
+    """A lock-free reader's history-index sync met a later commit (``Archive.lockfree_reads``): a race, not damage.
+    A CLI reader re-reads state under the control lock instead; a lock-free one reports it and reads again later."""
+
+    code = "HISTORY_MOVED"
+
+
 class DispatchUndecided(IntegrityError):
     """An engine defect: a transaction created an invocation or a harness run without a dispatch decision (M4-A)."""
 

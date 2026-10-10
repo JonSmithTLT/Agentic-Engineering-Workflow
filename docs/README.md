@@ -154,7 +154,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 
 Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
 
-**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.2; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
+**Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.3, which adds the maps and raw-history search routes to 0.1.2 and changes nothing 0.1.2 returns; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 
@@ -176,7 +176,7 @@ text is not governing.
 | [`AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md`](design/proposals/AEW_Live_Coordination_and_Assumption_Propagation_Design_v0.1.md) | F9 | Frozen at v0.1; amended by the adopted F9-A1 (2026-10-09), which keeps its invariants | Its concepts are F9-A1's F9-B, which may proceed after F9-A technical qualification |
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
-| [`dashboard-maps-and-history-search-v0.1.md`](design/proposals/dashboard-maps-and-history-search-v0.1.md) | F20.8 | Approved (operator, 2026-10-10): the contract 0.1.3 change note (the maps routes and the conditional raw-history search), the compatibility rule, and its appendix of OpenAPI additions for the web developer to adopt; not yet adopted in a contract | S0 (this note and the main line's readiness), then W1 (web), S1 maps, S2 search, S3 acceptance |
+| [`dashboard-maps-and-history-search-v0.1.md`](design/proposals/dashboard-maps-and-history-search-v0.1.md) | F20.8 | Approved (operator, 2026-10-10): the contract 0.1.3 change note (the maps routes and the conditional raw-history search), the compatibility rule, and its appendix of OpenAPI additions; adopted unchanged in contract 0.1.3 (W1, PR #173) | S0 and W1 done; S1 serves the five maps routes; S2 search, then S3 acceptance |
 
 ## Research and investigations ([`research/`](research/))
 

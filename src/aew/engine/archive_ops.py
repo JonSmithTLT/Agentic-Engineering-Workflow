@@ -19,14 +19,18 @@ or credential, through the derived index (``aew.history.index``).
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import threading
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
-from aew.errors import IntegrityError, ValidationFailed
+from aew.errors import HistoryMoved, IntegrityError, ValidationFailed
 from aew.history import manifest as M
 from aew.history.index import INDEX_REL, HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
@@ -272,6 +276,21 @@ class Archive:
         self.k = k
         self.cold = History(k.aew_root)
         self._synced: tuple[tuple[int, str], tuple[int, int] | None, HistoryIndex] | None = None
+        self._reader = threading.local()  # a lock-free reader's bound on the index (``lockfree_reads``)
+
+    @contextmanager
+    def lockfree_reads(self, wait_s: float) -> Iterator[None]:
+        """Archived reads, on this thread, that never take the control lock and never wait long on the derived
+        index: an index busy past ``wait_s`` is ``LockTimeout`` on a sync and ``sqlite3.DatabaseError`` on a query of an
+        index already synced, and a sync that meets a later commit is ``HistoryMoved`` instead of the re-read of state
+        (``store.read()``) that a CLI reader does (register F20.8: the dashboard's ``/maps``, which a reader polls).
+        The caller reports these as "read again later"; any other ``IntegrityError`` is damage, reported as such."""
+        previous = getattr(self._reader, "wait_s", None)
+        self._reader.wait_s = wait_s
+        try:
+            yield
+        finally:
+            self._reader.wait_s = previous
 
     # ------------------------------------------------------------------ the finalizer (R6)
 
@@ -650,22 +669,31 @@ class Archive:
     def _index(self, state: dict[str, Any]) -> HistoryIndex:
         """The index synced to the cold root of ``state``. Inside a transaction that root is the committed one; a
         reader outside the lock re-reads the state if a later commit replaced the tail meanwhile."""
+        inside = bool(self.k.store.held)
+        lockfree: float | None = None if inside else getattr(self._reader, "wait_s", None)
         for attempt in range(3):
             root = state["cold"]["root"]
             key = (root["count"], root["head_h"])
             # A command that reads several archived units syncs once: the index is reused while its root and its file
             # are unchanged (any write to the file changes its size or time, and every result is still authenticated).
             if self._synced and self._synced[0] == key and self._synced[1] == self._index_stat():
-                return self._synced[2]
+                if lockfree is None:
+                    return self._synced[2]
+                bounded = copy.copy(self._synced[2])  # the same index, queried with the lock-free reader's bound
+                bounded.timeout = lockfree
+                return bounded
             # Inside the control lock, never wait long on the derived index: a busy one is replaced by a private
             # index built from the history, so an authoritative commit does not fail on it (area 5 F3).
-            inside = bool(self.k.store.held)
-            index = HistoryIndex(self.k.aew_root, **({"timeout": BUSY_WAIT_IN_TXN_S} if inside else {}))
+            wait = BUSY_WAIT_IN_TXN_S if inside else lockfree
+            index = HistoryIndex(self.k.aew_root, **({"timeout": wait} if wait is not None else {}))
             try:
                 index.sync(root, private_when_busy=inside)
-                self._synced = (key, self._index_stat(), index)
+                if lockfree is None:  # a lock-free reader's short-bound index is never kept for other readers
+                    self._synced = (key, self._index_stat(), index)
                 return index
-            except IntegrityError:
+            except IntegrityError as exc:
+                if lockfree is not None:  # a lock-free reader never re-reads state: the race is reported as such
+                    raise HistoryMoved(str(exc)) from exc
                 if self.k.store.held or attempt == 2:
                     raise
                 state = self.k.store.read()

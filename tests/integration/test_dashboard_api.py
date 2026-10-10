@@ -114,6 +114,9 @@ def world(tmp_path_factory) -> World:
     p.lead("work", "move", done, "--parent", epic, "--reason", "regrouped under the Epic")
     w.ids = {"epic": epic, "story": story, "done": done, "investigation": inv, "open": open_ticket,
              "blocked": blocked}
+    # a selected structural map, for the maps routes the sweeps cover (contract 0.1.3; register F20.8)
+    w.ids["map"] = p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", "none:0",
+                        "--json")["root"]
     engine = Engine.discover(p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()
@@ -123,11 +126,13 @@ def world(tmp_path_factory) -> World:
 
 
 def concrete(world: World, route: str) -> str:
-    """A request path for a contract route: the ids of the world for ``{id}``."""
+    """A request path for a contract route: the ids of the world for ``{id}`` and ``{root}``."""
     ids = world.ids
     return {"/work/{id}": f"/work/{ids['done']}", "/runs/{id}": f"/runs/{first_invocation(world)}",
             "/evidence/{id}": f"/evidence/{first_evidence(world)}", "/knowledge/{id}": "/knowledge/D-0001",
-            "/history/{id}": f"/history/{ids['done']}"}.get(route, route)
+            "/history/{id}": f"/history/{ids['done']}", "/maps/structural/{root}": f"/maps/structural/{ids['map']}",
+            "/maps/structural/{root}/inputs": f"/maps/structural/{ids['map']}/inputs",
+            "/maps/diff": f"/maps/diff?a={ids['map']}&b={ids['map']}"}.get(route, route)
 
 
 def first_invocation(world: World) -> str:

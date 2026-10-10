@@ -54,6 +54,11 @@ skipped:
       needs POSIX symlinks and FIFOs. Windows beats only a heartbeat lstat shows is a regular file, and a beat on a
       directory never raises on any platform (test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises). Covered
       on Linux.
+    tests/integration/test_dashboard_maps.py::test_a_fifo_artifact_or_registry_is_never_opened_and_a_swap_race_does_not_block: >-
+      needs POSIX FIFOs (register F20.8, S1). Windows has none; the same bounded read refuses a directory registry and
+      an oversized artifact before any read on every platform
+      (test_an_invalid_registry_is_a_state_malformed_oversized_or_not_a_regular_file,
+      test_an_oversized_or_linked_artifact_is_refused_and_never_read_past_the_cap). Covered on Linux.
     tests/unit/test_runlog_reads.py::test_a_request_queue_that_is_a_link_is_not_read_or_emptied: >-
       needs POSIX symlinks; the queue is checked with lstat on every platform. Covered on Linux.
     tests/unit/test_runlog_reads.py::test_the_event_log_never_blocks_on_a_fifo_or_writes_through_a_link: >-

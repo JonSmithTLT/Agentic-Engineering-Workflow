@@ -1,8 +1,10 @@
 # Dashboard maps and raw-history search: the contract 0.1.3 change note (v0.1)
 
 - **Status:** **Approved, being built** (operator, 2026-10-10: the whole plan, including the raw-history search route).
-  Proposed 2026-10-10 by the main line, as slice S0. The additions in Appendix A are not yet adopted in a contract:
-  every route they add is pending. Register F20.8; ledger prefix DMS.
+  Proposed 2026-10-10 by the main line, as slice S0; as adopted in contract `0.1.3` at `0c21d9c`; served at adoption:
+  `/maps`, `/maps/diff`, `/maps/structural`, `/maps/structural/{root}`, `/maps/structural/{root}/inputs`. The web
+  developer adopted Appendix A without amendment (W1, PR #173), so it stands as the adopted shapes; S1 serves the
+  five maps routes, and `/history/search` stays pending until S2. Register F20.8; ledger prefix DMS.
 - **Owns:** the main line's proposal for contract 0.1.3: six routes (five maps routes and the conditional
   `/history/search`), two capability keys, the compatibility rule, and the readiness that keeps `main` green whatever
   the web developer amends.

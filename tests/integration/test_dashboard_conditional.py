@@ -101,10 +101,9 @@ class Client:
 
 
 def CONTRACT_ROUTE(path: str) -> str:  # noqa: N802 (reads as the constant table it stands for)
-    bare = path.split("?", 1)[0]
-    if bare in CONTRACT.paths:
-        return bare
-    return "/" + bare.split("/")[1] + "/{id}"
+    found = match_route(path.split("?", 1)[0])
+    assert found is not None, path
+    return found[0]
 
 
 class World:
@@ -141,10 +140,14 @@ def world(tmp_path_factory):
     _, evidence = w.client.ok(f"/evidence?work={w.ticket}")
     _, knowledge = w.client.ok("/knowledge")
     assert evidence["data"]["items"] and knowledge["data"]["items"], "the world needs evidence and a decision"
+    # a selected structural map, for the maps routes (contract 0.1.3; register F20.8)
+    root = p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", "none:0", "--json")["root"]
     w.paths = {"/work/{id}": f"/work/{w.ticket}", "/runs/{id}": f"/runs/{w.invocation}",
                "/evidence/{id}": f"/evidence/{evidence['data']['items'][0]['id']}",
                "/knowledge/{id}": f"/knowledge/{knowledge['data']['items'][0]['id']}",
-               "/history/{id}": f"/history/{done}"}
+               "/history/{id}": f"/history/{done}", "/maps/structural/{root}": f"/maps/structural/{root}",
+               "/maps/structural/{root}/inputs": f"/maps/structural/{root}/inputs",
+               "/maps/diff": f"/maps/diff?a={root}&b={root}"}
     yield w
     w.server.stop()
     w.lab.cleanup()

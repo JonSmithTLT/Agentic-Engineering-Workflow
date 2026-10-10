@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -153,17 +154,29 @@ def select_architecture(engine: Any, *, token: str, evidence_id: str, expect: st
     return {"ok": True, "architecture": architecture(engine, new), "map_revision": store.revision_of(new)}
 
 
-def architecture(engine: Any, registry: dict[str, Any] | None) -> dict[str, Any] | None:
+def architecture(engine: Any, registry: dict[str, Any] | None, *,
+                 evidence: Callable[[str], dict[str, Any]] | None = None,
+                 head: Callable[[], str | None] | None = None,
+                 freshness: Callable[[dict[str, Any], str | None], dict[str, Any]] | None = None,
+                 ) -> dict[str, Any] | None:
     """The selected architecture reference with its evidence's freshness against the authoritative commit, or None.
-    Never raises: a reference whose evidence is gone is reported UNAVAILABLE, and a stale one is labelled STALE."""
+    Never raises: a reference whose evidence is gone is reported UNAVAILABLE, and a stale one is labelled STALE.
+
+    The CLI uses the defaults. The dashboard (register F20.8) injects its own collaborators, so both read one
+    semantics: ``evidence`` finds a record's metadata by id without the control lock (``_evidence`` reads through the
+    engine's locked paths), ``head`` gives the authoritative commit it already resolved, and ``freshness`` is
+    ``record_freshness`` bounded by a timeout and cached."""
     ref = ((registry or {}).get("selected") or {}).get("architecture")
     if not ref:
         return None
     from aew.engine.freshness import record_freshness
 
+    find = evidence or (lambda evidence_id: _evidence(engine, evidence_id))
+    commit = head or engine.authoritative_commit
+    fresh_of = freshness or (lambda record, against: record_freshness(engine.repo_root, record, against))
     try:
-        record = _evidence(engine, ref["evidence_id"])
-        fresh = record_freshness(engine.repo_root, record, engine.authoritative_commit())
+        record = find(ref["evidence_id"])
+        fresh = fresh_of(record, commit())
     except (AEWError, OSError, KeyError) as exc:
         return {"evidence_id": ref["evidence_id"], "freshness": {"status": "UNAVAILABLE",
                                                                  "detail": getattr(exc, "code", type(exc).__name__)}}

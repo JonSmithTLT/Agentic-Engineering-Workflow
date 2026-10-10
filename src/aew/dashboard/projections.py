@@ -24,24 +24,42 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from aew.dashboard import cursors
+from aew.dashboard import mapview as MV
 from aew.dashboard.etag import SNAPSHOT_TIME
-from aew.dashboard.reader import Snapshot
+from aew.dashboard.reader import INVALID, NONE, MapsReader, Registry, Snapshot
 from aew.dashboard.reasons import reason
 from aew.engine import outbox
 from aew.engine import transitions as T
 from aew.engine.archive_ops import held_evidence, is_v2, redact
+from aew.engine.freshness import record_freshness
 from aew.engine.history_ops import _public as public_entry
-from aew.errors import AEWError, IntegrityError, LockTimeout, NotFound
+from aew.errors import (
+    AEWError,
+    GitError,
+    HistoryMoved,
+    IntegrityError,
+    LockTimeout,
+    MapArtifactCorrupt,
+    MapCurrentnessUnproven,
+    NotFound,
+    ValidationFailed,
+)
 from aew.harness import contract as K
 from aew.harness import runlog
 from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
+from aew.maps import freshness as MF
+from aew.maps import gitobjects, structural
+from aew.maps import rules as MR
+from aew.maps import service as MSV
+from aew.maps import store as MS
 
 # Route -> the ``schema_version`` its envelope carries: the const of the route's response schema in the accepted
 # contract (tests/unit/test_dashboard_contract.py holds every served route to it). A route a later minor version
@@ -52,6 +70,9 @@ ENVELOPE_VERSION: dict[str, str] = {
         "/evidence", "/evidence/{id}", "/knowledge", "/knowledge/{id}", "/history", "/history/{id}", "/attention",
         "/activity")
 }
+# The maps routes (register F20.8, S1): added by contract 0.1.3, so their envelopes carry it.
+MAPS_ROUTES = ("/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs", "/maps/diff")
+ENVELOPE_VERSION.update(dict.fromkeys(MAPS_ROUTES, "0.1.3"))
 BASE_ENVELOPE = "0.1.2"  # a projector built without a route (a test's) speaks the base version
 OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 LIMIT_DEFAULT, LIMIT_MAX = 100, 250
@@ -62,6 +83,17 @@ AVAILABLE, UNAVAILABLE, UNSUPPORTED = "AVAILABLE", "UNAVAILABLE", "UNSUPPORTED"
 DECISION_ID = re.compile(r"^D-[0-9]+$")
 EVIDENCE_PRODUCER = re.compile(r"^(INV-[0-9]+)-")
 RICH_PLAIN, RICH_MARKDOWN = "plain", "markdown"
+
+# The maps routes (register F20.8, S1; the change note §4). Ids are checked before any file or git access, so no
+# ref, revision expression, option, short id or path reaches either.
+MAP_ROOT = re.compile(r"[0-9a-f]{64}")  # fullmatch: `$` would admit a trailing newline
+FULL_OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+MAP_LIST_DEFAULT, MAP_LIST_MAX = 20, 50
+MAP_INPUTS_DEFAULT, MAP_INPUTS_MAX = 100, 250
+SCAN_MAPS, SCAN_BYTES = 256, 64 << 20  # one request examines at most this many stored maps and reads at most this
+MAPS_GIT_TIMEOUT_S = 10.0  # each git process of a maps read: projections are serialized, so never the CLI's 300 s
+EVIDENCE_ID_MAX = 64  # the registry's own bound on an architecture evidence id
+ARCHIVE_WAIT_S = 2.0  # how long /maps waits on a busy history index for archived architecture evidence
 
 
 def _custody(inv: dict[str, Any]) -> bool:
@@ -107,15 +139,15 @@ def _bounded(items: list[Any], n: int = 250) -> list[Any]:
     return items[:n]
 
 
-def parse_limit(raw: str | None) -> int:
+def parse_limit(raw: str | None, default: int = LIMIT_DEFAULT, maximum: int = LIMIT_MAX) -> int:
     if raw is None:
-        return LIMIT_DEFAULT
+        return default
     try:
         value = int(raw)
     except ValueError:
         raise InvalidRequest("limit must be an integer") from None
-    if not 1 <= value <= LIMIT_MAX:
-        raise InvalidRequest(f"limit must be between 1 and {LIMIT_MAX}")
+    if not 1 <= value <= maximum:
+        raise InvalidRequest(f"limit must be between 1 and {maximum}")
     return value
 
 
@@ -149,14 +181,38 @@ def check_timestamp(name: str, value: str | None, *, lower_bound: bool = False) 
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def check_maps_request(route: str, query: dict[str, str], matched: dict[str, str]) -> None:
+    """The maps routes' parameters, checked before the snapshot is read and before any file or git access (the
+    change note §4.1): ``400 INVALID_REQUEST`` for a malformed root, commit, section or limit, or a missing
+    operand. A cursor is checked by its projection, against its scope."""
+    if "root" in matched and not MAP_ROOT.fullmatch(matched["root"]):
+        raise InvalidRequest("the root must be 64 lower-case hex digits")
+    for name in ("against", "source_revision"):
+        if name in query and not FULL_OBJECT_ID.fullmatch(query[name]):
+            raise InvalidRequest(f"{name} must be a full object id: 40 or 64 lower-case hex digits")
+    if route == "/maps/diff":
+        for name in ("a", "b"):
+            if name not in query:
+                raise InvalidRequest(f"the parameter {name} is required")
+            if not MAP_ROOT.fullmatch(query[name]):
+                raise InvalidRequest(f"{name} must be a root: 64 lower-case hex digits")
+    if "section" in query and query["section"] not in structural.SECTIONS:
+        raise InvalidRequest(f"section must be one of {', '.join(structural.SECTIONS)}")
+    if route == "/maps/structural":
+        parse_limit(query.get("limit"), MAP_LIST_DEFAULT, MAP_LIST_MAX)
+    elif route == "/maps/structural/{root}/inputs":
+        parse_limit(query.get("limit"), MAP_INPUTS_DEFAULT, MAP_INPUTS_MAX)
+
+
 # ------------------------------------------------------------------------------------------------- the projector
 
 class Projector:
     """Every projection of one snapshot. Nothing here writes."""
 
-    def __init__(self, snapshot: Snapshot, *, route: str | None = None) -> None:
+    def __init__(self, snapshot: Snapshot, *, route: str | None = None, maps: MapsReader | None = None) -> None:
         self.s = snapshot
         self.route = route  # the contract route being answered: it decides the envelope's version
+        self.maps = maps  # the server's maps reader and its caches (the maps routes; register F20.8)
         self.state = snapshot.state
         self.engine = snapshot.engine
         self.archive = snapshot.engine.archive
@@ -205,6 +261,8 @@ class Projector:
                 "integrity": {"state": history_state, "reasons": list(history_reasons)},
                 "queue": {"state": UNSUPPORTED, "reasons": [reason("NOT_IN_CONTRACT_0_1_2")]},
                 "action_projection": {"state": UNSUPPORTED, "reasons": [reason("AWAITS_ACTION_PROJECTION")]},
+                # 0.1.3: every project has the maps pages; having no map is a state of the data (``/maps``)
+                "maps": dict(ok),
             }
         return self._capabilities
 
@@ -578,6 +636,15 @@ class Projector:
     def evidence(self, evidence_id: str) -> dict[str, Any]:
         self.require("evidence")
         check_id(evidence_id)
+        meta, body, unit = self.locate_evidence(evidence_id)
+        return self.envelope(self.evidence_item(meta, body, unit))
+
+    def locate_evidence(self, evidence_id: str) -> tuple[dict[str, Any], str, dict[str, Any] | None]:
+        """An evidence record by id: ``(meta, body, its unit)``, or ``NotFound``. The producing invocation names the
+        unit (hot, or archived through the snapshot's history); a record of another shape is looked for in the hot
+        units' directories. ``evidence_id`` must already be a checked opaque id. An archived lookup syncs the derived
+        history index, and on a race re-reads state under the control lock as any reader does, unless the caller
+        wraps it in ``archive.lockfree_reads`` (``/maps`` does; ``/evidence/{id}`` keeps the reader's path)."""
         match = EVIDENCE_PRODUCER.match(evidence_id)
         inv_id = match.group(1) if match else None
         inv = self.state["invocations"].get(inv_id) if inv_id else None
@@ -598,11 +665,11 @@ class Projector:
             if not path.is_file():
                 raise NotFound(f"no evidence {evidence_id}")
             meta, body = E.read(path)
-            return self.envelope(self.evidence_item(meta, body, unit))
+            return meta, body, unit
         unit, found = self._archived_evidence(wid)
         for meta, body in found:
             if meta["id"] == evidence_id:
-                return self.envelope(self.evidence_item(meta, body, unit))
+                return meta, body, unit
         raise NotFound(f"no evidence {evidence_id}")
 
     # ---------------------------------------------------------------- knowledge (decision records)
@@ -816,6 +883,276 @@ class Projector:
                        "runs": len(active), "attention": len(attention)},
             "capabilities": self.capabilities_data(), "recent": recent,
         })
+
+    # ---------------------------------------------------------------- maps (register F20.8, S1)
+    #
+    # Derived navigation context, never authority (T5-INV-01): read lock-free through the server's MapsReader,
+    # bounded and checked, never generated from a request (the change note §4.1), and labelled on every response.
+    # A missing, corrupt or unreadable selected map is data on /maps, never a refusal (T5-INV-04); a named one that
+    # the strict reader refuses is 422 MAP_ARTIFACT_CORRUPT.
+
+    def _maps(self) -> MapsReader:
+        if self.maps is None:
+            raise AssertionError("the maps routes need the server's MapsReader")
+        return self.maps
+
+    def _vocab(self) -> dict[str, frozenset[str]]:
+        return MV.vocabulary(MR.load())
+
+    def _head_ref(self) -> str:
+        """The authoritative branch's ref, from this request's manifest: resolved by freshness's own ``rev-parse``
+        (one git process), never through the engine's locked or unbounded paths."""
+        return f"refs/heads/{self.s.manifest['repository']['authoritative_branch']}"
+
+    def _registry(self) -> Registry:
+        return self._maps().registry()
+
+    def _selected_root(self, registry: Registry) -> str | None:
+        entry = registry.selected("structural") if registry.state not in (NONE, INVALID) else None
+        return str(entry["sha256"]) if entry else None
+
+    def _stored(self, root: str, *, detail: bool = False,
+                budget: int | None = None) -> tuple[dict[str, Any], dict[str, Any], MV.Detail | None, int]:
+        """A stored map's summary (without ``selected``), what its freshness reads, its projected detail when asked
+        for, and the bytes read for it (0 on a cache hit). ``NOT_FOUND`` and ``MAP_ARTIFACT_CORRUPT`` as the strict
+        reader decides; with ``budget``, a read that would exceed it raises ``_OverBudget`` instead."""
+        reader = self._maps()
+        st = reader.stat(root)
+        key = (root, MS.file_identity(st))
+        known = reader.summaries.get(key)  # only AVAILABLE summaries are kept: a corrupt map is read again
+        cached = reader.details.get(key)
+        if known is not None and cached is not None and (cached[1] is not None or not detail):
+            return known["summary"], cached[0], cached[1], 0
+        if budget is not None and st.st_size > budget:
+            raise _OverBudget
+        vocab = self._vocab()
+        record, identity = reader.load(root, st)  # a corrupt verdict is never cached (review of #178, finding A)
+        key = (root, identity)
+        summary = MV.summary(root, selected=False, record=record, vocab=vocab)
+        inputs = record["inputs"]
+        slim = {"artifact_sha256": record["artifact_sha256"], "source_tree": record["source_tree"],
+                "generator": record["generator"],
+                "inputs": {"path_listing_sha256": inputs["path_listing_sha256"],
+                           "metadata": [{"path": i["path"], "git_oid": i["git_oid"]} for i in inputs["metadata"]]}}
+        projected = MV.project_record(record, vocab) if detail else None
+        size = 256 + sum(len(i["path"]) + 128 for i in inputs["metadata"]) + (projected.size if projected else 0)
+        reader.summaries.put(key, {"status": "AVAILABLE", "summary": summary})
+        reader.details.put(key, (slim, projected), size)
+        return summary, slim, projected, st.st_size
+
+    def _map_freshness(self, slim: dict[str, Any], against: str | None, tally: MV.Tally) -> dict[str, Any]:
+        fresh = MF.freshness(self.s.engine.repo_root, slim, against or self._head_ref(), MSV.identity(),
+                             timeout=MAPS_GIT_TIMEOUT_S)
+        return MV.map_freshness(fresh, tally)
+
+    def _head_commit(self) -> str | None:
+        """The authoritative head, resolved on its own: only when no structural freshness resolved it already."""
+        try:
+            commit, _, _ = gitobjects.resolve(self.s.engine.repo_root, self._head_ref(), timeout=MAPS_GIT_TIMEOUT_S)
+        except (MapCurrentnessUnproven, GitError):
+            return None
+        return commit
+
+    def _architecture_evidence(self, evidence_id: str) -> dict[str, Any]:
+        """The architecture reference's evidence metadata, lock-free (``locate_evidence``). The registry allows any
+        1 to 64 characters, so the id is checked before any path is built (the change note §4.1)."""
+        if not (isinstance(evidence_id, str) and _architecture_id(evidence_id)):
+            raise ValidationFailed("the selected architecture evidence id is not a valid opaque id",
+                                   reason="malformed_id")
+        # Archived evidence goes through the derived history index: never the control lock, never a long wait
+        # (review of #178, finding 1). A busy index or a commit that moved history meanwhile is "read again later".
+        # Only the race and a busy index are "read again later" (review of #178, findings B and C): a query of an
+        # index already synced meets a lock as SQLite's own error; a missing or altered record is damage, which
+        # maps.service.architecture reports UNAVAILABLE.
+        try:
+            with self.archive.lockfree_reads(ARCHIVE_WAIT_S):
+                meta, _, _ = self.locate_evidence(evidence_id)
+        except (HistoryMoved, LockTimeout, sqlite3.DatabaseError) as exc:
+            raise _HistoryBusy from exc
+        return meta
+
+    def _architecture_freshness(self, record: dict[str, Any], head: str | None) -> dict[str, Any]:
+        """``record_freshness`` against ``head``, bounded and cached by ``(evidence, observed commit, head)``: a git
+        that does not answer in time, or a partial clone that could fetch lazily, is UNKNOWN (never cached)."""
+        observed = (record.get("evaluated_snapshot") or {}).get("base_revision")
+        key = (str(record.get("id")), observed if isinstance(observed, str) else None, head)
+        cache = self._maps().architecture
+        known = cache.get(key) if head is not None else None
+        if known is not None:
+            return known
+        repo = self.s.engine.repo_root
+        try:
+            gitobjects.refuse_lazy_fetch(repo, timeout=MAPS_GIT_TIMEOUT_S)
+            fresh = record_freshness(repo, record, head, timeout=MAPS_GIT_TIMEOUT_S)
+        except MapCurrentnessUnproven:
+            return {"status": "UNKNOWN", "detail": "a partial clone on a git that cannot be told not to fetch "
+                                                   "missing objects lazily"}
+        except GitError as exc:
+            LOG.warning("architecture freshness: %s", exc.message)
+            return {"status": "UNKNOWN", "detail": "git did not answer within the dashboard's bound; read again later"
+                    if (exc.details or {}).get("reason") == "timeout" else "git could not compare the commits"}
+        if head is not None:  # an unresolved head is never cached: the next read resolves it again
+            cache.put(key, fresh)
+        return fresh
+
+    def maps_overview(self, *, against: str | None) -> dict[str, Any]:
+        reader = self._maps()
+        registry = self._registry()
+        tally = MV.Tally()
+        if registry.state == INVALID:
+            registry_reasons = [reason("MAP_REGISTRY_INVALID", f"{reason('MAP_REGISTRY_INVALID')['message']} "
+                                                               f"({registry.problem})")]
+        elif registry.state == NONE:
+            registry_reasons = [reason("MAP_NONE")]
+        else:
+            registry_reasons = []
+        structural_view: dict[str, Any] = {"state": "UNAVAILABLE", "reasons": [], "summary": None, "freshness": None}
+        head: str | None = None
+        root = self._selected_root(registry)
+        if registry.state == INVALID:
+            structural_view["reasons"] = list(registry_reasons)
+        elif root is None:
+            structural_view["reasons"] = [reason("MAP_NONE")]
+        else:
+            try:
+                summary, slim, _, _ = self._stored(root)
+            except NotFound:
+                structural_view["reasons"] = [reason("MAP_MISSING")]
+            except MapArtifactCorrupt as exc:
+                why = str(exc.details.get("reason") or "unreadable")
+                structural_view["reasons"] = [reason("MAP_CORRUPT", f"{reason('MAP_CORRUPT')['message']} ({why})")]
+                structural_view["summary"] = MV.summary(root, selected=True, record=None, vocab=self._vocab(),
+                                                        corrupt=why)
+            except OSError as exc:  # the selected map is data on /maps, even when it cannot be read
+                LOG.warning("selected map unreadable: %s", type(exc).__name__)
+                structural_view["reasons"] = [reason("MAP_UNREADABLE")]
+            else:
+                freshness = self._map_freshness(slim, against, tally)
+                structural_view = {"state": "AVAILABLE", "reasons": [], "summary": {**summary, "selected": True},
+                                   "freshness": freshness}
+                if against is None:
+                    head = freshness["against_commit"]
+        architecture = None
+        if registry.selected("architecture") is not None and registry.state not in (NONE, INVALID):
+            if head is None:
+                head = self._head_commit()
+            resolved = head
+            try:
+                ref = MSV.architecture(self.s.engine, registry.data, evidence=self._architecture_evidence,
+                                       head=lambda: resolved, freshness=self._architecture_freshness)
+            except _HistoryBusy:
+                selected = registry.selected("architecture") or {}
+                ref = {"evidence_id": selected.get("evidence_id"),
+                       "freshness": {"status": "UNKNOWN", "detail": "the history index is busy or history moved "
+                                                                   "during the read; read again later"}}
+            architecture = MV.architecture(ref, valid_id=_architecture_id, tally=tally)
+        return self.envelope({
+            "map_revision": registry.revision, "registry": {"state": registry.state, "reasons": registry_reasons},
+            "structural": structural_view, "architecture": architecture, "stored": {"count": len(reader.roots())},
+            "label": MV.LABEL})
+
+    def maps_list(self, *, limit: int, cursor: str | None, source_revision: str | None) -> dict[str, Any]:
+        """The stored maps, keyset-paged by root, with a bounded scan (the change note §4.2): at most
+        :data:`SCAN_MAPS` maps examined and :data:`SCAN_BYTES` read per request; past either the page says so and
+        the cursor continues."""
+        reader = self._maps()
+        filters = {"source_revision": source_revision}
+        after = None
+        if cursor is not None:
+            after = cursors.Keyset.parse(cursor, route="maps-structural", project=self.s.project_id, filters=filters,
+                                         limit=limit).after
+        selected = self._selected_root(self._registry())
+        roots = reader.roots()
+        rest = [r for r in roots if after is None or r > str(after)]
+        vocab = self._vocab()
+        items: list[dict[str, Any]] = []
+        examined, spent, last, more, incomplete = 0, 0, None, False, False
+        for root in rest:
+            if len(items) >= limit:
+                more = True
+                break
+            if examined >= SCAN_MAPS:
+                more = incomplete = True
+                break
+            try:
+                # the first map is always read, so a page makes progress whatever the bound
+                summary, _, _, n = self._stored(root, budget=None if examined == 0 else SCAN_BYTES - spent)
+            except _OverBudget:
+                more = incomplete = True
+                break
+            except NotFound:  # removed since the listing: it is simply not there
+                examined, last = examined + 1, root
+                continue
+            except MapArtifactCorrupt as exc:
+                summary = MV.summary(root, selected=False, record=None, vocab=vocab,
+                                     corrupt=str(exc.details.get("reason") or "unreadable"))
+                n = 0
+            examined, spent, last = examined + 1, spent + n, root
+            if source_revision is not None and summary["source_revision"] != source_revision:
+                continue
+            items.append({**summary, "selected": root == selected})
+        next_cursor = (cursors.Keyset("maps-structural", self.s.project_id, filters, limit, last).encode()
+                       if more and last is not None else None)
+        scan = ({"examined": examined, "stored": len(roots), "reasons": [reason("MAP_SCAN_LIMIT")]}
+                if incomplete else None)
+        return self.envelope({"items": items, "next_cursor": next_cursor, "scan_incomplete": scan,
+                              "label": MV.LABEL})
+
+    def map_detail(self, root: str, *, against: str | None, section: str | None) -> dict[str, Any]:
+        selected = self._selected_root(self._registry())
+        summary, slim, detail, _ = self._stored(root, detail=True)
+        assert detail is not None
+        tally = MV.Tally()
+        freshness = self._map_freshness(slim, against, tally)
+        names = [section] if section is not None else list(MV.SECTIONS)
+        return self.envelope({
+            "summary": {**summary, "selected": root == selected}, "freshness": freshness, "limits": detail.limits,
+            "inputs": detail.inputs, "sections": {n: detail.sections[n] for n in names},
+            "cut_strings": MV.clamp(tally.cut + sum(detail.section_cuts[n] for n in names)),
+            "dropped_fields": MV.clamp(detail.dropped_fields), "label": MV.LABEL})
+
+    def map_inputs(self, root: str, *, limit: int, cursor: str | None) -> dict[str, Any]:
+        """A map's ``inputs.metadata``, paged by position in the record's sorted list, which is immutable because the
+        artifact is content-addressed; the cursor names the root, never a path."""
+        reader = self._maps()
+        record, _ = reader.load(root, reader.stat(root))
+        metadata = record["inputs"]["metadata"]
+        filters = {"root": root}
+        start = 0
+        if cursor is not None:
+            start = int(cursors.Keyset.parse(cursor, route="maps-inputs", project=self.s.project_id, filters=filters,
+                                             limit=limit, position=True).after)
+            if not 0 < start < len(metadata):
+                raise cursors.CursorError("CURSOR_INVALID", "the cursor's position is outside this map's inputs")
+        tally = MV.Tally()
+        items = [MV.project_input(i, tally) for i in metadata[start:start + limit]]
+        end = start + limit
+        next_cursor = (cursors.Keyset("maps-inputs", self.s.project_id, filters, limit, end).encode()
+                       if end < len(metadata) else None)
+        return self.envelope({"root": root, "items": items, "next_cursor": next_cursor,
+                              "cut_strings": MV.clamp(tally.cut), "dropped_fields": MV.clamp(tally.dropped_fields),
+                              "label": MV.LABEL})
+
+    def map_diff(self, a: str, b: str) -> dict[str, Any]:
+        """Two stored maps compared, typed (never a map generated from a request: the change note §4.1)."""
+        reader = self._maps()
+        stats = (reader.stat(a), reader.stat(b))  # both exist before either is read: 404 before 422
+        first, _ = reader.load(a, stats[0])
+        second = first if b == a else reader.load(b, stats[1])[0]
+        return self.envelope(MV.diff(first, second, self._vocab()))
+
+
+class _OverBudget(Exception):
+    """A stored map the scan's byte budget cannot read in this request."""
+
+
+class _HistoryBusy(Exception):
+    """The architecture evidence's archived lookup met a busy index or a moved history: ``UNKNOWN``, not gone.
+    Not an ``AEWError``, so ``maps.service.architecture`` does not report it ``UNAVAILABLE``."""
+
+
+def _architecture_id(value: str) -> bool:
+    return len(value) <= EVIDENCE_ID_MAX and bool(OPAQUE_ID.fullmatch(value))  # no trailing newline
 
 
 def scrub(value: Any) -> Any:

@@ -54,6 +54,12 @@ RESPONSE_SCHEMAS: dict[str, str] = {
     "/history/{id}": "HistoryResponse",
     "/attention": "AttentionListResponse",
     "/activity": "ActivityListResponse",
+    # contract 0.1.3 (register F20.8, S1)
+    "/maps": "MapsResponse",
+    "/maps/structural": "StructuralListResponse",
+    "/maps/structural/{root}": "StructuralDetailResponse",
+    "/maps/structural/{root}/inputs": "StructuralInputsResponse",
+    "/maps/diff": "MapDiffResponse",
 }
 ERROR_SCHEMA = "Error"
 METHODS = ("get", "head")

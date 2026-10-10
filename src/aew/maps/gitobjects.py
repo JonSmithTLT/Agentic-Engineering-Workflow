@@ -113,12 +113,12 @@ def _refuse_option(rev: str) -> None:
         raise MapCurrentnessUnproven(f"{rev!r} is not a commit name", reason="unknown_commit", commit=rev)
 
 
-def resolve(repo: Path, rev: str) -> tuple[str, str, str]:
+def resolve(repo: Path, rev: str, *, timeout: float = git.OBJECT_TIMEOUT_S) -> tuple[str, str, str]:
     """``(commit, tree, object_format)`` for ``rev``; ``MAP_CURRENTNESS_UNPROVEN`` (``unknown_commit``) when it does not
     resolve to a commit."""
     _refuse_option(rev)
     proc = git.object_git("rev-parse", "--show-object-format", f"{rev}^{{commit}}", f"{rev}^{{tree}}", cwd=repo,
-                          check=False)
+                          check=False, timeout=timeout)
     lines = proc.stdout.decode("ascii", "replace").split()
     if proc.returncode != 0 or len(lines) != 3:
         raise MapCurrentnessUnproven(f"{rev!r} does not resolve to a commit in this repository",
@@ -127,11 +127,11 @@ def resolve(repo: Path, rev: str) -> tuple[str, str, str]:
     return commit, tree, object_format
 
 
-def list_tree(repo: Path, tree: str, *, sizes: bool = True) -> list[Entry]:
+def list_tree(repo: Path, tree: str, *, sizes: bool = True, timeout: float = git.OBJECT_TIMEOUT_S) -> list[Entry]:
     """The recursive listing of ``tree``. With ``sizes`` (``-l``) git reads every blob's header, so in a partial clone
     a missing blob fails the listing: the refusal then names the paths whose objects are missing."""
     args = ["ls-tree", "-r", "-z", "--full-tree", *(["-l"] if sizes else []), tree]
-    proc = git.object_git(*args, cwd=repo, check=False)
+    proc = git.object_git(*args, cwd=repo, check=False, timeout=timeout)
     if proc.returncode == 0:
         return parse_listing(proc.stdout, sizes=sizes)
     missing: list[str] = []
@@ -157,9 +157,11 @@ def missing_blobs(repo: Path, entries: list[Entry]) -> list[str]:
     return sorted(e.path for e, line in zip(blobs, lines, strict=False) if line.endswith(" missing"))
 
 
-def refuse_lazy_fetch(repo: Path) -> None:
-    """A partial clone on git older than 2.44 could fetch a missing object lazily whatever AEW asks: refused."""
-    if git.is_partial_clone(repo) and git.version(repo) < git.NO_LAZY_FETCH_FROM:
+def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None) -> None:
+    """A partial clone on git older than 2.44 could fetch a missing object lazily whatever AEW asks: refused.
+    ``timeout`` bounds each git process (``object_git``'s default without it)."""
+    bound = {} if timeout is None else {"timeout": timeout}
+    if git.is_partial_clone(repo, **bound) and git.version(repo, **bound) < git.NO_LAZY_FETCH_FROM:
         raise MapCurrentnessUnproven(
             "this repository is a partial clone and this git (older than 2.44) cannot be stopped from fetching "
             "missing objects lazily: generate the map in a full clone, or upgrade git", reason="partial_clone")

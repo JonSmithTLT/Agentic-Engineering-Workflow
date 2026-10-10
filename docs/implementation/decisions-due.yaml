@@ -37,6 +37,23 @@ items:
   blocks:
   - U9
 
+- row: F38
+  needs: adoption
+  owner: operator
+  due: M6
+  what: The M6a capability and effect authorization model (v0.8, overlaid by v0.9 for Gate A encoding; designer candidates,
+    concept frozen at v0.9) adopted as governing, and with it the points where it differs from accepted or adopted text
+    reconciled; among them v0.9 §7 against ADR-0009 and ADR-0006 (OpenCode's native `edit` for implementers, F40); v0.8's
+    `G_KNOWLEDGE_READ` at P* for the Reviewer and the Verifier against lookup as a default capability of every admitted
+    role, reviewers and verifiers filtered rather than excluded (KAD-03, KAD-06, AEA-40, KDR-03 to KDR-05; F21); v0.8's
+    `G_DERIVED_READ` at P for the Verifier against project and repository navigation as a base capability of every worker
+    invocation (KAD-06); and (possible, to confirm) v0.8's `G_AEW_COORDINATE` at P for the worker roles against workers'
+    replies to the Lead once messaging is switched on (ADR-0017, F9), which depends on whether that switch counts as an
+    operator-approved named profile
+  blocks:
+  - F39
+  - F40
+
 - row: Q8
   needs: decision
   owner: designer

@@ -37,6 +37,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** U9
 
+### F38
+
+**Due by:** M6 · **Owner:** operator · **Needs:** adoption
+
+**What:** The M6a capability and effect authorization model (v0.8, overlaid by v0.9 for Gate A encoding; designer candidates, concept frozen at v0.9) adopted as governing, and with it the points where it differs from accepted or adopted text reconciled; among them v0.9 §7 against ADR-0009 and ADR-0006 (OpenCode's native `edit` for implementers, F40); v0.8's `G_KNOWLEDGE_READ` at P* for the Reviewer and the Verifier against lookup as a default capability of every admitted role, reviewers and verifiers filtered rather than excluded (KAD-03, KAD-06, AEA-40, KDR-03 to KDR-05; F21); v0.8's `G_DERIVED_READ` at P for the Verifier against project and repository navigation as a base capability of every worker invocation (KAD-06); and (possible, to confirm) v0.8's `G_AEW_COORDINATE` at P for the worker roles against workers' replies to the Lead once messaging is switched on (ADR-0017, F9), which depends on whether that switch counts as an operator-approved named profile
+
+**Blocks:** F39, F40
+
 ### Q8
 
 **Due by:** M6 · **Owner:** designer · **Needs:** decision
@@ -148,5 +156,9 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 - **F12** waits for Q11 (decision, designer, by M6)
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
+
+- **F39** waits for F38 (adoption, operator, by M6)
+
+- **F40** waits for F38 (adoption, operator, by M6)
 
 - **U9** waits for F26 (design, designer, by M6)

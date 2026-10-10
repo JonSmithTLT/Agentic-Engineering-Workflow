@@ -169,7 +169,7 @@ class Supervisor:
             inv_id, inv, _ = require_invocation(state, self._credential, None,
                                                 archived=self.engine.archived_credential)
         except errors.AEWError as exc:
-            return self._refuse(f"credential rejected: {exc.message}")
+            return self._refuse(f"credential rejected: {exc.message}", exc.code)
         problem = self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
         if inv_id != self.inv_id or problem:
             return self._refuse(problem or f"credential is for {inv_id}, not {self.inv_id}")
@@ -200,7 +200,7 @@ class Supervisor:
             self.record["launch"] = info
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
         except errors.AEWError as exc:
-            return self._launch_failed(f"{exc.code}: {exc.message}")
+            return self._launch_failed(f"{exc.code}: {exc.message}", exc.code)
         except Exception as exc:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
@@ -265,17 +265,24 @@ class Supervisor:
         threading.Thread(target=beat, name=name, daemon=True).start()
         return done
 
-    def _refuse(self, reason: str) -> bool:
-        self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", ended_at=utc_now())
-        self._event("custody_refused", reason=reason)
+    # A launch failure's record and acknowledgement carry its closed code beside the free-text reason (M4-E E8a; plan v3
+    # n8). The acknowledgement's is the one the launcher passes on: the record sits in the model-writable run directory.
+    def _refuse(self, reason: str, error_code: str | None = None) -> bool:
+        code = K.launch_failure_code(K.CUSTODY, error_code)
+        self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", reason_code=code,
+                           ended_at=utc_now())
+        self._event("custody_refused", reason=reason, reason_code=code)
         self._save()
-        self._send_ack({"custody": False, "reason": reason})
+        self._send_ack({"custody": False, "reason": reason, "reason_code": code})
         self._drop_credential()
         return False
 
-    def _launch_failed(self, reason: str) -> bool:
+    def _launch_failed(self, reason: str, error_code: str | None = None) -> bool:
+        code = K.launch_failure_code(K.START, error_code)
+        if not self.record.get("ended_at"):  # saved with the final record; a run already ended keeps its own
+            self.record["reason_code"] = code
         self._finish(K.LAUNCH_FAILED, reason)
-        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason})
+        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
         return False
 
     def watch(self) -> None:
@@ -513,13 +520,15 @@ def main(argv: list[str] | None = None) -> int:
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "no credential handoff: the launching process ended before handing "
                                                 "over custody; no process holds this run's credential",
+                                      "reason_code": K.launch_failure_code(K.HANDOFF),
                                       "supervisor_pid": os.getpid(), "ended_at": utc_now()})
         return 3
     try:
         handoff = json.loads(raw.decode("utf-8"))
     except ValueError:
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
-                                      "reason": "malformed credential handoff", "ended_at": utc_now()})
+                                      "reason": "malformed credential handoff",
+                                      "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": utc_now()})
         return 3
     del raw
     sup = Supervisor(run_dir, handoff, ack)

@@ -90,6 +90,7 @@ def parse(raw: bytes, *, source: str) -> dict[str, Any]:
     """An execution policy from its file's bytes: parsed, schema-validated and semantically checked. Callers that pin
     the file hash these same bytes, so what is checked is what is used."""
     data = load_yaml(raw.decode("utf-8"), source=source)
+    refuse_yaml_boolean(data, source=source)
     validate("execution", data, source=source)
     check_semantics(data, source=source)
     return data
@@ -107,6 +108,32 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
         problems.append("routing.default: a configured policy needs a default route")
     if problems:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
+
+
+# The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
+# an unquoted ``off`` (and ``no``, ``false``, ``on``, ``yes``, ``true``) as a boolean, which a schema enum refuses
+# without saying why; ``refuse_yaml_boolean`` names the cause and the quoted fix (the convention of PR #143's
+# ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.
+STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
+}
+
+
+def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
+    """Refuse a string switch that YAML read as a boolean, before the schema, at parse and at adoption: a
+    ``VALIDATION_FAILED`` with ``reason: yaml_boolean``, the ``field`` and a message naming the cause and the fix (the
+    quoted ``"off"``). A refused policy is not adopted, and a switch it held stays off (every reader fails closed)."""
+    if not isinstance(policy, dict):
+        return
+    for (block, key), allowed in STRING_SWITCHES.items():
+        section = policy.get(block)
+        value = section.get(key) if isinstance(section, dict) else None
+        if isinstance(value, bool):
+            field = f"{block}.{key}"
+            raise ValidationFailed(
+                f"{source}: {field} was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted off (or "
+                f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{allowed[0]}\" (or "
+                f"{', '.join(allowed[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
 
 
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:

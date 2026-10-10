@@ -642,11 +642,11 @@ sections:
       2026-10-07; ledger VGX):** M4-H''s experiment design is frozen. **Prerequisite before M4-H executes:** the evaluator/arm-host
       split and the held-out task-release runner (decision record of 2026-10-06 on held-out corpus isolation), the cold-start
       attestation (§5) and the preregistration values of §14. **F21''s Arm B prototype and M4-H (2026-10-09):** the sealed
-      M4-H configuration has `recall.raw_history_search: off`, so `aew history search` is absent from both arms whether
-      or not the prototype has merged; the M4-H cold-start attestation must show `recall.raw_history_search: off` and no
-      `local/recall/` directory, and a treatment freeze names its commit, never `main`''s head implicitly. When F21''s A/B
-      evaluation runs (after adoption), each run starts from the history snapshot its preregistration names, and the HOC
-      arm-host preflight applies to that snapshot (the search index is project-scoped: a search reaches only the project
+      M4-H configuration has `recall.raw_history_search: "off"`, so `aew history search` is absent from both arms whether
+      or not the prototype has merged; the M4-H cold-start attestation must show `recall.raw_history_search: "off"` and
+      no `local/recall/` directory, and a treatment freeze names its commit, never `main`''s head implicitly. When F21''s
+      A/B evaluation runs (after adoption), each run starts from the history snapshot its preregistration names, and the
+      HOC arm-host preflight applies to that snapshot (the search index is project-scoped: a search reaches only the project
       it runs in)'
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -728,16 +728,17 @@ sections:
       only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every
       D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation. **Prototype built (2026-10-09,
       the lead developer''s plan v6, independently reviewed CLEAR):** behind `recall.raw_history_search` in the execution
-      policy (`off` by default, read from the adopted bytes only; operational class), `aew history search` exists only when
-      the switch is `explicit` and is otherwise absent from help, usage and the parser; it refuses inside an invocation''s
-      environment (a discoverability guard, not a security boundary). The substrate `local/recall/history-fts.sqlite` (`aew.engine.recall`)
-      indexes each archived entry''s record and the evidence it holds, never plans, unit or completion records, check logs
-      or credential bundles; it is built only by a search (bounded: 2 s or 500 documents per call, then `coverage_incomplete`),
-      `history reindex` and the full audit, and never on a commit path. Every hit is authenticated and re-matched against
-      the authenticated text; a disagreeing row drops its candidate and marks the substrate stale. Not model-visible, not
-      evaluated: no pack, resume, role guide, surface row, MCP tool or dashboard route, and absent from the Q7/M4-H treatment
-      (the M4-H cold-start attestation must show `recall.raw_history_search: off` and no `local/recall/` directory; F19).
-      The A/B evaluation is F19''s, after adoption of the Knowledge read-side semantics'
+      policy (`"off"` by default, quoted since YAML reads a bare off as a boolean, which is refused with its cause and fix;
+      read from the adopted bytes only; operational class), `aew history search` exists only when the switch is `explicit`
+      and is otherwise absent from help, usage and the parser; it refuses inside an invocation''s environment (a discoverability
+      guard, not a security boundary). The substrate `local/recall/history-fts.sqlite` (`aew.engine.recall`) indexes each
+      archived entry''s record and the evidence it holds, never plans, unit or completion records, check logs or credential
+      bundles; it is built only by a search (bounded: 2 s or 500 documents per call, then `coverage_incomplete`), `history
+      reindex` and the full audit, and never on a commit path. Every hit is authenticated and re-matched against the authenticated
+      text; a disagreeing row drops its candidate and marks the substrate stale. Not model-visible, not evaluated: no pack,
+      resume, role guide, surface row, MCP tool or dashboard route, and absent from the Q7/M4-H treatment (the M4-H cold-start
+      attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory; F19). The A/B evaluation
+      is F19''s, after adoption of the Knowledge read-side semantics'
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
       that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed

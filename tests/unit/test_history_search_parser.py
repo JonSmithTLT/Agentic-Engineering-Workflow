@@ -82,7 +82,24 @@ def test_the_switch_is_an_operational_field_of_the_execution_policy():
     schema = load_schema("execution")
     node = schema["properties"]["recall"]["properties"]["raw_history_search"]
     assert node[classes.KEY] == classes.OPERATIONAL and not classes.unclassified(schema)
-    assert set(node["enum"]) == {"off", False, "explicit"}  # YAML reads an unquoted `off` as false: still off
+    assert node["enum"] == ["off", "explicit"]  # strings only: a YAML boolean is refused with its cause and fix
+
+
+@pytest.mark.parametrize("bare", ["off", "no", "false", "on", "yes", "true"])
+def test_an_unquoted_off_is_refused_at_parse_with_its_cause_and_the_quoted_fix(bare):
+    from aew.errors import ValidationFailed
+    from aew.policy import execution as X
+
+    base = b"schema: aew/execution/v1\nconfigured: false\nprofiles: {}\nrouting: {default: null}\n"
+    with pytest.raises(ValidationFailed) as refused:
+        X.parse(base + f"recall:\n  raw_history_search: {bare}\n".encode(), source="execution.yaml")
+    assert refused.value.details["reason"] == "yaml_boolean"
+    assert refused.value.details["field"] == "recall.raw_history_search"
+    assert "YAML reads an unquoted off" in refused.value.message
+    assert 'raw_history_search: "off"' in refused.value.message
+    for quoted in ('"off"', "explicit"):
+        policy = X.parse(base + f"recall:\n  raw_history_search: {quoted}\n".encode(), source="execution.yaml")
+        assert policy["recall"]["raw_history_search"] == quoted.strip('"')
 
 
 def test_queries_are_quoted_phrases_anded_and_bounded():

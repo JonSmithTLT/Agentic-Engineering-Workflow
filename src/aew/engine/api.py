@@ -180,6 +180,8 @@ class ProjectAdmin:
             raw = path.read_bytes()
             data = load_yaml(raw.decode("utf-8"), source=str(path))
             name = names.get(rel, "execution")
+            if name == "execution":  # before the schema, so an unquoted `off` is refused with its cause and fix
+                X.refuse_yaml_boolean(data, source=str(path))
             if name in ("guardrails", "checks", "gates", "execution"):
                 validate(name, data, source=str(path))
             if name == "pricing":  # parsed as the ledger parses it (a YAML date is the table's `as_of` string)

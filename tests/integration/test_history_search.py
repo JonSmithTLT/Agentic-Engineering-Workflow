@@ -49,7 +49,8 @@ def switch_on(p: Project, *, adopt: bool = False) -> None:
 
 def switch_off(p: Project) -> None:
     path = p.root / ".aew/policy/execution.yaml"
-    path.write_text(path.read_text(encoding="utf-8").replace("raw_history_search: explicit", "raw_history_search: off"),
+    path.write_text(path.read_text(encoding="utf-8").replace("raw_history_search: explicit",
+                                                             'raw_history_search: "off"'),
                     encoding="utf-8", newline="\n")
     p.adopt_policy()
 
@@ -179,6 +180,30 @@ def test_an_adopted_edit_turns_it_on_and_a_project_without_pins_is_off(tmp_path)
     (p.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
     assert recall.recall_search_enabled(p.root / ".aew") is False
     assert "search" not in p.aew("history", "--help").stdout
+
+
+def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(tmp_path):
+    """At adoption: a bare ``off`` (a YAML boolean) is refused with the cause and the fix, nothing is adopted, and the
+    search stays off and absent; the quoted ``"off"`` is adopted."""
+    p = sample_project(tmp_path)
+    switch_on(p, adopt=True)
+    policy = p.root / ".aew/policy/execution.yaml"
+    on, rev = policy.read_text(encoding="utf-8"), p.rev()
+    policy.write_text(on.replace("raw_history_search: explicit", "raw_history_search: off"), encoding="utf-8",
+                      newline="\n")
+    with pytest.raises(errors.ValidationFailed) as refused:
+        p.adopt_policy("turn the search off, unquoted")
+    assert refused.value.details == {"reason": "yaml_boolean", "field": "recall.raw_history_search",
+                                     "allowed": ["off", "explicit"]}
+    assert 'raw_history_search: "off"' in refused.value.message
+    assert "YAML reads an unquoted off" in refused.value.message
+    assert p.rev() == rev
+    assert recall.recall_search_enabled(p.root / ".aew") is False  # the unadopted edit fails closed: off and absent
+    assert "search" not in p.aew("history", "--help").stdout
+    policy.write_text(on.replace("raw_history_search: explicit", 'raw_history_search: "off"'), encoding="utf-8",
+                      newline="\n")
+    p.adopt_policy("turn the search off, quoted")
+    assert p.rev() == rev + 1 and recall.recall_search_enabled(p.root / ".aew") is False
 
 
 def test_the_switch_honours_the_execution_policy_the_manifest_names(tmp_path):
@@ -593,4 +618,5 @@ def test_the_switch_is_operational_and_read_only_by_the_search(tmp_path):
     readers = sorted(path.relative_to(src).as_posix() for path in src.rglob("*.py")
                      if "recall_search_enabled(" in path.read_text(encoding="utf-8")
                      or '"raw_history_search"' in path.read_text(encoding="utf-8"))
-    assert readers == ["cli/main.py", "engine/history_ops.py", "engine/recall.py"], readers
+    # policy/execution.py names it only to refuse a YAML boolean there (validation, never a decision).
+    assert readers == ["cli/main.py", "engine/history_ops.py", "engine/recall.py", "policy/execution.py"], readers

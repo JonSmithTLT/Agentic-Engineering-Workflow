@@ -199,7 +199,11 @@ class History:
         - ``"busy"``, on Windows only (``TRANSIENT_READ_ERRORS``), the tail cannot be read for an operating-system
           reason other than its absence: a read during the writer's replace is a sharing violation (finding H).
 
-        Anything else (a missing or malformed tail, one that ends at the root or diverges from it) is None: damage."""
+        - ``"moved"``, the tail ends exactly at the root and the whole history walks to it now: it caught up with the
+          root after the read failed (the commit's apply finished in between, nit I of #192's review).
+
+        Anything else (a missing or malformed tail, one that diverges from the root, or a history that ends at the
+        root but does not walk to it) is None: damage."""
         try:
             raw = (self.root / M.TAIL_REL).read_bytes()
         except FileNotFoundError:
@@ -220,6 +224,16 @@ class History:
             return "moved"
         pending = pending_tail or {}
         if end["count"] < root["count"] and pending.get("before") == sha256_bytes(raw) != pending.get("after"):
+            return "moved"
+        if end == {"count": root["count"], "h": root["head_h"]}:
+            # The history has caught up with the root since the read failed (the commit's apply, marker included,
+            # finished in between: review of #192, nit I). The read was transient only if the same walk the index
+            # sync makes now passes, so damage elsewhere in the history (a sealed segment) stays damage.
+            try:
+                for _ in self.walk(root):
+                    pass
+            except (IntegrityError, ValidationFailed):
+                return None
             return "moved"
         return None
 

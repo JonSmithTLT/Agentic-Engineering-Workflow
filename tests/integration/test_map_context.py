@@ -9,6 +9,7 @@ do: the no-authority walk."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -180,6 +181,30 @@ def test_architecture_selection_records_an_existing_discovery_record_and_refuses
     complete_investigation(p, create_investigation(p, tmp_path, title="Still dispatches"))
     log = [json.loads(line) for line in (p.root / MAPS / "registry-log.jsonl").read_text(encoding="utf-8").splitlines()]
     assert log[-1]["capability"] == "architecture" and log[-1]["new"] == discovery
+
+
+def aew_files(p: Project) -> dict[str, str]:
+    """Every file under ``.aew/`` outside ``local/``, by content."""
+    aew = p.root / ".aew"
+    return {f.relative_to(aew).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest() for f in aew.rglob("*")
+            if f.is_file() and not f.relative_to(aew).as_posix().startswith("local/")}
+
+
+def test_architecture_selection_never_touches_control_state_or_control_revision(tmp_path):
+    """T5-INV-11 for ``map select-architecture`` (PR #143 review, m2): an accepted and a refused selection leave the
+    control state, ``control_revision`` and every file under ``.aew/`` outside ``local/`` byte-identical; only the map
+    registry and its log change."""
+    p = sample_project(tmp_path)
+    discovery = complete_investigation(p, create_investigation(p, tmp_path, title="Architecture survey"))
+    control = p.root / ".aew" / "state" / "control.yaml"
+    rev, state, files = p.rev(), control.read_bytes(), aew_files(p)
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    assert (p.rev(), control.read_bytes(), aew_files(p)) == (rev, state, files)
+    registry = (p.root / MAPS / "registry.json").read_bytes()
+    stale = p.aew("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", "none:0")
+    assert stale.returncode == 3 and stale.error["details"]["domain"] == "map_revision"
+    assert (p.rev(), control.read_bytes(), aew_files(p)) == (rev, state, files)
+    assert (p.root / MAPS / "registry.json").read_bytes() == registry  # a refused selection writes nothing
 
 
 def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):

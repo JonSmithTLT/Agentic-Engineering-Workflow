@@ -646,6 +646,16 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** No model-maintained working-state store, mandatory self-refresh, scratch-state record type, or Lead access to raw scratch or harness sessions (record §6, §13). The recitation thresholds (`recitation.calls`, `recitation.elapsed_s`, `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. The run's supervisor already sees the tool calls and the elapsed time those thresholds count, delivers the recitation through the adapter's queue prompt (the path `harness send` takes) and records it in the run's log. Under F9-A the recitation becomes a durable instruction message; the worker-published `working_note` stays F9-B's. The note's conformance tests: no gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as its predecessor's claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead's progress view). Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
 
+### F37
+
+**Work:** Field diagnostics, so that an operator running a released AEW elsewhere can find out what went wrong in a run and hand the evidence to AEW's maintainers safely: correlation IDs and timing carried across the CLI, engine, supervisor, harness and bridge, so one run's events line up end to end; an `aew debug bundle` command that gathers a run's diagnostic material (logs, state and timings) into one archive; and work-safe sharing: a metadata-only mode, a manifest of every item that the operator reviews before anything leaves the machine, and scrubbing of secrets, paths, internal names and content
+
+**Source (governing):** operator request, 2026-10-09
+
+**Belongs to or gated by:** **Unscheduled**: after M4, to be planned when it is scheduled
+
+**Notes:** No design yet; the operator asked for the row now and the plan later. The need: when something fails at a site where AEW was deployed, there is no single way to reconstruct what happened or to get that information back to the maintainers. Related rows: `aew doctor` (F18.2) checks a host's setup, not a run's history; the cost and usage ledger (F25) records per-run timings the bundle can include. Constraints agreed with the operator (2026-10-09): the bundle is operator-only, because agents can read run directories; it never includes the Lead's reasoning or the rationale F4 withholds; diagnostics never change behaviour; and the scrubbing must never weaken credential custody, so a bundle carries no credential material in any mode
+
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
 <!-- columns: # | Work | Source | Target and notes -->
@@ -1022,13 +1032,23 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E52
 
-**Work:** Find why Windows serial tests became 1.75 to 1.9 times slower in the nightly `reference` run from 2026-10-05 (the same tests, image and Python as on 10-04; no trend through a session), when the Windows PR lanes at the same commits rose only 3 to 14 % and Linux's `reference` 0 to 13 % by 2026-10-09; then stop rebuilding a module-scoped fixture in every shard that runs one of its tests
+**Work:** Stop rebuilding a module-scoped fixture in every shard that runs one of its tests. The row's first part, finding why Windows serial tests became 1.75 to 1.9 times slower in the nightly `reference` run from 2026-10-05, is answered (Notes)
 
 **Source:** [Testing and CI strategy](testing-and-ci-strategy.md) §8 and §12 (measured on the 2026-10-04 to 10-09 nightlies)
 
 **When:** **M4 candidate**
 
-**Notes:** The nightly is sharded around it (Windows `reference` 8 shards, `matrix-extra` 4), which absorbs the time but does not explain it. Lead: the resolved `rpds-py` went from 2026.6.3 to 2026.9.1 between those nights, but the PR lanes took the same upgrade without the slowdown. An A/B with it pinned on a Windows runner settles that first
+**Notes:** First part answered (investigated 2026-10-09, A/B collected 2026-10-10): host variation plus code growth, not a dependency. The 10-04 baseline ran on an unusually fast runner (`westus3`): roughly 1.32 (that host) × 1.26 (code growth, also in the PR lanes) × 1.12 (variation between nightly hosts) ≈ 1.87. Against the PR runs at the same commits the nightly moved only within host variation (median per-test nightly/PR ratio 0.62 to 0.66 before, 0.66 to 0.82 after: about 1.14 on average, up to 1.3 on one night), nowhere near 1.87. The suspected `rpds-py` upgrade (2026.6.3 to 2026.9.1) is cleared: a CI A/B ran both versions on each of 3 Windows runners (run 38017570085) and measured a same-host ratio of 1.06 (95% CI 0.99 to 1.14; 1.04 adjusted for run order), inside one host's run-to-run spread of up to 12 %, while the hosts differed by up to 1.29 times. No pin. **From now on, compare Windows `reference` timings against the PR run at the same commit, or against the median of several nightlies, never against a single nightly.** A follow-up is merged: #157 removed the runtime `check_schema` of AEW's own schemas (about 220 ms per CLI call). The second part stays open: a module-scoped fixture is still rebuilt in every shard (testing strategy §12)
+
+### E53
+
+**Work:** PR test selection (operator, 2026-10-09): pull requests run less only fail-closed, `main`'s push run and the nightly stay full. Phase 1a, the `fast` tier (docs plus fast-lane test modules and `tests/durations.json`: `core`, `static`, `web`'s gate, `fastbase` and `assurance`, no heavy lane), is **built in shadow**: the tier, the runtime lane check and the same-run coverage premise are computed and reported on every eligible run, which stays full. Still to do: enforce it (PR 1b, `tier.MODE = "enforce"`)
+
+**Source:** [Testing and CI strategy](testing-and-ci-strategy.md) §3 (CI plan v7, reviewed CLEAR 2026-10-10)
+
+**When:** **M4 candidate**: PR 1b once at least 5 eligible shadow runs decided correctly, the premise check ran in each with no unexplained loss, and the unit-isolation audit (`unit-isolation-audit.yml`, dispatched once) is clean
+
+**Notes:** Deferred behind their gates (plan v7 §9): Phase 1b, heavy-closure selection (Phase 1a enforced for four weeks with no confirmed miss, and PR runs whose only non-`fast` changes are heavy test modules or helpers saving at least 3 % of PR runner-minutes; then the v2 review's entry conditions V2-1, V2-2, V2-3, V2-5, V2-7 and V2-10), and Phase 2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes, a refreshed marginal estimate of at least 8 %; entry condition V2-8). Expected saving of Phase 1a: about 12.5 % of PR runner-minutes on the 27-PR sample (#117, #119, #120 and #145)
 
 ### E47
 

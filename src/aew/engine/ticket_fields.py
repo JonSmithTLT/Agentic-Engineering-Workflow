@@ -59,23 +59,34 @@ def canonical_text(text: str) -> str:
     return "\n".join(line.rstrip(" \t") for line in text.split("\n"))
 
 
+# The tags a YAML date or timestamp is hashed under. An authored mapping key that starts with ``$`` gains one more
+# ``$`` (``$date`` becomes ``$$date``), so no authored value can spell a tag: the mapping stays one to one.
+DATE_TAG, DATETIME_TAG = "$date", "$datetime"
+
+
 def _jsonable(value: Any, where: str) -> Any:
-    """The value as JSON data. A YAML date or timestamp (only an unclassified record field can hold one) becomes its
-    ISO text; anything else JSON cannot hold exactly is refused, never coerced into a colliding value."""
+    """The value as JSON data, one to one: two different values never give the same JSON.
+
+    A YAML date or timestamp (only an unclassified record field can hold one) becomes ``{"$date": "<ISO>"}`` or
+    ``{"$datetime": "<ISO>"}``, so it never hashes like the same text (review F3), and an authored mapping key that
+    starts with ``$`` is escaped with one more ``$``, so no authored mapping hashes like a tag. Anything else JSON
+    cannot hold exactly (NaN, infinity, a non-text mapping key) is refused, never coerced into a colliding value."""
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
         if value != value or value in (float("inf"), float("-inf")):
             raise ValidationFailed(f"{where}: a Ticket input cannot be NaN or infinite")
         return value
-    if isinstance(value, (dt.date, dt.datetime)):
-        return value.isoformat()
+    if isinstance(value, dt.datetime):  # before date: a datetime is a date
+        return {DATETIME_TAG: value.isoformat()}
+    if isinstance(value, dt.date):
+        return {DATE_TAG: value.isoformat()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(v, where) for v in value]
     if isinstance(value, dict):
         if not all(isinstance(k, str) for k in value):
             raise ValidationFailed(f"{where}: a Ticket input mapping must have text keys")
-        return {k: _jsonable(v, f"{where}.{k}") for k, v in value.items()}
+        return {("$" + k if k.startswith("$") else k): _jsonable(v, f"{where}.{k}") for k, v in value.items()}
     raise ValidationFailed(f"{where}: {type(value).__name__} is not a Ticket input value")
 
 
@@ -171,13 +182,20 @@ class Registry:
     def material_groups(self) -> frozenset[str]:
         return frozenset(g for g, m in self.groups.items() if m)
 
-    def classifies_record(self, path: str) -> bool:
-        """Whether a record frontmatter path (``acceptance.checks``) is a classified field, a container of one, or
-        provenance. The Markdown body is the field ``body``; a frontmatter key named ``body`` is not."""
-        if path in self.provenance:
+    def record_paths(self) -> dict[tuple[str, ...], str]:
+        """The classified frontmatter fields by key path (``("acceptance", "checks")``); the body is not one."""
+        return {tuple(n.split(".")): n for n in self.store("record") if n != BODY}
+
+    def classifies_record(self, keys: tuple[str, ...]) -> bool:
+        """Whether a record frontmatter key path (``("acceptance", "checks")``) is a classified field, a container of
+        one, or provenance. Paths are matched key by key, never as joined text: a key that contains ``.`` (a literal
+        ``"scope.paths"``) is never a field (review F1). The Markdown body is the field ``body``; a frontmatter key
+        named ``body`` is not."""
+        if not keys or any(not isinstance(k, str) or "." in k for k in keys):
+            return False
+        if len(keys) == 1 and keys[0] in self.provenance:
             return True
-        names = [n for n in self.store("record") if n != BODY]
-        return any(n == path or n.startswith(path + ".") for n in names)
+        return any(path[:len(keys)] == keys for path in self.record_paths())
 
     def classifies_control(self, key: str) -> bool:
         return key in self.store("control") or key in self.bookkeeping
@@ -266,32 +284,52 @@ class Digests:
         return {"registry": self.registry, "digests": dict(sorted(self.groups.items()))}
 
 
-def _record_values(meta: Mapping[str, Any], body: str, reg: Registry) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The classified record fields by name (absent ones None), and every unclassified frontmatter path's value."""
-    known = {n for n in reg.store("record") if n != BODY}
-    values: dict[str, Any] = {n: None for n in known}
+def _record_values(meta: Mapping[str, Any], body: str,
+                   reg: Registry) -> tuple[dict[str, Any], dict[tuple[Any, ...], Any]]:
+    """The classified record fields by name (absent ones None), and every unclassified frontmatter key path's value.
+
+    The walk matches key by key (review F1): a literal key ``"scope.paths"`` is not the nested field ``scope.paths``,
+    and a key that contains ``.`` or is not text is never a field, so it is unclassified wherever it appears."""
+    known = reg.record_paths()
+    values: dict[str, Any] = {n: None for n in known.values()}
     values[BODY] = body
-    unclassified: dict[str, Any] = {}
+    unclassified: dict[tuple[Any, ...], Any] = {}
 
-    def walk(obj: Mapping[str, Any], prefix: str) -> None:
+    def walk(obj: Mapping[Any, Any], prefix: tuple[Any, ...]) -> None:
         for key, value in obj.items():
-            path = f"{prefix}{key}"
-            if path in known:
-                values[path] = value
-            elif not prefix and path in reg.provenance:
+            keys = (*prefix, key)
+            if not isinstance(key, str) or "." in key:
+                unclassified[keys] = value
+            elif keys in known:
+                values[known[keys]] = value
+            elif not prefix and key in reg.provenance:
                 continue
-            elif isinstance(value, Mapping) and any(n.startswith(path + ".") for n in known):
-                walk(value, path + ".")
+            elif isinstance(value, Mapping) and any(len(p) > len(keys) and p[:len(keys)] == keys for p in known):
+                walk(value, keys)
             else:
-                unclassified[path] = value
+                unclassified[keys] = value
 
-    walk(meta, "")
+    walk(meta, ())
     return values, unclassified
 
 
+def _path_key(keys: tuple[Any, ...], where: str) -> str:
+    """An unclassified key path in a digest payload: the canonical JSON of its keys, so two paths never share a key."""
+    return canonical_json(_jsonable(list(keys), where)).decode("ascii")
+
+
+def _path_name(keys: tuple[Any, ...], where: str) -> str:
+    """An unclassified key path for people: dotted when that is unambiguous, else its keys as JSON."""
+    if all(isinstance(k, str) and k and "." not in k and not k.startswith("[") for k in keys):
+        return ".".join(keys)
+    return _path_key(keys, where)
+
+
 def unclassified_record_paths(meta: Mapping[str, Any], *, registry: Registry | None = None) -> list[str]:
-    """The frontmatter paths of a record the registry does not classify (they hash into ``unassigned``)."""
-    return sorted(_record_values(meta, "", registry or load_registry())[1])
+    """The frontmatter key paths of a record the registry does not classify (they hash into ``unassigned``): dotted
+    (``acceptance.edge_cases``), or as a JSON list of keys when a key contains ``.`` (``["scope.paths"]``)."""
+    unclassified = _record_values(meta, "", registry or load_registry())[1]
+    return sorted(_path_name(keys, "record frontmatter") for keys in unclassified)
 
 
 def unclassified_control_keys(unit: Mapping[str, Any], *, registry: Registry | None = None) -> list[str]:
@@ -303,8 +341,9 @@ def unclassified_control_keys(unit: Mapping[str, Any], *, registry: Registry | N
 def _derived_values(state: dict[str, Any], work_id: str) -> dict[str, Any]:
     """The obligations and edges the Ticket inherits, from the engine's own functions (gates and dispatch use these;
     S2b.1 routes them through ``hierarchy.inherited``)."""
-    # The class path's own gates are policy, bound by the policy digests (A3), not a Ticket input: only what the
-    # Ticket inherits is hashed here, so every class maps to no path gates.
+    # The class path's own gates are policy, bound by the legality digest of the Policy Binding and Digest Amendment
+    # (docs/design/policy-binding-digest-amendment-v0.1.md, ledger PBD; not the F4 plan's §3.1 A3), not a Ticket
+    # input: only what the Ticket inherits is hashed here, so every class maps to no path gates.
     no_path_gates: dict[str, Any] = {"risk_paths": defaultdict(list)}
     obligations = gates.effective_obligations(state, work_id, no_path_gates)
     return {
@@ -321,7 +360,8 @@ def group_payloads(state: dict[str, Any], work_id: str, record_text: str, *,
 
     ``record_text`` is the Ticket's current record as stored; it must hash to the ``record_sha256`` control state
     pins, so a digest is never computed over another record than the one the unit names. Unclassified record paths and
-    control keys are hashed into the ``unassigned`` group, each under ``record:?<path>`` or ``control:?<key>``.
+    control keys are hashed into the ``unassigned`` group, each under ``record:?<path>`` or ``control:?<key>``, where
+    ``<path>`` is the JSON list of the path's keys (``record:?["acceptance","edge_cases"]``), so no two paths share one.
     """
     reg = registry or load_registry()
     unit = state["work"].get(work_id)
@@ -343,7 +383,8 @@ def group_payloads(state: dict[str, Any], work_id: str, record_text: str, *,
         source = record if f.store == "record" else unit if f.store == "control" else derived
         payloads[f.group][f.ref] = canonical(source.get(f.name), f.rule, where=f"{work_id} {f.ref}")
     fallback = payloads[reg.unassigned]
-    for path, value in unclassified_record.items():
+    for keys, value in unclassified_record.items():
+        path = _path_key(keys, f"{work_id} record")
         fallback[f"record:?{path}"] = canonical(value, "exact", where=f"{work_id} record:{path}")
     for key in unclassified_control_keys(unit, registry=reg):
         fallback[f"control:?{key}"] = canonical(unit[key], "exact", where=f"{work_id} control:{key}")
@@ -362,35 +403,67 @@ def live_digests(state: dict[str, Any], work_id: str, record_text: str, *,
 # --------------------------------------------------------------------------- comparing (plan §3.3, §3.5)
 
 
-def _moves_between(older: str, newer: str, registries: Mapping[str, Registry]) -> list[Move] | None:
-    """The moves of every version after ``older`` up to ``newer``, or None when ``newer`` does not descend from it."""
-    moves: list[Move] = []
+def _lineage(older: str, newer: str, registries: Mapping[str, Registry]) -> list[Registry] | None:
+    """The versions from ``older`` to ``newer``, oldest first, or None when ``newer`` does not descend from it."""
+    chain: list[Registry] = []
     current = registries.get(newer)
-    while current is not None and current.identity != older:
-        moves += current.moves
+    while current is not None:
+        chain.append(current)
+        if current.identity == older:
+            return chain[::-1]
         current = registries.get(current.predecessor) if current.predecessor else None
-    return moves if current is not None else None
+    return None
+
+
+def _registry_delta(old: Registry, new: Registry) -> set[str]:
+    """The groups one version step affects, read from the two registries themselves, not only from the declared
+    moves (E19-B §2.3, review F2).
+
+    - Every field added, removed, regrouped (its primary or ``also`` groups), given another rule, or hashed through
+      other derived values counts in each of its old and new groups. That includes a field hashed only through derived
+      values (``depends_on``, ``carried_obligations``), which has no payload entry of its own.
+    - Every group added, removed, or whose materiality changed counts.
+    - The old and new ``unassigned`` groups count when the unassigned group, the provenance or the bookkeeping list
+      changed, because those decide which keys fall into it.
+    - The step's declared moves count as well.
+    """
+    def shape(reg: Registry) -> dict[str, tuple[str, tuple[str, ...], str, tuple[str, ...]]]:
+        return {f.ref: (f.group, f.also, f.rule, f.via) for f in reg.fields}
+
+    before, after = shape(old), shape(new)
+    changed: set[str] = set()
+    for ref in set(before) | set(after):
+        if before.get(ref) != after.get(ref):
+            for side in (before.get(ref), after.get(ref)):
+                if side is not None:
+                    changed |= {side[0], *side[1]}
+    changed |= {g for g in set(old.groups) | set(new.groups) if old.groups.get(g) != new.groups.get(g)}
+    if (old.unassigned, old.provenance, old.bookkeeping) != (new.unassigned, new.provenance, new.bookkeeping):
+        changed |= {old.unassigned, new.unassigned}
+    for m in new.moves:
+        changed |= {m.from_, m.to}
+    return changed
 
 
 def changed_groups(before: Digests, after: Digests, *,
                    registries: Mapping[str, Registry] | None = None) -> frozenset[str]:
     """The groups whose digests differ between two computations.
 
-    Across registry versions, every field a later version moved counts as changed in both its old and its new group
-    (E19-B §2.3), whatever the digests say, and a group one side lacks counts as changed. When neither registry
-    descends from the other in ``registries`` (by default the packaged ones), every group counts as changed.
+    Across registry versions (E19-B §2.3), every group that a version step between the two affects counts as changed,
+    whatever the digests say (:func:`_registry_delta`): the old and new groups of a field that was moved, regrouped,
+    given another rule or hashed through other derived values, each group whose materiality changed, and each group
+    one side lacks. When neither registry descends from the other in ``registries`` (by default the packaged ones),
+    every group counts as changed.
     """
     groups = set(before.groups) | set(after.groups)
     changed = {g for g in groups if before.groups.get(g) != after.groups.get(g)}
     if before.registry != after.registry:
         known = packaged_registries() if registries is None else registries
-        moves = _moves_between(before.registry, after.registry, known)
-        if moves is None:
-            moves = _moves_between(after.registry, before.registry, known)
-        if moves is None:
+        chain = _lineage(before.registry, after.registry, known) or _lineage(after.registry, before.registry, known)
+        if chain is None:
             return frozenset(groups)
-        for m in moves:
-            changed |= {m.from_, m.to}
+        for old, new in zip(chain, chain[1:], strict=False):
+            changed |= _registry_delta(old, new)
     return frozenset(changed)
 
 

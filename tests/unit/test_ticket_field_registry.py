@@ -44,24 +44,24 @@ def ticket(meta_extra: dict[str, Any] | None = None, *, body: str = "Implement s
     return {"work": {"T-0001": unit}}, text
 
 
-def schema_paths(node: dict[str, Any], prefix: str = "") -> list[tuple[str, dict[str, Any]]]:
-    return [(f"{prefix}{k}", v) for k, v in node.get("properties", {}).items()]
+def schema_paths(node: dict[str, Any], prefix: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], dict[str, Any]]]:
+    return [((*prefix, k), v) for k, v in node.get("properties", {}).items()]
 
 
 def test_every_ticket_field_is_classified():
     reg = TF.load_registry()
-    record_names = set(reg.store("record"))
+    record_paths = set(reg.record_paths())
     unclassified: list[str] = []
     # The record schema: each property is a classified field, provenance, or a container whose properties are.
     pending = schema_paths(schema("work-unit"))
     while pending:
         path, node = pending.pop()
-        if path in record_names or path in reg.provenance:
+        if path in record_paths or (len(path) == 1 and path[0] in reg.provenance):
             continue
         if reg.classifies_record(path):
-            pending += schema_paths(node, path + ".")
+            pending += schema_paths(node, path)
         else:
-            unclassified.append(f"record:{path}")
+            unclassified.append(f"record:{'.'.join(path)}")
     # The control state's unit definition (open: the walks below see the keys it does not declare).
     unit_def = schema("control")["$defs"]["work_unit"]
     unclassified += [f"control:{k}" for k in unit_def["properties"] if not reg.classifies_control(k)]
@@ -142,3 +142,40 @@ def test_a_registry_that_could_leave_an_input_unbound_is_refused(breakage: str):
         doc["control"][2]["via"] = ["effective_scope"]
     with pytest.raises(ValidationFailed):
         TF.registry_from_doc(doc)
+
+
+def test_a_dotted_frontmatter_key_is_never_the_nested_field(tmp_path: Path):
+    """Review F1: a literal key ``"scope.paths"`` is not ``scope: {paths: ...}``. Paths match key by key, and a key that
+    contains ``.`` is unclassified wherever it appears: it hashes into acceptance and invariant 50 reports it."""
+    twin = {"scope.paths": ["docs/**"]}
+    # The reviewer's repro: two records that differ only in the nested scope.paths, both carrying the dotted twin.
+    narrow, narrow_text = ticket({**twin, "scope": {"paths": ["src/calc/*.py"]}})
+    wide, wide_text = ticket({**twin, "scope": {"paths": ["src/**"]}})
+    a, b = TF.live_digests(narrow, "T-0001", narrow_text), TF.live_digests(wide, "T-0001", wide_text)
+    assert TF.changed_groups(a, b) == {"scope"}
+    payloads = TF.group_payloads(narrow, "T-0001", narrow_text)
+    assert payloads["scope"] == {"record:scope.paths": ["src/calc/*.py"]}
+    assert payloads["acceptance"]['record:?["scope.paths"]'] == ["docs/**"]
+    # Alone or beside its nested twin, the dotted key is reported unclassified, and it changes acceptance only.
+    base_state, base_text = ticket()
+    base = TF.live_digests(base_state, "T-0001", base_text)
+    alone, alone_text = ticket(twin)
+    assert TF.changed_groups(base, TF.live_digests(alone, "T-0001", alone_text)) == {"acceptance"}
+    assert TF.unclassified_record_paths({"scope.paths": ["y"]}) == ['["scope.paths"]']
+    assert TF.unclassified_record_paths({"scope": {"paths": ["x"]}, "scope.paths": ["y"]}) == ['["scope.paths"]']
+    assert TF.unclassified_record_paths({"acceptance": {"checks.unit": ["x"]}}) == ['["acceptance","checks.unit"]']
+    reg = TF.load_registry()
+    assert reg.classifies_record(("scope", "paths")) and reg.classifies_record(("scope",))
+    assert not reg.classifies_record(("scope.paths",)) and not reg.classifies_record(("acceptance", "checks.unit"))
+    # A dotted key and the nested path it spells are two inputs, never one payload entry.
+    dotted, dotted_text = ticket({"notes.extra": "x"})
+    nested, nested_text = ticket({"notes": {"extra": "x"}})
+    assert TF.changed_groups(TF.live_digests(dotted, "T-0001", dotted_text),
+                             TF.live_digests(nested, "T-0001", nested_text)) == {"acceptance"}
+    # Invariant 50 refuses it, alone and beside the nested field.
+    record = tmp_path / ".aew" / "work" / "T-0001" / "ticket.md"
+    record.parent.mkdir(parents=True)
+    for state, text in ((alone, alone_text), (narrow, narrow_text)):
+        record.write_text(text, encoding="utf-8")
+        assert ticket_field_violations(tmp_path, state) == [
+            """T-0001: record fields the Ticket field registry does not classify: ['["scope.paths"]']"""]

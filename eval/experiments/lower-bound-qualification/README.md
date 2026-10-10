@@ -239,6 +239,14 @@ outcome is recorded there and only AEW's side is asserted. A floor trial recorde
 lane (it carries no `judged_by` stamp) whose stored results show such a failure is read as a lane error on the next run,
 so the same `--out` directory runs the floor again once the key is fixed.
 
+**A raw run refused before it launched is a lane error too.** When a ceiling attempt's containment fails (its layout
+fails the self-test or the confidentiality probe), the raw arm refuses it before any harness process exists. Its
+record says `launched: false` and it is charged $0, since nothing could have been spent. It uses none of the cell's
+retries, and the ceiling stops at once with the probe's reason, so a rerun after the arm host is fixed runs the cell
+again. A record written before `launched` existed is counted as it was; any reclassification of those records is the
+operator's decision. (`CONTAINMENT_FAILED` still counts as the preregistration defines it: an `invalid_measurement`
+in the ledger.)
+
 **Run state** goes to `--out`, outside every repository: the ledger, every run's scratch directory (**with its kept
 session database**), and the floor's records. The lane's reader may extract only the preregistered fields. Retention
 is enforced, not only recorded: a database past its 180 days is refused, then purged, and the purge is recorded.

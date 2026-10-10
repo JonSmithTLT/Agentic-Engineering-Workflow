@@ -892,11 +892,36 @@ def frozen_arm(frozen: dict[str, Any], arm_id: str) -> dict[str, Any]:
     return next(a for a in frozen["arms"] if a["id"] == arm_id)
 
 
+CONTAINMENT_FAILED = "CONTAINMENT_FAILED"
+
+
+def attempt_record(ledger: Any, attempt: Any) -> dict[str, Any] | None:
+    """A finalized attempt's run record, or None (lost, or not written)."""
+    if attempt.finalized is None:
+        return None
+    path = ledger.runs / (attempt.run_id.split("/", 1)[1] + ".json")
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def never_launched(record: dict[str, Any] | None) -> bool:
+    """An attempt the raw arm refused before any harness process existed (its containment failed): it measured the
+    arm host, not the model, and spent nothing. A lane error: it uses no retry. Only records that say so
+    (``outcome.launched`` is False) qualify; a record from before the raw arm recorded it is counted as it was."""
+    return ((record or {}).get("outcome") or {}).get("launched") is False
+
+
 def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
-    """A ceiling attempt the provider failed before the model acted (the raw arm's ``NO_MODEL_STEP``): the lane error
-    that stops the ceiling at once, as it stops the floor, instead of spending every later cell's attempts and this
-    cell's retries on a rejected key or an outage."""
-    if (record.get("validity") or {}).get("reason_code") != NO_MODEL_STEP:
+    """A ceiling attempt that measured the infrastructure, not the model: the lane error that stops the ceiling at
+    once, as it stops the floor, instead of spending every later cell's attempts and this cell's retries on it.
+
+    * the provider failed before the model acted (the raw arm's ``NO_MODEL_STEP``: a rejected key, an outage);
+    * the run's containment failed before it launched (``CONTAINMENT_FAILED``): the arm host needs fixing."""
+    reason = (record.get("validity") or {}).get("reason_code")
+    if reason == CONTAINMENT_FAILED:
+        out = record.get("outcome") or {}
+        return {"reason_code": CONTAINMENT_FAILED, "launched": out.get("launched"),
+                "detail": (out.get("containment") or {}).get("reason") or out.get("arm_error")}
+    if reason != NO_MODEL_STEP:
         return None
     errors = [e for e in (record.get("outcome") or {}).get("errors") or [] if isinstance(e, dict)]
     error = {"type": errors[0].get("type"), "message": str(errors[0].get("message"))[:300]} if errors else None
@@ -919,9 +944,11 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
         cell = entry["cell"]
         while True:
             attempts = [a for a in ledger.attempts().values() if a.registered["assignment"]["cell"] == cell]
+            # an attempt that never launched uses no retry (never_launched); every other one counts
+            counted = [a for a in attempts if not never_launched(attempt_record(ledger, a))]
             latest = max(attempts, key=lambda a: a.registered["at"]) if attempts else None
             if latest is not None and (latest.status == "valid" or latest.status not in policy["allowed_for"]
-                                       or len(attempts) - 1 >= policy["max_retries"]):
+                                       or len(counted) - 1 >= policy["max_retries"]):
                 break
             spent = spent_so_far(out, ledger, caps)
             if spent + caps[entry["arm"]] + margin > budget:
@@ -937,8 +964,14 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
             say(run=record["run_id"], validity=record["validity"], charged_usd=record["cost"].get("charged_usd"),
                 truncated=record["outcome"].get("truncated_why"))
             stop = ceiling_stop(record)
+            if stop and stop["reason_code"] == CONTAINMENT_FAILED:  # the arm host, not the model: every cell would
+                raise SystemExit(                                   # fail the same way until it is fixed
+                    f"refused: cell {cell}'s raw run could not be contained ({stop['detail']}). "
+                    + ("It never launched: nothing was spent and no retry was used (charged $0). "
+                       if stop["launched"] is False else "")
+                    + "Fix the arm host and rerun `qualify.py ceiling`; no later cell ran")
             if stop:  # the model never acted: every later cell would fail the same way
-                left = max(int(policy["max_retries"]) - len(attempts), 0)  # this attempt is attempt len(attempts)+1
+                left = max(int(policy["max_retries"]) - len(counted), 0)  # this attempt is attempt len(counted)+1
                 raise SystemExit(lane_error_message(
                     stop, list(frozen_arm(frozen, entry["arm"])["config"]["provider_env"]),
                     where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP}; under the frozen retry policy the "

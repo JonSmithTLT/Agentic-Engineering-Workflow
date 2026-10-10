@@ -293,10 +293,17 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     # sandbox replaces with its own)
     readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, str(binary.parent))
                        if p and os.path.isdir(p)})
-    dirs = outermost({*hide_dirs, *secret_dirs})
+    # Nothing inside the runs directory is masked on its own: the runs directory is replaced by an empty tmpfs
+    # (hide_runs) before this run's directory is bound back, so every other run in it (its scratch directory, its
+    # mask file, a check's leftovers) is already hidden, and a mask inside that tmpfs would create its own mount point
+    # there, a visible entry the confidentiality probe rightly refuses. When the lane lives under the home directory
+    # (<home>/aew-eval/<experiment>/out/work/<run>), the home scan lists those siblings, so they are dropped here.
+    runs = os.path.realpath(scratch.parent)
+    beside = [p for p in {*hide_dirs, *secret_dirs, *hide_files, *secret_files} if p == runs or _under(p, runs)]
+    dirs = outermost({*hide_dirs, *secret_dirs} - set(beside))
     # the run's own mask file is never itself masked: binding it over itself would leave an entry in the hidden runs
-    # directory (a mask left by an earlier layout of the same run name is found by the home scan)
-    files = [f for f in sorted({*hide_files, *secret_files})
+    # directory
+    files = [f for f in sorted({*hide_files, *secret_files} - set(beside))
              if not any(_under(f, d) for d in dirs) and f != os.path.realpath(mask)]
     return L.Layout(role="eval-raw", access="write", bwrap=bwrap,
                     writable=(os.path.realpath(repo), os.path.realpath(state)), readonly=tuple(readonly),
@@ -453,6 +460,7 @@ class RawArm:
             return "cost_cap" if float(session.live_usage().get("cost") or 0) > cap else None
 
         ended, arm_error = "not_started", None
+        launched = False  # no harness process exists before session.open: nothing can have been spent
         try:
             if config["contain"]:
                 layout = contained_layout(repo, scratch, binary=binary)
@@ -460,6 +468,7 @@ class RawArm:
                 if not containment["ok"]:
                     raise Invalid(f"containment failed: {containment['reason']}")
                 session.tree = procs.ProcessTree(layout=layout)
+            launched = True
             session.open(directory=repo, profile=profile, agent=self.agent,
                          config=headless.raw_config(profile, int(config["steps"])),
                          env=headless.shell_env(os.environ), provider_env=names, title="raw OpenCode (evaluation)")
@@ -488,7 +497,7 @@ class RawArm:
         why = truncation(ended=ended, facts=facts, steps_limit=int(config["steps"]))
         return ArmResult(
             outcome={
-                "harness_outcome": ended, **facts, "steps": summary.get("steps"),
+                "harness_outcome": ended, "launched": launched, **facts, "steps": summary.get("steps"),
                 "truncated": bool(why), "truncated_why": why, "arm_error": arm_error,
                 "turns": len(summary.get("turns") or []), "tools_called": summary.get("tools_called"),
                 "last_detail": summary.get("last_detail"),
@@ -506,7 +515,9 @@ class RawArm:
             harness={"name": "opencode", "agent": self.agent, "version": version,
                      "pinned_version": config["harness"]["version"], "platform": host_platform(),
                      "artifact_sha256": _sha256_file(binary), "catalog": summary.get("catalog")},
-            cost={"provider_reported_usd": reported, "charged_usd": charged(reported, cap),
+            # a run that never launched (refused before session.open: its containment failed) spent nothing: its cost
+            # is known to be 0, never its cap
+            cost={"provider_reported_usd": reported, "charged_usd": charged(reported, cap) if launched else 0.0,
                   "tokens": usage.get("tokens"), "usage_record": summary.get("usage_record")},
             invalid=raw_invalid(leaked=leaked, facts=facts, arm_error=arm_error, harness_mismatch=mismatch,
                                 containment_failed=bool(config["contain"]) and not containment.get("ok")))

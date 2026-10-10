@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -336,6 +338,80 @@ def test_a_contained_run_keeps_nothing_from_the_import_path_and_hides_the_case_d
     assert design == [str(raw.EVAL_DIR)]
     files = {Path(f).relative_to(lane).as_posix() for f in raw.design_files() if Path(f).is_relative_to(lane)}
     assert {"fixture/LBQ-1.yaml", "behaviours.yaml", "rubric.md", "prereg.yaml"} <= files  # the probe opens each
+
+
+def lane_under_home(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
+    """The arm host's real layout: <home>/aew-eval/<experiment>/out/work/<run>, with an earlier run (its scratch
+    directory and mask file) beside this one, and another experiment's lane beside this lane."""
+    home = tmp_path / "home"
+    work = home / "aew-eval" / "lbq-v1-deepseek-v4-1-flash" / "out" / "work"
+    scratch = work / "LBQ-3-raw-1"
+    (scratch / "repo").mkdir(parents=True)
+    (work / "LBQ-2-raw-2" / "repo").mkdir(parents=True)
+    (work / ".LBQ-2-raw-2.aew-mask").write_bytes(b"")
+    (work / ".containment-check.aew-mask").write_bytes(b"")  # a check's leftover
+    (work.parent / "ledger").mkdir()
+    (home / "aew-eval" / "lbq-v1" / "out" / "floor").mkdir(parents=True)
+    (home / ".ssh").mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home, scratch
+
+
+def test_a_lane_under_home_masks_nothing_inside_its_runs_directory(tmp_path, monkeypatch):
+    """The V4.1 run's defect (b924e47): with the lane under the home directory, the home scan listed the other runs
+    and mask files in out/work, and masking them inside the runs tmpfs created visible mount points there, so every
+    attempt after the first was CONTAINMENT_FAILED. The runs tmpfs hides them; nothing inside it is masked on its
+    own, and everything else beside the run stays hidden."""
+    from aew.harness.containment import layout as L
+
+    home, scratch = lane_under_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+    (tmp_path / "bin").mkdir()
+    layout = raw.contained_layout(scratch / "repo", scratch, binary=tmp_path / "bin" / "opencode-cli")
+    runs = str(scratch.parent.resolve())
+    assert layout.hide_runs == (runs,)
+    inside = [p for p in (*layout.hide_dirs, *layout.hide_files) if p == runs or p.startswith(runs + os.sep)]
+    assert inside == []
+    hidden = set(layout.hide_dirs) | set(layout.hide_files)
+    for kept_hidden in (home / "aew-eval" / "lbq-v1", home / ".ssh", scratch.parent.parent / "ledger"):
+        assert str(kept_hidden.resolve()) in hidden  # the other lane, secrets and this lane's ledger stay hidden
+
+
+class _NeverStarted:
+    """A headless session that is never opened (the layout is refused first)."""
+
+    def __init__(self, state_dir):
+        self.state_dir = state_dir
+
+    def close(self) -> dict:
+        return {}
+
+    def live_usage(self) -> dict:
+        return {}
+
+
+def test_a_run_refused_before_launch_is_charged_nothing(tmp_path, monkeypatch):
+    """A run whose containment failed never started a harness process, so its cost is known to be $0: it is never
+    charged at its cap (the V4.1 run's second defect), and it says it never launched."""
+    monkeypatch.setattr(raw, "_headless", lambda: SimpleNamespace(HeadlessSession=_NeverStarted))
+    binary = tmp_path / "bin" / "opencode-cli"
+    binary.parent.mkdir()
+    binary.write_bytes(b"binary")
+    monkeypatch.setattr(raw, "harness_binary", lambda: binary)
+    monkeypatch.setattr(raw, "contained_layout", lambda repo, scratch, binary: object())
+    monkeypatch.setattr(raw, "verify_layout", lambda layout, scratch: {
+        "ok": False, "reason": "hidden paths visible from inside: ['/lanes/x/out/work']"})
+    (tmp_path / "work" / "r1" / "repo").mkdir(parents=True)
+    config = {"role": "worker", "model": "fakeprov/fake-model#high", "provider_env": [], "cap_usd": 0.75,
+              "contain": True, "steps": 80, "harness": {"version": "2.0.18"},
+              "session_db": {"retain": True, "retention_days": 180, "fields": FIELDS}}
+    result = raw.RawArm().run(tmp_path / "work" / "r1" / "repo", config, deadline_s=60, task="fix it")
+    assert result.invalid == "CONTAINMENT_FAILED"
+    assert result.outcome["launched"] is False and result.outcome["harness_outcome"] == "not_started"
+    assert result.cost["charged_usd"] == 0.0
+    assert "hidden paths visible from inside" in result.outcome["containment"]["reason"]
+    assert "containment failed" in result.outcome["arm_error"]
 
 
 def test_a_mask_inside_a_hidden_directory_is_left_to_it():

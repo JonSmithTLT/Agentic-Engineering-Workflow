@@ -85,11 +85,12 @@ def script(scripts: Path, steps: list, effective: list | None = None) -> None:
                                           encoding="utf-8")
 
 
-def run_raw(tmp_path: Path, config: dict) -> dict:
+def run_raw(tmp_path: Path, config: dict, *, work: Path | None = None, run_name: str = "r1") -> dict:
     case_path = make_case(tmp_path / "case")
     f = frozen(case_path, config)
     return runner.run_cell(f, ledger_dir=tmp_path / "ledger", cell=f["assignment"]["order"][0]["cell"],
-                           cases={"C1": case_path}, work=tmp_path / "work", run_name="r1", deadline_s=120,
+                           cases={"C1": case_path}, work=work or tmp_path / "work", run_name=run_name,
+                           deadline_s=120,
                            scorer=lambda tree: {"passed": (tree / "calc.py").read_text(encoding="utf-8") == FIXED})
 
 
@@ -196,3 +197,31 @@ def test_on_linux_a_contained_raw_run_sees_only_its_own_state(tmp_path, fake_ser
     assert containment["design_files_checked"] >= 5  # the lane's manifests, rubric and behaviours: unreadable
     assert record["outcome"]["changed_paths"] == ["calc.py"]  # the work tree stayed writable
     assert (tmp_path / "work" / "other-run" / "transcript.txt").read_text(encoding="utf-8") == "another run\n"
+
+
+def test_on_linux_a_lane_under_home_contains_each_run_beside_its_earlier_runs(tmp_path, fake_server, monkeypatch):
+    """The arm host's real layout, which the test above missed (its work directory is outside its home, so the home
+    scan never lists the other runs): <home>/aew-eval/<experiment>/out/work/<run>, with an earlier run, its mask file
+    and a check's leftover mask beside this run, and another experiment's lane beside this lane. At b924e47 every
+    attempt after the first failed CONTAINMENT_FAILED ("hidden paths visible from inside: [.../out/work]")."""
+    if not sys.platform.startswith("linux"):
+        pytest.skip("bubblewrap containment is Linux-only; Windows refuses a contained raw arm (tested)")
+    scripts, config = fake_server
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    out = home / "aew-eval" / "lbq-v1-deepseek-v4-1-flash" / "out"
+    work = out / "work"
+    (work / "LBQ-2-raw-2" / "repo").mkdir(parents=True)
+    (work / "LBQ-2-raw-2" / "repo" / "transcript.txt").write_text("another run\n", encoding="utf-8")
+    (work / ".LBQ-2-raw-2.aew-mask").write_bytes(b"")
+    (work / ".containment-check.aew-mask").write_bytes(b"")
+    (out / "floor").mkdir()
+    (out / "floor" / "floor.json").write_text("{}", encoding="utf-8")
+    (home / "aew-eval" / "lbq-v1" / "out" / "floor").mkdir(parents=True)
+    script(scripts, [{"do": "write", "files": {"calc.py": FIXED}}])
+    record = run_raw(tmp_path, {**config, "contain": True}, work=work, run_name="LBQ-3-raw-1")
+    containment = record["outcome"]["containment"]
+    assert containment["ok"], containment
+    assert record["validity"]["status"] == "valid", record["outcome"]
+    assert record["outcome"]["launched"] is True
+    assert record["outcome"]["changed_paths"] == ["calc.py"]

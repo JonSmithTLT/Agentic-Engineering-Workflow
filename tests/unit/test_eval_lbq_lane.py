@@ -339,6 +339,94 @@ def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypa
     assert qualify.ceiling_stop({"validity": {"status": "valid", "reason_code": None}}) is None
 
 
+def ceiling_lane(qualify, tmp_path, monkeypatch, records: list[dict], results):
+    """``cmd_ceiling`` over a fake ledger holding ``records`` as cell LBQ-1/raw/1's finalized attempts, with a passed
+    floor. ``results(cell)`` is what each new attempt records; the fake ``run_cell`` registers it in the ledger, as
+    the runner does. Returns the lane directory and the cells run, in order."""
+    out = tmp_path / "lane" / "out"
+    (out / "floor").mkdir(parents=True)
+    (out / "floor" / "floor.json").write_text(json.dumps({"trials": [{"trial": 1, "verdict": "passed"}],
+                                                          "charged_usd": 0.025}), encoding="utf-8")
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    attempts: dict = {}
+    cells: list[str] = []
+
+    def register(cell: str, rec: dict) -> dict:
+        n = len(attempts)
+        name = cell.replace("/", "-") + f"-{n}"
+        rid = f"{V4}/{name}"
+        rec = {**rec, "run_id": rid}
+        (runs / f"{name}.json").write_text(json.dumps(rec), encoding="utf-8")
+        attempts[rid] = SimpleNamespace(run_id=rid, registered={"arm": "raw", "at": f"2026-10-10T00:00:{n:02d}Z",
+                                                                "assignment": {"cell": cell}},
+                                        finalized={"validity": rec["validity"]["status"]},
+                                        status=rec["validity"]["status"])
+        return rec
+
+    for rec in records:
+        register("LBQ-1/raw/1", rec)
+
+    def run_cell(frozen, *, cell, **kw):
+        cells.append(cell)
+        return register(cell, results(cell))
+
+    monkeypatch.setattr(qualify.runner, "run_cell", run_cell)
+    frozen = {"experiment": V4, "canonical_sha256": "a" * 64, "profiles": {"budget_usd": 5.0},
+              "thresholds": {"budget": {"overshoot_margin_usd": 0.05}},
+              "arms": [{"id": "raw", "config": {"cap_usd": 0.75, "provider_env": ["OPENCODE_API_KEY"]}}],
+              "validity_rules": {"retry_policy": {"max_retries": 2, "allowed_for": ["invalid_measurement"]}},
+              "assignment": {"order": [{"cell": "LBQ-1/raw/1", "arm": "raw"}, {"cell": "LBQ-2/raw/1", "arm": "raw"}]}}
+    monkeypatch.setattr(qualify, "frozen_record", lambda: frozen)
+    monkeypatch.setattr(qualify, "AttemptLedger", lambda d, f: SimpleNamespace(attempts=lambda: dict(attempts),
+                                                                              status=dict, runs=runs))
+    return out, cells
+
+
+VALID = {"validity": {"status": "valid", "reason_code": None}, "cost": {"charged_usd": 0.3},
+         "outcome": {"truncated_why": [], "launched": True}}
+
+
+def refused_before_launch(launched: bool | None = False) -> dict:
+    outcome = {"truncated_why": ["turn:not_started"], "harness_outcome": "not_started",
+               "arm_error": "Invalid: containment failed: hidden paths visible from inside: ['/x/out/work']",
+               "containment": {"contained": True, "ok": False,
+                               "reason": "hidden paths visible from inside: ['/x/out/work']"}}
+    if launched is not None:
+        outcome["launched"] = launched
+    return {"run_id": "x", "validity": {"status": "invalid_measurement", "reason_code": "CONTAINMENT_FAILED"},
+            "cost": {"charged_usd": 0.0 if launched is False else 0.75}, "outcome": outcome}
+
+
+def test_a_containment_failure_before_launch_stops_the_ceiling_at_once_and_uses_no_retry(qualify, tmp_path,
+                                                                                          monkeypatch):
+    """The V4.1 run's defect: every attempt failed its containment before launch, was charged its cap and used a
+    retry, cell after cell, until the budget stopped the lane. Now the first one stops the ceiling, charged $0, and
+    a rerun after the arm host is fixed runs the cell again: the never-launched attempts used none of its retries."""
+    out, cells = ceiling_lane(qualify, tmp_path, monkeypatch, [], lambda cell: refused_before_launch())
+    with pytest.raises(SystemExit) as stop:
+        qualify.cmd_ceiling(SimpleNamespace(deadline_s=60), out, None)
+    assert cells == ["LBQ-1/raw/1"]
+    message = str(stop.value.code)
+    assert message.startswith("refused: cell LBQ-1/raw/1's raw run could not be contained (hidden paths visible")
+    assert "nothing was spent and no retry was used (charged $0)" in message
+    # three never-launched attempts already in the ledger (more than the cell's retries): the rerun still runs it
+    out, cells = ceiling_lane(qualify, tmp_path / "rerun", monkeypatch, [refused_before_launch()] * 3,
+                              lambda cell: VALID)
+    assert qualify.cmd_ceiling(SimpleNamespace(deadline_s=60), out, None) == 0
+    assert cells == ["LBQ-1/raw/1", "LBQ-2/raw/1"]
+
+
+def test_an_attempt_recorded_before_launched_existed_still_counts(qualify, tmp_path, monkeypatch):
+    """A record without ``outcome.launched`` (written before this fix) is counted as it was: nothing already in a
+    ledger is reclassified here (the operator decides that: the PR's operator path)."""
+    out, cells = ceiling_lane(qualify, tmp_path, monkeypatch, [refused_before_launch(launched=None)] * 3,
+                              lambda cell: VALID)
+    assert qualify.cmd_ceiling(SimpleNamespace(deadline_s=60), out, None) == 0
+    assert cells == ["LBQ-2/raw/1"]  # LBQ-1/raw/1 used its retries; it is not run again
+    assert qualify.never_launched(refused_before_launch(launched=None)) is False
+
+
 def test_a_ceiling_stop_without_a_provider_error_blames_no_provider(qualify):
     stop = qualify.ceiling_stop({"validity": {"status": "invalid_measurement", "reason_code": "NO_MODEL_STEP"},
                                  "outcome": {"errors": []}})

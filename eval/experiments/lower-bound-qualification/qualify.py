@@ -541,8 +541,8 @@ def provider_failure(run: dict[str, Any] | None) -> dict[str, Any] | None:
     test's exit code."""
     if not run or token_total(run.get("tokens")) != 0:
         return None
-    if (run.get("bridge") or {}).get("requests") != 0 or run.get("evidence") or run.get("tools_called") \
-            or run.get("workspace_changed") is not False:
+    if (run.get("bridge") or {}).get("requests") != 0 or run.get("evidence") != [] or run.get("tools_called") != {} \
+            or run.get("workspace_changed") is not False:  # a missing fact is model activity, never "none"
         return None
     m = TURN_ERROR.search(str(run.get("harness_outcome") or ""))
     if not m or not m[1].startswith("provider."):
@@ -665,11 +665,13 @@ def counted_trials(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def lane_error_message(error: dict[str, Any], key_env: list[str], *, where: str, again: str) -> str:
     """The operator's message for a lane error: what the provider said, and what to do. Without a provider error it
-    blames nothing it does not know."""
+    blames nothing it does not know: the provider only for a ``provider.*`` error."""
     named = error.get("provider_error")
     if not named:
         return f"refused: no model step was recorded; rerun `{again}` once the cause is found; {where}"
     said = f"{named.get('type')}: {named.get('message')}"
+    if not str(named.get("type") or "").startswith("provider."):
+        return f"refused: no model step was recorded ({said}); rerun `{again}` once the cause is found; {where}"
     if error.get("reason_code") == PROVIDER_AUTH_FAILED:
         key = key_env[0] if key_env else "the provider's key"
         return f"refused: the provider rejected the key ({said}); check {key} and rerun `{again}`; {where}"

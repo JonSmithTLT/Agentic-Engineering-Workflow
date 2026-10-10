@@ -284,11 +284,18 @@ def test_an_error_that_is_not_the_providers_still_uses_a_floor_trial(qualify, ou
     {"tokens": None},
     {"tokens": {}},
     {"tokens": {"input": "5200", "output": 0}},
+    {"drop": "evidence"},
+    {"drop": "tools_called"},
+    {"evidence": None},
+    {"tools_called": None},
 ])
 def test_a_model_that_reached_the_bridge_is_never_a_lane_error(qualify, acted):
-    """A lane error needs AEW's own proof that the model did nothing; anything it acted on, or a usage that is
-    missing or not a number, leaves the trial counted."""
+    """A lane error needs AEW's own proof that the model did nothing; anything it acted on, a fact that is missing,
+    or a usage that is missing or not a number, leaves the trial counted."""
+    acted = dict(acted)
+    drop = acted.pop("drop", None)
     run = {**AUTH_RUN, "harness_outcome": "the agent's turn ended: failed (provider.overloaded: try again)", **acted}
+    run.pop(drop, None)
     assert qualify.floor_verdict([trial_of(run)])["state"] == "failed"
 
 
@@ -334,3 +341,8 @@ def test_a_ceiling_stop_without_a_provider_error_blames_no_provider(qualify):
                                  "outcome": {"errors": []}})
     message = qualify.lane_error_message(stop, ["OPENCODE_API_KEY"], where="x", again="qualify.py ceiling")
     assert message.startswith("refused: no model step was recorded") and "provider" not in message
+    stop = qualify.ceiling_stop({"validity": {"status": "invalid_measurement", "reason_code": "NO_MODEL_STEP"},
+                                 "outcome": {"errors": [{"type": "UnknownError", "message": "boom"}]}})
+    message = qualify.lane_error_message(stop, ["OPENCODE_API_KEY"], where="x", again="qualify.py ceiling")
+    assert message.startswith("refused: no model step was recorded (UnknownError: boom)")
+    assert "the provider" not in message

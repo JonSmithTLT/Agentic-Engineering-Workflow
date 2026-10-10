@@ -302,6 +302,8 @@ def control_field(doc: dict[str, Any], name: str) -> dict[str, Any]:
     # carried_obligations, also hashed through the edges, follows them, so its gate_set counts too.
     pytest.param("depends_on_regrouped", {"dependencies", "parent", "gate_set"}, id="depends_on_regrouped"),
     pytest.param("depends_on_via_changed", {"dependencies", "gate_set"}, id="depends_on_hashed_through_other_values"),
+    # Hashed through fewer derived values in the same groups: still a change to the field, in each of its groups.
+    pytest.param("carried_obligations_via_narrowed", {"gate_set", "dependencies"}, id="via_changed_same_groups"),
     pytest.param("provenance_changed", {"acceptance"}, id="provenance_changed"),
     pytest.param("unassigned_changed", {"acceptance", "scope"}, id="unassigned_changed"),
     pytest.param("checks_rule_changed", {"check_definition"}, id="rule_changed"),
@@ -327,6 +329,8 @@ def test_a_registry_change_counts_as_changed_without_a_declared_move(change: str
         control_field(v2_doc, "carried_obligations")["also"] = ["parent"]
     elif change == "depends_on_via_changed":  # it now feeds gate_set too, so it must also sit there (review R1)
         control_field(v2_doc, "depends_on").update(via=["effective_edges", "effective_class"], also=["gate_set"])
+    elif change == "carried_obligations_via_narrowed":
+        control_field(v2_doc, "carried_obligations")["via"] = ["effective_class", "effective_edges"]
     elif change == "provenance_changed":  # a record key leaves the unassigned group
         v2_doc["provenance"].append("source")
     elif change == "unassigned_changed":

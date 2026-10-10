@@ -743,8 +743,9 @@ def cap_violations(root: Path, state: dict[str, Any] | None = None) -> list[str]
         problems.append(f"mutating cap {mutating_cap} exceeded: live mutating workspaces {live}")
     cap = gates.get("non_mutating_concurrency")
     if cap:
+        # An engine custody invocation (M4-D's `integration_attempt` custodian) has a `kind` and no `role`.
         busy = sorted({inv["work_unit"] for inv in state["invocations"].values() if inv["status"] == "active"
-                       and inv["role"] in EXECUTORS and inv.get("scope") == "observation"})
+                       and inv.get("role") in EXECUTORS and inv.get("scope") == "observation"})
         if len(busy) > cap:
             problems.append(f"{len(busy)} non-mutating Tickets have active executors {busy}; the policy cap is {cap}")
     return problems
@@ -812,7 +813,7 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
         execution = u.get("execution") or {}
         # 9. At most one active execute invocation, and only the current attempt's.
         active_exec = [i for i in u.get("invocations", []) if invocations[i]["status"] == "active"
-                       and invocations[i]["role"] in EXECUTORS]
+                       and invocations[i].get("role") in EXECUTORS]
         if len(active_exec) > 1:
             problems.append(f"{wid} has {len(active_exec)} active executors {active_exec}")
         for i in active_exec:

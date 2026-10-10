@@ -640,3 +640,40 @@ def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepa
     p.lead("work", "transition", wid, "--to", "COMMIT_READY")
     p.lead("integrate", "prepare", wid)
     assert p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")["scope"] == "integration"
+
+
+# ----------------------------------------------------------------------------- verify.ingest.integration (M4-E E4b)
+
+
+def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
+    """`verify.ingest.integration`: a prepared candidate bound to the acceptance, the entry's live lease, a report of
+    the candidate's current snapshot; then the candidate is validated, as the query predicted. The Ticket-scope
+    primitive refuses the same report (the `aew verify ingest` command takes either)."""
+    from pathlib import Path
+
+    from aewflow import to_commit_ready, verify
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    engine = Engine.discover(p.root)
+    report = verify(p, wid, scope="integration")
+    wrong = engine.guard_query("verify.ingest", wid, {"evidence": report})
+    assert wrong["availability"] == BLOCKED and "integration-scope" in wrong["blocking_conditions"][0]["message"]
+    candidate = Path(engine.store.read()["work"][wid]["integration"]["workspace"]) / "calc" / "core.py"
+    original = candidate.read_text(encoding="utf-8")
+    candidate.write_text(original + "# an edit after verification\n", encoding="utf-8", newline="\n")
+    check = untouched(p)
+    answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
+                        _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"]
+    check()
+    candidate.write_text(original, encoding="utf-8", newline="\n")
+    args: dict[str, Any] = {"evidence": report}
+    equivalent(engine, "verify.ingest.integration", wid, args, _verify_ingest(engine, p, wid, report))
+    integ = engine.store.read()["work"][wid]["integration"]
+    assert args["found"]["integration_status"] == integ["status"] == "validated"
+    answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
+                        _verify_ingest(engine, p, wid, report))
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "no prepared integration candidate" in (
+        answer["blocking_conditions"][0]["message"])

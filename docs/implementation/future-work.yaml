@@ -487,10 +487,14 @@ sections:
       need an explicit amendment and re-freeze of the preregistration (Revision B), which nobody has proposed. Operation
       names are implementation-local except where frozen: the adoption''s `map.find` takes T5 §7''s frozen name `map.search`,
       and a search hit stays a candidate (T5 §7.4). A worker never has to construct a repository root to search its own
-      workspace (Revision A, WCR-08), and a path outside the authorized workspace is refused. Evaluation: `r9-intent-surface`
-      after M4-H; presentation defaults are earned by measurement. `knowledge.search` and `knowledge.get` join after M6b
-      Arm B (F21). F13 later decides which roles see which operation; they become registry entries then, never a second
-      registry. Delta item D7 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+      workspace (Revision A, WCR-08), and a path outside the authorized workspace is refused. Rejected (synthesis §10, AES-20,
+      subject to Revision A, AEA-10): a broad public free-text semantic facade, a free-text `repo.related`, a `repo.search`
+      operation and a worker-side `work.inspect`. Not rejected: ordinary bounded lexical search beneath the intent layer
+      stays required, as the workspace-rooted fallback (`rg` or an equivalent qualified provider) under `map.find` (here
+      `map.search`) when the maps and indexes cannot resolve a request, and authorized raw `rg` and the other raw tools
+      stay available. Evaluation: `r9-intent-surface` after M4-H; presentation defaults are earned by measurement. `knowledge.search`
+      and `knowledge.get` join after M6b Arm B (F21). F13 later decides which roles see which operation; they become registry
+      entries then, never a second registry. Delta item D7 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
   - '#': F15.9
     Work: 'Delta-first Lead attention (E2): one typed read query on the Lead surface, changes since a cursor (`changes {since_revision,
@@ -506,12 +510,13 @@ sections:
       --list` and from both profiles'' `tools/list` and a call is refused as an unknown tool (tested); never listable, callable
       or advertised in M4-H''s treatment, and not in the normal advertised Lead surface until its probe reports'
     Notes: The cursor is the revision the Lead already holds; the second cursor is U1/H1's telemetry watermark (`observed_through`).
-      One outbox reader and one cursor with F20.7's `/events` and `harness wait`. The catalog addition is the adoption record's
-      §8 direction (designer and operator, 2026-10-09). Measured as `e2-delta-first` (full, delta available, delta-first)
-      inside F9-D's harness; default-on only after measurement, which must show it saves frontier Lead turns and tokens
-      without hiding material developments. F9-C's supervision candidates ride it when they exist; impact anomalies and
-      scheduler recommendations wait for the anomaly record (M4-E) and F11. Delta item D9, done-when including that byte-identity
-      test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
+      A crash-surviving attention cursor waits until takeover semantics need it (AES-19). No second event log or state store
+      for attention, and no stored past projections (AES-20). One outbox reader and one cursor with F20.7's `/events` and
+      `harness wait`. The catalog addition is the adoption record's §8 direction (designer and operator, 2026-10-09). Measured
+      as `e2-delta-first` (full, delta available, delta-first) inside F9-D's harness; default-on only after measurement,
+      which must show it saves frontier Lead turns and tokens without hiding material developments. F9-C's supervision candidates
+      ride it when they exist; impact anomalies and scheduler recommendations wait for the anomaly record (M4-E) and F11.
+      Delta item D9, done-when including that byte-identity test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
 
   - '#': F16
     Work: 'Explain AEW to the model Lead instead of leaving it to trial and error (operator, 2026-09-30). What each risk
@@ -1107,10 +1112,11 @@ sections:
       naming a changed symbol or path, schema and constraint locators, compiler-known callers where a semantic extension
       exists), uncertainty and coverage shown; the worker dispositions each in `self_review.related_surfaces` as addressed,
       unaffected or unsure; one computed surface (`surface_sha256`) serves the worker, the reviewer''s pack and later supervision.
-      Advisory, never a gate because something is related. The command is absent while its switch is off (registered only
-      when on, as `history search` is in the F21 Arm B prototype; a test shows help and usage unchanged); on demand and
-      off by default until `e1-completeness-nudge` measures false positives and dismissals after M4-H; the request-stage
-      hook waits for M4-E''s E5b. The generated and co-change relations need only F22.1; tests and constraints need F22.3'
+      Advisory, never a gate because something is related: no completeness gate and no relation-derived required test (AES-20).
+      The command is absent while its switch is off (registered only when on, as `history search` is in the F21 Arm B prototype;
+      a test shows help and usage unchanged); on demand and off by default until `e1-completeness-nudge` measures false
+      positives and dismissals after M4-H; the request-stage hook waits for M4-E''s E5b. The generated and co-change relations
+      need only F22.1; tests and constraints need F22.3'
 
   - '#': F31
     Work: 'The Q12 attachment lifecycle: an AEW project attachment separate from the harness session (`aew open` attaches,
@@ -1188,8 +1194,16 @@ sections:
       ledger AEA; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md),
       ledger AES):** accepted with three designer revisions and no new subsystem; its applications are F35 (packs), F15.8
       (the worker read surface), F36 (weak-worker continuity), F30 (the completion-impact slice), F15.9 (the Lead delta),
-      F22.3 and F19, ordered in the [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md); the
-      record''s §13 non-goals answer this row''s design review question for it.'
+      F22.3 and F19, ordered in the [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md); its
+      rejections answer this row''s design review question for it (record §13, AEA-39; synthesis §10, AES-20): no named
+      context compiler or router component and no second capability registry; no automatic Knowledge injection before M6b
+      Arm B; no broad free-text semantic facade, free-text `repo.related`, `repo.search` operation or worker-side `work.inspect`,
+      while the workspace-bounded lexical fallback and the raw tools stay (Revision A, F15.8); no forced typed-tool-only
+      operation for Astra-class models; no model-maintained working state, mandatory self-refresh, working-state store or
+      record kind, or Lead access to raw scratch or harness sessions (F36); no completeness gate and no relation-derived
+      required test (F30); no second event log or state store for attention and no stored past projections (F15.9); no peer-worker
+      inspection outside existing coordination and supervision policy; no model-name semantics anywhere in policy (profiles
+      are capability classes, AEA-27).'
 
   - '#': F35
     Work: 'Context-pack serving (R8), in the existing `ContextPacks` and `knowledge/context.py`, with no new component:
@@ -1207,19 +1221,19 @@ sections:
     Belongs to or gated by: '**M4 candidate**, a parallel lane, off by default (packs byte-identical while unset) and never
       part of M4-H''s treatment (Revision B; the operator''s M4-H decision of 2026-10-07 that role packs are not broadened
       stands); the reviewer''s layout row after F22.1 PR B'
-    Notes: 'Knowledge stays a tool, never injected into packs before M6b Arm B is measured (F21). Stale or partial derived
-      sections are visibly qualified. Independence: reviewer and verifier packs keep the canonical same-Ticket material
-      the role needs (objective and requirements, accepted plan, diff, check results, unresolved findings, verification
-      failures and evidence, governing decisions) and exclude the current implementer''s reasoning and private working state
-      by default; the knowledge request-binding half of the filter is F21''s role matrix (KDR-03 to KDR-05). A disclosed
-      departure: the record calls `context.*` and `tools.presentation` operational knobs (§4, §5; AEA-15, AEA-21) and the
-      synthesis classes them `operational`; the delta reads that as a non-semantic tuning knob, not the A3 class, and classes
-      a field that changes what a dispatched role receives `legality_affecting`, because a pack is regenerated at launch
-      under the `launch.pack` guard, so an operational change between dispatch and launch would refuse the launch, and because
-      A3 never silently defaults a field to operational (PBD-09); F22.1 PR B classes `maps.pack_slices` the same way (lead
-      developer, 2026-10-09; delta §4 item 3; reversible). Evaluation: `r8-pack-arms` after M4-H (A today, B the structural
-      switch, C with locators, D with the Knowledge tool, E explicit orientation); no default changes before it reports.
-      Delta item D5 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+    Notes: 'Knowledge stays a tool, never injected into packs before M6b Arm B is measured (F21). L1 symbol rows in packs
+      wait until T5-B covers the repository''s language (AES-19). Stale or partial derived sections are visibly qualified.
+      Independence: reviewer and verifier packs keep the canonical same-Ticket material the role needs (objective and requirements,
+      accepted plan, diff, check results, unresolved findings, verification failures and evidence, governing decisions)
+      and exclude the current implementer''s reasoning and private working state by default; the knowledge request-binding
+      half of the filter is F21''s role matrix (KDR-03 to KDR-05). A disclosed departure: the record calls `context.*` and
+      `tools.presentation` operational knobs (§4, §5; AEA-15, AEA-21) and the synthesis classes them `operational`; the
+      delta reads that as a non-semantic tuning knob, not the A3 class, and classes a field that changes what a dispatched
+      role receives `legality_affecting`, because a pack is regenerated at launch under the `launch.pack` guard, so an operational
+      change between dispatch and launch would refuse the launch, and because A3 never silently defaults a field to operational
+      (PBD-09); F22.1 PR B classes `maps.pack_slices` the same way (lead developer, 2026-10-09; delta §4 item 3; reversible).
+      Evaluation: `r8-pack-arms` after M4-H (A today, B the structural switch, C with locators, D with the Knowledge tool,
+      E explicit orientation); no default changes before it reports. Delta item D5 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
   - '#': F36
     Work: 'Weak-worker continuity (R2-B), platform-owned: the bounded handoff note (R2: an optional, worker-authored note
@@ -1233,15 +1247,18 @@ sections:
       §6, §11 (ledger AEA-06, AEA-22 to AEA-24); [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md)
       §4, §7 (ledger AES-05, AES-06, AES-12); the R2 recommendation of the external-workflow research of 2026-10-05, which
       is not in this repository'
-    Belongs to or gated by: '**M4 candidate** for the handoff note, a parallel lane, off by default and outside M4-H''s
-      treatment (Revision B); the recitation after U1/H1 (its trigger reads health) and M4-E''s E3 and E4'
+    Belongs to or gated by: '**M4 candidate**, a parallel lane, off by default and outside M4-H''s treatment (Revision B):
+      the handoff note, then the recitation, which waits for neither U1/H1 nor M4-E''s E3 and E4 (operator, 2026-10-10);
+      only a trigger on H1''s `repetition` field waits for U1/H1 (AES-19)'
     Notes: 'No model-maintained working-state store, mandatory self-refresh, scratch-state record type, or Lead access to
       raw scratch or harness sessions (record §6, §13). The recitation thresholds (`recitation.calls`, `recitation.elapsed_s`,
-      `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. Under F9-A the
-      recitation becomes a durable instruction message; the worker-published `working_note` stays F9-B''s. The note''s conformance
-      tests: no gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as
-      its predecessor''s claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead''s
-      progress view). Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
+      `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. The run''s supervisor
+      already sees the tool calls and the elapsed time those thresholds count, delivers the recitation through the adapter''s
+      queue prompt (the path `harness send` takes) and records it in the run''s log. Under F9-A the recitation becomes a
+      durable instruction message; the worker-published `working_note` stays F9-B''s. The note''s conformance tests: no
+      gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as its predecessor''s
+      claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead''s progress view).
+      Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))'
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)
@@ -1734,10 +1751,11 @@ sections:
       carry the same object (RHP-07), which is a dashboard contract change (F20). **Agent-effectiveness adoption (2026-10-09;
       [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md) §7, AES-08):**
       H1''s implementation gains a `repetition` field (drift read from trajectory shape) and returns the telemetry watermark
-      as `observed_through`, the second cursor of the Lead''s `changes` query (F15.9); the recitation trigger (F36) reads
-      health. Both fields ship off and absent by default behind one execution-policy switch, with a byte-identity test of
-      `harness_status`, `resume` and `harness wait` while off, and are activated only after M4-H (Revision B; U1 itself
-      is planned before the Q7 hard dogfood). Implementation-note additions, not new scope'
+      as `observed_through`, the second cursor of the Lead''s `changes` query (F15.9); a recitation trigger on `repetition`
+      (F36) waits for that field; the recitation''s call and time triggers do not. Both fields ship off and absent by default
+      behind one execution-policy switch, with a byte-identity test of `harness_status`, `resume` and `harness wait` while
+      off, and are activated only after M4-H (Revision B; U1 itself is planned before the Q7 hard dogfood). Implementation-note
+      additions, not new scope'
 
   - '#': U3
     Work: 'F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses'

@@ -1672,16 +1672,17 @@ sections:
     Closed: '2026-10-09'
     By: 'Two pull requests of the lead developer''s plan (v4, independently reviewed CLEAR). PR #126 built the structural
       core and [ADR-0015](adr/0015-project-map-storage-and-registry.md) (ledger MSR). The second built `aew map select-architecture`,
-      the execution policy''s `maps.pack_slices` switch (off by default: packs and the resume view are byte-identical to
-      a project without maps, so the Q7/M4-H treatment is unchanged), the bounded slice in the packs of roles whose context
-      names `codebase_map` (only the investigator: the operator decided on 2026-10-07 that role packs are not broadened
-      for M4-H, implementer and reviewer packs keep their role-specific source and evidence inputs, and wider map serving
-      must earn itself through later evaluation), pack provenance with pinned regeneration, the resume row, the no-authority
-      walk and `tools/perf/structural_map.py` (measured on Windows: 0.67 s at 10,000 paths and 3.0 s at 100,000, four git
-      processes each; no very-large-repository support is claimed beyond 100,000 paths), with ADR-0015''s amendment of 2026-10-07.
-      Turning the switch on for M4-H is the operator''s decision (SMQ-01). Ledger notes: PMP-17 and PMP-18 are carried by
-      this slicing (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. The Q7 cold-start attestation
-      checks `.aew/local/maps/`'
+      the execution policy''s `maps.pack_slices` switch (`"off"` by default, written quoted because YAML reads a bare off
+      as a boolean: packs and the resume view are then byte-identical to a project without maps, so the Q7/M4-H treatment
+      is unchanged), the bounded slice in the packs of roles whose context names `codebase_map` (only the investigator:
+      the operator decided on 2026-10-07 that role packs are not broadened for M4-H, implementer and reviewer packs keep
+      their role-specific source and evidence inputs, and wider map serving must earn itself through later evaluation),
+      pack provenance with pinned regeneration (a map removed or damaged after dispatch never changes the pack, so it never
+      refuses a launch, relaunch or rotation), the resume row, the no-authority walk and `tools/perf/structural_map.py`
+      (measured on Windows: 0.67 s at 10,000 paths and 3.0 s at 100,000, four git processes each; no very-large-repository
+      support is claimed beyond 100,000 paths), with ADR-0015''s amendment of 2026-10-07. Turning the switch on for M4-H
+      is the operator''s decision (SMQ-01). Ledger notes: PMP-17 and PMP-18 are carried by this slicing (T5-A only); PMP-73
+      is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. The Q7 cold-start attestation checks `.aew/local/maps/`'
   - '#': F23
     Was: 'Pre-internal-alpha hardening candidates: a two-account deployment profile, WSL-hosted runs for Windows operators,
       a remote PR integration target (`DONE` on an observed merge), terminal-authenticated operator attribution for consequential

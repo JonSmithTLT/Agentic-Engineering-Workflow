@@ -225,6 +225,28 @@ def test_continue_is_refused_while_the_next_steps_guard_refuses_it(project, tmp_
     assert_control_invariants(p)
 
 
+def test_a_continued_dispatch_step_still_meets_its_own_dispatch_decision(project, tmp_path, monkeypatch):
+    """`aew stage continue` is not a dispatch entrypoint: it reaches dispatch only through the registered primitive of
+    each remaining step, whose own commit takes the dispatch decision (the M4-A choke point). With the surface's
+    pre-check out of the way (its guard read as not queryable), the assignment's own decision still refuses it: the
+    stage stops at that step, nothing is assigned and no invocation is created."""
+    p = project
+    wid = create_planned_ticket(p, tmp_path)
+    other = create_planned_ticket(p, tmp_path, title="Add multiply()")
+    sid = crashed_stage(p, monkeypatch, "probe_start", "work.assign", work_id=wid)
+    p.lead("work", "assign", other)  # mutating_concurrency 1: the slot is taken
+    monkeypatch.setattr(stage, "guard_status", lambda engine, primitive, args: ("UNKNOWN", []))
+    invocations = set(load_control(p.root)["invocations"])
+    out = resolve(p, sid, "continue")
+    assert not out["ok"] and out["stopped"]["at"] == "work.assign", out["stopped"]
+    assert out["stopped"]["boundary"] == "refused"
+    si = Engine.discover(p.root).stage_intent(sid)
+    assert si["status"] == "STOPPED_AT_BOUNDARY" and len(si["steps"]) == 1 and si["rebound"]
+    state = load_control(p.root)
+    assert state["work"][wid]["state"] == "READY" and set(state["invocations"]) == invocations
+    assert_control_invariants(p)
+
+
 @pytest.mark.parametrize("change", ["contract", "plan", "gone"])
 def test_continue_re_resolves_the_stage_contract(project, monkeypatch, change):
     """A stage contract that changed since the intent opened (a new schema), a planner that now plans other steps for

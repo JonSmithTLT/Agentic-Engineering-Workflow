@@ -31,6 +31,10 @@ NOT_DISPATCHING = {
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
+    # The `resolve` tool's CLI form (M4-E E3c). Abandon never dispatches. Continue makes no decision of its own: each
+    # remaining step is a registered primitive whose own commit takes its dispatch decision (the M4-A choke point),
+    # and the journal refuses a step whose commit lacks its allowed decision (BY_DECISION, step_primitive_mismatch).
+    "stage abandon", "stage continue",
     "lead takeover", "manifest adopt",
     "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",

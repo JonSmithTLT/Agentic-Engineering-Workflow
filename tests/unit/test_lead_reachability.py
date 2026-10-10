@@ -30,8 +30,9 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 
 
 def lead_authenticated() -> set[frozenset[str]]:
-    # The parser with every switched command registered (register F21's `history search`), so none escapes the walk.
-    return {frozenset(path) for path, p in leaves(build_parser(recall_search=True))
+    # The parser with every switched command registered (register F21's `history search`, F9-A's `message`), so none
+    # escapes the walk.
+    return {frozenset(path) for path, p in leaves(build_parser(recall_search=True, coordination_reads=True))
             if any(a.dest == "token" for a in p._actions)}
 
 

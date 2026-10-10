@@ -31,8 +31,13 @@ NOT_DISPATCHING = {
     "invoke cancel", "invoke show", "lead acquire",
     "lead handoff accept", "lead handoff cancel", "lead handoff offer", "lead release", "lead session", "lead show",
     "lead mcp", "lead tool",  # the typed surface's transports: dispatching tools reach the registry through primitives
+    # The `resolve` tool's CLI form (M4-E E3c). Abandon never dispatches. Continue makes no decision of its own: each
+    # remaining step is a registered primitive whose own commit takes its dispatch decision (the M4-A choke point),
+    # and the journal refuses a step whose commit lacks its allowed decision (BY_DECISION, step_primitive_mismatch).
+    "stage abandon", "stage continue",
     "lead takeover", "manifest adopt",
     "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
+    "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
@@ -52,7 +57,8 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 
 
 def test_every_cli_command_is_a_registered_dispatch_or_classified_as_not_dispatching():
-    commands = {" ".join(p) for p in leaves(build_parser(recall_search=True))}  # every command, the switched ones too
+    # every command, the switched ones too
+    commands = {" ".join(p) for p in leaves(build_parser(recall_search=True, coordination_reads=True))}
     dispatching = {" ".join(p) for p in CLI_DISPATCHES}
     assert dispatching <= commands, dispatching - commands
     assert not dispatching & NOT_DISPATCHING
@@ -84,7 +90,7 @@ def test_the_dispatch_finalizer_runs_before_archival(tmp_path):
     engine = Engine(tmp_path, tmp_path / ".aew")
     steps = [f"{type(s.__self__).__name__}.{s.__func__.__name__}" for s in engine._k.finalizers.steps]
     assert steps == ["StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize",
-                     "UsageCopy.finalize", "Archive.finalize"]
+                     "UsageCopy.finalize", "Coordination.finalize", "Archive.finalize"]
 
 
 # ---------------------------------------------------------------- the decision

@@ -9,6 +9,8 @@ from typing import Any
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
 from aew.errors import UsageError
 from aew.harness import bridge
+from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
+from aew.harness.delivery import DEFAULT_WHEN, WHEN_DELIVERY
 
 
 def _inv_token(args: argparse.Namespace) -> str:
@@ -57,6 +59,18 @@ def _add_execution(q: argparse.ArgumentParser) -> None:
 def _execution(args: argparse.Namespace) -> dict[str, Any] | None:
     chosen = {k: getattr(args, k, None) for k in ("profile", "model", "effort")}
     return {k: v for k, v in chosen.items() if v is not None} or None
+
+
+# `aew harness wait`'s exit status when the run it returns ended without its expected output (register U8): distinct
+# from every error's (1-10, `aew.errors`), so a script or a Lead's shell sees it without parsing the result, which is
+# printed as for any other ending. A timed-out wait, and every other ending, still exit 0.
+WAIT_NO_EVIDENCE_EXIT = 20
+
+
+def _wait_exit_status(result: Any) -> int:
+    if isinstance(result, dict) and not result.get("timed_out") and result.get("status") == ENDED_WITHOUT_EVIDENCE:
+        return WAIT_NO_EVIDENCE_EXIT
+    return 0
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -385,27 +399,47 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
-    q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does")
+    q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does",
+                        epilog=f"Exit status: {WAIT_NO_EVIDENCE_EXIT} when the run it returns ended without its "
+                               "expected output (status ended_without_evidence; the result then starts with a "
+                               "headline); otherwise 0, also when the wait timed out (see timed_out). The result is "
+                               "printed either way.")
     q.add_argument("run", nargs="+")
     q.add_argument("--any", dest="any_", action="store_true",
                    help="wait on several runs and return the first to end, with its next action; a run whose "
                         "invocation is no longer active counts as ended, though its record may still say running")
     q.add_argument("--timeout", type=float, default=600.0)
     q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run if len(a.run) > 1 else a.run[0],
-                                                             timeout=a.timeout, any_=a.any_))
+                                                             timeout=a.timeout, any_=a.any_),
+                   exit_status=_wait_exit_status)
     q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")
     q.add_argument("--reason", required=True)
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
     q.set_defaults(handler=lambda a: _engine(a).harness_stop(token=_lead_token(a), run=a.run, reason=a.reason))
-    q = hsub.add_parser("send", help="deliver a message to a running agent after its current step (Lead)")
+    # The timings and their help (F9-A plan v4 amendment 2 §1.4, §4; register E55). The text is static: it reads the
+    # same whether messaging is on or off, so it is what M4-H's frozen treatment shows.
+    q = hsub.add_parser(
+        "send", help="deliver a message to a running agent: `next-step` (default) at its next step boundary, without "
+                     "interrupting it; `turn-end` after its current turn (Lead)",
+        description="Deliver a message to a running agent: `next-step` (default) at its next step boundary, without "
+                    "interrupting it; `turn-end` after its current turn. `turn-end` is unavailable unless the project "
+                    "has enabled coordination messaging, because it needs the F9 message store; while messaging is "
+                    "off it is refused. Order: `next-step` messages arrive in the order they were sent, and so do "
+                    "`turn-end` messages, one at each end of the agent's turn; a `next-step` message sent after a "
+                    "`turn-end` one arrives first. A message is up to 1 MiB (4,000 characters when coordination "
+                    "messaging is on). With messaging on, every send is recorded as a coordination message, and still "
+                    "wakes a held session; a report the worker submitted before receiving a message of either timing "
+                    "is not final until it submits again.")
     q.add_argument("run")
     src = q.add_mutually_exclusive_group(required=True)
     src.add_argument("--text")
     src.add_argument("--file", help="message file, or - for stdin")
+    q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
+                   help="when the agent receives it: next-step (the default) or turn-end")
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
     q.set_defaults(handler=lambda a: _engine(a).harness_send(
-        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file)))
+        token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when))
     q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
     q.add_argument("run")
     q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")

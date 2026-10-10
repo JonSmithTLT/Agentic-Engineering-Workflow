@@ -81,9 +81,9 @@ class FakeAdapter(HarnessAdapter):
             pass
         self._out.close()
 
-    def send(self, text: str) -> None:
+    def send(self, text: str, delivery: str) -> None:
         with (self.run_dir / "harness" / "inbox.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"text": text}) + "\n")
+            fh.write(json.dumps({"text": text, "delivery": delivery}) + "\n")
 
     def collect(self) -> dict[str, Any]:
         if not hasattr(self, "transcript"):
@@ -170,11 +170,18 @@ class HarnessLab:
             run_aew,  # the CLI's own time limit must outlast the wait (a live model run can take minutes)
         )
 
+        from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT  # here: the supervisor loads this module too
+
         res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
                       timeout=timeout + 120)
-        assert res.returncode == 0, f"aew harness wait {run} failed: {res.stderr or res.stdout}"
+        assert res.returncode in (0, WAIT_NO_EVIDENCE_EXIT), (run, res.stderr or res.stdout)
         out = res.json
         assert not out["timed_out"], f"{run} still running after {timeout}s: {out}"
+        # U8: the distinct exit status exactly when the run ended without its expected output, with its headline
+        no_evidence = out["status"] == "ended_without_evidence"
+        assert (res.returncode == WAIT_NO_EVIDENCE_EXIT) == no_evidence, (res.returncode, out)
+        if no_evidence or out.get("reason_code") is None:
+            assert ("headline" in out) == no_evidence, out
         return out
 
     def record(self, run: str) -> dict[str, Any]:

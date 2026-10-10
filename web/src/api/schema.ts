@@ -31,6 +31,8 @@ export const capabilityNames = [
   'evidence',
   'knowledge',
   'history',
+  'maps',
+  'history_search',
   'integrity',
   'queue',
   'action_projection',
@@ -228,9 +230,9 @@ export const overview = z.strictObject({
   }),
   capabilities,
 });
-export const envelope = <T extends z.ZodType>(data: T) =>
+export const envelope = <T extends z.ZodType, V extends '0.1.2' | '0.1.3' = '0.1.2'>(data: T, version: V = '0.1.2' as V) =>
   z.strictObject({
-    schema_version: z.literal('0.1.2'),
+    schema_version: z.literal(version),
     project_id: id,
     control_revision: controlRevision,
     generated_at: timestamp,

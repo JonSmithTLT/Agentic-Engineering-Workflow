@@ -219,6 +219,48 @@ def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():
     assert lead.tui_env(base_env(), provider_env=["ANTHROPIC_API_KEY"])["ANTHROPIC_API_KEY"] == "sk-ant-secret"
 
 
+def no_proxy_of(env: dict[str, str]) -> list[str]:
+    names = [k for k in env if k.upper() == "NO_PROXY"]
+    assert len({env[k] for k in names}) <= 1, names  # every spelling carries the same list
+    return env[names[0]].split(",") if names else []
+
+
+@pytest.mark.parametrize("proxy", ["HTTPS_PROXY", "http_proxy", "ALL_PROXY"])
+def test_a_proxy_passed_to_opencode_never_carries_its_loopback_traffic(tmp_path, proxy):
+    base = {**base_env(), proxy: "http://proxy.example:3128", "NO_PROXY": "intranet.example"}
+    server = adapter.server_env(base, tmp_path, provider_env=[proxy, "NO_PROXY"], config={}, password="p")
+    tui = lead.tui_env(base, provider_env=[proxy, "NO_PROXY"])
+    for env in (server, tui):
+        assert env[proxy] == "http://proxy.example:3128"  # the provider traffic keeps the operator's proxy
+        assert no_proxy_of(env) == ["intranet.example", "127.0.0.1", "localhost", "::1", "[::1]"]
+    if sys.platform != "win32":
+        assert server["no_proxy"] == server["NO_PROXY"]  # curl reads only the lower-case spelling
+    else:
+        assert [k for k in server if k.upper() == "NO_PROXY"] == ["NO_PROXY"]  # one entry: Windows ignores case
+
+
+@pytest.mark.parametrize("operator", [" a.example ,, a.example,", "b.example"])
+def test_the_operators_no_proxy_entries_are_kept_whatever_their_spelling_or_spacing(tmp_path, operator):
+    name = "NO_PROXY" if sys.platform == "win32" else "no_proxy"  # POSIX: the lower-case spelling merges too
+    base = {**base_env(), "HTTPS_PROXY": "http://proxy.example:3128", name: operator}
+    env = adapter.server_env(base, tmp_path, provider_env=["HTTPS_PROXY", name], config={}, password="p")
+    kept = list(dict.fromkeys(h.strip() for h in operator.split(",") if h.strip()))
+    assert no_proxy_of(env) == [*kept, "127.0.0.1", "localhost", "::1", "[::1]"]
+
+
+def test_an_operators_no_proxy_star_is_left_exactly_as_it_was(tmp_path):
+    base = {**base_env(), "HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "*"}
+    server = adapter.server_env(base, tmp_path, provider_env=["HTTPS_PROXY", "NO_PROXY"], config={}, password="p")
+    tui = lead.tui_env(base, provider_env=["HTTPS_PROXY", "NO_PROXY"])
+    for env in (server, tui):  # urllib reads * only as the whole value: appending would re-enable the proxy
+        assert {k: v for k, v in env.items() if k.upper() == "NO_PROXY"} == {"NO_PROXY": "*"}
+
+
+def test_without_a_proxy_the_harness_environment_gains_no_no_proxy(tmp_path):
+    assert no_proxy_of(adapter.server_env(base_env(), tmp_path, provider_env=[], config={}, password="p")) == []
+    assert no_proxy_of(lead.tui_env(base_env(), provider_env=[])) == []
+
+
 @pytest.mark.parametrize("name", ["AEW_LEAD_TOKEN", "NOT_SET", "SNEAKY"])
 def test_the_lead_refuses_to_pass_aew_variables_missing_ones_or_credentials(name):
     with pytest.raises(UsageError):

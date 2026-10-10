@@ -34,6 +34,7 @@ from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter
+from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
 
@@ -296,8 +297,8 @@ class Supervisor:
                 if kind == "stop":
                     return self._finish(K.TERMINATED, f"stopped: {req.get('reason')}")
                 try:
-                    if kind == "send":
-                        self.adapter.send(str(req.get("text") or ""))
+                    if kind == "send":  # only `next-step` is ever a request file (F9-A amendment 2 §3.3; E55)
+                        self.adapter.send(str(req.get("text") or ""), WHEN_DELIVERY[NEXT_STEP])
                     elif kind == "interrupt":
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
@@ -361,11 +362,19 @@ class Supervisor:
         self.record["exit_code"] = code
         if status.get("detail"):
             self.record["harness_outcome"] = status["detail"]
+        reason_code = status.get("reason_code")
+        if isinstance(reason_code, str) and reason_code:
+            self.record["reason_code"] = reason_code
         if outputs:
             return self._finish(K.ENDED_WITH_EVIDENCE, f"harness exited ({code}) after recording {', '.join(outputs)}")
         if code == 0:
             return self._finish(K.ENDED_WITHOUT_EVIDENCE, "harness exited successfully without recording its expected "
                                 f"output ({', '.join(sorted(expected))}); no AEW state changed")
+        if reason_code == K.PROVIDER_AUTH_FAILED:  # its own reason, in the existing status (register V1)
+            names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
+            return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
+                                "the harness exited without recording its expected output; check the key in "
+                                f"{names or 'the variables'} (the execution policy's provider_env), then relaunch")
         return self._finish(K.CRASHED, f"harness exited with {code} without recording its expected output")
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:

@@ -231,7 +231,7 @@ export function knownExplanationValues(
       return (record as Work).kind === 'ticket' ? ticketStates : parentStates;
     if (field === 'has_attention') return ['true', 'false'];
     if (field === 'integration.status')
-      return ['prepared', 'publishing', 'conflict', 'superseded'];
+      return ['prepared', 'publishing', 'conflict', 'superseded', 'integrated'];
   }
   if (kind === 'invocation')
     return field === 'status' ? invocationStatuses : harnessStatuses;

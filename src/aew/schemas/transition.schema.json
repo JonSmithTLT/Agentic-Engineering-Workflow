@@ -455,6 +455,27 @@
               "type": "string"
             }
           }
+        },
+        {
+          "description": "F9-A (ADR-0017 D7; plan v4 D-16, R3): the commit sealed the thread of an invocation it ended, because the path that ended it missed its explicit seal call (an engine defect, recorded so CI's walk finds it). Appended by the store on the operation's behalf.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "invocation",
+            "op"
+          ],
+          "properties": {
+            "kind": {
+              "const": "coordination.seal_fallback"
+            },
+            "invocation": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string"
+            }
+          }
         }
       ]
     }

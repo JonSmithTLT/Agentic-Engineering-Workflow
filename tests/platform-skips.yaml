@@ -24,6 +24,9 @@ skipped:
       Covered on Linux.
     tests/unit/test_store.py::test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file: >-
       the lock file is replaced while open, which Windows refuses (area 5 P2 is POSIX-only). Covered on Linux.
+    tests/integration/test_coordination_store.py::test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_stays_readable: >-
+      the lock file is removed while held, which Windows refuses for an open file (PR #160 review, m1: POSIX-only).
+      Covered on Linux; on Windows test_a_writer_whose_control_lock_is_not_intact_writes_nothing runs the same check.
     tests/integration/test_validation_checks.py::test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused: >-
       checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
       mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.
@@ -104,6 +107,9 @@ skipped:
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_another_runs_harness_state_is_invisible: >-
@@ -200,6 +206,12 @@ skipped:
       both). Covered on Linux.
     tests/unit/test_hang_watchdog.py::test_a_hung_test_fails_in_place_by_name_with_its_stack_and_the_run_carries_on[no_xdist]: >-
       as the xdist case: SIGALRM is POSIX only; Windows records the stacks instead. Covered on Linux.
-  linux: {}
+    tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
+      local-only by design (F9-A plan v4, amendment 1, A9): in CI the account is the runner's, so the check runs on the
+      author's machine before committing. CI runs the path and key guard on every platform
+      (test_the_f9a_probe_evidence_holds_no_host_path_or_location_key).
+  linux:
+    tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
+      local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

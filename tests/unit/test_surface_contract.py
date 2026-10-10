@@ -97,13 +97,14 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering", "cli",
+        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "resolve", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}
-    # The stages and publication are built with the journal (F15.2).
-    assert designed == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
-                        "ticket_prepare", "integration_publish"}
+    # The stages and publication are built with the journal (F15.2): E5a builds ticket_draft and ticket_start.
+    assert designed == {"ticket_request_review", "ticket_request_verification", "ticket_prepare",
+                        "integration_publish"}
 
 
 def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does():
@@ -133,7 +134,12 @@ def test_only_workflow_advancing_rows_are_progression_rows():
 
 
 def test_every_built_tool_has_a_runner_and_every_runner_a_built_tool():
-    assert set(run.RUNNERS) == {t.name for t in contract.TOOLS.values() if t.built}
+    from aew.surface import stage
+
+    # A built stage of several primitives runs through its planner and the stage executor (M4-E E5a); every other
+    # built tool through its runner. Never both.
+    assert not set(run.RUNNERS) & set(stage.STAGES)
+    assert set(run.RUNNERS) | set(stage.STAGES) == {t.name for t in contract.TOOLS.values() if t.built}
 
 
 def test_the_normal_profile_never_offers_the_cli_escape():
@@ -148,6 +154,17 @@ def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
     assert contract.OPERATION_CLASSES == primitives.OPERATION_CLASSES
     assert (contract.MECHANICAL, contract.POLICY_RESOLVED, contract.JUDGMENT_BEARING) == (
         primitives.MECHANICAL, primitives.POLICY_RESOLVED, primitives.JUDGMENT_BEARING)
+
+
+def test_explain_takes_a_stage_with_that_stages_own_arguments():
+    """M4-E E4: a stage's arguments are checked against its own schema, `expect_rev` aside; `work_id` may be given
+    once, beside the stage."""
+    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001"}, NORMAL).name == "explain"
+    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001",
+                                  "arguments": {"work_id": "T-0001"}}, NORMAL)  # the same unit twice is fine
+    assert check_call("explain", {"stage": "ticket_draft", "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
+    assert check_call("explain", {"stage": "integration_publish",
+                                  "arguments": {"work_id": "T-0001", "prepared_candidate": "c"}}, NORMAL)
 
 
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
@@ -172,8 +189,13 @@ SYNTHETIC = Tool("synthetic_start", contract.STAGE, POLICY_RESOLVED, "a declared
     (contract.TOOLS["cli"], {"argv": ["status"]}, JUDGMENT_BEARING),
     (contract.TOOLS["ticket_request_verification"], {}, JUDGMENT_BEARING),
     (contract.TOOLS["integration_publish"], {}, JUDGMENT_BEARING),
-    # Its expansion names primitives nobody has declared yet (F15.2 declares them): fail closed.
-    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001"}, JUDGMENT_BEARING),
+    # Its primitives are declared (M4-E E5a): policy-resolved, unless an execution override promotes it.
+    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001"}, POLICY_RESOLVED),
+    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001", "execution": {"model": "p/m"}},
+     JUDGMENT_BEARING),
+    (contract.TOOLS["ticket_draft"], {"expect_rev": 1, "title": "t", "risk_class": 1}, JUDGMENT_BEARING),
+    # Its expansion names primitives nobody has declared yet (E5b declares them): fail closed.
+    (contract.TOOLS["ticket_request_verification"], {"expect_rev": 1, "work_id": "T-0001"}, JUDGMENT_BEARING),
     (None, {}, JUDGMENT_BEARING),
 ])
 def test_the_effective_class_never_drops_below_the_base_and_fails_closed(t, arguments, want):
@@ -223,11 +245,28 @@ def test_a_decision_never_carries_a_default():
 @pytest.mark.parametrize(("name", "arguments", "profile", "code"), [
     ("no_such_tool", {}, NORMAL, "UNKNOWN_TOOL"),
     (7, {}, NORMAL, "UNKNOWN_TOOL"),
-    ("ticket_start", {"expect_rev": 1, "work_id": "T-0001"}, NORMAL, "TOOL_NOT_BUILT"),
+    ("ticket_request_review", {"expect_rev": 1, "work_id": "T-0001"}, NORMAL, "TOOL_NOT_BUILT"),
+    ("ticket_start", {"expect_rev": 1, "work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
+    ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
     ("integration_publish", {}, RECOVERY, "TOOL_NOT_BUILT"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit nor an invocation
+    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
+    ("explain", {"role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
+    ("explain", {"stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_draft", "arguments": {"title": "t"}}, NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("explain", {"work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),  # arguments need a stage
+    # a stage takes no dispatch argument, and one unit (PR #170 review, finding 5)
+    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"}, NORMAL,
+     "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
+     "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "card": "c"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}}, NORMAL,
+     "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1", "R-1"]}, NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1"], "timeout_s": 601}, NORMAL, "INVALID_ARGUMENTS"),
 ])
@@ -292,11 +331,10 @@ def test_the_result_schema_is_registered_and_its_surface_version_matches():
 
 
 # The primitives the designed stages expand to that nobody has declared yet. Until F15.2 declares them, fail-closed
-# classification makes every stage that names one JUDGMENT_BEARING, so a stage the design calls POLICY_RESOLVED
-# (ticket_start, ticket_request_review) is reported judgment-bearing in the projection. This list makes that explicit:
-# it may only shrink, and F15.2 empties it as it builds each stage.
-PENDING_F15_2 = frozenset({"dispatch.launch", "work.transition", "work.create", "plan.propose", "review.ingest",
-                           "verify.ingest"})
+# classification makes every stage that names one JUDGMENT_BEARING. This list makes that explicit: it may only shrink,
+# and F15.2 empties it as it builds each stage (E5a declared work.create, plan.propose, work.transition and
+# dispatch.launch; E5b declares the two ingests).
+PENDING_F15_2 = frozenset({"review.ingest", "verify.ingest"})
 
 
 def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2():
@@ -306,6 +344,28 @@ def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2():
     assert undeclared == PENDING_F15_2
     assert all(not contract.TOOLS[t].built for t in contract.TOOLS
                if set(contract.TOOLS[t].expands_to) & PENDING_F15_2), "a built tool expands to an undeclared primitive"
-    for name in ("ticket_start", "ticket_request_review"):  # the design's POLICY_RESOLVED stages, fail-closed for now
+    for name in ("ticket_start", "ticket_request_review"):  # the design's POLICY_RESOLVED stages, declared now
         t = contract.TOOLS[name]
-        assert t.base_class == POLICY_RESOLVED and effective_class(t, {}) == JUDGMENT_BEARING
+        assert t.base_class == POLICY_RESOLVED and effective_class(t, {}) == POLICY_RESOLVED
+
+
+def test_every_staged_primitive_is_declared():
+    """Plan v3 §10 (SAE-07's precondition, E5a to E6a): every primitive a built stage expands to has its full
+    PrimitiveSpec, with a guard that decides it (a queryable guard or a dispatch entrypoint) and the side effects it
+    declares; and every built stage has a planner whose plan the stage executor can run (a step runner for each)."""
+    from aew.engine.dispatch import ENTRYPOINTS
+    from aew.engine.primitives import SPECS, spec_for
+    from aew.surface import stage
+
+    effects = {"control_state", "credential", "workspace", "harness_process", "authoritative_ref"}
+    for t in contract.TOOLS.values():
+        if not (t.built and t.kind == contract.STAGE and len(t.expands_to) > 1):
+            continue
+        assert t.name in stage.STAGES, f"{t.name} is built but has no planner"
+        for p in t.expands_to:
+            spec = spec_for(p)
+            assert spec.declared and p in SPECS, (t.name, p)
+            assert spec.guard_id is not None, (t.name, p, "no guard decides it")
+            assert spec.guard_id in ENTRYPOINTS or spec.guard_id == p, (t.name, p, spec.guard_id)
+            assert set(spec.side_effect_class.split("+")) <= effects, (t.name, p, spec.side_effect_class)
+            assert p in stage.STEP_RUNNERS, (t.name, p, "no step runner")

@@ -39,7 +39,7 @@ provider_env: [OPENAI_API_KEY]
 ```
 
 - **Provider and model ids** are OpenCode's, exactly as its model list shows them. **`effort`** is the model's variant; a launch refuses if the pinned model or variant is missing, and never falls back to another.
-- **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell.
+- **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell. Behind a proxy, list the variable OpenCode reads for your provider's scheme here too: `HTTPS_PROXY` for an `https://` provider, `HTTP_PROXY` for an `http://` one (OpenCode 2.0.18 does not read `ALL_PROXY`, and `HTTP_PROXY` never applies to `https://`). AEW then adds `127.0.0.1`, `localhost`, `::1` and `[::1]` to `NO_PROXY`, keeping any entries you pass (a `NO_PROXY` of `*` is left as it is), so OpenCode's loopback traffic never goes through the proxy. AEW's own calls to the run's server ignore proxy settings in any case. `aew opencode --provider-env` does the same for the Lead's OpenCode.
 - **Routing** is most specific first: card, then risk class, then archetype, then default. The profile is pinned on each invocation at dispatch, so editing the policy never changes work already dispatched. The Lead can override one dispatch with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
 
 The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --token <credential> --expect-rev N`
@@ -92,13 +92,14 @@ The Lead dispatches with `--launch` on `work assign`, `work dispatch`, `work red
 ```bash
 aew harness wait R-INV-0001-1 --timeout 110     # until the run stops; its evidence, each item's result, and the next action
 aew harness status [INV]                        # runs, their local status, and whether they still hold authority
-aew harness send R-INV-0001-1 --file nudge.md   # a message to a running agent, delivered after its current step
+aew harness send R-INV-0001-1 --file nudge.md   # a message to a running agent, at its next step boundary
 aew harness interrupt R-INV-0001-1              # stop the current turn and keep the session
 aew harness stop R-INV-0001-1 --reason "..."    # stop the harness; the invocation is unchanged
 aew harness launch INV-0001 --expect-rev N      # a new run of the same invocation (rotates its credential)
 ```
 
 - **A run's end moves nothing.** Whatever a run reports, the Ticket advances only when the Lead ingests evidence and makes the transition, as before.
+- **A run that ended without its expected output is not progress.** `aew harness wait` then exits 20 (every other ending, and a wait that timed out, exit 0) and its result starts with a one-line `headline`; the result is printed either way. A run whose provider rejected the key says so: `reason_code: provider_auth_failed`, with what to do in its next action.
 - **Relaunching** starts a fresh session with the same pack plus a continuation built from AEW's durable state: earlier runs, this invocation's evidence and the workspace's changes. It rotates the invocation's credential, so the old run, if it is still somewhere, has no authority. If the old run may still be alive, the launch refuses (`RUN_LIVE`) unless you add `--replace`.
 - **Each run is private.** Its own OpenCode server, state directories and database, under `.aew/local/harness/runs/<run>/`. A reviewer never sees an implementer's conversation; what passes between roles is AEW state.
 
@@ -131,7 +132,8 @@ Until real containment exists (`docs/design/proposals/execution-workspace-and-is
 |---|---|---|
 | The TUI crashed or was closed | runs continue; nothing is lost | `aew opencode` again, then `/aew-resume` |
 | A run is `lost` or `crashed` | the harness died; the Ticket and credential are unchanged | `aew harness launch INV --expect-rev N`, or `aew invoke cancel` |
-| A run is `ended_without_evidence` | it stopped without its expected output | `aew harness send` a nudge while it runs, relaunch, or cancel |
+| A run is `ended_without_evidence`; `aew harness wait` exits 20 and its result starts with a `headline` | it stopped without its expected output | `aew harness send` a nudge while it runs, relaunch, or cancel |
+| A run is `crashed` with `reason_code: provider_auth_failed` | the model provider rejected the key (an expired or revoked key: a 401, which OpenCode does not retry) | put a valid key in the variable the policy's `provider_env` names, then relaunch. A relaunch's server reads the key from the environment of the process that launches it: from inside `aew opencode`, that is the session's own, so restart `aew opencode` with the new key first |
 | `HARNESS_INCOMPATIBLE` | no binary, a version that is not V2, a missing API capability, or the pinned model or variant missing from the catalog | the message names the gap; check `AEW_OPENCODE_BIN`, the policy's model ids, and `provider_env` |
 | `RUN_LIVE` | the latest run may still be running | wait for it, or relaunch with `--replace` |
 | `STALE_AUTHORITY` naming a rotation | an old run's credential was replaced | expected: only the latest run can act |

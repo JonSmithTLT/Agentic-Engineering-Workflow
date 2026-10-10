@@ -10,6 +10,7 @@ transaction finalizers) are filled in one documented order.
 from __future__ import annotations
 
 import ast
+import copy
 import inspect
 from pathlib import Path
 
@@ -32,7 +33,8 @@ from aew.engine.seams import (
 ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
                       "_nm", "_hierarchy", "_evidence", "_integration", "_harness", "_lead", "_views", "_resume",
-                      "_project", "_archive", "_history", "_migration", "_dispatch", "_assurance", "_queue")
+                      "_project", "_archive", "_history", "_migration", "_dispatch", "_assurance", "_queue",
+                      "_coordination")
 
 
 @pytest.fixture
@@ -105,6 +107,26 @@ def test_state_hooks_run_in_their_documented_order(engine):
     assert [named(h) for h in hooks.before] == ["Integration.before_state_change"]
     # A terminal unit's invocations end first; then a Ticket leaving COMMIT_READY retires its candidate.
     assert [named(h) for h in hooks.after] == ["Invocations.on_state_change", "Integration.on_state_change"]
+
+
+def test_every_before_hook_is_a_query_the_guard_queries_ask(engine):
+    """PR #170 review, finding 1: a `before` hook is a pure refusal that answers (a blocker or None) and never raises,
+    so the guard queries can ask it (`WorkUnits.state_change_query`) and a new hook cannot bypass them."""
+    from aew.engine.dispatch import Blocker
+
+    units = [{"kind": "ticket", "mutating": True, "state": s, "integration": i}
+             for s in ("RUNNING", "COMMIT_READY") for i in (None, {"status": "prepared"}, {"status": "publishing"})]
+    for hook in engine._units.hooks.before:
+        for unit in units:
+            for to in ("RUNNING", "CANCELLED", "DONE"):
+                given, change = copy.deepcopy(unit), {"from": unit["state"], "to": to}
+                found = hook(given, change)
+                assert found is None or (isinstance(found, Blocker) and found.error is not None), named(hook)
+                # pure: nothing it was given changed, nested state included (PR #170 re-review, finding 3)
+                assert given == unit and change == {"from": unit["state"], "to": to}, named(hook)
+    publishing = {"kind": "ticket", "mutating": True, "state": "COMMIT_READY", "integration": {"status": "publishing"}}
+    found = engine._units.state_change_query(publishing, {"from": "COMMIT_READY", "to": "RUNNING"})
+    assert found is not None and found.code == "ILLEGAL_TRANSITION"
 
 
 GENERAL = {"implementer_active": "WorkUnits", "findings_recorded": "WorkUnits",
@@ -268,5 +290,21 @@ def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine)
     # record (before archival, so a retired candidate's run is recorded before the unit leaves); then ADR-0011 R6.
     assert [named(step) for step in engine._k.finalizers.steps] == [
         "StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize", "UsageCopy.finalize",
-        "Archive.finalize"]
+        "Coordination.finalize", "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7
+
+
+# The finalizers that can end an invocation: the queue's retires an entry and ends its custodian and the custodian's
+# children (M4-D). A later one that can (F4 S4b's generation-change step, E6a) is added here and placed before the seal.
+ENDS_INVOCATIONS = ("Queue.finalize",)
+
+
+def test_the_seal_finalizer_runs_after_every_finalizer_that_can_end_an_invocation_and_before_archival(engine):
+    """F9-A plan D-16 (N1): the coordination seal runs after every finalizer that can end an invocation, so it sees
+    every ending, and immediately before archival, so the seal's pointer is on its unit when archival bundles it. The
+    store's commit check seals through the same function (R3), injected by the composition root."""
+    order = [named(step) for step in engine._k.finalizers.steps]
+    seal = order.index("Coordination.finalize")
+    assert order[seal + 1] == "Archive.finalize" and seal + 2 == len(order)
+    assert all(order.index(name) < seal for name in ENDS_INVOCATIONS)
+    assert named(engine._k.store.seal) == "Coordination.seal_ending"

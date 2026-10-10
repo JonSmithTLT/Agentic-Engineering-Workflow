@@ -98,6 +98,14 @@ class Resume:
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())
         for wid, u in sorted(state["work"].items()):
             actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
+        for sid, si in sorted((state.get("stage_intents") or {}).items()):  # rule 8 (M4-E E3c): never inferred
+            wid = si["subject"]["id"]
+            owner = (f", left by Lead generation {si['generation']}"
+                     if si["generation"] != lead["generation"] else "")
+            actions.append(f"{wid + ': ' if wid else ''}stage {si['tool']} ({sid}) is unfinished after "
+                           f"{len(si['steps'])} of {len(si['plan'])} step(s){owner}: resolve it, continue or abandon "
+                           f"with a rationale (`resolve`, or `aew stage continue|abandon {sid} --rationale ... "
+                           "--expect-rev N`); `aew resume` says whether it is safe to continue")
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         audit = self.history.audit_status(state)
         if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)
@@ -520,6 +528,13 @@ class Resume:
             lines += ["", "## Harness runs (local telemetry; a run decides nothing)",
                       *(f"- {h['run']} ({h['invocation']}, {h['role']}, {h['work_unit']}): {h['status']}"
                         + (f" — {h['reason']}" if h.get("reason") else "") for h in r["harness_runs"])]
+        if r.get("stage_intents"):  # added by the typed surface's assessment (aew.surface.stage; M4-E E3c)
+            lines += ["", "## Unfinished stages (resolve each: continue or abandon)"]
+            for s in r["stage_intents"]:
+                failing = [f"{k}: {s['checks'][k]['status']}" for k in s["failing"]]
+                lines.append(f"- {s['intent']} ({s['tool']}, {s['subject'] or 'project'}): {s['steps_committed']} of "
+                             f"{s['steps_planned']} step(s), generation {s['owner_generation']}; safe to continue: "
+                             f"{'yes' if s['safe_to_continue'] else 'no (' + '; '.join(failing) + ')'}")
         lines += ["", "## Next actions", *(f"- {a}" for a in r["next_actions"] or ["(none)"])]
         if r["lead_note"]:
             lines += ["", f"Lead's note: {r['lead_note']}"]

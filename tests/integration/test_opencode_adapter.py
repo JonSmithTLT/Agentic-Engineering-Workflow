@@ -3,11 +3,13 @@ designer's step-4 watch list, docs/implementation/harness-conformance.md §5).
 
 The fake server (tests/helpers/fake_opencode.py) serves V2's shapes and the real 2.0.18 OpenAPI; knobs make
 it behave badly in the ways a real server can: a slow catalog, a missing model or variant, a V1 or doctored
-API, a lost event stream, a queued prompt at a turn boundary, a permission request, a form, a crash.
+API, a lost event stream, a queued prompt at a turn boundary, a permission request, a form, a crash, a provider that
+rejects the key (register V1).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -228,9 +230,12 @@ def test_losing_the_event_stream_changes_nothing(lab, tmp_path):
     assert {e["kind"] for e in evidence_of(lab, wid, run)} >= {"implementation_report"}
 
 
-def test_a_message_queued_at_the_turn_boundary_is_answered_before_the_run_ends(lab, tmp_path):
+def test_a_queue_input_at_the_turn_boundary_is_answered_before_the_run_ends(lab, tmp_path):
     """The server goes idle while a prompt AEW queued during the turn is still undelivered, then starts it: the run
-    must not be declared over in between."""
+    must not be declared over in between. Since `harness send` posts `steer` (register E55), the `queue` input is
+    reached at the adapter level, through `adapter.send(text, "queue")` (F9-A plan v4 amendment 2 §4)."""
+    helper = Path(fake_opencode.__file__).resolve().parent / "opencode_queue_send.py"
+    lab.env["AEW_HARNESS_ADAPTERS"] += f";opencode={helper}:QueueSendOpenCodeAdapter"
     sync = sync_dir(tmp_path)
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "wait_file", "path": str(sync / "go")}],
            idle_before_queue_s=3)
@@ -260,6 +265,9 @@ def test_a_lead_interrupt_holds_the_session_until_send(lab, tmp_path):
     assert lab.wait(run)["status"] == "ended_without_evidence"
     kinds = [t.get("kind") for t in lab.record(run)["timeline"] if t["event"] == "request"]
     assert kinds == ["interrupt", "send"]
+    # `steer` with the default resume still wakes the held session (F9-A plan v4 amendment 2 §4)
+    [session] = fake_db(lab).values()
+    assert session["prompts"][-1]["delivery"] == "steer"
 
 
 # ---------------------------------------------------------------------------------------------- the unexpected
@@ -305,6 +313,141 @@ def test_the_server_dying_mid_run_is_a_crash(lab, tmp_path):
     record = lab.record(run)
     assert record["exit_code"] == 9 and "server exited (9)" in record["harness_outcome"]
     assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
+
+
+def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_again(lab, tmp_path):
+    """Register V1: a daily key expired mid-run. The provider's 401 fails the turn (2.0.18: `provider.auth`, no
+    retry); the run ends `crashed` with `reason_code: provider_auth_failed`, and `harness status`, `harness wait` and
+    the next action say what to do, naming the variable, never its value. A relaunch starts a new server whose
+    environment is built from the launcher's at launch, so it runs with the key as it is now."""
+    expired, fresh = PROVIDER_SECRET, "sk-fresh-key-after-rotation-must-not-be-recorded"
+    rejected = hashlib.sha256(expired.encode()).hexdigest()
+    # one script for every run of the invocation: only the key in the launcher's environment differs
+    script(lab, IMPLEMENT, key="INV-0001",
+           provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected]})
+    wid, inv, run = launch(lab, tmp_path)
+    rev = lab.project.rev()
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and done["reason_code"] == "provider_auth_failed", done
+    assert done["headline"].startswith(f"{run} FAILED: the model provider rejected the credential"), done
+    assert done["reason"].startswith("provider_auth_failed:") and "OPENAI_API_KEY" in done["reason"], done
+    action = done["next_action"]
+    assert "rejected the credential" in action and "OPENAI_API_KEY" in action and "provider_env" in action, action
+    assert f"aew harness launch {inv}" in action and "restart `aew opencode`" in action, action
+    record = lab.record(run)
+    assert record["reason_code"] == "provider_auth_failed" and record["exit_code"] == 1
+    assert record["harness_outcome"] == "the agent's turn ended: failed (provider.auth, 401)"
+    [row] = lab.ok("harness", "status")["runs"]
+    assert row["reason_code"] == "provider_auth_failed" and row["reason"] == done["reason"]
+    assert any(action in a for a in lab.ok("status", "--json")["next_actions"])
+    failed = [e for e in events(lab) if e["event"] == "opencode.session.execution.failed"]
+    assert failed and all(e["error"] == {"type": "provider.auth", "status": 401} for e in failed), failed
+    assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
+    assert not evidence_of(lab, wid)
+
+    # The operator rotates the key; the relaunch's server is given it, and the same script now runs through.
+    lab.lead("harness", "launch", inv, env={"OPENAI_API_KEY": fresh})
+    again = lab.wait("R-INV-0001-2")
+    assert again["status"] == "ended_with_evidence" and "reason_code" not in again, again
+    assert "reason_code" not in lab.record("R-INV-0001-2")
+    # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote, its server log (the
+    # harness's stderr) included: only the variable's name. OpenCode's own private state (its XDG directories, with
+    # its database) keeps what the provider said.
+    for directory in (runlog.run_dir(lab.aew_root, run), runlog.run_dir(lab.aew_root, "R-INV-0001-2")):
+        for path in directory.rglob("*"):
+            parts = path.relative_to(directory).parts
+            if path.is_file() and not any(part.startswith("xdg-") for part in parts):
+                text = path.read_text(encoding="utf-8", errors="replace")
+                for secret in (expired, fresh, f"{expired[:3]}***{expired[-4:]}", "Incorrect API key"):
+                    assert secret not in text, (path, secret)
+
+
+def test_a_credential_error_loses_its_message_and_key_shaped_text_is_redacted_from_any_other():
+    """Fail closed (PR #165 review, finding 2): the message goes for an auth-like type or a 401, 403 or 407 whatever
+    the type says, and key-shaped text is redacted from every message kept. Only `provider.auth` has a reason code."""
+    from aew.harness.opencode.adapter import REASON_CODES, describe_error, error_view
+
+    bad = {"type": "provider.invalid-request", "message": "max_tokens is too large", "status": 400}
+    assert error_view(bad) == bad and bad["type"] not in REASON_CODES
+    assert describe_error(error_view(bad)) == "provider.invalid-request, 400: max_tokens is too large"
+    auth = {"type": "provider.auth", "message": "Incorrect API key provided: sk-ab***wxyz.", "status": 401}
+    assert error_view(auth) == {"type": "provider.auth", "status": 401}
+    assert describe_error(error_view(auth)) == "provider.auth, 401"
+    assert REASON_CODES == {"provider.auth": "provider_auth_failed"}
+    for status in (401, 403, 407):  # another classification of a rejected credential
+        other = {"type": "unknown", "message": "Incorrect API key provided: sk-ab***wxyz.", "status": status}
+        assert error_view(other) == {"type": "unknown", "status": status}
+    assert error_view({"type": "provider.Authentication", "message": "denied: sk-ab***wxyz"}) == {
+        "type": "provider.Authentication"}
+    leaky = {"type": "provider.internal", "status": 500,
+             "message": "upstream said: key sk-proj-abc***wxyz bad, Bearer eyJhbGciOi.x.y, masked ab****cd, "
+                        "token Zx9Qk2Lm7Np4Rs8Tv1Wy6Bc3Df5Gh0Jk2Mn4Pq6R"}
+    kept = error_view(leaky)["message"]
+    for fragment in ("sk-proj", "wxyz", "eyJhbGciOi", "ab****cd", "Zx9Qk2Lm7Np4Rs8Tv1Wy6Bc3Df5Gh0Jk2Mn4Pq6R"):
+        assert fragment not in kept, kept
+    assert kept.startswith("upstream said: key <redacted> bad, <redacted>"), kept
+    # what a non-credential error is diagnosed from stays; a mixed-case 40-character token (above) goes (re-review 1)
+    for diagnostic in ("openai/gpt-5.1-codex-max-2025-11-20-preview-extended",  # a model id
+                       "4f0a7101c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7",  # a git sha
+                       "3f2c9a1e-8b7d-4c6e-9f00-112233445566",  # a UUID
+                       "req_0123456789abcdef0123456789abcdef",  # a request id
+                       "src/aew/harness/opencode/a_really_long_module_name_for_testing.py"):  # a long path
+        message = f"failed on {diagnostic} (rate limit)"
+        assert error_view({"type": "provider.api", "status": 400, "message": message})["message"] == message
+
+
+def test_a_failed_turn_is_classified_from_the_event_when_the_messages_lack_the_error(tmp_path):
+    """The messages are the source; `session.execution.failed` is the fallback, for this execution only."""
+    from aew.harness.opencode.adapter import OpenCodeAdapter
+
+    def ended(frames: list[dict[str, Any]], *, assistant: list[dict[str, Any]] | None = None,
+              outcome: str = "failed") -> dict[str, Any]:
+        logged: list[dict[str, Any]] = []
+        adapter = OpenCodeAdapter(None, tmp_path, logged.append)  # type: ignore[arg-type]  # no process is started
+        adapter.session, adapter.sent, adapter.turn = "ses_1", ["msg_1"], "running"
+        adapter._take_snapshot = lambda: None  # type: ignore[method-assign]
+        adapter.snapshot = {"assistant": assistant if assistant is not None else [{"error": None, "created": 200.0}]}
+        for frame in frames:
+            adapter._on_event({"data": {"sessionID": "ses_1", **frame.pop("data", {})}, **frame})
+        adapter._turn_over(outcome, "msg_1", 100.0)  # the last prompt was delivered at 100
+        assert all("Incorrect" not in str(e) for e in logged), logged
+        return adapter.inspect()
+
+    auth = {"type": "provider.auth", "message": "Incorrect API key provided: sk-ab***wxyz.", "status": 401}
+    out = ended([{"type": "session.execution.started"}, {"type": "session.execution.failed", "data": {"error": auth}}])
+    assert out["reason_code"] == "provider_auth_failed" and out["exit_code"] == 1
+    assert out["detail"] == "the agent's turn ended: failed (provider.auth, 401)"
+    # an earlier execution's failure is not this one's
+    out = ended([{"type": "session.execution.failed", "data": {"error": auth}}, {"type": "session.execution.started"}])
+    assert out["reason_code"] is None and out["detail"] == "the agent's turn ended: failed"
+    # an earlier turn's message error is not this turn's: the current execution's failure wins (review, finding 4)
+    stale = [{"error": {"type": "provider.auth", "status": 401}, "created": 50.0}, {"error": None, "created": 200.0}]
+    other = {"type": "provider.internal", "message": "overloaded", "status": 500}
+    out = ended([{"type": "session.execution.started"}, {"type": "session.execution.failed", "data": {"error": other}}],
+                assistant=stale)
+    assert out["reason_code"] is None, out
+    assert out["detail"] == "the agent's turn ended: failed (provider.internal, 500: overloaded)", out
+    # and a turn that did not fail never gets a reason code, whatever an earlier message said
+    out = ended([], assistant=[{"error": {"type": "provider.auth", "status": 401}, "created": 150.0}],
+                outcome="succeeded")
+    assert out["reason_code"] is None and out["exit_code"] == 0, out
+
+
+def test_a_drifted_policy_never_breaks_the_reads_of_an_auth_failed_run(lab, tmp_path):
+    """PR #165 review, finding 1: editing the execution policy (to name another key variable, say) is a natural fix,
+    and leaves it unadopted for a while. `aew status` and `aew harness wait` still answer, and the next action names
+    the variables the run was launched with."""
+    script(lab, IMPLEMENT, key="INV-0001", provider_auth={
+        "variable": "OPENAI_API_KEY", "rejected_sha256": [hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()]})
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["reason_code"] == "provider_auth_failed"
+    path = lab.root / ".aew" / "policy" / "execution.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + "\n# operator edit, not yet adopted\n", encoding="utf-8")
+    status = lab.aew("status", "--json")
+    assert status.returncode == 0, status.stderr
+    waited = lab.aew("harness", "wait", run, "--timeout", "5")
+    assert waited.returncode == 0, waited.stderr
+    assert "OPENAI_API_KEY" in waited.json["next_action"] and "rejected the credential" in waited.json["next_action"]
 
 
 # ---------------------------------------------------------------------------------------------- Lead requests

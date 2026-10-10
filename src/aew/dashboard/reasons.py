@@ -32,6 +32,28 @@ REASONS: dict[str, str] = {
     "NOT_IN_CONTRACT_0_1_2": "no route of contract 0.1.2 projects this; a later contract version may",
     "AWAITS_ACTION_PROJECTION": "the action projection arrives with the typed Lead surface (register F15.1); until "
                                 "then this capability is unsupported",
+    # raw-history search (register F20.8, S2): the capability, then the coverage of one search
+    "FTS5_UNAVAILABLE": "this Python's SQLite has no usable FTS5, which raw-history search needs; nothing else is "
+                        "affected",
+    "RECALL_NOT_IN_INVOCATIONS": ("the dashboard server runs inside an invocation's environment, where raw-history "
+                                  "search is not offered (a discoverability guard, not a security boundary)"),
+    "SEARCH_BUILD_BUDGET": "the search index had more history to catch up than one search may spend; search again to "
+                           "continue",
+    "SEARCH_CANDIDATE_BUDGET": "more candidates matched than one search verifies; narrow the terms or the filters",
+    "SEARCH_TIME_BUDGET": "the search reached its time limit; the hits verified before it are shown",
+    "SEARCH_SUBSTRATE_BUSY": "another AEW process is writing the search index; search again in a moment",
+    "SEARCH_SUBSTRATE_REBUILDING": "the search index is being rebuilt; search again in a moment",
+    "SEARCH_SUBSTRATE_STALE": ("a search index row disagrees with the history and was left out; the dashboard never "
+                               "repairs the index: the next `aew history search` or `aew history reindex` does"),
+    "SEARCH_SUBSTRATE_FOREIGN": ("the search index describes another history; the next `aew history search` or "
+                                 "`aew history reindex` rebuilds it"),
+    "SEARCH_SUBSTRATE_UNUSABLE": ("the search index is damaged or of another version and no hit is served from it; "
+                                  "the next `aew history search` or `aew history reindex` rebuilds it"),
+    "SEARCH_HISTORY_MOVED": "the history changed while it was read; search again",
+    "SEARCH_HISTORY_UNREADABLE": ("part of the history could not be read for the search index; `aew history audit` "
+                                  "reports damage"),
+    "SEARCH_UNVERIFIED": ("candidates whose history records could not be authenticated were left out: a commit that "
+                          "landed during the search can cause this, as can damage, which `aew history audit` reports"),
     # integrity (the engine's over-policy findings, by code)
     "UNVERIFIED_ENTRIES_OVER_POLICY": "more unverified history entries than the gates policy allows",
     "UNVERIFIED_AGE_OVER_POLICY": "the oldest unverified history entry is older than the gates policy allows",

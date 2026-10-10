@@ -13,11 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
 from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED, spec_for
 from aew.surface.contract import Tool
 
+__all__ = ["AVAILABLE", "BLOCKED", "RANK", "UNKNOWN", "auto_runnable", "effective_class"]  # availability: one source
 RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}
-AVAILABLE, BLOCKED, UNKNOWN = "AVAILABLE", "BLOCKED", "UNKNOWN"
 
 
 def _max(*classes: str) -> str:

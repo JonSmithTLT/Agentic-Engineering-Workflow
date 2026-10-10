@@ -11,6 +11,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -21,8 +22,10 @@ from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
 from aew.engine.context_ops import ContextPacks
+from aew.engine.coordination_ops import Coordination
 from aew.engine.dispatch import Dispatch
 from aew.engine.evidence_ops import EvidenceCommands, Gates
+from aew.engine.guards import GuardQueries
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.history_ops import HistoryCommands
@@ -30,7 +33,7 @@ from aew.engine.integration_ops import Integration
 from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
-from aew.engine.ports import ArchivePort, RolesPort, SteeringPort
+from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -77,11 +80,13 @@ def _slug(name: str) -> str:
 class ProjectAdmin:
     """The project's authority registry, manifest adoption and `aew doctor`."""
 
-    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, roles: RolesPort, steering: SteeringPort, archive: ArchivePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.roles = roles
         self.steering = steering
         self.archive = archive
+        self.coordination = coordination
 
     def authority_list(self) -> dict[str, Any]:
         self.k.store.read()  # recovery + integrity
@@ -158,8 +163,11 @@ class ProjectAdmin:
                                                                         recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
             ctx.state[POLICY_PINS] = pins
+            policy = self.k._execution_policy(manifest, pins)[0]
             # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
-            self.steering.on_adopt(ctx, self.k._execution_policy(manifest, pins)[0])
+            self.steering.on_adopt(ctx, policy)
+            # Adopting messaging switched on registers the project (F9-A plan D-39), in this same commit.
+            self.coordination.on_adopt(ctx, policy, decision)
             ctx.summary = f"manifest and policy re-pinned: {what}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision, "adopted": changed}
 
@@ -352,6 +360,12 @@ class ProjectAdmin:
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
         add("operator-endpoint", *self._endpoint_doctor(state))
+        try:  # absent where messaging was never enabled and no thread exists (F9-A: off means absent)
+            coordination = self.coordination.doctor_check(state)
+        except Exception as exc:  # report, never crash
+            coordination = ("FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
+        if coordination is not None:
+            add("coordination", *coordination)
         proposed = [c["id"] for c in self.k.manifest["authority"]["candidates"] if c["status"] == "proposed"]
         if proposed:
             add("authority", "WARN", f"unclassified authority candidates: {proposed}")
@@ -365,8 +379,10 @@ class Engine:
         k = self._k = Kernel(repo_root, aew_root)
         hooks, guards, kinds = StateHooks(), GuardTable(), KindRegistry()
         self._archive = archive = Archive(k)
+        # Coordination messages (F9-A): recording commits nothing; sealing joins the finalizers and the direct paths.
+        self._coordination = coordination = Coordination(k, archive=archive)
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
-        self._history = history = HistoryCommands(k, units=units, archive=archive)
+        self._history = history = HistoryCommands(k, units=units, archive=archive, coordination=coordination)
         self._roles = roles = Roles(k, units=units)
         self._invocations = invocations = Invocations(k, roles=roles)
         self._queue = queue = Queue(k, invocations=invocations)
@@ -375,7 +391,8 @@ class Engine:
         self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
-        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive)
+        self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,
+                                         coordination=coordination)
         self._assignment = assignment = Assignment(k, units=units, roles=roles, invocations=invocations,
                                                    inputs=inputs, packs=packs, dispatch=dispatch)
         self._nm = nm = NonMutating(k, units=units, roles=roles, invocations=invocations, inputs=inputs, packs=packs,
@@ -385,20 +402,21 @@ class Engine:
                                                 dispatch=dispatch)
         self._evidence = evidence = EvidenceCommands(k, units=units, roles=roles, invocations=invocations,
                                                      inputs=inputs, packs=packs, gates=gates, nm=nm, kinds=kinds,
-                                                     archive=archive, dispatch=dispatch, queue=queue)
+                                                     archive=archive, dispatch=dispatch, queue=queue,
+                                                     coordination=coordination)
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates,
                                                       dispatch=dispatch, queue=queue)
         queue.legal = integration.require_legal
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
-                                          dispatch=dispatch)
-        self._lead = lead = Lead(k, archive=archive, queue=queue)
+                                          dispatch=dispatch, coordination=coordination)
+        self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
-        self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive)
-        self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
+        self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
+        self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         self._stages = stages = StageIntents(k, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
@@ -413,14 +431,30 @@ class Engine:
         for owner in (assignment, nm, evidence, hierarchy, harness, assurance, integration, queue):
             dispatch.register_all(owner.dispatch_guards())
         dispatch.require_complete()
+        # M4-E E4: the migrated transition and ingest guards, each the query its own execute path calls first.
+        self._guard_queries = queries = GuardQueries(dispatch.decide)
+        queries.register("work.transition", units.transition_query)
+        queries.register("review.ingest", evidence.review_ingest_query)
+        queries.register("work.create", work.create_query)
+        queries.register("plan.propose", work.propose_query)
+        queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
+        queries.register("integrate.prepare", integration.prepare_query)
+        queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
+        queries.register("integrate.publish", integration.publish_query)
         # The dispatch check first (a new invocation or run needs an allowed decision), then the integration queue
         # (M4-D: entries follow their Tickets, a dead custodian marks its lease for reconciliation), then archival
         # (ADR-0011: finished work leaves the hot state, with its retired queue entries; plan R6). The usage copy
         # (F25 R5) runs just before archival, so a bundle carries every run's usage into the cold state. The stage
         # journal comes first (M4-E E3): a stage step is refused for what it is (STALE_POLICY, a stale owner) before
-        # any other finalizer judges the commit, and a completed stage's record is on its unit before archival.
+        # any other finalizer judges the commit, and a completed stage's record is on its unit before archival. The
+        # coordination seal (F9-A plan D-16) runs after every finalizer that can end an invocation (the queue's ends a
+        # custodian and its children) and immediately before archival, so a seal's pointer is on its unit when
+        # archival bundles it; a finalizer added later that can end an invocation goes before it.
         k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
-                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, archive.finalize])
+                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, coordination.finalize,
+                                   archive.finalize])
+        # Session.commit's seal check seals a missed ending through it (D-16, R3).
+        k.store.seal = coordination.seal_ending
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
 
     @classmethod
@@ -571,6 +605,31 @@ class Engine:
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
 
+    def guard_query(self, primitive: str, work_id: str | None, args: dict[str, Any] | None = None, *,
+                    state: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Whether ``primitive`` with ``args`` is legal now (AVAILABLE, BLOCKED or UNKNOWN), asked of the guard its own
+        commit evaluates (M4-E E4; ``aew.engine.guards``). ``state`` defaults to the committed state; a stage's
+        availability passes the state a later step would see. The query records what it found in ``args``."""
+        state = self._k.store.read() if state is None else state
+        return self._guard_queries.answer(state, primitive, work_id, {} if args is None else args)
+
+    def gate_memo(self) -> AbstractContextManager[None]:
+        """Within this block, a gate context asked again of the same control state is reused (a read-only answer)."""
+        return self._gates.memo()
+
+    def validation_mode(self, work_id: str | None, *, state: dict[str, Any] | None = None) -> str | None:
+        """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None."""
+        return self._integration.validation_mode(self._k.store.read() if state is None else state, work_id or "")
+
+    def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
+        stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
+        return self._integration.candidate_overlay(state, work_id)
+
+    def guard_queries(self) -> list[str]:
+        """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
+        return self._guard_queries.migrated()
+
     def dispatch_explain(self, work_id: str, *, entrypoint: str | None = None, role: str | None = None,
                          card: str | None = None, scope: str = "ticket",
                          invocation: str | None = None) -> dict[str, Any]:
@@ -640,8 +699,8 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str) -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text)
+    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         return self._harness.harness_status(invocation)
@@ -763,6 +822,37 @@ class Engine:
 
     def policy_pin_drift(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str] | None:
         return self._k.policy_pin_drift(state, manifest)
+
+    def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
+                            in_reply_to: str | None = None, refs: list[str] | None = None,
+                            idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
+        return self._coordination.message_record_lead(token=token, expect_rev=expect_rev, to=to, body=body, kind=kind,
+                                                      in_reply_to=in_reply_to, refs=refs,
+                                                      idempotency_id=idempotency_id, channel=channel)
+
+    def message_record_worker(self, *, invocation_token: str, in_reply_to: str | None, body: str,
+                              kind: str | None = None, refs: list[str] | None = None,
+                              idempotency_id: str | None = None, channel: str = "run_bridge") -> dict[str, Any]:
+        return self._coordination.message_record_worker(invocation_token=invocation_token, in_reply_to=in_reply_to,
+                                                        body=body, kind=kind, refs=refs,
+                                                        idempotency_id=idempotency_id, channel=channel)
+
+    def message_thread(self, invocation: str) -> dict[str, Any]:
+        return self._coordination.message_thread(invocation)
+
+    def message_list(self, work_id: str) -> dict[str, Any]:
+        return self._coordination.message_list(work_id)
+
+    def message_unseen(self, *, token: str | None = None) -> dict[str, Any]:
+        return self._coordination.message_unseen(token=token)
+
+    def message_mark_shown(self, *, token: str, messages: list[str]) -> dict[str, Any]:
+        return self._coordination.message_mark_shown(token=token, messages=messages)
+
+    def coordination_reads_on(self) -> bool:
+        """Whether the coordination reads exist for this project (F9-A plan D-31): the switch is on or a thread
+        exists. The CLI registers `aew message` only then."""
+        return self._coordination.reads_on(self._k.store.read_committed())
 
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,
@@ -886,6 +976,17 @@ class Engine:
     def stage_abandon(self, *, token: str, expect_rev: int, intent: str, rationale: str) -> dict[str, Any]:
         return self._stages.abandon(token=token, expect_rev=expect_rev, intent=intent, rationale=rationale)
 
+    def stage_continue(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
+                       plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+        return self._stages.continue_(token=token, expect_rev=expect_rev, intent=intent,
+                                      contract_digest=contract_digest, plan=plan, rationale=rationale)
+
+    def stage_recheck(self, intent: str, *, contract_digest: str | None,
+                      plan: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """What continuing an unfinished stage would meet now (read-only: ``resume``, and the surface before a
+        continue)."""
+        return self._stages.recheck_active(self._k.store.read(), intent, contract_digest=contract_digest, plan=plan)
+
     def stage_intents_view(self) -> list[dict[str, Any]]:
         return self._stages.view(self._k.store.read())
 
@@ -990,6 +1091,19 @@ class Engine:
         (``aew.engine.recall``)."""
         return self._history.history_search(terms, kinds=kinds, since=since, until=until, limit=limit)
 
+    def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
+                                 since: str | None = None, until: str | None = None, limit: int = 10,
+                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
+                                 enabled: bool, fts5: bool,
+                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+        """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
+        resets, discards or deletes the substrate, and answers within ``deadline``. ``enabled`` and ``fts5`` are the
+        caller's snapshot's answers, never re-read here."""
+        return self._history.history_search_committed(state, terms, kinds=kinds, since=since, until=until,
+                                                      limit=limit, deadline=deadline, budget_s=budget_s,
+                                                      budget_docs=budget_docs, candidates=candidates,
+                                                      enabled=enabled, fts5=fts5, fence_token=fence_token)
+
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)
 
@@ -1024,9 +1138,12 @@ class Engine:
         return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
                                               classification=classification, reason=reason)
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
+    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+                      scope: str | None = None) -> dict[str, Any]:
+        """``scope``: the primitive's (``ticket``: `verify.ingest`, ``integration``: `verify.ingest.integration`), whose
+        query must pass; None (the CLI): the report's own scope decides."""
         return self._evidence.verify_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
-                                            evidence_id=evidence_id)
+                                            evidence_id=evidence_id, scope=scope)
 
     def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None) -> dict[str, Any]:

@@ -268,6 +268,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The registry state, the selected structural map with its freshness, and the architecture reference. Lock-free; never generates a map. Poll at most every 30 s, or when the page regains focus. */
+        get: operations["mapsResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headMapsResponse"];
+        patch?: never;
+        trace?: never;
+    };
+    "/maps/structural": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The stored structural maps, keyset-paged by root; source_revision selects the maps of one commit. A control commit never expires the cursor. */
+        get: operations["structuralListResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headStructuralListResponse"];
+        patch?: never;
+        trace?: never;
+    };
+    "/maps/structural/{root}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One stored map, its sections projected from allowlists with the API's caps. Fetched on navigation, never polled. */
+        get: operations["structuralDetailResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headStructuralDetailResponse"];
+        patch?: never;
+        trace?: never;
+    };
+    "/maps/structural/{root}/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The map's recorded metadata inputs, paged by position in the immutable sorted list. The cursor is bound to the root. Fetched on navigation, never polled. */
+        get: operations["structuralInputsResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headStructuralInputsResponse"];
+        patch?: never;
+        trace?: never;
+    };
+    "/maps/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A typed comparison of two stored maps. Never generates a map. Fetched on navigation, never polled. */
+        get: operations["mapDiffResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headMapDiffResponse"];
+        patch?: never;
+        trace?: never;
+    };
+    "/history/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Raw-history search, offered only while the history_search capability is present. User-initiated only - never polled and never search-as-you-type - since a request may extend the derived index and takes up to 1.25 s. */
+        get: operations["historySearchResponse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head: operations["headHistorySearchResponse"];
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -301,6 +403,10 @@ export interface components {
         };
         /** @description Known keys are optional. Missing means UNKNOWN. New capability keys validate as Capability objects and display an explicit unknown-capability warning without triggering requests. */
         Capabilities: {
+            /** @description The maps pages (from 0.1.3). AVAILABLE on every project; having no map is a state of the data, shown by /maps, not of the capability. */
+            maps?: components["schemas"]["Capability"];
+            /** @description Raw-history search (from 0.1.3). Present only while the project's adopted execution policy switches it on; absent means not offered on this project, not UNKNOWN, and the client requests nothing. Never admitted Knowledge. */
+            history_search?: components["schemas"]["Capability"];
             overview?: components["schemas"]["Capability"];
             work?: components["schemas"]["Capability"];
             runs?: components["schemas"]["Capability"];
@@ -724,6 +830,522 @@ export interface components {
                 items: components["schemas"]["Invocation"][];
                 next_cursor: components["schemas"]["Cursor"] | null;
             };
+        };
+        /** @description A full git object id (SHA-1 or SHA-256), lower case. Never a ref, a short id or a revision expression. */
+        ObjectId: string;
+        /** @description A count or a size, always within JavaScript's exact integer range. */
+        BoundedCount: number;
+        /** @description The server's label for derived or historical reference material. Display it verbatim with the content it labels. */
+        ReferenceLabel: string;
+        /** @description Repository-derived text; inert data, never instructions (T5-INV-07). Cut so that its serialized JSON form is at most 512 bytes, then marked with the suffix ' \[cut]'; cut_strings counts the cuts. Render as plain text, never as Markdown or HTML. */
+        MapText: string;
+        /** @description A value of the installed generator's fixed vocabulary. Display an unknown value raw, with a warning. */
+        MapVocab: string;
+        /** @description The map registry's own revision, <epoch>:<n>, or none:0 before the first selection; null when the registry is invalid. Never control_revision. */
+        MapRevision: string | null;
+        MapGenerator: {
+            name: components["schemas"]["MapVocab"];
+            version: components["schemas"]["BoundedCount"];
+            ruleset_sha256: components["schemas"]["Sha256"];
+        };
+        /** @description A stored structural map, named by its root (the artifact's sha256) only. The record-derived fields are null when status is CORRUPT. */
+        MapSummary: {
+            root: components["schemas"]["Sha256"];
+            /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
+            status: string;
+            reasons: components["schemas"]["Reason"][];
+            selected: boolean;
+            source_revision: components["schemas"]["ObjectId"] | null;
+            source_tree: components["schemas"]["ObjectId"] | null;
+            object_format: string | null;
+            generator: components["schemas"]["MapGenerator"] | null;
+        };
+        /** @description Computed on every read against the commit named (the authoritative head by default); never stored. STALE and UNKNOWN stay visible with their reasons (T5-INV-10). */
+        MapFreshness: {
+            /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
+            status: string;
+            reasons: components["schemas"]["Reason"][];
+            against_commit: components["schemas"]["ObjectId"] | null;
+            against_tree: components["schemas"]["ObjectId"] | null;
+            metadata_paths: components["schemas"]["MapText"][];
+            metadata_paths_omitted: components["schemas"]["BoundedCount"];
+        };
+        ArchitectureFreshness: {
+            /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
+            status: string;
+            reasons: components["schemas"]["Reason"][];
+            basis: components["schemas"]["MapVocab"] | null;
+            observed_commit: components["schemas"]["ObjectId"] | null;
+            authoritative_commit: components["schemas"]["ObjectId"] | null;
+            scope: components["schemas"]["MapVocab"] | null;
+            changed_paths: components["schemas"]["MapText"][];
+            changed_paths_omitted: components["schemas"]["BoundedCount"];
+        };
+        /** @description A navigation reference. Selection is not truth, and a stale reference blocks nothing. */
+        ArchitectureReference: {
+            /** @description The selected discovery evidence, linking to /evidence/{id}; null when the registry holds an id that is not a valid opaque id (ARCHITECTURE_UNAVAILABLE). */
+            evidence: components["schemas"]["EntityRef"] | null;
+            freshness: components["schemas"]["ArchitectureFreshness"];
+            note: components["schemas"]["ReferenceLabel"];
+        };
+        MapsOverview: {
+            map_revision: components["schemas"]["MapRevision"];
+            registry: {
+                /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. */
+                state: string;
+                reasons: components["schemas"]["Reason"][];
+            };
+            structural: {
+                /** @description Open semantic value. Unknown strings must display an explicit warning with the raw value. UNAVAILABLE is never shown as an empty map (T5-INV-04). */
+                state: string;
+                reasons: components["schemas"]["Reason"][];
+                summary: components["schemas"]["MapSummary"] | null;
+                freshness: components["schemas"]["MapFreshness"] | null;
+            };
+            architecture: components["schemas"]["ArchitectureReference"] | null;
+            stored: {
+                count: components["schemas"]["BoundedCount"];
+            };
+            label: components["schemas"]["ReferenceLabel"];
+        };
+        MapsResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: components["schemas"]["MapsOverview"];
+        };
+        StructuralListResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: {
+                items: components["schemas"]["MapSummary"][];
+                next_cursor: components["schemas"]["Cursor"] | null;
+                /** @description Set when this request reached the scan bound (256 maps or 64 MiB read, MAP_SCAN_LIMIT); continue with next_cursor. */
+                scan_incomplete: {
+                    examined: components["schemas"]["BoundedCount"];
+                    stored: components["schemas"]["BoundedCount"];
+                    reasons: components["schemas"]["Reason"][];
+                } | null;
+                label: components["schemas"]["ReferenceLabel"];
+            };
+        };
+        MapLimits: {
+            tracked_paths?: {
+                seen?: components["schemas"]["BoundedCount"];
+                capped?: boolean;
+            };
+            metadata_bytes?: {
+                read?: components["schemas"]["BoundedCount"];
+                limit?: components["schemas"]["BoundedCount"];
+                capped?: boolean;
+            };
+            metadata_blob_bytes?: {
+                limit?: components["schemas"]["BoundedCount"];
+                skipped?: components["schemas"]["BoundedCount"];
+            };
+        };
+        MapInputsSummary: {
+            path_listing_sha256: components["schemas"]["Sha256"];
+            count: components["schemas"]["BoundedCount"];
+            read: components["schemas"]["BoundedCount"];
+            capped_size: components["schemas"]["BoundedCount"];
+            capped_total: components["schemas"]["BoundedCount"];
+        };
+        MapDirectoryRow: {
+            path: components["schemas"]["MapText"];
+            depth?: components["schemas"]["BoundedCount"];
+            files?: components["schemas"]["BoundedCount"];
+            languages: components["schemas"]["MapVocab"][];
+            languages_omitted: components["schemas"]["BoundedCount"];
+            label: components["schemas"]["MapVocab"];
+        };
+        MapSubmodule: {
+            path: components["schemas"]["MapText"];
+            object?: components["schemas"]["ObjectId"];
+        };
+        MapUnknownExtension: {
+            extension: components["schemas"]["MapText"];
+            files?: components["schemas"]["BoundedCount"];
+        };
+        MapBuildDescriptor: {
+            path: components["schemas"]["MapText"];
+            kind: components["schemas"]["MapVocab"];
+            status: components["schemas"]["MapVocab"];
+        };
+        MapEntryPoint: {
+            label: components["schemas"]["MapVocab"];
+            path: components["schemas"]["MapText"];
+            name?: components["schemas"]["MapText"];
+            target?: components["schemas"]["MapText"];
+            rule?: components["schemas"]["MapVocab"];
+        };
+        /** @description A candidate only. Never a required check, and never something to run. */
+        MapTestCandidate: {
+            kind: components["schemas"]["MapVocab"];
+            path?: components["schemas"]["MapText"];
+            pattern?: components["schemas"]["MapText"];
+            files?: components["schemas"]["BoundedCount"];
+            runner?: components["schemas"]["MapVocab"];
+            source?: components["schemas"]["MapVocab"];
+        };
+        MapGeneratedOrVendor: {
+            kind: components["schemas"]["MapVocab"];
+            source: components["schemas"]["MapVocab"];
+            pattern: components["schemas"]["MapText"];
+            files?: components["schemas"]["BoundedCount"];
+            attributes_file?: components["schemas"]["MapText"];
+        };
+        MapSemanticPrerequisite: {
+            path: components["schemas"]["MapText"];
+            kind: components["schemas"]["MapVocab"];
+            source: components["schemas"]["MapVocab"];
+        };
+        MapCapHit: {
+            section: components["schemas"]["MapVocab"];
+            field: components["schemas"]["MapVocab"];
+            limit?: components["schemas"]["BoundedCount"];
+            omitted?: components["schemas"]["BoundedCount"];
+        };
+        MapParseFailure: {
+            path: components["schemas"]["MapText"];
+            code: components["schemas"]["MapVocab"];
+        };
+        MapUnsupported: {
+            path: components["schemas"]["MapText"];
+            reason: components["schemas"]["MapVocab"];
+        };
+        MapDirectoriesSection: {
+            max_depth?: components["schemas"]["BoundedCount"];
+            rows: components["schemas"]["MapDirectoryRow"][];
+            rows_total?: components["schemas"]["BoundedCount"];
+            rows_omitted?: components["schemas"]["BoundedCount"];
+            submodules: components["schemas"]["MapSubmodule"][];
+            submodules_omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapLanguagesSection: {
+            counts: {
+                [key: string]: components["schemas"]["BoundedCount"];
+            };
+            counts_omitted: components["schemas"]["BoundedCount"];
+            unknown_files?: components["schemas"]["BoundedCount"];
+            unknown_extensions: components["schemas"]["MapUnknownExtension"][];
+            unknown_extensions_omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapBuildDescriptorsSection: {
+            items: components["schemas"]["MapBuildDescriptor"][];
+            omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapEntryPointsSection: {
+            items: components["schemas"]["MapEntryPoint"][];
+            omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapTestCandidatesSection: {
+            items: components["schemas"]["MapTestCandidate"][];
+            omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapGeneratedAndVendorSection: {
+            items: components["schemas"]["MapGeneratedOrVendor"][];
+            omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapSemanticPrerequisitesSection: {
+            items: components["schemas"]["MapSemanticPrerequisite"][];
+            omitted?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        MapLimitsAndOmissionsSection: {
+            caps_hit: components["schemas"]["MapCapHit"][];
+            caps_hit_omitted?: components["schemas"]["BoundedCount"];
+            parse_failures: components["schemas"]["MapParseFailure"][];
+            parse_failures_omitted?: components["schemas"]["BoundedCount"];
+            unsupported: components["schemas"]["MapUnsupported"][];
+            unsupported_omitted?: components["schemas"]["BoundedCount"];
+            lfs_pointers: components["schemas"]["MapText"][];
+            lfs_pointers_omitted?: components["schemas"]["BoundedCount"];
+            metadata_unread?: components["schemas"]["BoundedCount"];
+            non_utf8_names?: components["schemas"]["BoundedCount"];
+            symlinks?: components["schemas"]["BoundedCount"];
+            submodules?: components["schemas"]["BoundedCount"];
+            unknown_extension_files?: components["schemas"]["BoundedCount"];
+            dropped_fields: components["schemas"]["BoundedCount"];
+            dropped_items: components["schemas"]["BoundedCount"];
+        };
+        /** @description Every section, or only the one the section parameter names. */
+        MapSections: {
+            directories?: components["schemas"]["MapDirectoriesSection"];
+            languages?: components["schemas"]["MapLanguagesSection"];
+            build_descriptors?: components["schemas"]["MapBuildDescriptorsSection"];
+            entry_point_candidates?: components["schemas"]["MapEntryPointsSection"];
+            test_candidates?: components["schemas"]["MapTestCandidatesSection"];
+            generated_and_vendor?: components["schemas"]["MapGeneratedAndVendorSection"];
+            semantic_prerequisites?: components["schemas"]["MapSemanticPrerequisitesSection"];
+            limits_and_omissions?: components["schemas"]["MapLimitsAndOmissionsSection"];
+        };
+        StructuralDetailResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: {
+                summary: components["schemas"]["MapSummary"];
+                freshness: components["schemas"]["MapFreshness"];
+                limits: components["schemas"]["MapLimits"];
+                inputs: components["schemas"]["MapInputsSummary"];
+                sections: components["schemas"]["MapSections"];
+                cut_strings: components["schemas"]["BoundedCount"];
+                dropped_fields: components["schemas"]["BoundedCount"];
+                label: components["schemas"]["ReferenceLabel"];
+            };
+        };
+        MapInput: {
+            path: components["schemas"]["MapText"];
+            git_oid?: components["schemas"]["ObjectId"];
+            size?: components["schemas"]["BoundedCount"];
+            read: boolean;
+            sha256?: components["schemas"]["Sha256"];
+            /** @description Why the generator did not read this input. Open semantic value. Unknown strings must display an explicit warning with the raw value. */
+            reason?: string;
+        };
+        StructuralInputsResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: {
+                root: components["schemas"]["Sha256"];
+                items: components["schemas"]["MapInput"][];
+                next_cursor: components["schemas"]["Cursor"] | null;
+                cut_strings: components["schemas"]["BoundedCount"];
+                dropped_fields: components["schemas"]["BoundedCount"];
+                label: components["schemas"]["ReferenceLabel"];
+            };
+        };
+        MapDiffOperand: {
+            root: components["schemas"]["Sha256"];
+            source_revision: components["schemas"]["ObjectId"];
+            source_tree: components["schemas"]["ObjectId"];
+        };
+        /** @description Counter changes by field name; null where the field is absent on one side. */
+        MapValueChanges: {
+            [key: string]: {
+                from: components["schemas"]["BoundedCount"] | boolean | null;
+                to: components["schemas"]["BoundedCount"] | boolean | null;
+            };
+        };
+        /** @description Only the envelope fields that differ are present. */
+        MapEnvelopeChanges: {
+            source_revision?: {
+                from: components["schemas"]["ObjectId"];
+                to: components["schemas"]["ObjectId"];
+            };
+            source_tree?: {
+                from: components["schemas"]["ObjectId"];
+                to: components["schemas"]["ObjectId"];
+            };
+            object_format?: {
+                from: components["schemas"]["MapVocab"];
+                to: components["schemas"]["MapVocab"];
+            };
+            generator?: {
+                from: components["schemas"]["MapGenerator"];
+                to: components["schemas"]["MapGenerator"];
+            };
+            path_listing_sha256?: {
+                from: components["schemas"]["Sha256"];
+                to: components["schemas"]["Sha256"];
+            };
+        };
+        MapDirectoriesChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            rows?: {
+                added: components["schemas"]["MapDirectoryRow"][];
+                removed: components["schemas"]["MapDirectoryRow"][];
+            };
+            submodules?: {
+                added: components["schemas"]["MapSubmodule"][];
+                removed: components["schemas"]["MapSubmodule"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapLanguagesChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            unknown_extensions?: {
+                added: components["schemas"]["MapUnknownExtension"][];
+                removed: components["schemas"]["MapUnknownExtension"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapBuildDescriptorsChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            items?: {
+                added: components["schemas"]["MapBuildDescriptor"][];
+                removed: components["schemas"]["MapBuildDescriptor"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapEntryPointsChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            items?: {
+                added: components["schemas"]["MapEntryPoint"][];
+                removed: components["schemas"]["MapEntryPoint"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapTestCandidatesChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            items?: {
+                added: components["schemas"]["MapTestCandidate"][];
+                removed: components["schemas"]["MapTestCandidate"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapGeneratedAndVendorChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            items?: {
+                added: components["schemas"]["MapGeneratedOrVendor"][];
+                removed: components["schemas"]["MapGeneratedOrVendor"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapSemanticPrerequisitesChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            items?: {
+                added: components["schemas"]["MapSemanticPrerequisite"][];
+                removed: components["schemas"]["MapSemanticPrerequisite"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapLimitsAndOmissionsChange: {
+            changed: boolean;
+            beyond_cap: boolean;
+            caps_hit?: {
+                added: components["schemas"]["MapCapHit"][];
+                removed: components["schemas"]["MapCapHit"][];
+            };
+            parse_failures?: {
+                added: components["schemas"]["MapParseFailure"][];
+                removed: components["schemas"]["MapParseFailure"][];
+            };
+            unsupported?: {
+                added: components["schemas"]["MapUnsupported"][];
+                removed: components["schemas"]["MapUnsupported"][];
+            };
+            lfs_pointers?: {
+                added: components["schemas"]["MapText"][];
+                removed: components["schemas"]["MapText"][];
+            };
+            values: components["schemas"]["MapValueChanges"];
+        };
+        MapDiffResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: {
+                a: components["schemas"]["MapDiffOperand"];
+                b: components["schemas"]["MapDiffOperand"];
+                identical: boolean;
+                envelope: components["schemas"]["MapEnvelopeChanges"];
+                sections: {
+                    directories: components["schemas"]["MapDirectoriesChange"];
+                    languages: components["schemas"]["MapLanguagesChange"];
+                    build_descriptors: components["schemas"]["MapBuildDescriptorsChange"];
+                    entry_point_candidates: components["schemas"]["MapEntryPointsChange"];
+                    test_candidates: components["schemas"]["MapTestCandidatesChange"];
+                    generated_and_vendor: components["schemas"]["MapGeneratedAndVendorChange"];
+                    semantic_prerequisites: components["schemas"]["MapSemanticPrerequisitesChange"];
+                    limits_and_omissions: components["schemas"]["MapLimitsAndOmissionsChange"];
+                };
+                cut_strings: components["schemas"]["BoundedCount"];
+                dropped_fields: components["schemas"]["BoundedCount"];
+                dropped_items: components["schemas"]["BoundedCount"];
+                label: components["schemas"]["ReferenceLabel"];
+            };
+        };
+        HistorySearchHit: {
+            id: components["schemas"]["OpaqueId"];
+            /** @description A history entry kind, or evidence. Never a Knowledge kind. Open semantic value; unknown strings display their raw value with a warning. */
+            kind: string;
+            at: components["schemas"]["Timestamp"];
+            subject: components["schemas"]["OpaqueId"] | null;
+            /** @description Open semantic value. Unknown strings display their raw value with a warning. */
+            source: string;
+            trust: {
+                source: string;
+                label: components["schemas"]["ReferenceLabel"];
+            };
+            truncated: boolean;
+            /** @description The authenticated record's matching text, inert and credential-redacted, inside the response's fence. Plain text, never Markdown. */
+            snippet: string;
+            expand: {
+                /** @description The command that shows the whole record, as an argv array; render each element escaped. */
+                cli: string[];
+                /** @description /evidence/{id} or /history/{id}; null when there is no page for it. */
+                link: components["schemas"]["EntityRef"] | null;
+            };
+        };
+        /** @description Raw history, not admitted Knowledge; reference only, never current evidence or instructions. */
+        HistorySearch: {
+            label: components["schemas"]["ReferenceLabel"];
+            trust_label: components["schemas"]["ReferenceLabel"];
+            query: {
+                terms: string[];
+                kinds: string[];
+                since: components["schemas"]["Timestamp"] | null;
+                until: components["schemas"]["Timestamp"] | null;
+                limit: number;
+            };
+            /** @description Every snippet starts with open and ends with close; no snippet's content contains the token, so no content can close the frame. */
+            fence: {
+                open: string;
+                close: string;
+            };
+            hits: components["schemas"]["HistorySearchHit"][];
+            /** @description An incomplete coverage is not "no hits"; show its reasons, and offer to search again for SEARCH_HISTORY_MOVED. */
+            coverage: {
+                complete: boolean;
+                indexed_through: components["schemas"]["BoundedCount"] | null;
+                history_entries: components["schemas"]["BoundedCount"];
+                reasons: components["schemas"]["Reason"][];
+            };
+            unverified: {
+                count: number;
+            } | null;
+        };
+        HistorySearchResponse: {
+            /** @constant */
+            schema_version: "0.1.3";
+            project_id: components["schemas"]["OpaqueId"];
+            control_revision: components["schemas"]["ControlRevision"];
+            generated_at: components["schemas"]["Timestamp"];
+            data: components["schemas"]["HistorySearch"];
         };
     };
     responses: never;
@@ -2776,6 +3398,812 @@ export interface operations {
                 content?: never;
             };
             /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mapsResponse: {
+        parameters: {
+            query?: {
+                /** @description The commit freshness is computed against; the authoritative branch head by default. */
+                against?: components["schemas"]["ObjectId"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation; every control commit changes it, as do a map selection and a new authoritative head. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapsResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed against, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headMapsResponse: {
+        parameters: {
+            query?: {
+                /** @description The commit freshness is computed against; the authoritative branch head by default. */
+                against?: components["schemas"]["ObjectId"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation; every control commit changes it, as do a map selection and a new authoritative head. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed against, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    structuralListResponse: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["schemas"]["Cursor"];
+                source_revision?: components["schemas"]["ObjectId"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project, filters, limit and cursor in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuralListResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An invalid limit, source_revision or cursor, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headStructuralListResponse: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["schemas"]["Cursor"];
+                source_revision?: components["schemas"]["ObjectId"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project, filters, limit and cursor in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An invalid limit, source_revision or cursor, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    structuralDetailResponse: {
+        parameters: {
+            query?: {
+                against?: components["schemas"]["ObjectId"];
+                section?: "directories" | "languages" | "build_descriptors" | "entry_point_candidates" | "test_candidates" | "generated_and_vendor" | "semantic_prerequisites" | "limits_and_omissions";
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                root: components["schemas"]["Sha256"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and query in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuralDetailResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed root, against or section, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has this root. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headStructuralDetailResponse: {
+        parameters: {
+            query?: {
+                against?: components["schemas"]["ObjectId"];
+                section?: "directories" | "languages" | "build_descriptors" | "entry_point_candidates" | "test_candidates" | "generated_and_vendor" | "semantic_prerequisites" | "limits_and_omissions";
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                root: components["schemas"]["Sha256"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and query in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed root, against or section, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has this root. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    structuralInputsResponse: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["schemas"]["Cursor"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                root: components["schemas"]["Sha256"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project, limit and cursor in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuralInputsResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed root, an invalid limit or cursor, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has this root. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headStructuralInputsResponse: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["schemas"]["Cursor"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                root: components["schemas"]["Sha256"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project, limit and cursor in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A malformed root, an invalid limit or cursor, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has this root. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mapDiffResponse: {
+        parameters: {
+            query: {
+                a: components["schemas"]["Sha256"];
+                b: components["schemas"]["Sha256"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and both operands in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapDiffResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A missing or malformed operand, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has one of the roots. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MAP_ARTIFACT_CORRUPT for one of the operands. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headMapDiffResponse: {
+        parameters: {
+            query: {
+                a: components["schemas"]["Sha256"];
+                b: components["schemas"]["Sha256"];
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and both operands in its scope. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A missing or malformed operand, or an unknown parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No stored map has one of the roots. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description MAP_ARTIFACT_CORRUPT for one of the operands. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. Keep last-known-good content visibly stale. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    historySearchResponse: {
+        parameters: {
+            query: {
+                /** @description A phrase; repeat for more, the terms are ANDed. At most 512 characters in all. */
+                term: string[];
+                kind?: string[];
+                since?: components["schemas"]["Timestamp"];
+                until?: components["schemas"]["Timestamp"];
+                limit?: number;
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and query in its scope; stable only on a quiescent project with complete coverage. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorySearchResponse"];
+                };
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid terms, kind, timestamp or limit, or a repeated non-repeatable parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Capability unavailable (MIGRATION_REQUIRED, FTS5_UNAVAILABLE, RECALL_NOT_IN_INVOCATIONS). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The query exceeds the server's bounds. */
+            414: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Projection refresh failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    headHistorySearchResponse: {
+        parameters: {
+            query: {
+                /** @description A phrase; repeat for more, the terms are ANDed. At most 512 characters in all. */
+                term: string[];
+                kind?: string[];
+                since?: components["schemas"]["Timestamp"];
+                until?: components["schemas"]["Timestamp"];
+                limit?: number;
+            };
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated read-only projection. */
+            200: {
+                headers: {
+                    /** @description Validator computed from the full representation, with route, project and query in its scope; stable only on a quiescent project with complete coverage. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Representation unchanged. No payload. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid terms, kind, timestamp or limit, or a repeated non-repeatable parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Capability unavailable. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The query exceeds the server's bounds. */
+            414: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Projection refresh failed. */
             500: {
                 headers: {
                     [name: string]: unknown;

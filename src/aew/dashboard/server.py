@@ -1,4 +1,4 @@
-"""The dashboard HTTP server: contract 0.1.2's routes on stdlib ``http.server`` (design note §4.10, §5.1).
+"""The dashboard HTTP server: the dashboard contract's routes on stdlib ``http.server`` (design note §4.10, §5.1).
 
 GET and HEAD only, bound to ``127.0.0.1``: the API under ``/api/v1/``, the one-time URL exchange under ``/session/``,
 and the frontend's production build everywhere else (:mod:`aew.dashboard.frontend`, with the SPA fallback for deep
@@ -32,7 +32,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -68,9 +68,13 @@ MAX_IN_FLIGHT = 16
 # alive; beyond this the connection gets a 503 at once and is closed, so neither half-sent requests nor idle
 # keep-alive connections can hold more threads than this (lead developer's review of PR #90).
 MAX_CONNECTIONS = 32
-# After the prepared 503, how long the accept loop drains what the refused client already sent before closing: a
-# close with unread input resets the connection, and the client would see a reset instead of the 503.
+# A close with unread input resets the connection, and on Windows the reset discards the answer still in flight to
+# the client, which then sees a reset instead of it. So a connection that ends with an answer is half-closed and
+# what the client already sent is read before the close, within a deadline and a byte bound (R23: never unbounded):
+# after the prepared 503 in the accept loop, and after a refusal that ends the connection in its handler thread.
 BUSY_DRAIN_S = 0.1
+REFUSAL_DRAIN_S = 0.5
+DRAIN_MAX_BYTES = 256 * 1024
 LOG_PATH_MAX = 256  # characters of a path the request log records
 LOG_QUEUE = 1024  # request log lines waiting for the writer; beyond this they are dropped, counted and reported
 # The characters a logged path keeps as they are: everything else, a control character or a CR/LF above all, is
@@ -196,14 +200,66 @@ class Refusal(Exception):
         self.body = body
 
 
+def has_body(headers: Any) -> bool:
+    """Whether a request carries a body this server will not read (R22, "a read carries no body"). Every framing
+    header counts, not only the first of its name: any ``Transfer-Encoding`` (even an empty one), or any
+    ``Content-Length`` that is not exactly ``0``. A duplicate that reads as "no body" here would leave the body to
+    be parsed as the next request."""
+    lengths = headers.get_all("Content-Length") or []
+    return headers.get_all("Transfer-Encoding") is not None or any(v.strip() != "0" for v in lengths)
+
+
+# RFC 9112 §5 field line: a token name, the colon, then a value of visible bytes, SP and HTAB only (no CR, LF, NUL
+# or other control byte). An allow-list: any line outside it is refused, whatever its form. The line is split at its
+# first colon and each part matched by one character class on its own, so the check is linear in the line's length
+# (one pattern with the name's repetition before the colon can backtrack: CodeQL's polynomial-regex alert).
+FIELD_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+FIELD_VALUE = re.compile(rb"[\t\x20-\x7e\x80-\xff]*")
+
+
+def bad_field_syntax(block: bytes) -> bool:
+    """Whether a header block has a line outside RFC 9112's field grammar (§5, §5.1, §5.2; a bare CR, §2.2), which
+    the server refuses with ``400``. Lines end at LF, less one trailing CR; a CR anywhere else is outside the
+    grammar. The parsed headers are trusted only for a block in which every line is in it."""
+    for line in block.split(b"\n"):
+        if line.endswith(b"\r"):
+            line = line[:-1]
+        if not line:  # the blank line that ends the block
+            continue
+        if b"\r" in line:
+            return True
+        name, colon, value = line.partition(b":")
+        if not colon or FIELD_NAME.fullmatch(name) is None or FIELD_VALUE.fullmatch(value) is None:
+            return True
+    return False
+
+
 class _ClientGone(Exception):
     """The client's input ended before its request head did: there is nobody to answer."""
 
 
-Route = Callable[[P.Projector, dict[str, str], dict[str, str]], dict[str, Any]]
+def _drain(sock: socket.socket, seconds: float) -> None:
+    """End a connection whose answer is written so that the client reads all of it: a half-close (the client sees
+    the end of the response), then what the client already sent is read, until its end of input, ``seconds`` or
+    ``DRAIN_MAX_BYTES``, so the close that follows is not a reset that discards the answer."""
+    try:
+        sock.shutdown(socket.SHUT_WR)
+        end, left = time.monotonic() + seconds, DRAIN_MAX_BYTES
+        while left > 0 and (wait := end - time.monotonic()) > 0:
+            sock.settimeout(wait)
+            got = sock.recv(min(65536, left))
+            if not got:
+                break
+            left -= len(got)
+    except OSError:  # a timeout, or the client already gone: either way the close comes next
+        pass
 
 
-def _q(query: dict[str, str], name: str) -> str | None:
+# A route's handler: the projector, the query (a repeatable parameter's value is the list of its values), the ids.
+Route = Callable[[P.Projector, dict[str, Any], dict[str, str]], dict[str, Any]]
+
+
+def _q(query: dict[str, Any], name: str) -> str | None:
     return query.get(name)
 
 
@@ -241,6 +297,28 @@ QUERY_PARAMETERS: dict[str, frozenset[str]] = {
     "/activity": frozenset({"limit", "cursor"}),
 }
 
+# Routes served only in some states of a project (register F20.8): present in the contract, answered only while the
+# project's adopted policy switches them on, and otherwise exactly as if they did not exist. ``/history/search`` (S2)
+# exists while the adopted execution policy sets ``recall.raw_history_search: explicit`` (``Snapshot.history_search``);
+# off, the ``/history/{id}`` template answers it, as it always has.
+SEARCH_ROUTE = "/history/search"
+CONDITIONAL_ROUTES: frozenset[str] = frozenset({SEARCH_ROUTE})
+CONDITIONAL_HANDLERS: dict[str, Route] = {
+    SEARCH_ROUTE: lambda p, q, m: p.history_search(terms=q.get("term"), kinds=q.get("kind"), since=_q(q, "since"),
+                                                   until=_q(q, "until"), limit=_q(q, "limit")),
+}
+QUERY_PARAMETERS[SEARCH_ROUTE] = frozenset({"term", "kind", "since", "until", "limit"})
+# The parameters a route takes more than once, each value in order (the generic rule is "each parameter once").
+REPEATABLE_PARAMETERS: dict[str, frozenset[str]] = {SEARCH_ROUTE: frozenset({"term", "kind"})}
+
+
+def pending_routes(contract_paths: Iterable[str]) -> set[str]:
+    """The accepted contract's routes this server does not serve yet: derived, never listed, so a route the web
+    developer adds or renames in a new contract version is pending at once, with no main-line edit (change note,
+    "Readiness"). A pending route answers exactly as this server answers without it: ``404`` before authentication
+    when no template matches, or the matching template's own answer."""
+    return set(contract_paths) - set(ROUTES) - CONDITIONAL_ROUTES
+
 
 LIMIT_PARAMETERS = frozenset({"limit", "annotations_limit"})
 
@@ -273,14 +351,10 @@ class _Listener(ThreadingHTTPServer):
             try:
                 request.settimeout(1.0)
                 request.sendall(self.busy)
-                request.shutdown(socket.SHUT_WR)  # the 503 is complete: the client sees the end of the response
-                end = time.monotonic() + BUSY_DRAIN_S
-                while (left := end - time.monotonic()) > 0:  # read what it sent, so the close is not a reset
-                    request.settimeout(left)
-                    if not request.recv(65536):
-                        break
             except OSError:
                 pass
+            else:
+                _drain(request, BUSY_DRAIN_S)
             self.shutdown_request(request)
             return
         try:
@@ -325,12 +399,18 @@ class DashboardServer:
             server_version = "aew-dashboard"
             sys_version = ""
             timeout = SOCKET_TIMEOUT_S
+            answered_close = False  # an answer said `Connection: close`: its request may carry bytes not yet read
 
             def handle(self) -> None:
                 try:
                     super().handle()
                 except (ConnectionError, TimeoutError, _ClientGone):
                     pass  # the client went away, or ran out its head deadline: nothing to answer
+
+            def finish(self) -> None:
+                super().finish()
+                if self.answered_close:  # a refusal ends the connection: the client must still read all of it
+                    _drain(self.connection, REFUSAL_DRAIN_S)
 
             def _readline(self, limit: int) -> bytes:
                 """One line of at most ``limit`` bytes, read before the head deadline however slowly it arrives:
@@ -397,6 +477,7 @@ class DashboardServer:
                 # 2): two words as well as three, since stdlib reads the headers of a two-word line before it is
                 # refused as HTTP/0.9 below (re-review R1).
                 words = str(self.raw_requestline, "iso-8859-1").rstrip("\r\n").split()
+                block: bytes | None = None
                 if len(words) >= 2:
                     block = self._read_header_block()  # bounded while reading, before stdlib parses it
                     if block is None:
@@ -417,6 +498,9 @@ class DashboardServer:
                     return False
                 if len(self.raw_requestline) > MAX_REQUEST_LINE:
                     self.send_error(HTTPStatus.REQUEST_URI_TOO_LONG)
+                    return False
+                if block is not None and bad_field_syntax(block):  # strict field syntax (RFC 9112 §5.1, §5.2)
+                    self.send_error(HTTPStatus.BAD_REQUEST)
                     return False
                 lines = self.headers.items()
                 if len(lines) > MAX_HEADER_LINES or sum(len(k) + len(v) + 4 for k, v in lines) > MAX_HEADER_BYTES:
@@ -447,6 +531,11 @@ class DashboardServer:
             def send_response(self, code: int, message: str | None = None) -> None:
                 self.log_request(code)
                 self.send_response_only(code, message)  # no Server or Date header
+
+            def send_header(self, keyword: str, value: str) -> None:
+                super().send_header(keyword, value)
+                if keyword.lower() == "connection" and value.lower() == "close":
+                    self.answered_close = True
 
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 (http.server's name)
                 pass  # stdlib's messages can carry the request line (a query); the request log is log_request
@@ -497,7 +586,10 @@ class DashboardServer:
 
     def handle(self, h: BaseHTTPRequestHandler, *, head: bool) -> None:
         if not self._slots.acquire(blocking=False):
-            self.refuse(h, HTTPStatus.SERVICE_UNAVAILABLE, "SERVER_BUSY", extra=[("Retry-After", "1")])
+            # Answered before `_admit`: a body here is unread too, so the answer ends the connection and is drained
+            # (`Connection: close`, never a bare close, which would reset and could discard the answer).
+            self.refuse(h, HTTPStatus.SERVICE_UNAVAILABLE, "SERVER_BUSY", close=has_body(h.headers),
+                        extra=[("Retry-After", "1")])
             return
         try:
             self._handle(h, head=head)
@@ -550,7 +642,11 @@ class DashboardServer:
 
     def _admit(self, h: BaseHTTPRequestHandler, url: Any) -> None:
         """The checks before any routing (R22, R23): an origin-form target, the exact origin, the request's
-        size, no body."""
+        size, no body. A body is never read, so a request carrying one ends its connection whichever check refuses
+        it: otherwise an earlier refusal would leave the body to be parsed as the next request."""
+        body = has_body(h.headers)
+        if body:
+            h.close_connection = True  # the body is not read
         if not is_path_target(raw_target(h) or ""):
             h.close_connection = True
             raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "the request target must be a path"))
@@ -561,8 +657,7 @@ class DashboardServer:
             raise Refusal(HTTPStatus.FORBIDDEN, error_body("ORIGIN_NOT_ALLOWED"))
         if len(url.path) > MAX_PATH or len(url.query) > MAX_QUERY:
             raise Refusal(HTTPStatus.REQUEST_URI_TOO_LONG, error_body("REQUEST_TOO_LARGE"))
-        if h.headers.get("Content-Length") not in (None, "0") or h.headers.get("Transfer-Encoding"):
-            h.close_connection = True  # the body is not read
+        if body:
             raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", "a read carries no body"))
         fetch_site = h.headers.get("Sec-Fetch-Site")
         if url.path.startswith("/api/") and fetch_site is not None and fetch_site not in SAME_SITE_FETCH:
@@ -634,12 +729,22 @@ class DashboardServer:
         refused = self.authenticator.authenticate(h.headers)
         if refused is not None:
             raise Refusal(HTTPStatus.UNAUTHORIZED, refused)
-        query = self._query(url.query, route)
+        conditional = url.path[len(API_PREFIX):] in CONDITIONAL_ROUTES
+        template_refusal: Refusal | None = None
+        try:
+            query = self._query(url.query, route)
+        except Refusal as r:
+            if not conditional:
+                raise
+            query, template_refusal = {}, r  # the template's 400, unless the snapshot switches the route on
         with self._serial:
-            snapshot = self.reader.snapshot()
-            projector = P.Projector(snapshot)
+            if conditional:
+                snapshot, route, matched, query = self._conditional(url, route, matched, query, template_refusal)
+            else:
+                snapshot = self.reader.snapshot()
+            projector = P.Projector(snapshot, route=route)
             try:
-                body = ROUTES[route](projector, query, matched)
+                body = (ROUTES.get(route) or CONDITIONAL_HANDLERS[route])(projector, query, matched)
             except CursorError as exc:
                 status = HTTPStatus.CONFLICT if exc.code == "CURSOR_EXPIRED" else HTTPStatus.BAD_REQUEST
                 raise Refusal(status, error_body(exc.code, exc.message)) from None
@@ -663,22 +768,46 @@ class DashboardServer:
                 raise Refusal(HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED"))
         return HTTPStatus.OK, body, tag
 
-    @staticmethod
-    def _normalized(query: dict[str, str]) -> dict[str, Any]:
-        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``)."""
-        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS else v for k, v in query.items()}
+    def _conditional(self, url: Any, route: str, matched: dict[str, str], query: dict[str, Any],
+                     template_refusal: Refusal | None) -> tuple[Any, str, dict[str, str], dict[str, Any]]:
+        """Inside the serialized section: whether a conditional route is on, read from this request's snapshot (the
+        change note's §5.2). On, the request becomes the route and its query is validated against the route's own
+        parameters. Off, or when the snapshot cannot be read (the switch then reads as off, failing closed), the
+        answer is exactly today's: the template's ``400`` if its validation failed, otherwise the template's own path,
+        which gives the same ``500`` on an unreadable state that it always gave."""
+        try:
+            snapshot = self.reader.snapshot()
+        except Exception:
+            if template_refusal is not None:
+                raise template_refusal from None
+            raise
+        path = url.path[len(API_PREFIX):]
+        if path == SEARCH_ROUTE and snapshot.history_search:
+            return snapshot, path, {}, self._query(url.query, path)
+        if template_refusal is not None:
+            raise template_refusal
+        return snapshot, route, matched, query
 
     @staticmethod
-    def _query(raw: str, route: str) -> dict[str, str]:
+    def _normalized(query: dict[str, Any]) -> dict[str, Any]:
+        """The query as the scope of a validator: limits as the numbers they parse to (``limit=050`` is ``50``), a
+        repeated ``kind`` as its sorted set (the response lists it so), and repeated terms in their order."""
+        return {k: P.parse_limit(v) if k in LIMIT_PARAMETERS
+                else sorted(set(v)) if k == "kind" and isinstance(v, list) else v for k, v in query.items()}
+
+    @staticmethod
+    def _query(raw: str, route: str) -> dict[str, Any]:
         allowed = QUERY_PARAMETERS.get(route, frozenset())
+        repeatable = REPEATABLE_PARAMETERS.get(route, frozenset())
         parsed = parse_qs(raw, keep_blank_values=True, strict_parsing=False)
-        out: dict[str, str] = {}
+        out: dict[str, Any] = {}
         for name, values in parsed.items():
             if name not in allowed:
                 raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", f"unknown parameter {name}"))
-            if len(values) != 1 or not values[0]:
+            repeated = name in repeatable
+            if not all(values) or (len(values) != 1 and not repeated):
                 raise Refusal(HTTPStatus.BAD_REQUEST, error_body("INVALID_REQUEST", f"parameter {name} given badly"))
-            out[name] = values[0]
+            out[name] = list(values) if repeated else values[0]
         return out
 
     @classmethod

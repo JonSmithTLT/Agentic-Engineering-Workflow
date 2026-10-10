@@ -35,7 +35,7 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents")
+                "steering", "stage_intents", "coordination_store", "coordination_unseen")
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized

@@ -54,14 +54,18 @@ class HarnessAdapter(ABC):
 
     @abstractmethod
     def inspect(self) -> dict[str, Any]:
-        """``{"alive": bool, "exit_code": int | None, "session": str | None, ...}`` without side effects."""
+        """``{"alive": bool, "exit_code": int | None, "session": str | None, ...}`` without side effects. Once the
+        harness has ended, ``reason_code`` (from ``aew.harness.contract``, for example ``provider_auth_failed``) says
+        why, when the adapter can tell; the supervisor records it on the run."""
 
     @abstractmethod
     def terminate(self) -> None:
         """Stop the harness and every process it started (idempotent)."""
 
-    def send(self, text: str) -> None:
-        """Deliver a Lead message to the running agent (coordination-compatible; M3 exposes it to the Lead)."""
+    def send(self, text: str, delivery: str) -> None:
+        """Deliver a Lead message to the running agent (coordination-compatible; M3 exposes it to the Lead).
+        ``delivery`` is ``steer`` (at the agent's next step boundary, without interrupting it) or ``queue`` (after its
+        current turn): ``aew.harness.delivery.WHEN_DELIVERY`` maps the Lead's ``--when`` onto it (register E55)."""
         raise HarnessIncompatible(f"harness {self.name} does not support delivering messages to a running agent")
 
     def interrupt(self) -> None:

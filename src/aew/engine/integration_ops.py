@@ -12,14 +12,20 @@ reconciled by inspecting git — success is never inferred.
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
+from aew.engine.guards import checked as guard_checked
+from aew.engine.guards import refusal, require
 from aew.errors import (
+    AEWError,
     GateUnsatisfied,
     GitError,
     IllegalTransition,
@@ -39,6 +45,7 @@ from aew.workspace import integration as I
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
+    from aew.engine.dispatch import DispatchDecision
     from aew.engine.ports import DispatchPort, GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
 
 
@@ -50,6 +57,7 @@ OPEN_INTEGRATION = frozenset({"prepared", "validated", "validation_inconclusive"
 # Windows reference machine (tools/perf/publish_sync.py), so 2,000 paths keep the hold near 10 s, well inside the
 # 31 s other writers wait for the lock.
 MAX_PUBLISH_PATHS = 2000
+PRODUCED_CANDIDATE = "<candidate produced by integrate.prepare>"  # a placeholder: the overlay merges nothing
 # States a Ticket may enter while keeping its open integration record: still at (or interrupted in, or
 # awaiting classification of a post-integration failure for) the COMMIT_READY the candidate was built from.
 KEEPS_INTEGRATION = frozenset({"COMMIT_READY", "DONE", "INTERRUPTED", "VERIFICATION_FAILED"})
@@ -82,12 +90,14 @@ class Integration:
     def _ref(self) -> str:
         return f"refs/heads/{self.k.authoritative_branch}"
 
-    def before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> None:
-        """State hook: no state change while a publish of the Ticket's candidate is in progress."""
+    def before_state_change(self, unit: dict[str, Any], change: dict[str, str]) -> Any:
+        """State hook, a pure refusal (its blocker, or None): no state change while a publish of the Ticket's candidate
+        is in progress. The guard queries ask it too (PR #170 review, finding 1)."""
         if (unit.get("integration") or {}).get("status") == "publishing" and change["to"] != "DONE":
-            raise IllegalTransition(
+            return refusal(IllegalTransition(
                 "a publish of this Ticket's integration candidate is in progress; run `aew integrate reconcile` "
-                "before changing its state", from_state=change["from"], to_state=change["to"])
+                "before changing its state", from_state=change["from"], to_state=change["to"]))
+        return None
 
     def on_state_change(self, state: dict[str, Any], unit: dict[str, Any], change: dict[str, str],
                         reason: str | None) -> None:
@@ -132,6 +142,55 @@ class Integration:
 
     def _g_gates(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         return checked(lambda: self._require_gated(state, work_id))
+
+    # ---- `integrate.prepare`'s guard as a query (M4-E E4b; aew.engine.guards)
+
+    def prepare_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``integrate.prepare`` now: what its own transaction does before anything else (bring the queue in line
+        with the state, then decide the ``integrate.prepare`` entrypoint and require it), on a deep copy, so asking
+        grants no lease, starts no custodian and enqueues nothing. Its blocker is the decision's own refusal (its
+        first migrated check's error, or ``DISPATCH_REFUSED`` naming every condition). The candidate's build is not
+        a guard: a conflict or an admission refusal is the prepare's outcome."""
+        return guard_checked(lambda: self._prepare_admission(copy.deepcopy(state), work_id,
+                                                             self.dispatch.decide).require())
+
+    def _prepare_admission(self, state: dict[str, Any], work_id: str,
+                           decide: Callable[[dict[str, Any], str, str], DispatchDecision]) -> DispatchDecision:
+        """The prepare's admission, shared by its query (on a deep copy, with ``decide``) and its execution (on the
+        transaction's state, with ``decide_in``, which records and requires the decision): bring the queue in line
+        with ``state``, then decide the ``integrate.prepare`` entrypoint (PR #171 review, finding 3)."""
+        self.queue.sync(state)
+        return decide(state, "integrate.prepare", work_id)
+
+    def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
+        """A deep copy of ``state`` with ``work_id``'s integration candidate as ``integrate.prepare`` would leave it:
+        the queue in line, the entry's lease granted to a custodian, and a prepared candidate bound to the Ticket's
+        acceptance (its worktree and commit are placeholders: nothing is merged or checked out). A later stage step's
+        guard (the integration verifier's dispatch decision) is asked on it (M4-E E4b, plan v3 E4). None when no lease
+        could be granted (no entry, or another entry holds it): the prepare step is BLOCKED there anyway."""
+        scratch = copy.deepcopy(state)
+        self.queue.sync(scratch)
+        unit = scratch["work"].get(work_id)
+        if unit is None:
+            return None
+        if Q.queued(scratch):
+            if Q.entry_of(scratch, work_id)[0] is None:
+                return None
+            try:
+                self.queue.grant(SimpleNamespace(state=scratch, refs=[]), work_id)  # type: ignore[arg-type]
+            except AEWError:
+                return None
+        attempt = 1 + max([r.get("attempt", 0) for r in unit.get("integration_history", [])], default=0)
+        unit["integration"] = {"status": "prepared", "binding": self.gates.integration_binding(unit),
+                               "attempt": attempt, "candidate": PRODUCED_CANDIDATE,
+                               "workspace": PRODUCED_CANDIDATE, "workspace_id": PRODUCED_CANDIDATE}
+        return scratch
+
+    def validation_mode(self, state: dict[str, Any], work_id: str) -> str | None:
+        """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None for no unit."""
+        if work_id not in state.get("work", {}):
+            return None
+        return V.obligation(state, work_id, self.k.policy("gates"))["mode"]
 
     def require_legal(self, state: dict[str, Any], work_id: str) -> None:
         """Whether ``work_id``'s integration could be prepared now, apart from the queue (raises when not)."""
@@ -278,9 +337,11 @@ class Integration:
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
-            self.queue.sync(state)
-            # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian.
-            decision = self.dispatch.decide_in(ctx, "integrate.prepare", work_id)
+            # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian. The
+            # admission is the query's own (M4-E E4b): decide_in records the decision and requires it.
+            decision = self._prepare_admission(state, work_id,
+                                               lambda _state, entrypoint, wid: self.dispatch.decide_in(ctx, entrypoint,
+                                                                                                       wid))
             unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
             self.queue.grant(ctx, work_id)
             unit, conflict, refused = self._build_candidate(ctx, work_id, unleased=unleased)
@@ -561,36 +622,89 @@ class Integration:
                              "integrate requeue` to try again, or return the Ticket to RUNNING)",
                              queue=queue, revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        # Phase 1: record intent (publishing H -> M) after re-validating everything.
-        stale = None
-        moved: dict[str, Any] | None = None
-        with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
-            unit = self.units.unit(ctx.state, work_id)
+    # ---- `integrate.publish`'s guard as a query (M4-E E4b; aew.engine.guards)
+
+    SUPERSEDED, MOVED_HEAD, PUBLISH = "superseded", "moved_head", "publish"
+
+    def publish_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """``integrate.publish`` now: the Ticket is COMMIT_READY with a prepared or validated candidate; with the queue
+        in line (on a deep copy: nothing is released, reconciled or ended by asking), its entry holds a live lease;
+        the candidate is bound to the current acceptance; the authoritative head is the candidate's base; every
+        obligation is met at the accepted snapshot; post-integration validation passed for this candidate; and the
+        authoritative worktree holds the base on the paths the candidate changes. It records ``found["outcome"]``:
+        ``publish``, or, for the two refusals the publish answers by committing a disposition first,
+        ``superseded`` (it retires the candidate and requeues the entry, then raises this blocker's error) and
+        ``moved_head`` (it rebuilds the candidate once under the same lease, or leaves the entry for disposition, and
+        publishes nothing). Those two blockers carry ``disposition`` (``requeue``, ``rebuild``): BLOCKED, and what the
+        call commits instead (``aew.engine.guards``; PR #171 review, finding 1). An authoritative worktree with local
+        changes is an integrity failure, as it always was (UNKNOWN to a query, raised by the publish)."""
+        found = args.setdefault("found", {})
+
+        def check() -> None:
+            unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
-            self.queue.sync(ctx.state)
-            self.queue.require_live_lease(ctx.state, work_id, "publishing")
+            scratch = copy.deepcopy(state)
+            self.queue.sync(scratch)
+            self.queue.require_live_lease(scratch, work_id, "publishing")
             superseded = self.gates.binding_problem(unit)
             current = self.k.authoritative_commit()
+            found["current"] = current
             if superseded:
+                found["outcome"] = self.SUPERSEDED
+                raise StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; run "
+                                     "`aew integrate prepare` again",
+                                     reason="candidate built from an earlier COMMIT_READY or plan", **superseded,
+                                     disposition="requeue")
+            if current != integ["base"]:
+                found["outcome"] = self.MOVED_HEAD
+                raise StaleCandidate("the authoritative ref moved since the candidate was built: publishing now "
+                                     "publishes nothing; it rebuilds the candidate on the new head once under the same "
+                                     "lease, or leaves the entry for the Lead's disposition",
+                                     expected=integ["base"], current=current, disposition="rebuild")
+            synced = scratch["work"][work_id]
+            self._require_obligations_at_acceptance(scratch, work_id, synced)
+            self._post_integration_ok(scratch, work_id, synced)
+            if I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch):
+                I.precheck_sync(self.k.repo_root, integ["base"], integ["changed_paths"])
+            found["outcome"] = self.PUBLISH
+
+        return guard_checked(check)
+
+    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+        # Phase 1: record intent (publishing H -> M) after re-validating everything: the guard's query first (M4-E
+        # E4b), whose refusal is raised unchanged, except the two it answers with a committed disposition.
+        stale = None
+        moved: dict[str, Any] | None = None
+        with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
+            args: dict[str, Any] = {}
+            refused = self.publish_query(ctx.state, work_id, args)
+            outcome = (args.get("found") or {}).get("outcome")
+            if refused is not None and outcome not in (self.SUPERSEDED, self.MOVED_HEAD):
+                require(refused)
+            unit = ctx.state["work"][work_id]
+            integ = unit["integration"]
+            self.queue.sync(ctx.state)
+            # The query's outcome alone decides the branch (PR #171 review, finding 7): no fall-through publishes.
+            if outcome == self.SUPERSEDED:
+                superseded = self.gates.binding_problem(unit) or {}
                 self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
                 self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
-                stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded}
+                stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded,
+                         "disposition": "requeue"}
                 ctx.op = "integrate.superseded"
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
-            elif current != integ["base"]:
-                moved = self._moved_head(ctx, work_id, current)
-            else:
-                self._require_obligations_at_acceptance(ctx.state, work_id, unit)
-                self._post_integration_ok(ctx.state, work_id, unit)
-                if I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch):
-                    I.precheck_sync(self.k.repo_root, integ["base"], integ["changed_paths"])
+            elif outcome == self.MOVED_HEAD:
+                moved = self._moved_head(ctx, work_id, args["found"]["current"])
+            elif outcome == self.PUBLISH:
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+            else:
+                raise IntegrityError(f"engine defect: the publish query of {work_id} answered no outcome",
+                                     outcome=outcome)
         if moved is not None:
             return self._moved_head_result(ctx, work_id, moved)
         if stale:

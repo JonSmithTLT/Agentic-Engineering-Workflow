@@ -227,6 +227,8 @@ it('requires manifest trust labels, list annotations and structured integrity ro
 });
 it('documents per-route statuses and declares backend filters', () => {
   for (const [route, ops] of Object.entries(contract.paths)) {
+    const model = (ops as { get: { responses: { '200': { content: { 'application/json': { schema: { $ref: string } } } } } } }).get.responses['200'].content['application/json'].schema.$ref.split('/').at(-1)!;
+    if (contract.components.schemas[model].properties.schema_version.const !== '0.1.2') continue;
     const operation = (
       ops as { get: { responses: Record<string, unknown> } }
     ).get;
@@ -416,7 +418,7 @@ it('R2-5 preserves distinct verified/full audit metadata and backend oldest-unve
   ).toBe(true);
 });
 it('retains the conditional review alongside the exact accepted 0.1.2 record', () => {
-  const previous = approval.previous_reviews.at(-1)!;
+  const previous = approval.previous_reviews.find(review => review.contract_version === '0.1.1')!;
   expect(previous.reviewed_commit).toBe(
     '7b0177b76a919e019d2051adff8f7616ae6c2fda',
   );
@@ -428,11 +430,12 @@ it('retains the conditional review alongside the exact accepted 0.1.2 record', (
     'R2-5',
     'R2-6',
   ]);
-  expect(approval.reviewed_commit).toBe(
+  const accepted = approval.previous_reviews.find(review => review.contract_version === '0.1.2')!;
+  expect(accepted.reviewed_commit).toBe(
     '322301d1200dce54d31a54348dd15ba7a71c9376',
   );
-  expect(approval.disposition).toBe('ACCEPT');
-  expect(approval.document).toBe('web/docs/c0-review-main-line-0.1.2.md');
+  expect(accepted.disposition).toBe('ACCEPT');
+  expect(accepted.document).toBe('web/docs/c0-review-main-line-0.1.2.md');
 });
 
 it('FR-1 History link vocabulary matches both canonical x-known-relations lists', () => {

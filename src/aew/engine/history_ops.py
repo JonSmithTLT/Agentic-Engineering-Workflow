@@ -12,7 +12,9 @@ against the hash its manifest entry pins:
   records an audit record and advances the verified root (R2: verified outside the lock, recorded only if the root
   it verified is still current, so the record never leaves a one-entry backlog);
 - ``history search``: register F21's Arm B prototype, explicit raw-history search, only while the adopted execution
-  policy switches it on (``aew.engine.recall``; off, it does not exist and its substrate is never touched).
+  policy switches it on (``aew.engine.recall``; off, it does not exist and its substrate is never touched). The
+  dashboard's route uses ``history_search_committed``: the same search from a committed snapshot, without the lock, and
+  never destructive (register F20.8, S2).
 
 Audit status (``status``) is reported as backlog against the gates policy's optional ``history_audit`` thresholds,
 never as a permanent alarm (invariant 11).
@@ -25,6 +27,7 @@ import copy
 import functools
 import sqlite3
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, recall
@@ -48,7 +51,7 @@ from aew.util import dump_yaml, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
-    from aew.engine.ports import ArchivePort, WorkUnitsPort
+    from aew.engine.ports import ArchivePort, CoordinationPort, WorkUnitsPort
 
 V2 = "aew/control/v2"
 AUDIT_SCHEMA = "aew/audit/v1"
@@ -84,10 +87,12 @@ class _RootMoved(Exception):
 class HistoryCommands:
     """The history surface and the integrity audit (ADR-0011)."""
 
-    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, units: WorkUnitsPort, archive: ArchivePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.units = units
         self.archive = archive
+        self.coordination = coordination
         self.cold = History(k.aew_root)
 
     # ------------------------------------------------------------------ reading
@@ -135,6 +140,11 @@ class HistoryCommands:
             if entry["kind"] == "unit":
                 unit = self.archive.archived_unit(state, record_id) or {}
                 out["current_parent"] = unit.get("parent")
+                # F9-A (plan D-24): its coordination threads, read through the seal pointers in the bundle, each
+                # checked against its pinned hash; absent where none was ever recorded.
+                threads = self.coordination.unit_threads(state, record_id, doc["unit"])
+                if threads:
+                    out["coordination"] = threads
             index = self.archive.index(state)
             out["annotations"] = [{"entry": _public(a), "record": self.archive.record(a)}
                                   for a in index.annotations(record_id)]
@@ -274,6 +284,62 @@ class HistoryCommands:
         root, tail = self._root_and_tail()
         out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
                                        limit=limit)
+        return {"query": {"terms": list(terms), "kinds": kinds, "since": since, "until": until, "limit": limit},
+                **out}
+
+    def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
+                                 since: str | None = None, until: str | None = None,
+                                 limit: int = recall.LIMIT_DEFAULT, deadline: float, budget_s: float,
+                                 budget_docs: int, candidates: int, enabled: bool, fts5: bool,
+                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+        """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2),
+        answering from ``state``, the committed state it already read.
+
+        The switch (``enabled``) and the FTS5 answer (``fts5``) are the caller's, read with its snapshot: policy is
+        never re-read from disk here, so an edit that lands after the snapshot cannot contradict the capability the
+        same snapshot showed (PR #175 review, m2). The invocation guard stays as defence in depth: it reads this
+        process's environment, as the caller's capability does, and its refusal carries its reason.
+
+        Without the lock, the root and the tail cannot be copied together, which is the premise under which a search
+        may reset the substrate. So the root comes from ``state``, the tail's bytes are read once, and the two are
+        checked together first: the tail must follow the root's newest sealed segment, start at its boundary and end
+        exactly at the root. If it does not (control committed and the tail not yet applied, a later commit appended,
+        or a rollover sealed a segment the root does not know), there is no catch-up: the answer is what is already
+        indexed, with ``history_moved``. Either way the substrate is searched with ``may_reset=False``, under the
+        caller's ``deadline``, catch-up budget and candidate budget, and the fence takes its token from
+        ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail."""
+        if not enabled:
+            raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
+                                        "recall.raw_history_search: explicit", reason="switched_off")
+        recall.refuse_in_invocations()
+        query = recall.check_query(list(terms))
+        kinds = sorted(set(kinds)) if kinds else None
+        if kinds and set(kinds) - set(recall.KINDS):
+            raise UsageError(f"kind must be one of {', '.join(recall.KINDS)}")
+        if not 1 <= limit <= recall.LIMIT_MAX:
+            raise UsageError(f"limit must be between 1 and {recall.LIMIT_MAX}")
+        for name, stamp in (("since", since), ("until", until)):
+            if stamp is not None:
+                try:
+                    _epoch(stamp)
+                except ValueError:
+                    raise UsageError(f"{name} must be a UTC timestamp like 2026-10-02T00:00:00Z") from None
+        if not fts5:
+            raise Unavailable("this Python's SQLite has no usable FTS5, which raw-history search needs; nothing "
+                              "else is affected", reason="fts5_unavailable")
+        self._require_v2(state)
+        root = state["cold"]["root"]
+        tail: bytes | None = None
+        try:
+            tail = self.cold.tail_bytes()
+            self.cold.tail(root, tail_raw=tail)
+            moved = False
+        except AEWError:  # the tail is not the snapshot's: shorter, longer, or past a rollover
+            moved = True
+        out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
+                                       limit=limit, may_reset=False, budget_s=budget_s, budget_docs=budget_docs,
+                                       deadline=deadline, candidates=candidates, fence_token=fence_token,
+                                       moved=moved)
         return {"query": {"terms": list(terms), "kinds": kinds, "since": since, "until": until, "limit": limit},
                 **out}
 

@@ -159,6 +159,90 @@ class MigrationRequired(IllegalTransition):
     code = "MIGRATION_REQUIRED"
 
 
+class MessagingDisabled(IllegalTransition):
+    """A coordination message on a project whose adopted execution policy does not set ``coordination.messaging:
+    enabled`` (F9-A, ADR-0017): nothing is recorded. ``details.reason``: ``switched_off`` (absent or ``disabled``) or
+    ``not_adopted`` (the policy differs from what the operator adopted, so the switch reads off), ``unreadable``, or
+    ``not_registered`` (the switch is on but the project has no ``coordination_store`` key: the adoption ran under an
+    engine before the sealing slice; plan D-39)."""
+
+    code = "MESSAGING_DISABLED"
+
+
+class TurnEndNeedsMessaging(IllegalTransition):
+    """``aew harness send --when turn-end`` while coordination messaging is off (F9-A plan v4 amendment 2 §3.3, G1):
+    the `turn-end` timing goes only through the message store, so it is unavailable, and nothing is written."""
+
+    code = "TURN_END_NEEDS_MESSAGING"
+
+
+class HarnessSendNeedsStore(IllegalTransition):
+    """``aew harness send`` while coordination messaging is on, before this AEW can record it in the message store
+    (amendment 2 §3.1, G4: with messaging on every send is recorded, and it fails closed). Nothing is written."""
+
+    code = "HARNESS_SEND_NEEDS_STORE"
+
+
+class MessagingSnapshotMismatch(IllegalTransition):
+    """``aew harness send`` to a run whose launch snapshot of the messaging switch disagrees with the project's switch
+    (amendment 2 §3.1): neither the request-file path nor the store path is safe, so it is refused, nothing is written,
+    and the Lead relaunches the run."""
+
+    code = "MESSAGING_SNAPSHOT_MISMATCH"
+
+
+class CoordinationLimit(IllegalTransition):
+    """A coordination message beyond one of its bounds (F9-A plan D-7). ``details.bound`` names the bound."""
+
+    code = "COORDINATION_LIMIT"
+
+
+class LeadInboxFull(CoordinationLimit):
+    """A worker message while the thread already holds the most worker messages not yet shown to the Lead (D-7)."""
+
+    code = "LEAD_INBOX_FULL"
+
+
+class IdempotencyConflict(IllegalTransition):
+    """An idempotency id already names a message on the thread with other content (D-8): a retry must repeat the
+    original exactly, and a new message needs a new id."""
+
+    code = "IDEMPOTENCY_CONFLICT"
+
+
+class ReplyNotInThread(ValidationFailed):
+    """``in_reply_to`` does not name an earlier message of the same thread, or a worker message names no Lead message
+    (D-10). ``details.reason``: ``missing``, ``unknown`` or ``not_a_lead_message``."""
+
+    code = "REPLY_NOT_IN_THREAD"
+
+
+class RefUnknown(ValidationFailed):
+    """A message ref names an AEW id that does not exist, or is malformed (D-12)."""
+
+    code = "REF_UNKNOWN"
+
+
+class NotAWorker(IllegalTransition):
+    """A coordination message to an invocation that is not a role-bearing worker: an engine custody invocation (D-17).
+    """
+
+    code = "NOT_A_WORKER"
+
+
+class RecipientIndependent(IllegalTransition):
+    """A coordination message to an independent confirmer (F4's scope ``revision``), which never receives Lead text
+    (F9-A plan D-34)."""
+
+    code = "RECIPIENT_INDEPENDENT"
+
+
+class RefOutOfScope(PermissionDenied):
+    """A worker's message ref names something outside its own unit, thread, Ticket and runs (D-12)."""
+
+    code = "REF_OUT_OF_SCOPE"
+
+
 class ObservationMutated(PermissionDenied):
     """A read-only (non-mutating) invocation changed its observation workspace (ADR-0008)."""
 
@@ -183,6 +267,14 @@ class DispatchUndecided(IntegrityError):
     """An engine defect: a transaction created an invocation or a harness run without a dispatch decision (M4-A)."""
 
     code = "DISPATCH_UNDECIDED"
+
+
+class ThreadUnsealed(IntegrityError):
+    """An engine defect: a commit ends an invocation whose coordination thread it did not seal, and the commit check
+    cannot seal it now, because the unit leaves the hot state in the same commit (its bundle is already written) or the
+    store has no sealing function (F9-A plan D-16, R3). Nothing is committed."""
+
+    code = "THREAD_UNSEALED"
 
 
 class MapArtifactCorrupt(IntegrityError):

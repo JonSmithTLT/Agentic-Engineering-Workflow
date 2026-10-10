@@ -10,8 +10,8 @@ the held credential, so the engine's checks (current Lead, expected revision) st
 It is the invocation bridge (``bridge.BridgeServer``: JSON only, key challenge, exact arguments,
 redaction, drain) with these operations: ``lead.cli {argv, cwd, stdin}`` relays one Lead-authenticated command,
 ``lead.whoami`` says whether the session still holds authority, and ``lead.tool {name, arguments, ingress, profile}``
-runs one call of the typed Lead surface (``aew.surface``; F15.1) with the held credential. The broker additionally
-refuses:
+runs one call of the typed Lead surface (``aew.surface``; F15.1) with the held credential, and appends one line for it
+to the per-call typed-tool log (``aew.harness.tool_calls``; M4-E E5a). The broker additionally refuses:
 
 * every Lead-authenticated command that is not classified **Lead-reachable** (``LEAD_REACHABLE``): the
   operator-only ones (``OPERATOR_ONLY``: commands that would print a credential, offer secret or session URL, so Lead
@@ -43,13 +43,14 @@ import json
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from aew import errors
 from aew.engine import dispatch
 from aew.engine.authority import require_lead
-from aew.harness import bridge
+from aew.harness import bridge, tool_calls
 from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -102,8 +103,11 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "invoke cancel", "invoke create", "lead handoff cancel",
     "lead mode lower",  # a restriction the Lead makes for its own generation (A1 §1.2)
     "map generate", "map select-architecture",  # derived map state under .aew/local/maps/ only (ADR-0015)
+    "message unseen",  # a read; with the Lead's credential it records what it showed (F9-A plan D-38, R1)
     "plan accept", "plan adopt",
-    "plan propose", "plan reconfirm", "review ingest", "verify classify", "verify ingest", "work accept",
+    "plan propose", "plan reconfirm", "review ingest",
+    "stage abandon", "stage continue",  # the typed `resolve` tool's CLI form: the current Lead's own choice (E3c)
+    "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
@@ -248,6 +252,36 @@ class LeadBroker:
         return self._authority_lost() or ("this Lead session's bridge closed" if self.server.closed else None)
 
     def _tool(self, args: dict[str, Any]) -> dict[str, Any]:
+        """One typed surface call (:meth:`_serve_tool`), and its line in the per-call typed-tool log (M4-E E5a, n7):
+        every call, an input error or a refusal included. The log is telemetry and never fails the call
+        (``tool_calls.record``). Its revision before is read inside the serialized section the call runs in, so another
+        caller's commit while this one waited for the section is not counted as this call's (PR #177 review, 5)."""
+        started = time.monotonic()
+        meta: dict[str, Any] = {}
+        answer: dict[str, Any] | None = None
+        refused: dict[str, Any] | None = None
+        try:
+            answer = self._serve_tool(args, meta)
+            return answer
+        except errors.AEWError as exc:
+            refused = {"code": exc.code}
+            raise
+        finally:
+            tool_calls.record(
+                self.engine.aew_root, tool=args.get("name"), arguments=args.get("arguments"),
+                ingress=args.get("ingress"), profile=args.get("profile"), result=(answer or {}).get("stage_result"),
+                input_error=(answer or {}).get("adapter_input_error"),
+                error=refused or (None if answer is not None else {"code": "DEFECT"}),
+                revision_before=meta.get("revision_before"), duration_ms=int((time.monotonic() - started) * 1000))
+
+    def _mark(self, meta: dict[str, Any]) -> None:
+        """Record the revision a call starts from, for the log. The caller holds the serialization."""
+        try:
+            meta["revision_before"] = int(self.engine.store.read()["revision"])
+        except Exception:  # noqa: BLE001  telemetry: the call reports its own refusal, the log what it could read
+            meta["revision_before"] = None
+
+    def _serve_tool(self, args: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
         """One typed surface call. The answer is ``{"stage_result": ...}`` for every well-formed call (an engine
         refusal and lost authority included), or ``{"adapter_input_error": ...}`` when the call never reached the
         runner. When authority is lost the session still answers once from committed state, then closes."""
@@ -262,9 +296,13 @@ class LeadBroker:
             arguments = json.loads(args["arguments"])
             check_call(name, arguments, profile)  # before any engine call: an ill-formed call commits nothing
         except ValueError:
+            with self.server.serialized():
+                self._mark(meta)
             return {"adapter_input_error": AdapterInputError(
                 "INVALID_ARGUMENTS", f"{name}: the arguments are not JSON").to_dict()}
         except AdapterInputError as exc:
+            with self.server.serialized():
+                self._mark(meta)
             return {"adapter_input_error": exc.to_dict()}
         channel = INGRESS_CHANNEL[ingress]
 
@@ -274,6 +312,7 @@ class LeadBroker:
         with dispatch.channel(channel):
             if name == "harness_wait":
                 with self.server.serialized():
+                    self._mark(meta)
                     problem = self._authority_lost()
                 ctx = SurfaceContext(lead_session=self._session(problem), generation=self.generation,
                                      profile=profile, ingress=ingress)
@@ -281,6 +320,7 @@ class LeadBroker:
                                               serial=self.server.serialized, cancelled=self._cancelled)
             else:
                 with self.server.serialized():
+                    self._mark(meta)
                     problem = self._authority_lost()
                     ctx = SurfaceContext(lead_session=self._session(problem), generation=self.generation,
                                          profile=profile, ingress=ingress)
@@ -299,12 +339,13 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     """Run one Lead-authenticated ``aew`` command with ``token``, with every refusal a Lead session has: the relay of
     a shell command (``lead.cli``) and the typed surface's ``cli`` escape both come here. The caller serializes:
     the process-wide cwd and stdin swap below needs it."""
-    from aew.cli.main import build_parser, recall_search_for
+    from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
 
     # Built as the `aew` client builds it, with the same switch read for this broker's project (register F21, Arm B).
     project = getattr(engine, "aew_root", None) or Path(cwd)
-    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project))
+    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project),
+                          coordination_reads=coordination_reads_for(argv, aew_root=project))
     stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
     argv = _expand_fields(argv, parser, stdin_stream, cwd)
     noise = io.StringIO()

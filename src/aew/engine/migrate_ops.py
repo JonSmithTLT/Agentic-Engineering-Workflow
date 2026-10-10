@@ -47,16 +47,18 @@ from aew.history.store import History
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
-    from aew.engine.ports import ArchivePort, HierarchyPort
+    from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort
 
 
 class Migration:
     """``aew migrate`` (Lead)."""
 
-    def __init__(self, k: Kernel, *, hierarchy: HierarchyPort, archive: ArchivePort) -> None:
+    def __init__(self, k: Kernel, *, hierarchy: HierarchyPort, archive: ArchivePort,
+                 coordination: CoordinationPort) -> None:
         self.k = k
         self.hierarchy = hierarchy
         self.archive = archive
+        self.coordination = coordination
 
     def live_runs(self, state: dict[str, Any]) -> list[str]:
         """The harness runs whose supervisor may still hold custody: each invocation's latest run, conservatively (a
@@ -130,6 +132,8 @@ class Migration:
             for wid, v1 in legacy.items():
                 committed["work"][wid]["legacy_digest"] = {
                     "v1": v1, "v2_at_migration": self.hierarchy.children_digest(committed, wid)}
+            # A v1 project that adopted messaging enabled is registered as it becomes v2 (F9-A plan D-39).
+            self.coordination.register_on_migrate(committed, s.revision + 1)
             archived = (committed["cold"].get("archived") or {})
             summary = (f"control state migrated to v2: {before['units'] - len(committed['work'])} finished units "
                        f"archived ({archived.get('done', 0)} DONE, {archived.get('cancelled', 0)} CANCELLED), "

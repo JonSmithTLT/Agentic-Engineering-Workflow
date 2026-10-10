@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
@@ -13,8 +14,12 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from dashboard_contract import BASE_FIXTURE_REL, base_contract, note_text, proposed
+from dashboard_contract import approval as load_approval
 
+from aew.dashboard import contract as CT
 from aew.dashboard import frontend as F
+from aew.dashboard.server import CONDITIONAL_ROUTES, ROUTES
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "src" / "aew" / "dashboard" / "static"
@@ -46,8 +51,7 @@ def test_build_json_names_the_agreed_commit_the_accepted_contract_and_the_pinned
     assert record["source"]["commit"] == AGREED_COMMIT
     assert re.fullmatch(r"[0-9a-f]{40}", record["source"]["tree"])
     assert re.fullmatch(r"[0-9a-f]{40}", record["source"]["web_tree"])
-    accepted = json.loads((ROOT / "web/docs/c0-approval.json").read_text(encoding="utf-8"))
-    assert record["contract"]["sha256"] == accepted["sha256"]
+    assert record["contract"]["path"] == CT.CONTRACT_REL and re.fullmatch(r"[0-9a-f]{64}", record["contract"]["sha256"])
     pinned = (ROOT / "web/docs/how-to/pinned-web-builder.md").read_text(encoding="utf-8")
     assert record["builder"]["image"] in pinned and record["builder"]["image"].startswith("sha256:")
     assert record["builder"]["node"].startswith("v") and record["builder"]["npm"]
@@ -72,6 +76,100 @@ def test_build_json_matches_the_commit_where_git_has_it():
     assert show(f"rev-parse {AGREED_COMMIT}:web").decode().strip() == record["source"]["web_tree"]
     for rel, digest in record["inputs"].items():
         assert hashlib.sha256(show(f"show {AGREED_COMMIT}:{rel}")).hexdigest() == digest, rel
+
+
+def git_show(commit: str, rel: str) -> bytes:
+    """A file as committed. Only this fast-lane module reads historical commits: the ``core`` job checks out the full
+    history, the other lanes do not (review of PR #161, B1; guarded by tests/unit/test_ci_tools.py)."""
+    got = subprocess.run(["git", "-C", str(ROOT), "show", f"{commit}:{rel}"], capture_output=True,
+                         creationflags=NO_WINDOW)
+    if got.returncode != 0:
+        raise AssertionError(f"git cannot show {commit}:{rel} in this clone (a shallow clone lacks it; CI's core job "
+                             f"checks out the full history): {got.stderr.decode(errors='replace').strip()}")
+    return got.stdout
+
+
+def test_the_vendored_0_1_2_contract_is_the_blob_its_accepted_review_names():
+    """The fixture every compatibility check compares with is byte for byte the contract at the 0.1.2 review's commit:
+    its git blob id equals that commit's blob, so it cannot drift. Where the clone lacks the commit (a shallow one),
+    there is nothing to compare with; the core job, which has the full history, always runs it."""
+    review = CT.base_review(load_approval())
+    commit = review["reviewed_commit"]
+    have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True,
+                          creationflags=NO_WINDOW)
+    if have.returncode != 0:
+        pytest.skip(f"this clone lacks {commit} (a shallow clone)")
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True,
+                              creationflags=NO_WINDOW).stdout.strip()
+
+    assert git("hash-object", BASE_FIXTURE_REL) == git("rev-parse", f"{commit}:{CT.CONTRACT_REL}")
+    assert hashlib.sha256((ROOT / BASE_FIXTURE_REL).read_bytes()).hexdigest() == review["sha256"]
+
+
+def test_the_packaged_builds_contract_is_accepted_and_compatible_with_the_accepted_one():
+    """The packaged build speaks the accepted contract or an accepted predecessor (a ``previous_reviews`` entry with
+    ``"disposition": "ACCEPT"``): a rule, not a list, so neither the web developer's next minor version nor S3's
+    re-import needs an edit here. The build's own contract, read from git at its source commit, must pass the
+    compatibility check against the accepted one on every path of the build's contract that this server serves or
+    serves conditionally; a path the build's contract lacks is exempt, since the build never requests it (change
+    note §3.3; it also guards an import that ran before the shape it parses was served)."""
+    record = build()
+    approval = load_approval()
+    assert record["contract"]["sha256"] in {r["sha256"] for r in CT.accepted_reviews(approval)}, (
+        "the packaged build speaks a contract the approval record does not accept")
+    raw = git_show(record["source"]["commit"], CT.CONTRACT_REL)
+    assert hashlib.sha256(raw).hexdigest() == record["contract"]["sha256"]
+    built = CT.Contract(raw=raw).document
+    accepted = CT.Contract(ROOT / CT.CONTRACT_REL).document
+    assert CT.compatibility(built, accepted, client_paths(built)) == []
+
+
+def client_paths(client: dict) -> set[str]:
+    """The paths a client's contract shares with what this server serves (conditional routes included, on or off)."""
+    return set(client["paths"]) & (set(ROUTES) | CONDITIONAL_ROUTES)
+
+
+def test_a_build_of_0_1_2_works_against_0_1_3_including_routes_it_does_not_know():
+    base = base_contract()
+    v013 = proposed(note_text(), base)
+    serving = set(ROUTES) | {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs",
+                             "/maps/diff"} | {"/history/search"}
+    covered = set(base["paths"]) & serving  # /maps is absent from the build's contract: exempt
+    assert "/maps" not in covered
+    assert CT.compatibility(base, v013, covered) == []
+
+
+def test_a_build_of_0_1_3_works_against_a_0_1_4_that_only_adds_paths():
+    base = base_contract()
+    v013 = proposed(note_text(), base)
+    v014 = copy.deepcopy(v013)
+    v014["info"]["version"] = "0.1.4"
+    v014["paths"]["/later"] = {"get": {"responses": {"200": {"description": "x"}}}}
+    serving = set(v013["paths"])  # S1 and S2 serve everything 0.1.3 adds
+    assert CT.in_series("0.1.4")  # and no contract.py edit is needed to accept it
+    assert CT.compatibility(v013, v014, set(v013["paths"]) & serving) == []
+
+
+def test_a_build_of_0_1_3_fails_against_a_0_1_4_that_changes_a_served_history_search():
+    """The early-import guard (change note §3.3): once ``/history/search`` is served, a build that parses another
+    ``HistorySearch`` is refused, so S2 cannot serve a shape the packaged build would reject."""
+    base = base_contract()
+    v013 = proposed(note_text(), base)
+    v014 = copy.deepcopy(v013)
+    v014["components"]["schemas"]["HistorySearch"]["properties"]["ranked"] = {"type": "boolean"}
+    serving = set(ROUTES) | {"/history/search"}
+    problems = CT.compatibility(v013, v014, set(v013["paths"]) & serving)
+    assert "#/components/schemas/HistorySearch changed" in problems
+    assert CT.compatibility(v013, v014, set(v013["paths"]) & set(ROUTES)) == []  # while still pending: free
+
+
+def test_a_build_fails_against_a_contract_that_changes_an_existing_0_1_2_shape():
+    base = base_contract()
+    changed = copy.deepcopy(proposed(note_text(), base))
+    changed["components"]["schemas"]["Work"]["properties"]["extra"] = {"type": "string"}
+    assert CT.compatibility(base, changed, client_paths(base)) != []
 
 
 def test_index_html_references_only_files_of_the_build():

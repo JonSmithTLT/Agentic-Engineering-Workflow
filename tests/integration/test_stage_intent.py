@@ -250,7 +250,7 @@ def test_a_stage_whose_unit_was_archived_meanwhile_is_annotated_on_it(project, t
 def test_only_declared_primitives_are_planned(project):
     p = project
     with pytest.raises(IllegalTransition) as exc:
-        open_stage(p, primitive="work.create")  # not declared until E5
+        open_stage(p, primitive="review.ingest")  # not declared until E5b
     assert exc.value.details["reason"] == "undeclared_primitive" and "stage_intents" not in load_control(p.root)
 
 

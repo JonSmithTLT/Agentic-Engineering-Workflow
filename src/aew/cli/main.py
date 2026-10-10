@@ -29,17 +29,19 @@ def emit(result: Any, *, as_json: bool) -> None:
         sys.stdout.write(result if result.endswith("\n") else result + "\n")
 
 
-def build_parser(recall_search: bool = False) -> argparse.ArgumentParser:
+def build_parser(recall_search: bool = False, coordination_reads: bool = False) -> argparse.ArgumentParser:
     """The ``aew`` parser. ``recall_search`` registers `history search` (register F21, Arm B), which exists only while
-    the project's adopted execution policy switches it on (``recall_search_for``); every walk of the command set that
-    classifies commands builds it with the flag on, so the command is classified even though it is usually absent."""
+    the project's adopted execution policy switches it on (``recall_search_for``); ``coordination_reads`` registers
+    `aew message` (F9-A), which exists only while messaging is on or a thread exists (``coordination_reads_for``).
+    Every walk of the command set that classifies commands builds it with both flags on, so each command is classified
+    even though it is usually absent."""
     from aew.cli import commands
 
     parser = argparse.ArgumentParser(prog="aew", description="Agent Engineering Workflow")
     parser.add_argument("--version", action="version", version=f"aew {__version__} (spec set {SPEC_SET})")
     parser.add_argument("-C", dest="cwd", default=None, help="run as if started in this directory")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
-    commands.register(sub, recall_search=recall_search)
+    commands.register(sub, recall_search=recall_search, coordination_reads=coordination_reads)
     fields.register(parser)
     credentials.register(parser)
     return parser
@@ -77,6 +79,38 @@ def recall_search_for(argv: list[str], *, aew_root: Path | None = None) -> bool:
         except Exception:  # no project here (or not an authoritative one): the command does not exist
             return False
     return recall.recall_search_enabled(aew_root)
+
+
+def coordination_reads_for(argv: list[str], *, aew_root: Path | None = None) -> bool:
+    """Whether the parser for ``argv`` registers `aew message` (F9-A plan D-24, D-31): only for a `message` command
+    (others pay nothing), never inside a worker's run (``AEW_AGENT_ENDPOINT`` set: D-21, no worker is offered reads of
+    other threads), and only when the project (``-C`` applied, else the working directory, or ``aew_root``) has the
+    switch on or holds a thread. No project found, or anything unreadable, is off."""
+    if os.environ.get("AEW_AGENT_ENDPOINT"):
+        return False
+    pre = _PreScan(add_help=False)
+    pre.add_argument("-C", dest="cwd", default=None)
+    pre.add_argument("--print-credential", action="store_true")
+    pre.add_argument("--version", action="store_true")
+    pre.add_argument("command", nargs="?")
+    pre.add_argument("rest", nargs=argparse.REMAINDER)
+    try:
+        ns, _ = pre.parse_known_args(argv)
+    except ValueError:
+        return False
+    if ns.command != "message":
+        return False
+    try:
+        from aew.engine.api import Engine
+        from aew.engine.base import Kernel
+
+        if aew_root is None:
+            repo_root, aew_root = Kernel.locate(Path(ns.cwd) if ns.cwd else Path.cwd())
+        else:
+            repo_root = aew_root.parent
+        return Engine(repo_root, aew_root).coordination_reads_on()
+    except Exception:  # no project here, or an unreadable one: the command does not exist
+        return False
 
 
 def _utf8_streams() -> None:
@@ -127,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _main(argv: list[str]) -> int:
     _utf8_streams()
-    parser = build_parser(recall_search=recall_search_for(argv))
+    parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv))
     try:
         argv = fields.expand(argv, parser)  # authored values arrive as data, never as shell text (B1)
     except AEWError as exc:
@@ -149,7 +183,8 @@ def _main(argv: list[str]) -> int:
         emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
-    return 0
+    exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)
+    return int(exit_status(result)) if exit_status is not None else 0
 
 
 if __name__ == "__main__":

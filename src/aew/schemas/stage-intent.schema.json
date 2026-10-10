@@ -83,6 +83,7 @@
           "legality_digest": {"$ref": "#/$defs/policy_digest"},
           "operational_digest": {"$ref": "#/$defs/policy_digest"},
           "retried_after_stale_revision": {"const": true},
+          "covered_by": {"description": "M4-E E5a: a launch recorded in the commit of the dispatch it is run 1 of (that step's number).", "type": "integer", "minimum": 1},
           "at": {"type": "string"}
         }
       }
@@ -107,13 +108,15 @@
       ]
     },
     "rebound": {
+      "description": "Each explicit continue (`resolve` continue, `aew stage continue`; E3c): the generation that owned the intent, the current one it was rebound to (the same one when its own Lead continues it), the commit and the Lead's rationale.",
       "type": "array", "maxItems": 16,
       "items": {
-        "type": "object", "required": ["from_generation", "to_generation", "rev", "at"], "additionalProperties": false,
-        "properties": {"from_generation": {"type": "integer"}, "to_generation": {"type": "integer"}, "rev": {"type": "integer"}, "at": {"type": "string"}}
+        "type": "object", "required": ["from_generation", "to_generation", "rev", "at", "rationale"], "additionalProperties": false,
+        "properties": {"from_generation": {"type": "integer", "minimum": 1}, "to_generation": {"type": "integer", "minimum": 1}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}, "rationale": {"type": "string", "minLength": 1, "maxLength": 2000}}
       }
     },
     "resolution": {
+      "description": "The current Lead's latest explicit choice: continue (each one is also in `rebound`) or abandon (the intent ended ABANDONED).",
       "oneOf": [
         {"type": "null"},
         {

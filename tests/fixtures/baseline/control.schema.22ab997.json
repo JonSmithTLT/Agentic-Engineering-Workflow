@@ -1,0 +1,795 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/control/v2",
+  "title": "AEW authoritative control state",
+  "description": "Single atomic commit point for Lead-owned control state (WC §5, §8.2; KC §12.3). v2 (ADR-0011) adds the hot root of cold history and the bounded facts kept hot about archived work; a v1 document is still read.",
+  "type": "object",
+  "required": [
+    "schema",
+    "project_id",
+    "spec_set",
+    "revision",
+    "manifest_sha256",
+    "lead",
+    "tokens",
+    "counters",
+    "work",
+    "invocations",
+    "last_transition"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "enum": ["aew/control/v1", "aew/control/v2"]
+    },
+    "project_id": {
+      "$ref": "#/$defs/slug"
+    },
+    "spec_set": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "policy_sha256": {
+      "description": "The pin of every policy file project.yaml puts in force, by path under .aew; null for an absent optional file. Absent in a project initialized before the pin.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {"$ref": "#/$defs/sha256"},
+          {"type": "null"}
+        ]
+      }
+    },
+    "lead": {
+      "type": "object",
+      "required": [
+        "schema",
+        "status",
+        "generation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "aew/lead/v1"
+        },
+        "status": {
+          "enum": [
+            "vacant",
+            "active",
+            "handoff_pending"
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "session_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "acquired_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host_uid": {
+          "description": "M4-E E2: the POSIX uid the Lead acquired its seat as (the Lead host principal), so the operator endpoint can say whether the principals collapse (plan v3 §2.1). Absent on Windows and for seats acquired before it.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "handoff": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "offer_token_id",
+            "offered_at",
+            "record",
+            "carry_invocations"
+          ],
+          "properties": {
+            "offer_token_id": {
+              "type": "string"
+            },
+            "offered_at": {
+              "type": "string"
+            },
+            "record": {
+              "type": "string"
+            },
+            "carry_invocations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "kind",
+          "verifier",
+          "scope",
+          "issued_at",
+          "issued_by_generation"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "lead",
+              "invocation",
+              "handoff_offer"
+            ]
+          },
+          "verifier": {
+            "$ref": "#/$defs/sha256"
+          },
+          "scope": {
+            "type": "object"
+          },
+          "issued_at": {
+            "type": "string"
+          },
+          "issued_by_generation": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoke_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "latest_handoff": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "next_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/work_unit"
+      }
+    },
+    "invocations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "work_unit",
+          "status",
+          "created_at",
+          "generation"
+        ],
+        "if": {"required": ["kind"]},
+        "then": {
+          "required": ["kind", "execution", "queue_entry"],
+          "not": {"anyOf": [{"required": ["role"]}, {"required": ["token_id"]}, {"required": ["execution_profile"]},
+                            {"required": ["runs"]}, {"required": ["custodian"]}]}
+        },
+        "else": {"required": ["role", "token_id"]},
+        "properties": {
+          "kind": {
+            "description": "Absent for a role invocation. `integration_attempt` (M4-D, ADR-0003 amendment): the integration queue lease's custody invocation, executed by the engine with no harness, model, role or credential.",
+            "enum": ["integration_attempt"]
+          },
+          "execution": {"enum": ["engine"]},
+          "queue_entry": {"type": "string"},
+          "custodian": {
+            "description": "A role invocation dispatched under a queue lease (the post-integration verifier): the integration-attempt invocation it is a child of (M4-D).",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "implementer",
+              "reviewer",
+              "verifier",
+              "planner",
+              "investigator",
+              "researcher"
+            ]
+          },
+          "work_unit": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "completed",
+              "cancelled",
+              "interrupted",
+              "revoked",
+              "superseded"
+            ]
+          },
+          "token_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "ticket",
+              "integration",
+              "observation",
+              "parent"
+            ]
+          },
+          "specialty": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "pack": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "card": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "runs": {
+            "description": "The invocation's harness runs, in launch order (ADR-0009). `usage` is the run's usage, copied once from its run record by the engine's next Lead transaction on the invocation that ends it, relaunches it or archives its unit (F25 R5); absent while the run is provisional (R6). A copy only adds `usage` to an existing entry, so it derives no event (ADR-0012 D2).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "run"
+              ],
+              "properties": {
+                "run": {
+                  "type": "string"
+                },
+                "harness": {
+                  "type": "string"
+                },
+                "token_id": {
+                  "type": "string"
+                },
+                "launched_at": {
+                  "type": "string"
+                },
+                "kind": {
+                  "description": "`launch`/`relaunch`: `aew harness launch`; `dispatch`: launched in the dispatching transaction (--launch).",
+                  "enum": [
+                    "dispatch",
+                    "launch",
+                    "relaunch"
+                  ]
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "requests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "usage": {
+                  "$ref": "../run-usage/v1"
+                }
+              }
+            }
+          },
+          "execution_profile": {
+            "description": "harness/provider/model/effort pinned at dispatch (ADR-0010); null = none selected",
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "harness",
+              "provider",
+              "model",
+              "selected_by"
+            ],
+            "properties": {
+              "profile": {"type": ["string", "null"]},
+              "harness": {"type": "string"},
+              "provider": {"type": "string"},
+              "model": {"type": "string"},
+              "effort": {"type": ["string", "null"]},
+              "max_steps": {"type": ["integer", "null"]},
+              "deadline_s": {"type": ["number", "null"]},
+              "selected_by": {"enum": ["policy", "lead"]},
+              "rule": {"type": "string"},
+              "policy_sha256": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "last_transition": {
+      "description": "ADR-0012: the newest committed transition, the same record as its per-revision log entry.",
+      "$ref": "urn:aew:schema:transition"
+    },
+    "outbox": {
+      "description": "ADR-0012: present from the first revision an outbox-era engine committed (`since`), where the transition hash chain starts. Older engines close the top level, so they refuse a control file with this key and can never commit over the chain without extending it (D10).",
+      "type": "object",
+      "required": ["schema", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "aew/outbox/v1"},
+        "since": {"type": "integer", "minimum": 0}
+      }
+    },
+    "cold": {
+      "description": "ADR-0011: the root that pins the cold history (implementation plan R1).",
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": {"$ref": "#/$defs/history_root"},
+        "archived": {
+          "description": "How many units were archived, by finished state (plan R7: views show counts).",
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "verified": {"$ref": "#/$defs/verified_root"},
+        "last_full": {"$ref": "#/$defs/verified_root"},
+        "first_at": {"description": "When the first history entry was recorded: how old a never fully verified history is (invariant 11), kept here so that status never reads the history.", "type": "string"},
+        "unverified_since": {"description": "The time of the oldest entry the verified root does not cover; absent when it covers everything (invariant 11).", "type": "string"}
+      }
+    },
+    "recent": {
+      "description": "The most recently archived units, newest last (bounded): what views show besides counts.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "state", "title", "at"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "title": {"type": "string"},
+          "at": {"type": "string"},
+          "parent": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "archived_refs": {
+      "description": "Facts about archived units that hot dependency edges still need (plan R4), counted by those edges.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "state", "refs", "bundle_sha256"],
+        "properties": {
+          "kind": {"enum": ["ticket", "story", "epic"]},
+          "mutating": {"type": ["boolean", "null"]},
+          "state": {"enum": ["DONE", "CANCELLED"]},
+          "refs": {"type": "integer", "minimum": 0},
+          "bundle_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "retained_workspaces": {
+      "description": "Workspaces of archived Tickets retained after integration, until their directory is gone (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["work_id", "id", "path", "status"],
+        "properties": {
+          "work_id": {"type": "string"},
+          "id": {"type": "string"},
+          "path": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
+    },
+    "retired_observations": {
+      "description": "Observation worktrees of archived invocations still on disk: listed until each is removed, and retried at every Lead commit (plan R7).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invocation", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "invocation": {"type": "string"},
+          "path": {"type": "string"}
+        }
+      }
+    },
+    "queue": {
+      "description": "M4-D: the integration queue. One live entry per COMMIT_READY mutating Ticket, served FIFO by `seq`; at most one lease, held by a LEASED entry and kept by an `integration_attempt` custodian invocation. Queue state is scheduling, never eligibility. A retired entry leaves the hot queue for its unit's `queue_history` in the same transaction.",
+      "type": "object",
+      "required": ["next_seq", "lease", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "next_seq": {"type": "integer", "minimum": 1},
+        "lease": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/queue_lease"}]},
+        "entries": {"type": "object", "additionalProperties": {"$ref": "#/$defs/queue_entry"}},
+        "validation_breaker": {
+          "description": "M4-D5: the validation infrastructure circuit breaker. Operational safety state, never workflow authority: when post-integration validation fails for infrastructure reasons often enough, project-wide, automatic retries stop until the operator resets it.",
+          "type": "object",
+          "required": ["failures", "open"],
+          "additionalProperties": false,
+          "properties": {
+            "failures": {"type": "array", "maxItems": 3, "items": {"type": "object", "required": ["at", "code", "run", "work"], "additionalProperties": false, "properties": {"at": {"type": "string"}, "code": {"type": "string"}, "run": {"type": "string"}, "work": {"type": "string"}}}},
+            "open": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["at", "codes", "runs"]}]},
+            "reset": {"type": "object", "required": ["at"]}
+          }
+        }
+      }
+    },
+    "steering": {
+      "description": "M4-E E2: Crawl/Walk/Run steering (CWR §5, §6; A1 §1; M4-E plan v3 §2.1, §2.7). `default` is the adopted policy default; `standing` is the latest mode record that no generation bounds (an adopted default that is not a raise); `override` is a raise at the operator endpoint or a Lead lowering, in force only for its Lead generation. The effective mode is the override's while its generation is current, else the standing mode. `requests` are the Lead's open requests: they grant nothing. Every mode record is cold, in records/steering/.",
+      "type": "object",
+      "required": ["default", "standing", "override", "requests"],
+      "additionalProperties": false,
+      "properties": {
+        "default": {"$ref": "#/$defs/steering_mode"},
+        "standing": {
+          "type": "object",
+          "required": ["mode", "record", "rev"],
+          "additionalProperties": false,
+          "properties": {"mode": {"$ref": "#/$defs/steering_mode"}, "record": {"type": ["string", "null"]},
+                         "rev": {"type": "integer", "minimum": 0}}
+        },
+        "override": {"oneOf": [{"type": "null"}, {
+          "type": "object",
+          "required": ["mode", "generation", "record", "rev", "by"],
+          "additionalProperties": false,
+          "properties": {"mode": {"enum": ["crawl", "walk", "run"]}, "generation": {"type": "integer", "minimum": 1},
+                         "record": {"type": "string"}, "rev": {"type": "integer", "minimum": 1},
+                         "by": {"enum": ["operator", "lead"]}}
+        }]},
+        "requests": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "rationale", "generation", "at", "rev"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SQ-[0-9]+$"},
+              "kind": {"enum": ["raise", "confirmation"]},
+              "mode": {"enum": ["walk", "run"]},
+              "action_ref": {"type": "string", "minLength": 1, "maxLength": 200},
+              "rationale": {"type": "string", "minLength": 1, "maxLength": 2000},
+              "generation": {"type": "integer", "minimum": 1},
+              "at": {"type": "string"},
+              "rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "stage_intents": {
+      "description": "M4-E E3 (plan v3 §2.7): the unfinished StageIntents, by id. Only ACTIVE intents are hot; an intent that ends is written to its cold home in the same commit (`work/<T>/stage-intents/<SI>.yaml` with a pointer on the unit, or `records/stage-intents/<SI>.yaml`) and leaves. Bounded by live work: a unit has at most one.",
+      "type": "object",
+      "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
+      "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"required": ["outbox"]},
+      "then": {"properties": {"last_transition": {"required": ["schema", "events", "event_overflow", "h"]}}}
+    },
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v1"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["cold"]},
+            {"required": ["recent"]},
+            {"required": ["archived_refs"]},
+            {"required": ["retained_workspaces"]},
+            {"required": ["retired_observations"]},
+            {"required": ["queue"]},
+            {"required": ["steering"]}, {"required": ["stage_intents"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"schema": {"const": "aew/control/v2"}}},
+      "then": {"required": ["cold"]}
+    }
+  ],
+  "$defs": {
+    "steering_mode": {"enum": ["crawl", "walk", "run", null]},
+    "queue_lease": {
+      "type": "object",
+      "required": ["entry", "custodian", "generation", "granted_at", "reconcile"],
+      "additionalProperties": false,
+      "properties": {
+        "entry": {"type": "string"},
+        "custodian": {"type": "string"},
+        "generation": {"type": "integer"},
+        "granted_at": {"type": "string"},
+        "reconcile": {
+          "description": "Set when the custodian died (a takeover, an uncarried handoff, a cancel): the lease is reconciled by `aew integrate reconcile`, never released by a timeout.",
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["reason", "at"], "additionalProperties": false,
+             "properties": {"reason": {"type": "string"}, "at": {"type": "string"}}}
+          ]
+        }
+      }
+    },
+    "queue_attempt": {
+      "type": "object",
+      "required": ["custodian", "granted_at", "base", "candidate", "result", "ended_at"],
+      "additionalProperties": false,
+      "properties": {
+        "custodian": {"type": "string"},
+        "granted_at": {"type": "string"},
+        "integration_attempt": {"type": ["integer", "null"]},
+        "base": {"type": ["string", "null"]},
+        "candidate": {"type": ["string", "null"]},
+        "result": {"type": ["string", "null"]},
+        "ended_at": {"type": ["string", "null"]},
+        "rebuild_admission": {
+          "type": "object",
+          "description": "M4-D4: the fresh integrate.prepare decision that admitted this attempt's one automatic rebuild (its provenance, dependency and policy digests, and the move it answered). The custodian keeps the grant's decision.",
+          "required": ["entrypoint", "revision", "decision", "dependency_digests", "rebuild"]
+        }
+      }
+    },
+    "queue_entry": {
+      "type": "object",
+      "required": ["work", "seq", "state", "commit_ready_seq", "enqueued_at", "attempts", "rebuilds_used", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "work": {"type": "string"},
+        "seq": {"type": "integer", "minimum": 1},
+        "state": {"enum": ["QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION"]},
+        "commit_ready_seq": {"type": "integer", "minimum": 0},
+        "enqueued_at": {"type": "string"},
+        "attempts": {"type": "array", "items": {"$ref": "#/$defs/queue_attempt"}},
+        "rebuilds_used": {"type": "integer", "minimum": 0},
+        "disposition": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["reason", "at"], "additionalProperties": false,
+             "properties": {"reason": {"type": "string"}, "at": {"type": "string"}, "detail": {"type": "object"}}}
+          ]
+        }
+      }
+    },
+    "history_root": {
+      "type": "object",
+      "required": ["count", "head_h", "sealed_head"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "head_h": {"$ref": "#/$defs/sha256"},
+        "sealed_head": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["seq", "sha256"],
+              "additionalProperties": false,
+              "properties": {"seq": {"type": "integer", "minimum": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+            }
+          ]
+        }
+      }
+    },
+    "verified_root": {
+      "description": "A root the history audit verified (plan R2): the chain state through the audit's own entry, when, and by which audit record.",
+      "type": "object",
+      "required": ["count", "h", "at", "audit"],
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "h": {"$ref": "#/$defs/sha256"},
+        "at": {"type": "string"},
+        "audit": {"type": "string"}
+      }
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "work_unit": {
+      "type": "object",
+      "required": [
+        "kind",
+        "title",
+        "record",
+        "record_sha256",
+        "state",
+        "risk_class",
+        "mutating",
+        "depends_on"
+      ],
+      "properties": {
+        "legacy_digest": {
+          "description": "An open parent's children digest when its project migrated to v2 (ADR-0011 plan R3): evidence bound to the v1 digest stays current while the v2 digest is still v2_at_migration.",
+          "type": "object",
+          "required": ["v1", "v2_at_migration"],
+          "additionalProperties": false,
+          "properties": {"v1": {"$ref": "#/$defs/sha256"}, "v2_at_migration": {"$ref": "#/$defs/sha256"}}
+        },
+        "stage_intents": {
+          "description": "M4-E E3: the unit's ended StageIntents, each written immutably at `path`; archival carries the list into the unit's bundle, which pins each record.",
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "tool", "status", "path", "sha256", "closed_rev"], "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^SI-[0-9]{4,}$"},
+              "tool": {"type": "string"},
+              "status": {"enum": ["COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]},
+              "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "closed_rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "history_refs": {
+          "description": "Historical records the Lead loaded as reference context (ADR-0011 invariant 14; `aew history load`). Packs dispatched afterwards carry them, labelled, never as current evidence.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "entry_seq", "sha256", "source", "reason", "loaded_at", "generation"],
+            "properties": {
+              "id": {"type": "string"},
+              "kind": {"enum": ["unit", "annotation", "audit", "lead", "evidence"]},
+              "held_by": {"description": "For an evidence record: the archived unit whose bundle holds it (entry_seq is that unit's entry, sha256 the evidence record's own hash).", "type": "string"},
+              "entry_seq": {"type": "integer", "minimum": 1},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "source": {"enum": ["engine", "operator", "model", "external"]},
+              "reason": {"type": "string", "minLength": 1},
+              "loaded_at": {"type": "string"},
+              "generation": {"type": "integer"}
+            }
+          }
+        },
+        "kind": {
+          "enum": [
+            "ticket",
+            "story",
+            "epic"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "record": {
+          "type": "string"
+        },
+        "record_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "BLOCKED",
+            "READY",
+            "ASSIGNED",
+            "RUNNING",
+            "REVIEW_PENDING",
+            "REVIEW_FAILED",
+            "REVIEW_PASSED",
+            "VERIFY_PENDING",
+            "VERIFICATION_FAILED",
+            "VERIFICATION_INCONCLUSIVE",
+            "VERIFIED",
+            "COMMIT_READY",
+            "DONE",
+            "INTERRUPTED",
+            "REPLAN_REQUIRED",
+            "ESCALATED",
+            "CANCELLED",
+            "OPEN",
+            "PLANNING",
+            "IN_PROGRESS",
+            "ACCEPTANCE_PENDING"
+          ]
+        },
+        "risk_class": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "mutating": {
+          "type": "boolean"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "mutating",
+                  "evidence"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

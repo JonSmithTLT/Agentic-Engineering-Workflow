@@ -816,3 +816,20 @@ def test_the_prepare_and_publish_queries_never_sync_the_state_they_are_given(tmp
     assert leased == before, "integrate.publish's query synced the state it was given"
     engine.guard_query("integrate.prepare", wid, {}, state=leased)
     assert leased == before, "integrate.prepare's query synced the state it was given"
+
+
+def test_the_publish_branches_on_the_querys_outcome_alone(tmp_path, monkeypatch):
+    """PR #171 review, finding 7: a publish whose query passed without naming an outcome publishes nothing; it is an
+    engine defect, refused, with nothing committed (no fall-through to publishing)."""
+    from aewflow import to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    engine = Engine.discover(p.root)
+    monkeypatch.setattr(engine._integration, "publish_query", lambda state, work_id, args: None)
+    rev = p.rev()
+    with pytest.raises(AEWError) as refused:
+        engine.integrate_publish(token=p.token, expect_rev=rev, work_id=wid)
+    assert refused.value.code == "INTEGRITY_ERROR" and p.rev() == rev
+    assert engine.store.read()["work"][wid]["integration"]["status"] == "prepared"

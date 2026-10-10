@@ -681,14 +681,15 @@ class Integration:
         with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
             args: dict[str, Any] = {}
             refused = self.publish_query(ctx.state, work_id, args)
-            outcome = args["found"].get("outcome")
+            outcome = (args.get("found") or {}).get("outcome")
             if refused is not None and outcome not in (self.SUPERSEDED, self.MOVED_HEAD):
                 require(refused)
             unit = ctx.state["work"][work_id]
             integ = unit["integration"]
             self.queue.sync(ctx.state)
-            superseded = self.gates.binding_problem(unit)
-            if outcome == self.SUPERSEDED and superseded:
+            # The query's outcome alone decides the branch (PR #171 review, finding 7): no fall-through publishes.
+            if outcome == self.SUPERSEDED:
+                superseded = self.gates.binding_problem(unit) or {}
                 self._retire_integration(ctx.state, unit, "bound to an earlier COMMIT_READY or plan")
                 self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
                 stale = {"reason": "candidate built from an earlier COMMIT_READY or plan", **superseded,
@@ -697,10 +698,13 @@ class Integration:
                 ctx.summary = f"{work_id} candidate superseded (bound to an earlier COMMIT_READY)"
             elif outcome == self.MOVED_HEAD:
                 moved = self._moved_head(ctx, work_id, args["found"]["current"])
-            else:
+            elif outcome == self.PUBLISH:
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+            else:
+                raise IntegrityError(f"engine defect: the publish query of {work_id} answered no outcome",
+                                     outcome=outcome)
         if moved is not None:
             return self._moved_head_result(ctx, work_id, moved)
         if stale:

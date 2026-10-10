@@ -278,6 +278,7 @@ def docs_tier_run(with_lanes: bool = True) -> list[dict]:
     (["web/package-lock.json"], "web"),
     (["docs/design/dashboard-api-v1-provisional.yaml"], "full"),  # the contract code reads
     (["web/docs/c0-approval.json"], "full"),  # its approval, read by the dashboard server
+    (["docs/design/proposals/dashboard-maps-and-history-search-v0.1.md"], "full"),  # its change note (F20.8)
     (["src/aew/README.md"], "full"),  # Markdown under a code root is not documentation
     (["tests/fixtures/notes.md"], "full"),
     (["tools/ci/tier.py"], "full"),

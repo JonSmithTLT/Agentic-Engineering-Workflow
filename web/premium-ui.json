@@ -8,10 +8,13 @@
   "requiredCapabilities": [
     "Table Selection",
     "Select/Listbox",
-    "Scrollbar"
+    "Scrollbar",
+    "Form",
+    "Date"
   ],
   "ownership": {
-    "Select/Listbox": "native"
+    "Select/Listbox": "native",
+    "Date": "typed"
   },
   "requiredCommands": [
     "typecheck",
@@ -33,6 +36,8 @@
   },
   "evidence": {
     "failurePaths": "tests/evidence.test.ts",
-    "keyboardAndResponsive": "scripts/browser-w05.mjs"
+    "keyboardAndResponsive": "scripts/browser-w05.mjs",
+    "historySearchLifecycle": "tests/history-search.test.ts",
+    "historySearchForm": "tests/history-search-page.test.tsx"
   }
 }

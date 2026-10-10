@@ -13,6 +13,7 @@ import {
   integrity,
   responseSchemas,
 } from '../src/api/schema';
+import { additiveResponseSchemas } from '../src/api/additive-schema';
 import version from '../src/api/contract-version.json';
 import approval from '../docs/c0-approval.json';
 import * as vocabulary from '../src/api/vocabulary';
@@ -50,7 +51,8 @@ describe('C0 provisional contract conformance', () => {
       expect(world.contract_version).toBe(version.version);
       expect(world.contract_sha256).toBe(version.sha256);
       for (const [route, payload] of Object.entries(world.responses)) {
-        const name = world.models[route] as keyof typeof responseSchemas;
+        const schemas = { ...responseSchemas, ...additiveResponseSchemas };
+        const name = world.models[route] as keyof typeof schemas;
         const validate = ajv.compile({
           $ref: `contract#/components/schemas/${name}`,
         });
@@ -58,7 +60,7 @@ describe('C0 provisional contract conformance', () => {
           true,
         );
         expect(
-          responseSchemas[name].safeParse(payload).success,
+          schemas[name].safeParse(payload).success,
           route,
         ).toBe(true);
       }

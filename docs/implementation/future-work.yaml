@@ -314,7 +314,12 @@ sections:
       covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift,
       the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`,
       immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after
-      every pinned route. Next are E3b (the executor, rules 1 to 7, R5-1) and E3c (`resume`, `resolve`)
+      every pinned route. **E3b (2026-10-09)** adds the surface's executor (`surface/stage.py`), running §3.4 rules 1 to
+      7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. Next is E3c (`resume`, `resolve`).
+      E3b leaves two obligations from the review of pull request 142. E3c's `continue` treats a launching step whose supervisor
+      never started or has ended as `launch_failed`, never completing the stage over a run that did not start. E5a reconciles
+      the `dispatch.launch` step catalogued for `ticket_start` with the launch inside the assignment step; until then it
+      fails closed, since the primitive is undeclared
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
       the supervisor keeping the credential) and `aew-knowledge` as a separate capability namespace over the shared transport
@@ -406,7 +411,9 @@ sections:
       (PBD-06)'
     Belongs to or gated by: '**M4-E**, with F15.2; automatic relaunch does not ship until the previous run is proven terminated
       and non-side-effecting (the set''s release gate)'
-    Notes: No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
+    Notes: R5-1 is built in the stage executor (M4-E E3b, 2026-10-09; `surface/stage.py`), all five conditions; a guard
+      that is not yet a queryable decision is UNKNOWN and never retried, so only dispatch steps retry until E4. R5-3 is
+      not built. No new failure taxonomy; every failed run stays visible and recovery never launders adverse evidence (BRP-06);
       the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md);
       operator, 2026-10-07):** with F15.5, the unattended `PUBLISH_IF_CLEAN` authority the AEW arm needs before M4-H executes
   - '#': F15.7
@@ -1323,9 +1330,12 @@ sections:
       wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. `test_a_run_that_takes_long_to_end_is_not_reported_lost`
       failed once under coverage on 16 workers (M4-A, 2026-10-03): its 2 s stale window left 1 s over the 1 s beat; widened
       to 4 s, with the wait at 8 s. A run reported `lost` while it started (Windows, PR #132, 2026-10-09) was a real race
-      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A failed harness test
-      now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such failure names
-      a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
+      too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A single-run `aew harness
+      wait` that returned a run still `running` (four CI failures in three adversarial tests, 2026-10-06 to 10-08, Linux
+      and Windows) was a regression from wait-any (M4-D6, PR #79): its control lane, meant for `--any`, ended a single-run
+      wait before the supervisor had written the run''s end (fixed 2026-10-09: the control lane is `--any`''s only). A failed
+      harness test now reports and keeps its runs'' record and logs (testing strategy §3, 2026-10-09), so the next such
+      failure names a stall (`lost`) or a crash. Raise test-side timeouts, never the product''s.'
   - '#': E17
     Work: 'OpenCode upgrades without a PR per patch release: the projection check compares meaning, not the literal rule
       tail (AEW''s rules in order; anything OpenCode appends after them may only deny), then 2.0.22 on the live lane and
@@ -1534,6 +1544,16 @@ sections:
       v0.2](../design/ci-redesign-design-v0.2.md) §4 (ledger CCI-03, CRD-14)'
     When: '**M4 candidate**, after E43, from its record'
     Notes: '`CLAUDE.md`: a slower test is a regression to find, not a timeout to raise'
+  - '#': E52
+    Work: Find why Windows serial tests became 1.75 to 1.9 times slower in the nightly `reference` run from 2026-10-05 (the
+      same tests, image and Python as on 10-04; no trend through a session), when the Windows PR lanes at the same commits
+      rose only 3 to 14 % and Linux's `reference` 0 to 13 % by 2026-10-09; then stop rebuilding a module-scoped fixture
+      in every shard that runs one of its tests
+    Source: '[Testing and CI strategy](testing-and-ci-strategy.md) §8 and §12 (measured on the 2026-10-04 to 10-09 nightlies)'
+    When: '**M4 candidate**'
+    Notes: 'The nightly is sharded around it (Windows `reference` 8 shards, `matrix-extra` 4), which absorbs the time but
+      does not explain it. Lead: the resolved `rpds-py` went from 2026.6.3 to 2026.9.1 between those nights, but the PR
+      lanes took the same upgrade without the slowdown. An A/B with it pinned on a Windows runner settles that first'
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),
       a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the

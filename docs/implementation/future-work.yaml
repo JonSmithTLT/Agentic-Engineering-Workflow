@@ -396,7 +396,11 @@ sections:
       review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked with
       by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck and
       R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks` binds
-      it from the first planner on
+      it from the first planner on. **E4b (2026-10-10)** migrates the integration stages' guards, namely `verify.ingest`
+      (Ticket scope), `all_gates_current`, `integrate.prepare` (the queue synced and the decision required, on a copy),
+      `verify.ingest.integration` and `integrate.publish` (lease, binding, head, obligations, validation), and composes
+      `ticket_prepare` (with the integration verifier in verifier mode, asked on the candidate `integrate.prepare` produces)
+      and `integration_publish`; `GUARD_READS` is checked against the keys each query reads
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

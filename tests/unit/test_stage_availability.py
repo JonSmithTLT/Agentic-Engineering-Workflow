@@ -141,7 +141,8 @@ def test_an_unmigrated_guard_makes_the_stage_unknown_never_blocked_and_never_aut
     assert SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001"})["availability"] == UNKNOWN
 
 
-@pytest.mark.parametrize("stage", ["ticket_request_verification", "ticket_draft"])
+@pytest.mark.parametrize("stage", ["ticket_request_verification", "ticket_draft", "ticket_prepare",
+                                   "integration_publish"])
 def test_a_judgment_bearing_stage_is_never_auto_runnable_however_available(stage):
     """m2: migration gives these stages AVAILABLE or BLOCKED, never auto_runnable (the class decides that)."""
     t = contract.tool(stage)

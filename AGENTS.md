@@ -24,15 +24,17 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
 - A review of an earlier commit does not cover later commits. After fixes, the reviewer (or a new independent one)
   checks the fixes and posts a new verdict at the new head.
-- **Exception: nits after a CLEAR** (operator, 2026-10-10). When the verdict is `Review: CLEAR` and its only open
-  points are nits, the author fixes them without a new review:
-  - The fixes are ordinary commits on top of the reviewed commit, and change only what the nits name.
-  - The author then posts a comment that cites the CLEAR it relies on, lists each nit with how it was fixed, and ends
-    with `Nits fixed at <sha>`, where `<sha>` is the new head.
-  - A nit the author disputes goes through §2. The comment lists it with a link to where the reviewer withdrew it or
-    the operator decided; until then the exception does not apply.
-  - A new review is needed for any merge of `main`, any rebase, any change beyond the nits, and any commit after the
-    `Nits fixed` comment. A blocker, major or minor finding is never a nit.
+- **Nits after a CLEAR get one short delta review** (operator, 2026-10-10; the product rule of the frozen
+  integration design v0.5 §15). When the verdict is `Review: CLEAR` and its only open points are nits:
+  - The author fixes them in ordinary commits on top of the reviewed commit, changing only what the nits name, and
+    posts a comment that cites the CLEAR and lists each nit with how it was fixed.
+  - The reviewer, or a new independent one, does one short delta review. It covers the whole diff since the CLEAR,
+    runs only the tests that touch it (CI is the matrix), and ends with a verdict at the new head as usual.
+  - If the delta review finds a blocker, major or minor finding, or any change in behaviour beyond the named fixes,
+    the work goes back to the normal review path. Otherwise its CLEAR closes the nits. The short path is used once:
+    nits raised by the delta review itself follow the normal path.
+  - A nit the author disputes goes through §2 before this path applies. A blocker, major or minor finding is never a
+    nit.
 
 ## 2. Findings are fixed in the same pull request
 
@@ -54,9 +56,8 @@ finding answers it on the pull request, and the reviewer either withdraws it or 
 
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
-- the latest review verdict is `Review: CLEAR` at that commit; or it is `Review: CLEAR` at an ancestor of that commit,
-  every commit since is a nit fix under §1's exception (no merge, no rebase), and the author's `Nits fixed at <sha>`
-  comment names this commit;
+- the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the delta review's verdict under
+  §1);
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a
   draft.

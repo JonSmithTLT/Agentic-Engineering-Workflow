@@ -13,12 +13,14 @@ For every required platform it proves, from the lane reports written by ``pytest
 The change's tier (CI redesign P1, ``tools/ci/tier.py``) says which lanes are required. ``full`` requires every
 collected test; a reduced tier requires every collected test of its lanes, by the lane each report records for every
 collected test. A reduced tier is refused outright on any event but a pull request, and when a report does not record
-the lanes (fail closed).
+the lanes (fail closed). In a reduced tier it also runs the runtime lane check (CI plan v7 §4): every test of every
+changed fast-lane test module (``--changed-modules``, written by ``tier.py --modules-out``) is recorded in the lane
+reports as ``fast`` or ``serial``.
 
 It also writes a Markdown summary (per-lane counts and timings, slowest tests).
 
     python tools/ci/check_assurance.py REPORT_DIR --skips tests/platform-skips.yaml --require linux,win32
-        [--tier docs|web|full --event pull_request]
+        [--tier docs|fast|web|full --event pull_request] [--changed-modules FILE]
 """
 
 from __future__ import annotations
@@ -145,6 +147,36 @@ def check(reports: list[dict[str, Any]], expectations: dict[str, Any],
     return problems, facts
 
 
+HEAVY_MODULE = "a changed module holds a heavy-lane test: add `full-ci`, then Re-run all jobs."
+
+
+def lane_check(reports: list[dict[str, Any]], modules: list[str], required: list[str]) -> list[str]:
+    """The runtime lane check (plan v7 §4): per platform, every collected test of every changed fast-lane test module
+    is recorded in the lane reports' ``lanes`` map as ``fast`` or ``serial``. What the static parse in ``tier.py``
+    decided, the lane plugin confirms at runtime (a conftest could add a mark the parse cannot see)."""
+    if not modules:
+        return []
+    wanted = set(modules)
+    problems: list[str] = []
+    by_platform: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in reports:
+        by_platform[r["platform"]].append(r)
+    for platform in sorted(set(required) | set(by_platform)):
+        lane_of: dict[str, str] = {}
+        collected: set[str] = set()
+        for r in by_platform.get(platform, []):
+            lane_of.update(r.get("lanes") or {})
+            collected.update(r["collected"])
+        if not by_platform.get(platform):
+            problems.append(f"{platform}: no lane reports, so the changed modules' lanes are unknown: {HEAVY_MODULE}")
+            continue
+        for nid in sorted(n for n in collected if n.split("::")[0] in wanted):
+            lane = lane_of.get(nid)
+            if lane not in tiers.FAST_LANES:
+                problems.append(f"{platform}: {nid} is in the {lane or 'unrecorded'} lane: {HEAVY_MODULE}")
+    return problems
+
+
 def summary(problems: list[str], facts: dict[str, Any], tier: str = "full") -> str:
     lines = ["## Test assurance", ""]
     scope = "" if tier == "full" else f" in the {tier} tier's lanes ({', '.join(tiers.LANES[tier])})"
@@ -177,9 +209,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--tier", default="full", choices=tiers.TIERS, help="the change's tier (tools/ci/tier.py)")
     ap.add_argument("--event", default="", help="the GitHub event: a reduced tier is accepted only for pull_request")
+    ap.add_argument("--changed-modules", type=Path,
+                    help="the changed fast-lane test modules, one per line (tier.py --modules-out): in a reduced tier, "
+                         "each one's tests must all be fast or serial")
     args = ap.parse_args(argv)
-    problems, facts = check(load_reports(args.reports), load_expectations(args.skips),
-                            [p for p in args.require.split(",") if p], args.tier)
+    required = [p for p in args.require.split(",") if p]
+    reports = load_reports(args.reports)
+    problems, facts = check(reports, load_expectations(args.skips), required, args.tier)
+    if args.tier != "full" and args.changed_modules:
+        modules = [line.strip() for line in args.changed_modules.read_text(encoding="utf-8").splitlines()
+                   if line.strip()]
+        problems += lane_check(reports, modules, required)
     if args.tier != "full" and args.event not in tiers.REDUCED_EVENTS:
         problems.insert(0, f"tier {args.tier} on a {args.event or 'unknown'} event: only a pull request may take a "
                            "reduced tier; a push to main and a merge group are always full")

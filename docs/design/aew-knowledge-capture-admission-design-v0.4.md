@@ -1,7 +1,7 @@
 # AEW Knowledge Capture & Admission Design v0.4
 
 **Date:** 2026-10-04  
-**Status:** Revised design proposal for joint review; not yet a governing contract, ADR, or implementation authorization  
+**Status:** **Adopted** by the operator, 2026-10-09, as part of the governing M6b knowledge-system direction, together with its two companions and ADR-0013 ([decision record](decisions-2026-10-09-knowledge-system-adoption.md)); it moved from `design/proposals/` that day. Adoption does not authorize K1/K2 production machinery ahead of the evidence-driven sequence (Arm B first; record §7). Until then this line read "Revised design proposal for joint review; not yet a governing contract, ADR, or implementation authorization". The text below is unchanged  
 **Revision:** v0.4 — incorporates developer review: authenticated provenance is separated from semantic validity, K1 source-class coverage becomes a pre-build gate, Arm B becomes the first stop/go implementation, receipt ownership is narrowed, and knowledge/workflow disposition terminology is qualified
 **Target:** M6 knowledge system  
 **Primary research basis:** `aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md`  

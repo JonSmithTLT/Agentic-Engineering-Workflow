@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-04  
 **Revision:** v0.3 — incorporates developer review: Arm B is the first implementation/stop-go gate, source authentication is explicitly non-semantic, receipt implementation stops at engine-observable delivery, and disposition vocabulary is qualified
-**Status:** Design proposal for joint M6 review; not yet a governing contract, API schema, ranking policy, or implementation authorization  
+**Status:** **Adopted** by the operator, 2026-10-09, as part of the governing M6b knowledge-system direction, together with its two companions and ADR-0013 ([decision record](decisions-2026-10-09-knowledge-system-adoption.md)); it moved from `design/proposals/` that day. Adoption does not authorize K1/K2 production machinery ahead of the evidence-driven sequence (Arm B first; record §7). Until then this line read "Design proposal for joint M6 review; not yet a governing contract, API schema, ranking policy, or implementation authorization". The text below is unchanged  
 **Target:** M6 knowledge read/delivery path  
 **Companions:** `aew-knowledge-capture-admission-design-v0.4.md`, `aew-knowledge-capture-recall-shared-semantics-v0.4.md`  
 **Research basis:** `aew-knowledge-capture-admission-and-agent-usefulness-v0.1.md`

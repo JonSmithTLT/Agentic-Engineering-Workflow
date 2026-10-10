@@ -212,7 +212,11 @@ sections:
       the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
       the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
       is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
-      input) and E55 (`harness send` to `steer`)'
+      input) and E55 (`harness send` to `steer`). **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging:
+      enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8''s P cell
+      for worker replies (MCD-06; F38); D5, on a Codex adapter, steer''s cancel-and-restart of an in-flight model call satisfies
+      `--when next-step`, and held-session staging without message identity is refused (MCD-11, MCD-12; F24)'
 
   - '#': F10
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
@@ -1047,9 +1051,11 @@ sections:
       P* for the Reviewer and the Verifier (an operator-approved named profile with plan-visible independence selectors),
       where this adoption makes lookup a default capability of every admitted role, reviewer and verifier lookup filtered
       rather than excluded (KAD-03, KAD-06, AEA-40, KDR-03 to KDR-05); likewise `G_DERIVED_READ` (map and index reads) at
-      P for the Verifier, where KAD-06 lists project and repository navigation among every worker invocation''s normal capabilities:
-      both to reconcile when the model is adopted (F38''s item in [decisions due](decisions-due.md)); a cross-reference,
-      not new scope.'
+      P for the Verifier, where KAD-06 lists project and repository navigation among every worker invocation''s normal capabilities;
+      a cross-reference, not new scope. **Decided by the designer (D2, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      MCD-03 to MCD-05):** the adoption governs over v0.8''s table: knowledge and safe navigation are C for every admitted
+      role, and independence remains selector-controlled (the plan selectors of CEA-54); the ledger marks CEA-36 superseded
+      by MCD-04 for those two cells. Which navigation reads count as safe is F38''s encoding to state.'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1138,7 +1144,16 @@ sections:
       captures in `eval/reviews/architecture-2026-10-04/t9/`): Codex CLI 0.160.0''s app-server is a workable private transport
       but not a supportable pin (AEW''s MCP tools stay deferred behind `exec`; ungranted sub-agent tools and a bundled skill
       reach every request). Next is a bounded qualification spike: direct typed tools (`DynamicToolSpec` or a later pin)
-      and a supported way to suppress collaboration tools and system skills'
+      and a supported way to suppress collaboration tools and system skills. **Designer decisions for the Codex adapter
+      (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD), answering
+      F24.1''s probe of Codex 0.162.1:** D4 (approve with qualification), Codex''s automatic compaction has no off switch,
+      so C1''s `compaction.auto=false` design has no Codex equivalent: prefer an AEW-owned proactive budget if Codex can
+      be qualified for it; otherwise accept Codex-native compaction as a recorded adapter residual; never reject Codex solely
+      for mandatory compaction (MCD-07 to MCD-10). D5, a steer during an in-flight model call cancels the call and re-sends
+      it with the input, and that cancel-and-restart satisfies F9-A''s next-step semantics; held-session staging without
+      message identity is refused, so the adapter refuses held-session delivery it cannot confirm by message id (MCD-11,
+      MCD-12). D1 (F40) keeps the worker''s shell with read-only source, so a Codex worker''s shell writes are stopped by
+      AEW''s read-only layout, not by a shell-less worker'
 
   - '#': F24.1
     Work: 'Codex runtime-semantics probe, the first slice of any Codex adapter work: the pinned Codex app-server against
@@ -1168,7 +1183,13 @@ sections:
       `thread/queue/changed`, `thread/compact/start`) come from the protocol schema Codex 0.160.0 generates (`codex app-server
       generate-json-schema`), not from T9''s write-up; the probe confirms them on its pin. **M6a native edit/write decision
       (v0.9 §7, designer candidate; F40):** the probe is where it is first observed whether Codex''s native file-edit tools
-      can be hidden or denied in a worker''s model-visible schema; a cross-reference, not new scope'
+      can be hidden or denied in a worker''s model-visible schema; a cross-reference, not new scope. **Designer decisions
+      on its findings (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger
+      MCD; filed on F24):** D4, for C1''s compaction policy: an AEW-owned proactive budget is preferred if Codex can be
+      qualified for it, otherwise Codex-native compaction is a recorded adapter residual, and Codex is never rejected solely
+      for mandatory compaction (MCD-07 to MCD-10); the brief''s proposed lever for that qualification, untested, is a declared
+      context window above the provider''s real one, so that AEW''s own path runs before Codex compacts. D5: steer''s cancel-and-restart
+      satisfies next-step semantics, and held-session staging without message identity is refused (MCD-11, MCD-12)'
 
   - '#': F24.2
     Work: 'Claude Code headless as a further harness adapter, a stretch goal after the Codex adapter: the same F24.1-style
@@ -1469,7 +1490,14 @@ sections:
       of F15.4). Scope: engineering and workbench effects only; Lead and operator workflow commands stay with the typed
       control plane (CEA-06). Where v0.9 changed a v0.8 requirement, the ledger marks the CEA id `superseded-by:` the GAE
       id (safety and liveness for "combination predicates are satisfiable", the Reviewer''s network cells, the four reserved
-      families, the form of the selector table (v0.8''s selector rows stand, CEA-63), the fixture lists and the freeze claim)'
+      families, the form of the selector table (v0.8''s selector rows stand, CEA-63), the fixture lists and the freeze claim).
+      **Conflicts decided by the designer (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      ledger MCD):** D1, M6 supersedes ADR-0009/ADR-0006 native source mutation, with read-only source, writable scratch,
+      mediated authoritative mutation and the shell kept (MCD-01, MCD-02; F40, whose ADR amendments are due with M6); D2,
+      the knowledge adoption governs over v0.8''s table, knowledge and safe navigation C for every admitted role and independence
+      selector-controlled (MCD-03 to MCD-05; CEA-36 superseded by MCD-04 for those cells; F21); D3, the messaging-enabled
+      operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE` (MCD-06; F9), which the
+      named profile catalog models. These do not adopt the model; its adoption is still this row''s item in [decisions due](decisions-due.md).'
 
   - '#': F39
     Work: 'M6a Gate B, deployed bypass-freedom: proof, against the exact pinned deployment (harness, providers, containment),
@@ -1506,10 +1534,14 @@ sections:
       an explicitly modeled delivery mechanism (GAE-14). **Near-term coupling (a cross-reference, not new scope for those
       rows):** whether a harness's native edit and write tools can be hidden or denied in the worker's model-visible schema,
       not only refused when called, is first established by the OpenCode worker profile (E35) and the Codex and Claude Code
-      runtime probes (F24.1, F24.2). **Differs from accepted ADRs, not settled here:** ADR-0009 projects OpenCode's `edit`
-      for implementers, and ADR-0006 maps the implementer's `source_mutation` capability to it; adopting the decision needs
-      them reconciled ([decisions due](decisions-due.md)). ADR-0009 also records an `edit` deny bypassed through the shell,
-      so hiding the tool is not enough without containment (F2, F39)
+      runtime probes (F24.1, F24.2). **Differs from accepted ADRs (recorded when v0.8 and v0.9 were ingested):** ADR-0009
+      projects OpenCode's `edit` for implementers, and ADR-0006 maps the implementer's `source_mutation` capability to it.
+      ADR-0009 also records an `edit` deny bypassed through the shell, so hiding the tool is not enough without containment
+      (F2, F39). **Decided by the designer (D1, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      MCD-01, MCD-02):** M6 supersedes ADR-0009/ADR-0006 native source mutation; the worker gets read-only source, writable
+      scratch and mediated authoritative mutation, and keeps its shell (shell writes are stopped by the read-only source,
+      not by a shell-less worker). The ADR-0009 and ADR-0006 amendments are due with this row when M6 lands; until then
+      both ADRs govern the current build unchanged. The model's adoption itself is still F38's item in [decisions due](decisions-due.md)
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)

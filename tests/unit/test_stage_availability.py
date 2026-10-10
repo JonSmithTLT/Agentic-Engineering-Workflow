@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from guard_reads import GUARD_READS
 
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN, GuardQueries, NotQueryable
@@ -34,6 +35,14 @@ class FakeEngine:
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
 
     gate_memo = staticmethod(contextlib.nullcontext)
+    mode = "verifier"
+
+    def validation_mode(self, work_id, *, state=None):
+        return self.mode
+
+    def candidate_overlay(self, state, work_id):
+        return {**state, "work": {**state["work"], work_id: {**state["work"][work_id],
+                                                             "integration": {"status": "prepared"}}}}
 
     def guard_query(self, primitive, work_id, args, *, state=None):
         self.seen.append((primitive, work_id, state))
@@ -54,8 +63,9 @@ def test_the_migrated_stage_table_matches_the_catalog():
     for name, steps in SA.STAGES.items():
         t = contract.tool(name)
         assert t is not None and len(steps) == len(t.expands_to) == len(t.produced_by), name
-    # E4a migrates the four Ticket stages E5 builds; E4b adds the integration stages.
-    assert set(SA.STAGES) == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification"}
+    # E4a migrated the four Ticket stages E5 builds; E4b adds the integration stages E6a builds.
+    assert set(SA.STAGES) == {"ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+                              "ticket_prepare", "integration_publish"}
     for t in contract.TOOLS.values():
         for n, step in enumerate(t.produced_by, start=1):
             assert all(name in contract.STEP_INPUTS and 1 <= m < n for name, m in step), t.name
@@ -131,7 +141,8 @@ def test_an_unmigrated_guard_makes_the_stage_unknown_never_blocked_and_never_aut
     assert SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001"})["availability"] == UNKNOWN
 
 
-@pytest.mark.parametrize("stage", ["ticket_request_verification", "ticket_draft"])
+@pytest.mark.parametrize("stage", ["ticket_request_verification", "ticket_draft", "ticket_prepare",
+                                   "integration_publish"])
 def test_a_judgment_bearing_stage_is_never_auto_runnable_however_available(stage):
     """m2: migration gives these stages AVAILABLE or BLOCKED, never auto_runnable (the class decides that)."""
     t = contract.tool(stage)
@@ -211,21 +222,8 @@ CALLS = {
     "ticket_start": [{"work_id": "T-0001"}, {"work_id": "T-0002", "execution": {"model": "p/m"}}],
     "ticket_request_review": [{"work_id": "T-0001"}],
     "ticket_request_verification": [{"work_id": "T-0001", "review_evidence": "EV-0003"}],
-}
-
-
-# The arguments each step's guard reads (`Engine.guard_query`): a dispatch decision its role, card and scope; the
-# migrated queries their request's fields. A planner's other arguments (`launch`, `execution`) no guard reads.
-DISPATCH_READS = frozenset({"work_id", "role", "card", "scope"})
-GUARD_READS = {
-    "work.assign": DISPATCH_READS, "invoke.create.mutating": DISPATCH_READS, "dispatch.launch": frozenset(),
-    "work.transition": frozenset({"work_id", "to", "reason"}),
-    "review.ingest": frozenset({"work_id", "evidence"}),
-    "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
-                              "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
-                              "external_refs", "body", "card", "promoted_from", "acceptance_checks",
-                              "acceptance_inputs", "class0_assertions"}),
-    "plan.propose": frozenset({"work_id", "body", "reason", "affected_paths", "review", "verify", "no_assurance"}),
+    "ticket_prepare": [{"work_id": "T-0001", "verification_evidence": "EV-0004"}],
+    "integration_publish": [{"work_id": "T-0001", "prepared_candidate": "c0ffee"}],
 }
 
 
@@ -307,3 +305,79 @@ def test_resume_says_why_a_guard_is_unknown_by_its_code(codes, says):
     assert (found, reasons) == (UNKNOWN, codes)
     check = stage._unknown_guard(reasons)
     assert check["status"] == stage.UNKNOWN_STATUS and check["reason_codes"] == codes and says in check["message"]
+
+
+def test_recording_args_see_every_key_a_query_reads():
+    """The mechanical check behind GUARD_READS: a query's reads (get, [], in) are recorded; what it records under
+    `found` is not an input."""
+    from guard_reads import RecordingArgs
+
+    args = RecordingArgs({"work_id": "T-0001", "to": "RUNNING"})
+    assert args.get("reason") is None and args["to"] == "RUNNING" and "card" not in args
+    args.setdefault("found", {})["rule"] = 1
+    assert args.inputs_read() == {"reason", "to", "card"}
+
+
+
+@pytest.mark.parametrize("mode", ["checks", "verifier"])
+def test_ticket_prepare_plans_the_integration_verifier_in_verifier_mode_only(mode):
+    """Plan v3 §2.3: in checks mode the custodian validates, outside the stage, so steps 4 and 5 are not planned; in
+    verifier mode the verifier's decision is asked on the candidate and lease step 3 produces, after the acceptance
+    and COMMIT_READY state step 2 produces."""
+    ref = {"id": "EV-0004", "kind": "verification", "sha256": "ab"}
+    engine = FakeEngine(_state("VERIFY_PENDING"), found={
+        "verify.ingest": {"to": "VERIFIED", "ref": ref},
+        "work.transition": {"gate_context": {"snapshot": {"relevant_inputs_fingerprint": "f"}, "gates": {}}}})
+    engine.mode = mode
+    out = SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001", "verification_evidence": "EV-0004"})
+    assert out["availability"] == AVAILABLE
+    seen = {p: s for p, _w, s in engine.seen}
+    prepared_on = seen["integrate.prepare"]["work"]["T-0001"]
+    assert prepared_on["state"] == "COMMIT_READY" and prepared_on["commit_ready_seq"] == 1
+    assert prepared_on["commit_ready_snapshot"] == {"relevant_inputs_fingerprint": "f"}
+    if mode == "checks":
+        assert [s.get("planned", True) for s in out["steps"]] == [True, True, True, False, False]
+        assert "invoke.create.mutating" not in seen
+    else:
+        assert seen["invoke.create.mutating"]["work"]["T-0001"]["integration"] == {"status": "prepared"}
+        assert out["steps"][4]["covered_by"] == 4
+
+
+@pytest.mark.parametrize(("disposition", "says"), [("rebuild", "plan v3 §2.3"), ("requeue", "requeue"),
+                                                   (None, "refuses it now")])
+def test_resume_names_a_blocked_steps_disposition(disposition, says):
+    """PR #171 review, finding 1: BLOCKED commits nothing, except a blocker carrying a disposition, whose call commits
+    only that. `resume` names it (a moved head's rebuild is the designed path, plan v3 §2.3), and its status is not
+    `blocked`, which is the only one `resolve continue` refuses."""
+    from aew.surface import stage
+
+    answer = {"availability": BLOCKED, "reason_codes": ["STALE_CANDIDATE"], "blocking_conditions": [],
+              **({"disposition": disposition} if disposition else {})}
+    asked = []
+
+    def query(primitive, work_id, args):
+        asked.append(primitive)
+        return answer
+
+    engine = SimpleNamespace(guard_query=query)
+    check = stage.guard_check(engine, "integrate.publish", {"work_id": "T-0001"})
+    assert says in check["message"] and check["availability"] == BLOCKED
+    assert check["status"] == ("blocked" if disposition is None else stage.BLOCKED_WITH_DISPOSITION)
+    assert check.get("disposition") == disposition
+    assert asked == ["integrate.publish"]  # one guard answer (PR #171 re-review, finding 2)
+    assert (check["status"] in stage.PASSING) == (disposition is not None)  # passing, with a stated consequence
+
+
+@pytest.mark.parametrize("read", [lambda a: dict(a)["secret"], lambda a: {**a}["secret"],
+                                  lambda a: [v for k, v in a.items() if k == "secret"], lambda a: list(a.values()),
+                                  lambda a: list(a.keys()), lambda a: [k for k in a], lambda a: a.copy()["secret"],
+                                  lambda a: a["secret"], lambda a: a.get("secret"), lambda a: "secret" in a])
+def test_recording_args_record_every_way_of_reading(read):
+    """PR #171 review, finding 5: copies, views and iteration record the keys they read, as `[]`, `get` and `in` do."""
+    from guard_reads import RecordingArgs
+
+    rec = RecordingArgs({"work_id": "T-0001", "secret": 1})
+    read(rec)
+    assert "secret" in rec.inputs_read()
+    rec.setdefault("found", {})["x"] = 1  # writing what a query found works, and is not an input
+    assert "found" not in rec.inputs_read() and rec.data()["found"] == {"x": 1}

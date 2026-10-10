@@ -62,6 +62,16 @@ def _review_ingest(a: dict[str, Any]) -> dict[str, Any]:
     return {"work_id": a.get("work_id"), "evidence": a.get("review_evidence")}
 
 
+def _verification_ingest(a: dict[str, Any]) -> dict[str, Any]:
+    return {"work_id": a.get("work_id"), "evidence": a.get("verification_evidence")}
+
+
+def _verifier_mode(engine: Any, state: dict[str, Any], a: dict[str, Any]) -> bool:
+    """Whether the Ticket's post-integration validation resolves to a verifier (plan v3 §2.3): only then does
+    `ticket_prepare` launch the integration verifier; in checks mode the custodian validates, outside the stage."""
+    return engine.validation_mode(a.get("work_id"), state=state) == "verifier"
+
+
 # The migrated stage table (plan v3 E4, M4): per stage, each step's guard arguments, in ``expands_to`` order. Its
 # ``produced_by`` is the catalog row's. E4b adds `ticket_prepare` and `integration_publish`.
 STAGES: dict[str, tuple[StepArgs, ...]] = {
@@ -70,6 +80,14 @@ STAGES: dict[str, tuple[StepArgs, ...]] = {
     "ticket_request_review": (_same_unit(to="REVIEW_PENDING"), _same_unit(role="reviewer"), _same_unit()),
     "ticket_request_verification": (_review_ingest, _same_unit(to="VERIFY_PENDING"), _same_unit(role="verifier"),
                                     _same_unit()),
+    "ticket_prepare": (_verification_ingest, _same_unit(to="COMMIT_READY"), _same_unit(),
+                       _same_unit(role="verifier", scope="integration"), _same_unit()),
+    # E6a adds the acceptance of the integration verification (`verification_evidence`) as its first step.
+    "integration_publish": (_same_unit(),),
+}
+# Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step.
+APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], bool]]] = {
+    "ticket_prepare": {4: _verifier_mode, 5: _verifier_mode},
 }
 
 
@@ -87,14 +105,31 @@ def _product(name: str, primitive: str, args: dict[str, Any]) -> Any:
         return found.get("ref")
     if name == contract.IMPLEMENTER:
         return primitive == "work.assign" or None
+    if name == contract.ACCEPTANCE:
+        gc = found.get("gate_context")
+        if primitive != "work.transition" or args.get("to") != "COMMIT_READY" or not gc:
+            return None
+        return {"snapshot": gc["snapshot"], "gates": {g: v["status"] for g, v in gc["gates"].items()}}
+    if name == contract.CANDIDATE:
+        return (primitive == "integrate.prepare") or None
     return None
 
 
-def _overlay(state: dict[str, Any], work_id: str | None, inputs: list[tuple[str, int, Any]]) -> dict[str, Any]:
-    """``state`` as a later step's guard sees it: each produced input applied to a copy (never to ``state``)."""
+def _overlay(engine: Any, state: dict[str, Any], work_id: str | None,
+             inputs: list[tuple[str, int, Any]]) -> dict[str, Any] | None:
+    """``state`` as a later step's guard sees it: each produced input applied to a copy (never to ``state``), in the
+    order the steps produce them (a candidate last: it is prepared on the Ticket's acceptance). None when the engine
+    cannot produce an input on it (a candidate where no lease could be granted)."""
     scratch = dict(state)
     scratch["work"] = dict(state.get("work") or {})
-    for name, n, value in inputs:
+    order = {contract.CANDIDATE: 1}
+    for name, n, value in sorted(inputs, key=lambda i: (i[1], order.get(i[0], 0))):
+        if name == contract.CANDIDATE:
+            produced = engine.candidate_overlay(scratch, work_id or "")
+            if produced is None:
+                return None
+            scratch = produced
+            continue
         if name == contract.UNIT:
             wid, unit = value
             scratch["work"][wid] = copy.deepcopy(unit)
@@ -107,6 +142,10 @@ def _overlay(state: dict[str, Any], work_id: str | None, inputs: list[tuple[str,
             unit["state"] = value
         elif name == contract.EVIDENCE:
             unit["evidence"] = [*(r for r in unit.get("evidence") or [] if r["id"] != value["id"]), value]
+        elif name == contract.ACCEPTANCE:
+            unit["commit_ready_snapshot"] = value["snapshot"]
+            unit["commit_ready_gates"] = value["gates"]
+            unit["commit_ready_seq"] = unit.get("commit_ready_seq", 0) + 1
         elif name == contract.IMPLEMENTER:
             inv = PRODUCED_IMPLEMENTER.format(n=n)
             scratch["invocations"] = {**(state.get("invocations") or {}),
@@ -141,7 +180,8 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
         args = build(arguments)
         produced = dict(t.produced_by[n - 1]) if t.produced_by else {}
         entry: dict[str, Any] = {"n": n, "primitive": primitive, "produced_by": produced}
-        if args is None:
+        applies = APPLIES.get(stage, {}).get(n)
+        if args is None or (applies is not None and not applies(engine, current, arguments)):
             steps.append({**entry, "planned": False})
             continue
         if contract.DISPATCH in produced:  # a launch: covered by that step's dispatch decision, nothing of its own
@@ -162,10 +202,15 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
                           "blocking_conditions": [], "not_produced": missing})
             done[n] = (primitive, args)
             continue
-        scratch = _overlay(current, work_id, inputs) if inputs else current
+        scratch = _overlay(engine, current, work_id, inputs) if inputs else current
+        if scratch is None:
+            steps.append({**entry, "availability": UNKNOWN, "reason_codes": [INPUT_NOT_PRODUCED],
+                          "blocking_conditions": [], "not_produced": [contract.CANDIDATE]})
+            done[n] = (primitive, args)
+            continue
         answer = engine.guard_query(primitive, work_id, args, state=scratch)
         steps.append({**entry, **{k: answer[k] for k in ("availability", "reason_codes", "blocking_conditions")},
-                      **{k: answer[k] for k in ("not_queryable", "unanswered") if k in answer}})
+                      **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition") if k in answer}})
         done[n] = (primitive, args)
     answers = [s["availability"] for s in steps if s.get("planned", True)]
     overall = BLOCKED if BLOCKED in answers else UNKNOWN if UNKNOWN in answers else AVAILABLE

@@ -195,6 +195,34 @@ def guard_status(engine: Any, primitive: str, args: dict[str, Any]) -> tuple[str
     return answer["availability"], [] if answer["availability"] == AVAILABLE else list(answer["reason_codes"])
 
 
+# What a step blocked with a disposition commits if run (``aew.engine.guards``; PR #171 review, finding 1).
+DISPOSITION_MESSAGES = {
+    "rebuild": "its guard refuses publishing now: the authoritative head moved, so running it publishes nothing and "
+               "commits the one rebuild of the candidate on the new head under the same lease (plan v3 §2.3), or "
+               "leaves the entry for your disposition. Continue to take that path, then revalidate and publish",
+    "requeue": "its guard refuses publishing now: the candidate was built from an earlier acceptance, so running it "
+               "publishes nothing and commits the candidate's retirement and the entry's requeue",
+}
+BLOCKED_WITH_DISPOSITION = "blocked_with_disposition"
+
+
+def guard_check(engine: Any, primitive: str, args: dict[str, Any]) -> dict[str, Any]:
+    """``resume``'s ``guard`` recheck of a next step, from one guard answer (PR #171 re-review, finding 2): ok, blocked,
+    not queryable, or blocked with a disposition that a continue commits by running the step. That last one passes
+    with a stated consequence (``resolve continue`` runs it: the designed path; the boundary names the disposition)."""
+    answer = engine.guard_query(primitive, args.get("work_id"), dict(args))
+    found = answer["availability"]
+    reasons = [] if found == AVAILABLE else list(answer["reason_codes"])
+    check = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
+             UNKNOWN: _unknown_guard(reasons),
+             BLOCKED: {"status": "blocked", "reason_codes": reasons, "message": "its guard refuses it now"}}[found]
+    disposition = answer.get("disposition") if found == BLOCKED else None
+    if disposition is not None:
+        check = {"status": BLOCKED_WITH_DISPOSITION, "reason_codes": reasons, "disposition": disposition,
+                 "message": DISPOSITION_MESSAGES.get(disposition, f"running it commits {disposition}")}
+    return {**check, "availability": found}
+
+
 def _unknown_guard(reasons: list[str]) -> dict[str, Any]:
     """The ``guard`` recheck when the guard could not answer: why, by its code (PR #170 re-review, finding 1)."""
     if reasons == [GUARD_NOT_QUERYABLE]:
@@ -282,7 +310,9 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
 # ---------------------------------------------------------------------------------------------- resume and resolve
 # (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
 
-PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard
+# not_queryable: the step's own commit decides its guard; blocked_with_disposition: a continue runs the step, which
+# commits only its disposition (the boundary names it; PR #171 re-review, finding 1).
+PASSING = ("ok", "not_applicable", "not_queryable", "blocked_with_disposition")
 UNKNOWN_STATUS = "not_queryable"
 
 
@@ -329,14 +359,10 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
         except errors.AEWError as exc:
             checks["guard"] = {"status": "unresolved", "message": exc.message}
         else:
-            found, reasons = guard_status(engine, nxt["primitive"], args)
-            checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its guard allows it now"},
-                               UNKNOWN: _unknown_guard(reasons),
-                               BLOCKED: {"status": "blocked", "reason_codes": reasons,
-                                         "message": "its guard refuses it now"}}[found]
-            checks["guard"]["availability"] = found
+            checks["guard"] = guard_check(engine, nxt["primitive"], args)
     failing = [name for name, v in checks.items() if v["status"] not in PASSING]
-    boundary = check["boundary"] or ("refused" if failing else None)
+    disposition = checks["guard"].get("disposition")
+    boundary = check["boundary"] or ("refused" if failing else (f"disposition:{disposition}" if disposition else None))
     return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
             "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
             "base_class": si["base_class"], "effective_class": si["effective_class"],
@@ -360,11 +386,13 @@ def resolve_stage(c: Call) -> dict[str, Any]:
 
     - **abandon** ends the intent ABANDONED; its committed steps stand.
     - **continue** re-resolves the stage contract and plan from this surface's catalog, refuses a next step whose
-      guard refuses it now (nothing commits), and has the engine recheck the rest and rebind the intent to the current
-      generation in one commit (F18 §14). It then runs the remaining steps from the first uncommitted one, under the
-      same rules as a new stage (§3.4 rules 3 to 7). With every step committed, that commit ends the stage itself:
-      completed, or stopped as ``launch_failed`` when a launching step's run never started or has ended. A continue
-      never relaunches a run: that is `aew harness launch`, which rotates the credential (#142 review)."""
+      guard refuses it now (nothing commits) unless the refusal carries a ``disposition`` (the step then runs and
+      commits only that, the designed path: a moved head's one rebuild, plan v3 §2.3; PR #171 review), and has the
+      engine recheck the rest and rebind the intent to the current generation in one commit (F18 §14). It then runs
+      the remaining steps from the first uncommitted one, under the same rules as a new stage (§3.4 rules 3 to 7).
+      With every step committed, that commit ends the stage itself: completed, or stopped as ``launch_failed`` when
+      a launching step's run never started or has ended. A continue never relaunches a run: that is `aew harness
+      launch`, which rotates the credential (#142 review)."""
     from aew.surface.run import _error
 
     a = c.a

@@ -42,8 +42,10 @@ UNIT = "unit"  # the unit an earlier step creates (`work.create`)
 STATE = "state"  # the state an earlier step leaves the unit in (a transition, an assignment, an ingest)
 IMPLEMENTER = "implementer"  # the active implementer an earlier step's dispatch creates (`work.assign`)
 EVIDENCE = "evidence"  # the report an earlier step ingested, as the unit's evidence reference
+ACCEPTANCE = "acceptance"  # the COMMIT_READY acceptance an earlier transition records (its gated snapshot, its seq)
+CANDIDATE = "candidate"  # the prepared integration candidate and the lease an earlier `integrate.prepare` produces
 DISPATCH = "dispatch"  # an earlier step's dispatch decision, which covers this step (a launch): it has no query
-STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, DISPATCH)
+STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, ACCEPTANCE, CANDIDATE, DISPATCH)
 
 
 class Tool(NamedTuple):
@@ -257,14 +259,17 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
          required_judgments=("accept_verification",), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED),
+         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         # Steps 4 and 5 (the integration verifier and its launch) are planned in verifier mode only (plan v3 §2.3).
+         produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2)),
+                      ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2), (CANDIDATE, 3)), ((DISPATCH, 4),))),
     Tool("integration_publish", DECISION, JUDGMENT_BEARING,
          "Publish the prepared integration candidate: calling this is your publication decision.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
                "prepared_candidate": {"type": "string", "minLength": 1}},
               ("expect_rev", "work_id", "prepared_candidate")),
          expands_to=("integrate.publish",), required_judgments=("publish_candidate",),
-         mutates=True, progression=True, status=DESIGNED),
+         mutates=True, progression=True, status=DESIGNED, produced_by=((),)),
 )
 
 

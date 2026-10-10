@@ -43,9 +43,13 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **The register is data.** Edit `docs/implementation/future-work.yaml`, then run `python tools/register.py render`.
   Never edit `future-work.md` by hand. Closed rows move to §9 with the date and what closed them; nothing is deleted.
   What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
-  command; `check` fails when an item goes stale or a question or **Designer** row has none).
+  command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
+  the register, run `python tools/register.py resolve` (it re-merges the YAML and renders), not a hand merge.
+- **Changes to different rows never conflict**, so keep the layouts that make it so: the register's pages are rendered
+  as one block per row, and `implementation-status.md` is one section per capability with a blank line between every
+  two lines, no table and no "last updated" line (`tests/unit/test_docs_merge.py`).
 - Before committing docs work: `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
-  tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/test_spec_pin.py`.
+  tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/unit/test_docs_merge.py tests/test_spec_pin.py`.
 
 ## Tests
 

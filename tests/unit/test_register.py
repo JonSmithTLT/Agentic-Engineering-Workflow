@@ -36,6 +36,20 @@ def test_the_yaml_round_trips_through_the_markdown():
     assert register.parse_markdown(register.render_markdown(DATA)) == DATA
 
 
+def test_a_cell_written_over_several_lines_round_trips_and_one_that_would_split_its_row_is_reported():
+    """Each row is a block (a heading, then one paragraph per cell) so that changes to neighbouring rows merge: a cell
+    may run over several lines, but a blank line inside it, or a heading cell over two lines, would split the block."""
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["Notes"] = "first line\nsecond line"
+    assert register.parse_markdown(register.render_markdown(data)) == data
+    assert register.problems(data) == []
+    data["sections"][1]["rows"][0]["Notes"] = "one paragraph\n\nanother"
+    assert any("holds a blank line" in p for p in register.problems(data))
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["#"] = "F3\nF4"
+    assert any("one non-empty line" in p for p in register.problems(data))
+
+
 def test_ids_are_unique_and_open_rows_carry_a_target():
     assert register.problems(DATA) == []
 
@@ -151,7 +165,8 @@ def test_an_item_names_a_known_due_point_owner_and_need():
 
 def test_the_view_lists_the_soonest_first():
     owed = register.render_due(DUE).split("## Owed, soonest first")[1].split("## Blocked")[0]
-    dues = [line.split(" | ")[0].removeprefix("| ") for line in owed.splitlines() if line.startswith("| ")][1:]
+    dues = [line.removeprefix("**Due by:** ").split(" · ")[0] for line in owed.splitlines()
+            if line.startswith("**Due by:** ")]
     order = [register.DUE_ORDER.index(d) for d in dues]
     assert len(dues) == len(DUE["items"]) and order == sorted(order)
 
@@ -172,7 +187,7 @@ def test_a_malformed_item_is_named_never_a_crash():
     due = copy.deepcopy(DUE)
     due["items"][0] = {"row": "Q11", "due": "soon"}
     text = register.render_due(due)
-    assert "| soon |" in text
+    assert "**Due by:** soon ·" in text
     assert any("missing needs, owner, what" in p for p in register.due_problems(DATA, due))
 
 

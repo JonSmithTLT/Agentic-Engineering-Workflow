@@ -48,7 +48,7 @@ def headings(path: Path) -> list[str]:
 
 def register_ids() -> set[str]:
     text = (ROOT / "docs" / "implementation" / "future-work.md").read_text(encoding="utf-8")
-    return set(re.findall(r"^\| ([A-Z][0-9]+(?:\.[0-9]+)?) \|", text, re.M))
+    return set(re.findall(r"^### ([A-Z][0-9]+(?:\.[0-9]+)?)$", text, re.M))  # each row's heading (tools/register.py)
 
 
 FIRST_LEDGER_ADR = 12

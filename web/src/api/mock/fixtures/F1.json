@@ -70,6 +70,10 @@
               "message": "Integrity audit is future P2c work."
             }
           ]
+        },
+        "history_search": {
+          "state": "AVAILABLE",
+          "reasons": []
         }
       }
     },
@@ -1318,6 +1322,97 @@
         ],
         "next_cursor": null
       }
+    },
+    "/history/search": {
+      "schema_version": "0.1.3",
+      "project_id": "aew-demo",
+      "control_revision": "42",
+      "generated_at": "2026-10-10T00:00:00Z",
+      "data": {
+        "label": "Raw history (not admitted Knowledge)",
+        "trust_label": "Untrusted historical reference",
+        "query": {
+          "terms": [
+            "fictional"
+          ],
+          "kinds": [],
+          "since": null,
+          "until": null,
+          "limit": 10
+        },
+        "fence": {
+          "open": "<raw-history-search-fixture>",
+          "close": "</raw-history-search-fixture>"
+        },
+        "hits": [
+          {
+            "id": "T-0004",
+            "kind": "unit",
+            "at": "2026-10-02T12:00:00Z",
+            "subject": null,
+            "source": "history",
+            "trust": {
+              "source": "engine",
+              "label": "Untrusted historical reference"
+            },
+            "truncated": false,
+            "snippet": "Fictional clangd investigation: archived removal failure; historical context, not a causal conclusion.",
+            "expand": {
+              "cli": [
+                "aew",
+                "history",
+                "show",
+                "T-0004"
+              ],
+              "link": {
+                "id": "T-0004",
+                "kind": "history",
+                "title": "Archived removal reference"
+              }
+            }
+          },
+          {
+            "id": "INV-0001-verification-1",
+            "kind": "evidence",
+            "at": "2026-10-02T12:00:00Z",
+            "subject": "T-0001",
+            "source": "evidence",
+            "trust": {
+              "source": "model",
+              "label": "Untrusted historical reference"
+            },
+            "truncated": true,
+            "snippet": "Fictional refreshed compilation evidence. <script>window.__searchHostile=1</script> [link](https://example.invalid)",
+            "expand": {
+              "cli": [
+                "aew",
+                "history",
+                "show",
+                "T-0004"
+              ],
+              "link": {
+                "id": "INV-0001-verification-1",
+                "kind": "evidence",
+                "title": "Inspect supplied verification"
+              }
+            }
+          }
+        ],
+        "coverage": {
+          "complete": false,
+          "indexed_through": 1,
+          "history_entries": 2,
+          "reasons": [
+            {
+              "code": "SEARCH_BUILD_BUDGET",
+              "message": "Fictional bounded indexing is incomplete."
+            }
+          ]
+        },
+        "unverified": {
+          "count": 1
+        }
+      }
     }
   },
   "models": {
@@ -1341,7 +1436,8 @@
     "/history": "HistoryListResponse",
     "/history/T-0004": "HistoryResponse",
     "/attention": "AttentionListResponse",
-    "/activity": "ActivityListResponse"
+    "/activity": "ActivityListResponse",
+    "/history/search": "HistorySearchResponse"
   },
   "pages": {},
   "page_models": {},

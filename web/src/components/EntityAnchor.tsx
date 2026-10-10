@@ -21,9 +21,11 @@ const capabilities: Record<string, string> = {
 export function EntityAnchor({
   entity,
   workWorkspace = false,
+  copyCli = true,
 }: {
   entity: { id: string; kind: string; title?: string | null };
   workWorkspace?: boolean;
+  copyCli?: boolean;
 }) {
   const location = useLocation();
   const capability = useCapability(
@@ -45,7 +47,7 @@ export function EntityAnchor({
   return href && capability.available ? (
     <span className="entity-with-cli">
       <Link to={href}>{label}</Link>
-      <CopyCli kind={entity.kind} id={entity.id} />
+      {copyCli && <CopyCli kind={entity.kind} id={entity.id} />}
     </span>
   ) : (
     <span title={capability.explanation}>

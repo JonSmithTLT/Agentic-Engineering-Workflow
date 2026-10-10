@@ -1683,3 +1683,17 @@ summary {
 .execution-recorder { min-width: 0; overflow-wrap: anywhere; }
 .execution-recorder :is(input, select) { min-width: 0; max-width: 100%; }
 .execution-recorder .filter-bar > label { min-width: 0; max-width: 100%; }
+/* Explicit raw-history search inherits the workbench's document scrolling. */
+.history-search-form fieldset { border: 1px solid var(--border); margin: 0 0 16px; padding: 12px; min-width: 0; }
+.search-term-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.search-term-row input { flex: 1; min-width: 160px; }
+.search-term-row .warning { flex-basis: 100%; }
+.search-kinds { display: flex; flex-wrap: wrap; gap: 12px; }
+.search-kinds label { display: inline-flex; align-items: center; gap: 4px; }
+.search-kinds input { width: auto; }
+.search-submit { min-width: 112px; }
+.search-hits { display: grid; gap: 12px; }
+.search-hit { min-width: 0; }
+.search-snippet { border-left: 3px solid var(--border); padding: 12px; background: var(--canvas); overflow-wrap: anywhere; }
+.search-snippet pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-family: monospace; }
+.history-search-form, .search-results, .search-hit { padding: 16px; }

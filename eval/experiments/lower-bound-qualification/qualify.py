@@ -507,38 +507,48 @@ LANE_ERROR = "lane_error"
 PROVIDER_AUTH_FAILED = "PROVIDER_AUTH_FAILED"
 NO_MODEL_STEP = "NO_MODEL_STEP"
 TURN_ERROR = re.compile(r"\(([\w.-]+): (.*)\)\s*$", re.S)  # the adapter's "...: <outcome> (<type>: <message>)"
-HTTP_AUTH = re.compile(r"\b40[13]\b")
+HTTP_AUTH = re.compile(r"\b(?:HTTP|status)\s*:?\s*40[13]\b|\b40[13]\s+(?:Unauthorized|Forbidden)\b", re.I)
+JUDGED_BY = "lane-error-v1"  # stamps a floor trial this version judged: floor_state never rereads it
 
 
-def token_total(tokens: Any) -> float:
-    """Every count in a run's token usage (nested: input, output, reasoning, cache read and write); none is 0."""
+def token_total(tokens: Any) -> float | None:
+    """Every count in a run's token usage (nested: input, output, reasoning, cache read and write), or ``None`` when
+    the usage is missing, empty or holds a count that is not a number: unknown, never taken for zero."""
     if isinstance(tokens, dict):
-        return sum(token_total(v) for v in tokens.values())
-    return float(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) else 0.0
+        counts = [token_total(v) for v in tokens.values()]
+        return None if not counts or any(c is None for c in counts) else sum(c for c in counts if c is not None)
+    return float(tokens) if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) else None
 
 
-def provider_reason(error: dict[str, Any]) -> str:
-    """PROVIDER_AUTH_FAILED for a rejected key (``provider.auth``, or an HTTP 401/403 from the provider), else
-    NO_MODEL_STEP."""
-    text = f"{error.get('type') or ''} {error.get('message') or ''}"
-    return PROVIDER_AUTH_FAILED if error.get("type") == "provider.auth" or HTTP_AUTH.search(text) else NO_MODEL_STEP
+def provider_reason(error: dict[str, Any] | None) -> str:
+    """Within a provider error (a ``provider.*`` type): PROVIDER_AUTH_FAILED for a rejected key (``provider.auth``,
+    or an HTTP 401/403 stated as such), else NO_MODEL_STEP."""
+    kind = str((error or {}).get("type") or "")
+    if not kind.startswith("provider."):
+        return NO_MODEL_STEP
+    text = f"{kind} {(error or {}).get('message') or ''}"
+    return PROVIDER_AUTH_FAILED if kind == "provider.auth" or HTTP_AUTH.search(text) else NO_MODEL_STEP
 
 
 def provider_failure(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The provider error that ended a live-lane run before the model produced anything, if one did: every token
-    count is zero and the harness outcome names a provider error. The live test records such a run and passes (the
-    implementer's outcome is the model's side, recorded, not asserted), so the lane reads it from the run's record,
-    never from the test's exit code."""
-    if not run or token_total(run.get("tokens")):
+    """The provider error that ended a live-lane run before the model produced anything, if one did.
+
+    All of these must hold: the harness outcome names a ``provider.*`` error; every token count is known and zero;
+    and AEW's own record of the run shows the model did nothing (no bridge request, no evidence, no tool called, the
+    workspace unchanged: facts from AEW's supervisor, not from the harness state a model process can reach). Anything
+    unknown or missing leaves the trial counted. The live test records such a run and passes (the implementer's
+    outcome is the model's side, recorded, not asserted), so the lane reads it from the run's record, never from the
+    test's exit code."""
+    if not run or token_total(run.get("tokens")) != 0:
+        return None
+    if (run.get("bridge") or {}).get("requests") != 0 or run.get("evidence") or run.get("tools_called") \
+            or run.get("workspace_changed") is not False:
         return None
     m = TURN_ERROR.search(str(run.get("harness_outcome") or ""))
-    if not m:
+    if not m or not m[1].startswith("provider."):
         return None
     error = {"type": m[1], "message": m[2][:300]}
-    reason = provider_reason(error)
-    if not error["type"].startswith("provider.") and reason != PROVIDER_AUTH_FAILED:
-        return None
-    return {**error, "reason_code": reason}
+    return {**error, "reason_code": provider_reason(error)}
 
 
 def floor_verdict(trials: list[dict[str, Any]]) -> dict[str, Any]:
@@ -546,7 +556,9 @@ def floor_verdict(trials: list[dict[str, Any]]) -> dict[str, Any]:
     submission accepted as evidence (``implementation_report``) after at least one request through the run's bridge.
 
     Without a pass, an implementer run the provider failed before the model produced anything (``provider_failure``)
-    makes the result a lane error, with its reason and the provider's error, not a failed trial."""
+    makes the result a lane error, with its reason and the provider's error, not a failed trial. This assumes one
+    trial per results file, as the floor runs it (``AEW_LIVE_MODEL_TRIALS=1``): with several, a lane error in one
+    would mask a genuine failure in another."""
     passing, lane = [], None
     for t in trials:
         impl = next((r for r in t.get("runs") or [] if r.get("role") == "implementer"), None)
@@ -631,13 +643,14 @@ def end_trial(tree: Any, basetemp: Path) -> list[int]:
 
 
 def floor_state(out: Path) -> dict[str, Any]:
-    """The floor's record. A trial recorded ``failed`` before lane errors existed whose stored results show the
-    provider failing before the model produced anything is read as the lane error it was (``reclassified_from``), so
-    a lane directory whose trials a rejected key used up runs the floor again once the key is fixed."""
+    """The floor's record. A trial an earlier version recorded ``failed`` (it carries no ``judged_by``) whose stored
+    results show the provider failing before the model produced anything is read as the lane error it was
+    (``reclassified_from``), so a lane directory whose trials a rejected key used up runs the floor again once the key
+    is fixed. A trial this version judged is never reread."""
     path = out / "floor" / "floor.json"
     state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"trials": [], "charged_usd": 0.0}
     for t in state["trials"]:
-        if t.get("verdict") == "failed" and t.get("results"):
+        if t.get("verdict") == "failed" and t.get("results") and not t.get("judged_by"):
             got = floor_verdict(read_results(Path(t["results"])))
             if got["state"] == LANE_ERROR:
                 t.update(verdict=LANE_ERROR, reclassified_from="failed", reason_code=got["reason_code"],
@@ -651,9 +664,12 @@ def counted_trials(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def lane_error_message(error: dict[str, Any], key_env: list[str], *, where: str, again: str) -> str:
-    """The operator's message for a lane error: what the provider said, and what to do."""
-    said = f"{(error.get('provider_error') or {}).get('type')}: {(error.get('provider_error') or {}).get('message')}" \
-        if error.get("provider_error") else "no model step"
+    """The operator's message for a lane error: what the provider said, and what to do. Without a provider error it
+    blames nothing it does not know."""
+    named = error.get("provider_error")
+    if not named:
+        return f"refused: no model step was recorded; rerun `{again}` once the cause is found; {where}"
+    said = f"{named.get('type')}: {named.get('message')}"
     if error.get("reason_code") == PROVIDER_AUTH_FAILED:
         key = key_env[0] if key_env else "the provider's key"
         return f"refused: the provider rejected the key ({said}); check {key} and rerun `{again}`; {where}"
@@ -728,7 +744,7 @@ def cmd_floor(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> 
             verdict = "aew_side_failure" if trials else "not_run"
         trial = {"trial": n, "verdict": verdict, "pytest_exit": code, "charged_usd": round(cost, 6),
                  "cost_known": spent is not None, "stopped": stopped, "results": str(where / "results.jsonl"),
-                 "session_state": str(where / "tmp")}
+                 "session_state": str(where / "tmp"), "judged_by": JUDGED_BY}
         if verdict == LANE_ERROR:
             trial.update(reason_code=judged["reason_code"], provider_error=judged["provider_error"])
         state["trials"].append(trial)
@@ -777,7 +793,7 @@ def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
         return None
     errors = [e for e in (record.get("outcome") or {}).get("errors") or [] if isinstance(e, dict)]
     error = {"type": errors[0].get("type"), "message": str(errors[0].get("message"))[:300]} if errors else None
-    return {"reason_code": provider_reason(error) if error else NO_MODEL_STEP, "provider_error": error}
+    return {"reason_code": provider_reason(error), "provider_error": error}
 
 
 def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -> int:
@@ -813,11 +829,14 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
             say(run=record["run_id"], validity=record["validity"], charged_usd=record["cost"].get("charged_usd"),
                 truncated=record["outcome"].get("truncated_why"))
             stop = ceiling_stop(record)
-            if stop:  # the provider, not the model: every later cell would fail the same way
+            if stop:  # the model never acted: every later cell would fail the same way
+                left = max(int(policy["max_retries"]) - len(attempts), 0)  # this attempt is attempt len(attempts)+1
                 raise SystemExit(lane_error_message(
                     stop, list(frozen_arm(frozen, entry["arm"])["config"]["provider_env"]),
-                    where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP} (one of its preregistered retries "
-                          "is used); no later cell ran", again="qualify.py ceiling"))
+                    where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP}; under the frozen retry policy the "
+                          f"cell has {left} attempt{'' if left == 1 else 's'} left"
+                          + ("" if left else " (a rerun moves on to the next cell)") + "; no later cell ran",
+                    again="qualify.py ceiling"))
     say(ceiling="done", ledger=str(ledger_dir), status=ledger.status(),
         spent_usd=round(spent_so_far(out, ledger, caps), 4),
         next="copy the oracles in, then `qualify.py score` (README.md, operator steps)")

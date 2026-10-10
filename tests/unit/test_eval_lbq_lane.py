@@ -153,7 +153,8 @@ AUTH_RUN = {"role": "implementer", "status": "crashed",
             "harness_outcome": "the agent's turn ended: failed (provider.auth: Invalid API key.)",
             "reason": "harness exited with 1 without recording its expected output", "steps": 1,
             "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}}, "cost": 0,
-            "bridge": {"requests": 0, "refused": 0, "outcomes": {}}, "evidence": [], "model_check": "no_model_step"}
+            "bridge": {"requests": 0, "refused": 0, "outcomes": {}}, "evidence": [], "model_check": "no_model_step",
+            "tools_called": {}, "workspace_changed": False, "changed_paths": []}
 PASSING_RUN = {"role": "implementer", "status": "ended_with_evidence", "harness_outcome": "ended", "steps": 9,
                "tokens": {"input": 4000, "output": 300}, "cost": 0.01, "bridge": {"requests": 2},
                "evidence": [{"id": "ev-1", "kind": "implementation_report", "result": "pass"}]}
@@ -257,12 +258,46 @@ def test_a_model_that_acted_and_failed_still_uses_a_floor_trial(qualify):
 @pytest.mark.parametrize("outcome, reason", [
     ("the agent's turn ended: failed (provider.auth: Invalid API key.)", "PROVIDER_AUTH_FAILED"),
     ("the agent's turn ended: failed (provider.api: HTTP 401 Unauthorized)", "PROVIDER_AUTH_FAILED"),
-    ("the agent's turn ended: failed (UnknownError: status 403 forbidden)", "PROVIDER_AUTH_FAILED"),
     ("the agent's turn ended: failed (provider.rate_limit: slow down)", "NO_MODEL_STEP"),
+    ("the agent's turn ended: failed (provider.api: request of 403 k tokens rejected)", "NO_MODEL_STEP"),
 ])
 def test_a_provider_failure_is_named_for_its_remedy(qualify, outcome, reason):
     got = qualify.floor_verdict([trial_of({**AUTH_RUN, "harness_outcome": outcome})])
     assert (got["state"], got["reason_code"]) == ("lane_error", reason)
+
+
+@pytest.mark.parametrize("outcome", [
+    "the agent's turn ended: failed (UnknownError: status 403 forbidden)",
+    "the agent's turn ended: failed (ContextOverflowError: prompt of 403 k tokens too long)",
+])
+def test_an_error_that_is_not_the_providers_still_uses_a_floor_trial(qualify, outcome):
+    assert qualify.floor_verdict([trial_of({**AUTH_RUN, "harness_outcome": outcome})])["state"] == "failed"
+
+
+@pytest.mark.parametrize("acted", [
+    {"bridge": {"requests": 1, "refused": 0, "outcomes": {}}},
+    {"evidence": [{"id": "ev-1", "kind": "progress", "result": None}]},
+    {"tools_called": {"bash": 2}},
+    {"workspace_changed": True, "changed_paths": ["calc/core.py"]},
+    {"workspace_changed": None},
+    {"bridge": {}},
+    {"tokens": None},
+    {"tokens": {}},
+    {"tokens": {"input": "5200", "output": 0}},
+])
+def test_a_model_that_reached_the_bridge_is_never_a_lane_error(qualify, acted):
+    """A lane error needs AEW's own proof that the model did nothing; anything it acted on, or a usage that is
+    missing or not a number, leaves the trial counted."""
+    run = {**AUTH_RUN, "harness_outcome": "the agent's turn ended: failed (provider.overloaded: try again)", **acted}
+    assert qualify.floor_verdict([trial_of(run)])["state"] == "failed"
+
+
+def test_a_trial_this_version_judged_is_never_reread(qualify, tmp_path):
+    out = tmp_path / "out"
+    results = write_results(out / "floor" / "trial-1" / "results.jsonl", AUTH_RUN)
+    trial = {"trial": 1, "verdict": "failed", "results": str(results), "judged_by": qualify.JUDGED_BY}
+    (out / "floor" / "floor.json").write_text(json.dumps({"trials": [trial], "charged_usd": 0.0}), encoding="utf-8")
+    assert [t["verdict"] for t in qualify.floor_state(out)["trials"]] == ["failed"]
 
 
 def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypatch):
@@ -288,5 +323,14 @@ def test_the_ceiling_stops_at_once_on_a_rejected_key(qualify, tmp_path, monkeypa
     with pytest.raises(SystemExit) as stop:
         qualify.cmd_ceiling(SimpleNamespace(deadline_s=60), out, None)
     assert cells == ["LBQ-1/raw/1"]  # no retry of the cell, no later cell
-    assert str(stop.value.code).startswith("refused: the provider rejected the key (provider.auth")
+    message = str(stop.value.code)
+    assert message.startswith("refused: the provider rejected the key (provider.auth")
+    assert "the cell has 2 attempts left" in message  # its first attempt: both preregistered retries remain
     assert qualify.ceiling_stop({"validity": {"status": "valid", "reason_code": None}}) is None
+
+
+def test_a_ceiling_stop_without_a_provider_error_blames_no_provider(qualify):
+    stop = qualify.ceiling_stop({"validity": {"status": "invalid_measurement", "reason_code": "NO_MODEL_STEP"},
+                                 "outcome": {"errors": []}})
+    message = qualify.lane_error_message(stop, ["OPENCODE_API_KEY"], where="x", again="qualify.py ceiling")
+    assert message.startswith("refused: no model step was recorded") and "provider" not in message

@@ -1,8 +1,8 @@
 {
   "fixture": "F5",
   "name": "Existing work integration and unsupported queue",
-  "contract_version": "0.1.2",
-  "contract_sha256": "68b46527c4df974fde8ae5808e7d3c6bc588a4010a3d5d2adbe47f4c7583d691",
+  "contract_version": "0.1.3",
+  "contract_sha256": "417fa77739a006d65605737794efa6b957c68b6cecd9f6a4d0fd1869272187fb",
   "responses": {
     "/project": {
       "schema_version": "0.1.2",

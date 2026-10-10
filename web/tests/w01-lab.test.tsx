@@ -31,7 +31,7 @@ import f1 from '../src/api/mock/fixtures/F1.json';
 import type { World } from '../src/api/mock/types';
 import { DeveloperPanel } from '../src/components/DeveloperPanel';
 it('registry retains accepted identity and preview guidance requires explicit absent explanations', () => {
-  expect(acceptedContract.version).toBe('0.1.2');
+  expect(acceptedContract.version).toBe('0.1.3');
   expect(acceptedContract.disposition).toBe('ACCEPTED');
   expect(acceptedContract.parsers.WorkResponse).toBe(
     responseSchemas.WorkResponse,

@@ -11,3 +11,5 @@ Plans retain their approved bytes and locations. Nearby approval JSON records bi
 - [work-density-cleanup](work-density-cleanup.md)
 
 - [W07 supplied reuse trail checkpoint](w07-reuse-trail.md) — independently reviewed plan, implementation authorized; fixture acceptance pending.
+
+- [Maps and raw-history integration](maps-history-integration.md) — approved workstream; preparation plan, S0-dependent adoption pending.

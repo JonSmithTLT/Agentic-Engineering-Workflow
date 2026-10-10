@@ -75,7 +75,7 @@ export class ReadTransport {
     private log: RequestLog = requestLog,
     private policy = {
       base: '/api/v1',
-      routes: /^\/(?:project|capabilities|overview|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/,
+      routes: /^\/(?:project|capabilities|overview|maps|work|runs|evidence|knowledge|history|attention|activity)(?:[/?]|$)/,
     },
   ) {}
   async get<T>(

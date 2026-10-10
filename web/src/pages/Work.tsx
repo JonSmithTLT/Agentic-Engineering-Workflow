@@ -373,7 +373,7 @@ export function WorkDetailPage({
                 <dd>
                   <SemanticValue
                     value={work.integration?.status ?? null}
-                    known={['prepared', 'publishing', 'conflict', 'superseded']}
+                    known={['prepared', 'publishing', 'conflict', 'superseded', 'integrated']}
                   />
                 </dd>
                 <dt>Integrated commit</dt>

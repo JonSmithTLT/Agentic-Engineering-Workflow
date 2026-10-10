@@ -1,6 +1,6 @@
 # Frontend architecture and authority
 
-The read-only React/Vite frontend validates accepted payloads in `src/api/schema.ts`; `src/api/types.ts` is generated from accepted API 0.1.2. Transport/read contexts own request policy, conditional validators, retirement and scope isolation. Safe content, shared workspace, source display, tabs and focus helpers provide consistent presentation.
+The read-only React/Vite frontend validates accepted payloads in `src/api/schema.ts`; `src/api/types.ts` is generated from accepted API 0.1.3 (existing response envelopes remain 0.1.2). Transport/read contexts own request policy, conditional validators, retirement and scope isolation. Safe content, shared workspace, source display, tabs and focus helpers provide consistent presentation.
 
 `src/api/preview/{journal,investigation,evidence,execution}/` owns separate provisional models, strict schemas, registrations, fixtures, projectors, read contexts and UI. Demo-only dynamic imports keep these interfaces and initialization out of production. Canonical artifacts and fixture manifests stay in `docs/design/`; artifact checks detect drift. Preview validators cannot weaken accepted parsing or route restrictions.
 

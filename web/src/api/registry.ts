@@ -1,4 +1,5 @@
 import { responseSchemas } from './schema';
+import { additiveResponseSchemas } from './additive-schema';
 import version from './contract-version.json';
 import type { z } from 'zod';
 export type ContractRegistration = {
@@ -17,7 +18,7 @@ export const acceptedContract: ContractRegistration = {
   artifact: 'docs/design/dashboard-api-v1-provisional.yaml',
   sha256: version.sha256,
   disposition: 'ACCEPTED',
-  parsers: responseSchemas,
+  parsers: { ...responseSchemas, ...additiveResponseSchemas },
   fixtures: Array.from({ length: 12 }, (_, i) => `F${i}`),
   explanation_absence: 'EXPLICIT_WHEN_EXPLANATIONS_EXPOSED',
 };

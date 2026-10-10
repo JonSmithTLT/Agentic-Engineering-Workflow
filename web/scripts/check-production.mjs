@@ -11,6 +11,7 @@ function files(dir) {
 }
 for (const file of files('dist')) {
   const text = fs.readFileSync(file, 'utf8');
+  if (/raw-history-fixture|Derived navigation context; fictional fixture/.test(text)) throw new Error('Production additive contract fixture leakage: '+file);
   if (/ASSOC-J05-Later|Context association manifest invalid|Validating supplied context association/.test(text)) throw new Error('Production reuse preview leakage: '+file);
   if (/execution-preview|execution-fixtures|TRACE-Clangd|Inspect recorded execution|Supplied execution controls|Recorded investigation|\/api\/preview\/execution/.test(text)) throw new Error('Production execution preview leakage: '+file);
   if (/evidence-preview|\/api\/preview\/evidence|REF-J05-|Evidence inspection preview|Inspect evidence|Excerpt SHA-256 verified/.test(text)) throw new Error(`Production evidence preview leakage: ${file}`);

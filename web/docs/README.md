@@ -15,7 +15,7 @@ Start here for the frontend. These pages distinguish current guidance, design pr
 | Find a moved report or screenshot | [Archive](archive/README.md), [document catalog](reference/catalog.md) |
 | Maintain these documents | [Documentation policy](how-to/documentation.md) |
 
-The accepted API is **0.1.2**. Journal, Investigation, Evidence inspection and Execution **0.1.0** contracts are separate **PROVISIONAL** fixture interfaces. Frontend fixture acceptance never adopts a backend contract or establishes live integration.
+The accepted API is **0.1.3**; existing routes retain 0.1.2 response envelopes. The six maps/search additions remain pending backend service slices. Journal, Investigation, Evidence inspection and Execution **0.1.0** contracts are separate **PROVISIONAL** fixture interfaces. Frontend fixture acceptance never adopts a backend contract or establishes live integration.
 
 ## Governing documents and Engine integration
 
@@ -27,6 +27,6 @@ The accepted API is **0.1.2**. Journal, Investigation, Evidence inspection and E
 
 The Engine and web documents have separate review cadences. The archive/catalog indexes retain C0, D0/D1 and W01–W06 evidence; the design index retains the future backlog, plans and adoption questions.
 
-Three files intentionally stay at this root: `c0-approval.json`, `c0-review-main-line-0.1.1.md`, and `c0-review-main-line-0.1.2.md`. Their paths are pinned by contract or acceptance checks. Signed plans and canonical preview artifacts also retain their existing paths and bytes.
+The C0 approval and versioned review documents intentionally stay at this root. Existing pinned paths remain intact; the 0.1.3 review records additive renewal. Signed plans and canonical preview artifacts also retain their existing paths and bytes.
 
 Untracked local handoffs are private working material, excluded from the catalog and publication.

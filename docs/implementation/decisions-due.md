@@ -37,6 +37,14 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 
 **Blocks:** U9
 
+### F38
+
+**Due by:** M6 · **Owner:** operator · **Needs:** adoption
+
+**What:** The M6a capability and effect authorization model (v0.8, overlaid by v0.9 for Gate A encoding; designer candidates, concept frozen at v0.9) adopted as governing, and with it the points where it differs from accepted or adopted text reconciled; among them v0.9 §7 against ADR-0009 and ADR-0006 (OpenCode's native `edit` for implementers, F40) and v0.8's P cells against the knowledge adoption's base lookup for every role (KAD-03, KAD-06, F21)
+
+**Blocks:** F39, F40
+
 ### Q8
 
 **Due by:** M6 · **Owner:** designer · **Needs:** decision
@@ -148,5 +156,9 @@ its own item, and every row targeted **Designer** has one or is blocked by one.
 - **F12** waits for Q11 (decision, designer, by M6)
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
+
+- **F39** waits for F38 (adoption, operator, by M6)
+
+- **F40** waits for F38 (adoption, operator, by M6)
 
 - **U9** waits for F26 (design, designer, by M6)

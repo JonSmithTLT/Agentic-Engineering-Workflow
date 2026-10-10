@@ -104,7 +104,12 @@ sections:
       the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment''s fail-closed
       rule applies: the title is treated as acceptance-bearing from that revision on, for as long as the content remains
       in it (so a change to it, its later removal included, is material and bound like acceptance), and the misuse is `UNBOUND_FIELD_ESCAPE`.
-      The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it'
+      The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it. **Plan:**
+      [the F4 plan v8](f4-ticket-revisions-plan.md) (review CLEAR), slices S1 to S12, recorded in [ADR-0016](adr/0016-ticket-revisions.md).
+      **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization
+      and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every
+      slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50).
+      No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals)'
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
       drift; admissibility as a Knowledge Contract concept'

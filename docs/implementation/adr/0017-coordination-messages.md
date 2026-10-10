@@ -6,7 +6,8 @@
   D6's switch read from adopted bytes, its off state, the marker and the defaults, but not its snapshots. **MS2 built**
   (2026-10-10, the sealing slice): D7, D11's engine side, D12, D9's evidence inputs and the operator reads, as the
   amendment of 2026-10-10 records. **MS0 done** (2026-10-10): the live-delivery probe decided D8's transport, which D8
-  now states with its evidence; D8's `delivery: queue` is corrected to `steer` by name. Everything else is stated here
+  now states with its evidence; D8's `delivery: queue` is corrected to `steer` by name, and the designer's decision of
+  2026-10-10 adds an explicit `turn-end` timing (`queue`) beside it (amendment 2). Everything else is stated here
   as decided and lands with the slice the build-status table names. Each later slice adds a dated amendment section
   when it lands. Number: the next free one at MS1 (ADR-0016 is held by F4).
 - **Resolves:** the implementation choices F9-A1 leaves open for F9-A: where messages live and how they are identified,
@@ -150,7 +151,8 @@ evidence record pins its log.
 
 Live delivery was provisional on MS0's probe of OpenCode 2.0.18 (the operator's decision), which has decided it (the
 transport below): `POSTED` before the transport call and `DELIVERED` on admission, with a deterministic transport id,
-at the next step boundary (`delivery: steer`) and never an interrupt (D-28). *Corrected 2026-10-10 by MS0: this read
+at the next step boundary (`delivery: steer`) and never an interrupt (D-28); a message sent `--when turn-end` uses
+`delivery: queue` instead, once amendment 2 lands (the designer's decision of 2026-10-10, below). *Corrected 2026-10-10 by MS0: this read
 `delivery: queue`, which OpenCode admits only at the end of the worker's turn.* An adapter without live delivery reports
 `unsupported`, and messages wait for the continuation (invariant 16). A relaunch's continuation carries the current
 generation's never-posted messages, labelled unconfirmed posts and unresolved earlier ones (at most 10), and the launch
@@ -170,8 +172,8 @@ each is built with the slice named.
   So `deliver` posts `POST /api/session/{id}/prompt` with `delivery: "steer"`, the deterministic id and D-23's
   `metadata`. The capability probe will require `steer`, `resume` and `metadata` on the prompt operation and refuse a
   release that drops one (MS5).
-- **`harness send` stays `queue` (D-30 unchanged), so its inputs and F9 messages are not ordered with respect to each
-  other:** steer overtakes queue (the probe's `p4-mixed`). Until F9-A's amendment 2 is built, F9 messages are always
+- **Until E55 lands, `harness send` stays `queue` (D-30), so its inputs and F9 messages are not ordered with respect
+  to each other:** steer overtakes queue (the probe's `p4-mixed`). Until F9-A's amendment 2 is built, F9 messages are always
   `steer`. **The designer decided on 2026-10-10 (steer vs queue, option B)** that both `aew message send` and
   `aew harness send` take `--when next-step|turn-end`: `next-step`, the default, is `steer`, and `turn-end` is `queue`.
   While a `turn-end` input is pending, the run's final result ingest is refused (`PENDING_TURN_END_MESSAGE`), atomically

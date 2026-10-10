@@ -7,7 +7,7 @@ export type OpaqueId = z.infer<typeof OpaqueId>;
 export const ControlRevision = z.string().regex(new RegExp("^(0|[1-9][0-9]*)$"));
 export type ControlRevision = z.infer<typeof ControlRevision>;
 
-export const Timestamp = z.iso.datetime({ offset: false }).regex(new RegExp("Z$"));
+export const Timestamp = z.iso.datetime({ offset: false }).refine(value => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)).regex(new RegExp("Z$"));
 export type Timestamp = z.infer<typeof Timestamp>;
 
 export const MapRevision = z.union([z.string().regex(new RegExp("^([0-9a-f]{16}:[1-9][0-9]*|none:0)$")), z.null()]);

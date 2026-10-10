@@ -21,6 +21,7 @@ function expression(schema) {
   if (schema.type === 'boolean') return 'z.boolean()';
   if (schema.type === 'string') {
     let value = schema.format === 'date-time' ? 'z.iso.datetime({ offset: false })' : 'z.string()';
+    if (schema.format === 'date-time') value += '.refine(value => /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/.test(value))';
     // JSON Schema counts Unicode code points, not UTF-16 code units.
     if (schema.minLength !== undefined) value += `.refine(value => Array.from(value).length >= ${schema.minLength})`;
     if (schema.maxLength !== undefined) value += `.refine(value => Array.from(value).length <= ${schema.maxLength})`;

@@ -7,10 +7,12 @@ const listQuery = z.strictObject({ source_revision: ObjectId.optional(), cursor:
 const detailQuery = mapQuery.extend({ section: z.enum(sections).optional() });
 const inputsQuery = z.strictObject({ cursor: z.string().min(1).optional(), limit: page(250).optional() });
 const searchQuery = z.strictObject({
-  terms: z.array(z.string().min(1)).min(1).max(16),
+  terms: z.array(z.string().min(1)
+    .refine(value => value.trim().length > 0, 'A term is empty')
+    .refine(value => !/\p{Cc}/u.test(value), 'Control characters are not allowed')).min(1).max(16),
   kinds: z.array(z.string().min(1)).max(16).default([]),
   since: Timestamp.optional(), until: Timestamp.optional(), limit: page(50).default(10),
-}).refine(value => value.terms.reduce((sum, term) => sum + Array.from(term).length, 0) <= 512, 'Terms exceed 512 characters')
+}).refine(value => value.terms.reduce((sum, term) => sum + Array.from(term).length, 0) + value.terms.length - 1 <= 512, 'Terms exceed 512 characters')
   .refine(value => !value.since || !value.until || Date.parse(value.since) <= Date.parse(value.until), 'Date range is reversed');
 export type SubmittedHistorySearch = z.input<typeof searchQuery>;
 function route(path: string, values: Record<string, string | number | undefined>) {

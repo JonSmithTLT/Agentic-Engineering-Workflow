@@ -38,6 +38,11 @@ describe('Additive contract readiness', () => {
     const search=fixtures.HistorySearchResponse;
     expect(additiveResponseSchemas.HistorySearchResponse.safeParse({...search,data:{...search.data,coverage:{...search.data.coverage,history_entries:9007199254740992}}}).success).toBe(false);
   });
+  it('requires canonical seconds while retaining supplied fractional seconds', () => {
+    const fixture=fixtures.MapsResponse;
+    expect(additiveResponseSchemas.MapsResponse.safeParse({...fixture,generated_at:'2026-10-10T10:00Z'}).success).toBe(false);
+    expect(additiveResponseSchemas.MapsResponse.safeParse({...fixture,generated_at:'2026-10-10T10:00:00.123456Z'}).success).toBe(true);
+  });
   it('keeps open semantic values while rejecting undeclared paths and commands', () => {
     const fixture=fixtures.StructuralDetailResponse;
     expect(additiveResponseSchemas.StructuralDetailResponse.safeParse({...fixture,data:{...fixture.data,summary:{...fixture.data.summary,status:'FUTURE_STATUS'}}}).success).toBe(true);
@@ -85,8 +90,11 @@ describe('Exact, bounded request identities', () => {
   it('rejects empty/oversized/encoded-over-budget or reversed-date queries', () => {
     expect(()=>historySearchRoute({terms:[]})).toThrow();
     expect(()=>historySearchRoute({terms:['x'.repeat(513)]})).toThrow();
+    expect(()=>historySearchRoute({terms:['x'.repeat(256),'y'.repeat(256)]})).toThrow();
+    for(const term of [' ', 'fixture\ntext', 'fixture\u0000text', 'fixture\ttext', 'fixture\u0085text']) expect(()=>historySearchRoute({terms:[term]})).toThrow();
     expect(()=>historySearchRoute({terms:['😀'.repeat(512)]})).toThrow();
     expect(()=>historySearchRoute({terms:['fixture'],since:'2026-10-10T01:00:00Z',until:'2026-10-10T00:00:00Z'})).toThrow();
     expect(()=>historySearchRoute({terms:['fixture'],since:'2026-10-10T00:00:00Z',until:'2026-10-10T00:00:00.9Z'})).not.toThrow();
+    expect(()=>historySearchRoute({terms:['fixture'],since:'2026-10-10T10:00Z'})).toThrow();
   });
 });

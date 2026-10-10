@@ -177,7 +177,7 @@ each is built with the slice named.
   `steer`. **The designer decided on 2026-10-10 (steer vs queue, option B)** that both `aew message send` and
   `aew harness send` take `--when next-step|turn-end`: `next-step`, the default, is `steer`, and `turn-end` is `queue`.
   While a `turn-end` input is pending, the run's final result ingest is refused (`PENDING_TURN_END_MESSAGE`), atomically
-  with the message state, until the worker submits again. F9-A's amendment 2 specifies it; register row E55 tracks the
+  with the message state, until the worker submits again; the refused submission may remain as run telemetry. F9-A's amendment 2 specifies it; register row E55 tracks the
   `harness send` half and its help text, whose "after its current step" is true only for `steer`.
 - **The held case.** An F9 message to a session the Lead's interrupt holds is staged with `resume: false` and never
   wakes it; OpenCode keeps it until the next wake and delivers it first. The staged post leaves the adapter's turn and

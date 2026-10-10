@@ -1,0 +1,50 @@
+{
+ "aew_commit": "e57d8ed5bd41e41857b8d4761ac1f492cea75b0f",
+ "cases": {
+  "LBQ-1": {
+   "contained": false,
+   "hidden_sha256": "cf3a12db1ed3d98268cbc9fc181cf553c9a259d03a8e3ed9ea362097c07a56e2",
+   "oracle_sha256": "cf3a12db1ed3d98268cbc9fc181cf553c9a259d03a8e3ed9ea362097c07a56e2",
+   "reference_failed": {},
+   "reference_passes": true,
+   "seed_failed": [
+    "criterion: a blocked scheme after leading whitespace is blocked",
+    "criterion: a regression test covers a mixed-case scheme",
+    "criterion: mixed-case blocked schemes are blocked end to end"
+   ],
+   "seed_fails_as_designed": true,
+   "sha256": "3f187f74d721c0ab48efc016b272c6934f8930303fb24e7870a76f47d117267a"
+  },
+  "LBQ-2": {
+   "contained": false,
+   "hidden_sha256": "93468aa306ea3317d37973f56b2e997e1c2879e9220ff57ec70aae5eb18d8c60",
+   "oracle_sha256": "93468aa306ea3317d37973f56b2e997e1c2879e9220ff57ec70aae5eb18d8c60",
+   "reference_failed": {},
+   "reference_passes": true,
+   "seed_failed": [
+    "criterion: an empty rel_external turns it off; another value is used as given",
+    "criterion: external links get rel='nofollow noopener' by default",
+    "site: rel_external is an option like the others (constructor, makeExtension, extension_configs)",
+    "site: the documentation's option table has rel_external"
+   ],
+   "seed_fails_as_designed": true,
+   "sha256": "19b1f0d381c8c2f2d05afc9a3154a8c6a1a302f62c982ffc4a79f8cc62d66327"
+  },
+  "LBQ-3": {
+   "contained": false,
+   "hidden_sha256": "bd3a2c9b14e1e3051299885383ae3875bd242fb8c9c04feacbd0fadba0104515",
+   "oracle_sha256": "bd3a2c9b14e1e3051299885383ae3875bd242fb8c9c04feacbd0fadba0104515",
+   "reference_failed": {},
+   "reference_passes": true,
+   "seed_failed": [
+    "criterion 1: md.reset() empties report(); a document's report holds only its links",
+    "criterion 2: each blocked URL once, in first-appearance order",
+    "criterion 3: strict mode's LinkPolicyError names the URL and carries it as .url",
+    "criterion 4: the documentation describes report() and md.reset()"
+   ],
+   "seed_fails_as_designed": true,
+   "sha256": "7fe2e57f3a8385746d040bcbf715e54f2eeb92df873b91874670def2edcf831e"
+  }
+ },
+ "validated_at": "2026-10-10T03:09:12Z"
+}

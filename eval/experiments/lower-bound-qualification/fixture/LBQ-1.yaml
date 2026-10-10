@@ -1,0 +1,25 @@
+schema: aew/eval-case/v1
+id: LBQ-1
+family: lbq-navigation
+description: >-
+  A symptom, not a file: mixed-case and whitespace-prefixed blocked schemes get through the link policy extension.
+  The cause is three directories deep (markdown/extensions/linkpolicy/rules.py); a same-named module nearer the root
+  (tools/linkpolicy/) is a decoy; the extension's tests reach the code only through a support module; a stale TODO
+  names the wrong fix (raising the processor's priority, which would stop it seeing any link); an unrelated test
+  fails in the suite. Seeds behaviours 1, 2, 3, 6, 7 and 8 of the lane's rubric.
+task: >-
+  Bug report from a site that renders user comments with Python-Markdown and the link policy extension
+  (`markdown.extensions.linkpolicy`, default options): a comment containing `[click](JavaScript:steal)` or
+  `[click](JAVASCRIPT:steal)` is rendered as a working link, although `javascript:` links are supposed to be
+  neutralized. Lower-case `javascript:` links are neutralized correctly. Fix the extension so that a blocked scheme is
+  blocked whatever its letter case, and also when the URL starts with whitespace, and add a regression test to the
+  extension's existing tests. Keep your changes to the extension, its tests and its documentation.
+
+
+  Nobody will answer questions during this session: make reasonable decisions and finish the task.
+fixture:
+  base: base
+  overlay: overlay
+  seeded: null
+hidden_sha256: cf3a12db1ed3d98268cbc9fc181cf553c9a259d03a8e3ed9ea362097c07a56e2  # cases/LBQ-1/oracle under the hidden root
+control_of: null

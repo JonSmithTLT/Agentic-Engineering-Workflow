@@ -11,7 +11,8 @@ import jsonschema
 
 SCHEMA_DIR = Path(__file__).parent / "schema"
 FILES = {"aew/eval-case/v1": "case.schema.json", "aew/eval-prereg/v1": "preregistration.schema.json",
-         "aew/eval-attempt/v1": "attempt.schema.json", "aew/eval-run/v1": "eval-run.schema.json"}
+         "aew/eval-attempt/v1": "attempt.schema.json", "aew/eval-run/v1": "eval-run.schema.json",
+         "aew/eval-profile/v1": "profile.schema.json"}
 
 
 class Invalid(ValueError):

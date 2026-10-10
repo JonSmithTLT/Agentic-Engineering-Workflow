@@ -1,0 +1,250 @@
+# Profile records (aew/eval-profile/v1; eval/aew_eval/profiles.py): one provider/model through the pinned harness, its
+# capability class, and how far it is qualified. Reusable by every later lane: a preregistration pins a record's
+# `ref`, and the record's qualification_state is derived from availability, floor and ceiling (never asserted).
+#
+# Chosen by the lead developer on 2026-10-09 (operator: "no preference, pick the best, keep it consistent for future
+# research"): lower bound deepseek-v4-flash-free, with its stable paid twin so results stay reproducible if the free
+# tier goes; backup minimax-m2.5-free; middle profile gpt-6-luna through the OpenAI API. The free models are no longer
+# offered (2026-10-10): the lane pins the primary's paid twin, with the next-cheaper stable model as its fallback. Laguna is recorded as a note.
+# Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the catalog still lists
+# it): the operator chose its successor, deepseek-v4.1-flash, as the replacement primary (lbq-v1-deepseek-v4-1-flash),
+# and to run the next-cheaper profile, gpt-5-nano, after it (lbq-v1-gpt-5-nano).
+# Availability is what OpenCode 2.0.18's served catalog offered on 2026-10-10 (qualify.py check, "harness_launch", or
+# the same /api/model call from a private server with a placeholder key and no model request).
+
+- schema: aew/eval-profile/v1
+  id: lb-deepseek-v4-flash-free
+  class: lower-bound
+  ref: opencode/deepseek-v4-flash-free
+  provider: opencode
+  model: deepseek-v4-flash-free
+  effort: null
+  plan_role: primary
+  twin_of: null
+  harness: &harness
+    name: opencode
+    version: 2.0.18
+    artifact_sha256:
+      win32-x64: 78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668
+      linux-x64: 67d8275630aa3dfe5409c6c2e1bb44ab0cf0d9558a6593e769342b9f1dc93f4b
+  effective_profile: &raw {context.orientation: null, tools.presentation: null}
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: >-
+      The catalog marks it deprecated and OpenCode 2.0.18 does not offer it (2.0.22 neither): the free tier went. Its
+      paid twin below is the same model.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null
+
+- schema: aew/eval-profile/v1
+  id: lb-deepseek-v4-flash
+  class: lower-bound
+  ref: opencode/deepseek-v4-flash#high
+  provider: opencode
+  model: deepseek-v4-flash
+  effort: high
+  plan_role: paid-twin
+  twin_of: lb-deepseek-v4-flash-free
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENCODE_API_KEY]
+  cost_per_mtok_usd: {input: 0.14, output: 0.28, cache_read: 0.028,
+                      source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: null
+    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: >-
+      Variants offered: low, high, max. Pinned to high: the floor (AEW's bridge protocol) is a hard prerequisite and
+      flash-class models follow multi-step tool protocols poorly at low effort; at high it is still a flash-class model.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unqualified
+  notes: >-
+    The profile the lane's preregistration pins (prereg.yaml), because the free tier is no longer offered.
+    The operator approved paying for it (2026-10-10, within the lane's budget_usd).
+    Unavailable on OpenCode Zen as of 2026-10-10: chat completions return an upstream 404 ("Endpoint is unavailable")
+    while the served catalog still lists it as active, so its qualification_state (derived from the catalog) stays
+    unqualified. Zen logged the operator's request; the key and billing were fine. Its floor never reached a model
+    step (lane errors, never counted as trials), so it is neither floor_passed nor floor_failed. The replacement
+    primary is lb-deepseek-v4.1-flash.
+
+- schema: aew/eval-profile/v1
+  id: lb-deepseek-v4.1-flash
+  class: lower-bound
+  ref: opencode/deepseek-v4.1-flash#high
+  provider: opencode
+  model: deepseek-v4.1-flash
+  effort: high
+  plan_role: replacement-primary
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENCODE_API_KEY]
+  cost_per_mtok_usd: {input: 0.30, output: 1.20, cache_read: 0.006,
+                      source: "OpenCode 2.0.18's served catalog (/api/model), 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: active
+    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: >-
+      Variants offered: low, high, max. Family deepseek-flash, released 2026-09-10, a stable versioned id (not an
+      -exp model), driven through the openai-compatible package (chat completions). Pinned to high for the same
+      reason as lb-deepseek-v4-flash: the floor is a hard prerequisite, and flash-class models follow multi-step tool
+      protocols poorly at low effort.
+  floor:
+    state: passed
+    trials: 1
+    evidence: [results/lbq-v2-deepseek-v4-1-flash/floor.json]
+  ceiling:  # it ran: the tree-observable half shows none of its behaviours; the session-observable half waits for D2
+    state: pending_session_behaviours
+    experiment: lbq-v2-deepseek-v4-1-flash
+    evidence: [results/lbq-v2-deepseek-v4-1-flash/score.json]
+  qualification_state: floor_passed
+  notes: >-
+    lbq-v2-deepseek-v4-1-flash (2026-10-10, run at ed98424): the floor passed in its first trial ($0.023); the ceiling's
+    6 runs were valid and finished (the cost cap ended none), every one task-correct and in scope, and none showed a
+    tree-observable behaviour (2, 4, 5, 8 in part), so the ceiling stays pending until D2's reader scores the
+    session-observable behaviours from the kept databases. On the tree evidence it is the stronger of the two cheap
+    profiles. Total charged $0.2199. Its first experiment, lbq-v1-deepseek-v4-1-flash, passed its floor but every
+    ceiling attempt was refused by a containment defect (no model data).
+    The replacement primary (lbq-v1-deepseek-v4-1-flash), chosen by the operator on 2026-10-10 because
+    lb-deepseek-v4-flash became unavailable on OpenCode Zen. It is the same family's successor; the trigger is
+    unavailability, which the next-cheaper rule does not cover, as in the earlier move from the free tier to its paid
+    twin. It costs more than its predecessor ($0.30 / $1.20 against $0.14 / $0.28), so it is not a next-cheaper
+    profile; lb-gpt-5-nano stays the next-cheaper one.
+
+- schema: aew/eval-profile/v1
+  id: lb-minimax-m2.5-free
+  class: lower-bound
+  ref: opencode/minimax-m2.5-free
+  provider: opencode
+  model: minimax-m2.5-free
+  effort: null
+  plan_role: backup
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: >-
+      The catalog marks it deprecated and OpenCode 2.0.18 does not offer it. Its paid twin (opencode/minimax-m2.5,
+      $0.30 / $1.20 per million tokens) costs more than the primary, so it is not the lane's fallback (lb-gpt-5-nano is).
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null
+
+- schema: aew/eval-profile/v1
+  id: lb-gpt-5-nano
+  class: lower-bound
+  ref: opencode/gpt-5-nano#high
+  provider: opencode
+  model: gpt-5-nano
+  effort: high
+  plan_role: backup
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENCODE_API_KEY]
+  cost_per_mtok_usd: {input: 0.05, output: 0.40, cache_read: 0.005,
+                      source: "OpenCode 2.0.18's served catalog (/api/model), 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: active
+    checked_with: a placeholder value for OPENCODE_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: >-
+      Variants offered: minimal, low, medium, high. Released 2025-08-07, a stable versioned id. Driven through
+      OpenCode's own OpenAI provider package (@opencode/ai/providers/openai), so the Responses API, not chat
+      completions (on which Zen refuses it as ModelProtocolUnsupported). Pinned to high by the rule that pinned the
+      DeepSeek profiles: the floor is a hard prerequisite, so a lower-bound worker runs at the highest effort tier its
+      provider offers, excluding an extended max tier where one exists; gpt-5-nano has none, so high. The trade-off:
+      higher effort can suppress the weak-worker behaviours, leaning the result toward not_a_lower_bound (the
+      conservative direction).
+  floor:
+    state: passed
+    trials: 1
+    evidence: [results/lbq-v1-gpt-5-nano/floor.json]
+  ceiling:
+    state: behaviours_shown
+    experiment: lbq-v1-gpt-5-nano
+    behaviours: [requirement_loss_on_longer_tasks]
+    evidence: [results/lbq-v1-gpt-5-nano/score.json]
+  qualification_state: qualified
+  notes: >-
+    lbq-v1-gpt-5-nano (2026-10-10, run at ed98424): the floor passed in its first trial ($0.005); the ceiling's 6 runs
+    were valid and finished, and LBQ-3-raw-2 showed behaviour 5 (requirement loss on longer tasks: a finished run that
+    met some of LBQ-3's criteria and forgot others). Task-correct in 4 of 6 runs (not LBQ-3-raw-2 or LBQ-1-raw-1).
+    Qualified as the lane's lower bound on the tree-observable evidence; D2's reader scores the session-observable
+    behaviours later from the kept databases. Total charged $0.066.
+    The next-cheaper profile (synthesis 13.4): the cheapest paid model the pinned harness offers with a stable,
+    versioned identity (input $0.05 per million tokens against $0.14 for lb-deepseek-v4-flash and $0.30 for
+    lb-deepseek-v4.1-flash), and an older, smaller model. Its experiment is lbq-v1-gpt-5-nano. The operator chose on
+    2026-10-10 to run it after lbq-v1-deepseek-v4-1-flash rather than only as a fallback: it covers the case where V4.1
+    is not a lower bound, and adds a second lower-bound data point from another family for M4-H's choice.
+
+- schema: aew/eval-profile/v1
+  id: mid-gpt-6-luna
+  class: mid
+  ref: openai/gpt-6-luna#medium
+  provider: openai
+  model: gpt-6-luna
+  effort: medium
+  plan_role: primary
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: [OPENAI_API_KEY]
+  cost_per_mtok_usd: {input: 0.10, output: 0.50, cache_read: 0.01,
+                      source: "models.dev catalog served to OpenCode, 2026-10-10 (context up to 200k tokens)"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: true
+    catalog_status: null
+    checked_with: a placeholder value for OPENAI_API_KEY (the catalog lists a paid provider only when its variable is set; no request was made)
+    note: "Variants offered: none, low, medium, high, xhigh, max. Pinned to medium, the middle of its range."
+  floor: {state: not_run}
+  ceiling: {state: not_applicable}
+  qualification_state: unqualified
+  notes: The middle profile. Not in this lane's preregistration; its floor is an opt-in run (README.md, operator steps).
+
+- schema: aew/eval-profile/v1
+  id: note-laguna-s-2.1-free
+  class: lower-bound
+  ref: opencode/laguna-s-2.1-free
+  provider: opencode
+  model: laguna-s-2.1-free
+  effort: null
+  plan_role: reference-note
+  twin_of: null
+  harness: *harness
+  effective_profile: *raw
+  credential_env: []
+  cost_per_mtok_usd: {input: 0, output: 0, cache_read: 0, source: "models.dev catalog served to OpenCode, 2026-10-10"}
+  availability:
+    checked_at: "2026-10-10"
+    offered_by_pinned_harness: false
+    catalog_status: deprecated
+    checked_with: null
+    note: >-
+      Listed in the catalog but deprecated, and not offered by OpenCode 2.0.18: consistent with the handoff's "not
+      currently available". A future reference target only; never a substitute for a lower-bound profile.
+  floor: {state: not_run}
+  ceiling: {state: not_run}
+  qualification_state: unavailable
+  notes: null

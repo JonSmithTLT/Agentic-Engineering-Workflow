@@ -1,0 +1,18 @@
+{
+ "trials": [
+  {
+   "trial": 1,
+   "verdict": "passed",
+   "pytest_exit": 0,
+   "charged_usd": 0.005186,
+   "cost_known": true,
+   "stopped": [],
+   "results": "<lane>/out/floor/trial-1/results.jsonl",
+   "session_state": "<lane>/out/floor/trial-1/tmp",
+   "judged_by": "lane-error-v1"
+  }
+ ],
+ "charged_usd": 0.005186,
+ "experiment": "lbq-v1-gpt-5-nano",
+ "preregistration_sha256": "4cd0854ce302cbafa4c79f3fc88b95c4cef6c5d6bdf49ea5a7ff86995a3150fa"
+}

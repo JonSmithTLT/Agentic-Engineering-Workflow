@@ -89,7 +89,8 @@ def test_ill_formed_calls_never_reach_the_engine(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
     for name, args, profile, code in (("nope", {}, "normal", "UNKNOWN_TOOL"),
-                                      ("ticket_start", {"expect_rev": rev, "work_id": wid}, "normal",
+                                      ("ticket_prepare", {"expect_rev": rev, "work_id": wid,
+                                                          "verification_evidence": "EV-0001"}, "normal",
                                        "TOOL_NOT_BUILT"),
                                       ("cli", {"argv": ["status"]}, "normal", "TOOL_NOT_EXPOSED"),
                                       ("checkpoint", {"expect_rev": rev, "bogus": 1}, "normal", "INVALID_ARGUMENTS")):
@@ -278,3 +279,72 @@ def _answered_once_then_closed(p, engine):
     with pytest.raises(AdapterInputError) as exc:
         call("status", {})
     assert exc.value.code == "BROKER_UNREACHABLE"
+
+
+# ---------------------------------------------------------------------------------------------- the stages (M4-E E5a)
+
+
+@pytest.fixture
+def launching_broker(tmp_path, monkeypatch):
+    """A broker for a project whose execution policy launches the fake harness's scripted agent (a live, idle run)."""
+    from test_stage_runner import launching
+
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    lab.script("default", [{"do": "hang"}])
+    wid = create_planned_ticket(p, tmp_path)
+    engine = Engine.discover(p.root)
+    broker = lead_broker.LeadBroker(engine, p.token)
+    broker.start()
+    for name, value in broker.env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    yield p, wid, engine, broker
+    broker.close()
+    lab.cleanup()
+
+
+def test_a_stage_through_mcp_records_the_lead_mcp_channel_and_the_runners_result(launching_broker):
+    """`lead_mcp` channel conformance (plan v3 E5): `ticket_start` through the MCP ingress runs the one runner with
+    the held credential; its assignment and run 1 record the transport that carried them, and its result is the stage
+    result the runner returns anywhere (its intent, its three steps), with no credential in it."""
+    p, wid, engine, broker = launching_broker
+    out = call("ticket_start", {"expect_rev": _rev(engine), "work_id": wid}, ingress="mcp")
+    assert out["ok"], out["stopped"]
+    assert [s["primitive"] for s in out["completed_steps"]] == ["work.assign", "dispatch.launch", "work.transition"]
+    state = engine.store.read()
+    inv = state["invocations"][state["work"][wid]["implementer_invocation"]]
+    assert inv["dispatch"]["channel"] == "lead_mcp" and inv["dispatch"]["entrypoint"] == "work.assign"
+    [run1] = inv["runs"]
+    assert run1["dispatch"]["channel"] == "lead_mcp" and run1["dispatch"]["entrypoint"] == "dispatch.launch"
+    assert engine.stage_intent(out["stage_intent_id"])["ingress"] == "mcp"
+    assert p.token not in json.dumps(out)
+
+
+def test_every_typed_call_through_the_broker_is_one_line_of_the_tool_call_log(held):
+    """Plan v3 E5a (n7): one line per call, a refused or ill-formed one included, with the tool, its arguments' digest
+    (never the arguments), its class, the outcome and boundary, the revisions before and after, the stage intent and
+    the duration. It is local telemetry, never control state: writing it moves no revision."""
+    from aew.harness import tool_calls
+
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    call("status", {"work_id": wid})
+    call("checkpoint", {"expect_rev": rev, "note": "a private note", "next": "review"}, ingress="cli")
+    call("checkpoint", {"expect_rev": rev, "note": "stale"})  # refused: the revision moved
+    with pytest.raises(AdapterInputError):
+        call("checkpoint", {"expect_rev": rev, "bogus": 1})
+    lines = tool_calls.read(engine.aew_root)
+    assert [(x["tool"], x["ok"], x["boundary"], x["error_code"]) for x in lines] == [
+        ("status", True, None, None), ("checkpoint", True, None, None),
+        ("checkpoint", False, "stale_revision", "STALE_REVISION"),
+        ("checkpoint", False, tool_calls.INPUT_ERROR, "INVALID_ARGUMENTS")]
+    status, done, stale, bad = lines
+    assert status["effective_class"] == "MECHANICAL" and status["revision_before"] == status["revision_after"] == rev
+    assert (done["revision_before"], done["revision_after"], done["ingress"]) == (rev, rev + 1, "cli")
+    assert stale["revision_before"] == stale["revision_after"] == rev + 1 and bad["effective_class"] is None
+    assert all(x["duration_ms"] >= 0 and x["stage_intent"] is None and x["profile"] == "normal" for x in lines)
+    assert done["arguments_sha256"] == tool_calls.arguments_digest(
+        {"next": "review", "note": "a private note", "expect_rev": rev})
+    assert "a private note" not in tool_calls.path(engine.aew_root).read_text(encoding="utf-8")
+    assert _rev(engine) == rev + 1  # the log is never control state

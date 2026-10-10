@@ -7,9 +7,10 @@ workflow (``progression``: the only rows a stage runner may ever auto-run), its 
 that offer it. Transports render their tool lists from this table and call :mod:`aew.surface.run`; conformance
 tests enumerate it against the dispatch registry.
 
-F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. The stages
-and the publication decision tool are ``DESIGNED``: their full contract is here so the tests pin it today, they are
-never listed, and a call is refused before the runner (F15.2 builds them over the StageIntent journal, §12.5).
+F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. F15.2 builds
+the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``. The other
+stages and the publication decision tool are ``DESIGNED``: their full contract is here so the tests pin it today,
+they are never listed, and a call is refused before the runner.
 """
 
 from __future__ import annotations
@@ -219,7 +220,8 @@ TOOLS: dict[str, Tool] = _catalog(
                "stdin": {"type": "string", "description": "text for an argument given as '-'"}},
               ("argv",)),
          required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
-    # ---- designed in F15.1, built by F15.2 over the StageIntent journal
+    # ---- designed in F15.1, built by F15.2 over the StageIntent journal: M4-E E5a builds `ticket_draft` and
+    # `ticket_start`; the others stay DESIGNED until E5b and E6a
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
          _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
@@ -231,12 +233,12 @@ TOOLS: dict[str, Tool] = _catalog(
                "plan": PLAN},
               ("expect_rev", "title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
-         mutates=True, progression=True, status=DESIGNED, produced_by=((), ((UNIT, 1),))),
+         mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
     Tool("ticket_start", STAGE, POLICY_RESOLVED,
          "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
          expands_to=("work.assign", "dispatch.launch", "work.transition"), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         dispatches=True, mutates=True, progression=True,
          produced_by=((), ((DISPATCH, 1),), ((STATE, 1), (IMPLEMENTER, 1)))),
     Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",

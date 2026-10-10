@@ -573,6 +573,21 @@ def test_the_equivalence_view_keeps_real_differences():
     t1, t2 = ({"tokens": {"tk_" + "a" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "a" * 16}},
               {"tokens": {"tk_" + "b" * 16: {"revoked_at": None}}, "lead": {"token_id": "tk_" + "b" * 16}})
     assert differences(_clean(t1, "/p"), _clean(t2, "/p")) == []  # ids are ordinals, references kept
+    # E5a: a dispatch's revision-bound fields are normalised by value, never dropped; a hash names a file only when it
+    # is that file's (any other hash still compares).
+    d1 = {"invocations": {"I-1": {"dispatch": {"revision": 4, "decision": "sha256:a", "channel": "direct"}}}}
+    d2 = {"invocations": {"I-1": {"dispatch": {"revision": 5, "decision": "sha256:b", "channel": "lead_mcp"}}}}
+    assert differences(_clean(d1, "/p"), _clean(d2, "/p")) == [
+        "/invocations/I-1/dispatch/channel: 'direct' != 'lead_mcp'"]
+    d3 = {"invocations": {"I-1": {"dispatch": {"channel": "direct"}}}}
+    assert differences(_clean(d1, "/p"), _clean(d3, "/p")) == [
+        "/invocations/I-1/dispatch/decision: only in the first",
+        "/invocations/I-1/dispatch/revision: only in the first"]
+    from stage_equivalence import _Normaliser
+
+    named = _Normaliser("/p", files={"a" * 64: "<sha256 of work/T-1/ticket.md>"})
+    assert named({"record_sha256": "a" * 64}) == {"record_sha256": "<sha256 of work/T-1/ticket.md>"}
+    assert named({"record_sha256": "b" * 64}) == {"record_sha256": "b" * 64}
 
 
 @pytest.mark.parametrize("disposition", ["rebuild", "requeue", None])

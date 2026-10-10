@@ -237,11 +237,14 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
         t = contract.tool(name)
         for call in CALLS[name]:
             plan = stage_planners[name](dict(call, expect_rev=1))
-            if [p["primitive"] for p in plan] != list(t.expands_to):
+            # A step availability leaves unplanned for this call (its builder answers None: `ticket_draft` without a
+            # plan) is one the planner leaves out too (M4-E E5a); every other step is planned, in contract order.
+            planned = [n for n, build in enumerate(SA.STAGES[name], start=1) if build(call) is not None]
+            if [p["primitive"] for p in plan] != [t.expands_to[n - 1] for n in planned]:
                 out.append(f"{name}: planned {[p['primitive'] for p in plan]}")
                 continue
-            for n, (build, step) in enumerate(zip(SA.STAGES[name], plan, strict=True), start=1):
-                asked, given = build(call), step.get("args") or {}
+            for n, step in zip(planned, plan, strict=True):
+                asked, given = SA.STAGES[name][n - 1](call), step.get("args") or {}
                 for key, value in (asked or {}).items():
                     got = given.get(key)
                     produced = isinstance(got, dict) and set(got) == {"$from"} and any(

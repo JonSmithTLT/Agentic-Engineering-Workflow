@@ -65,11 +65,12 @@ def test_the_handshake_echoes_a_known_revision_or_answers_with_the_newest():
 def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget():
     normal = mcp.tools_list("normal")
     names = [t["name"] for t in normal["tools"]]
-    # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`.
+    # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`, E5a `ticket_draft` and
+    # `ticket_start`.
     assert names == ["status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint",
-                     "steering", "resolve"]
+                     "steering", "resolve", "ticket_draft", "ticket_start"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
-    assert recovery == [*names, "cli"]
+    assert recovery == [*names[:9], "cli", *names[9:]]  # catalog order: the escape before the stages
     size = len(json.dumps(normal, separators=(",", ":")))
     assert size < 12_000 and len(names) <= 16, f"the normal advertised surface is {size} bytes"
     by_name = {t["name"]: t for t in normal["tools"]}
@@ -78,7 +79,9 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     assert not by_name["steering"]["annotations"]["readOnlyHint"]
     assert not by_name["resolve"]["annotations"]["readOnlyHint"]
     # Under §2.6's 11,900-byte stop line with every M4-E tool built: E3c's `resolve` takes no more than the 771 bytes
-    # the plan measured for it with E5's dispositions (5,135 bytes at E3c).
+    # the plan measured for it with E5's dispositions (5,135 bytes at E3c; 7,996 at E5a, its two stages' rows exactly
+    # as catalogued since F15.1, so the projection with every tool built is unchanged).
+    assert size <= 7_996, f"the normal advertised surface grew past E5a's {size} bytes"
     assert len(json.dumps(by_name["resolve"], separators=(",", ":"))) <= 771
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised
@@ -96,7 +99,7 @@ def test_a_call_returns_the_stage_result_as_structured_content_with_is_error_fro
 
 @pytest.mark.parametrize(("profile", "params", "code"), [
     ("normal", {"name": "nope", "arguments": {}}, "UNKNOWN_TOOL"),
-    ("normal", {"name": "ticket_start", "arguments": {"expect_rev": 1, "work_id": "T-0001"}}, "TOOL_NOT_BUILT"),
+    ("normal", {"name": "ticket_prepare", "arguments": {"expect_rev": 1, "work_id": "T-0001"}}, "TOOL_NOT_BUILT"),
     ("normal", {"name": "cli", "arguments": {"argv": ["status"]}}, "TOOL_NOT_EXPOSED"),
     ("normal", {"name": "checkpoint", "arguments": {"expect_rev": "one"}}, "INVALID_ARGUMENTS"),
     ("recovery", {"name": "status", "arguments": "not an object"}, "INVALID_ARGUMENTS"),

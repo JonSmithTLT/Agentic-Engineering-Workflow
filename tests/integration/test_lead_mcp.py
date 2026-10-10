@@ -55,7 +55,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "note": "paused", "next": "start T-0001"}},
         {"call": "explain", "arguments": {"work_id": wid}},
         {"call": "nope", "arguments": {}},
-        {"call": "ticket_start", "arguments": {"expect_rev": "$revision", "work_id": wid}},
+        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision", "work_id": wid,
+                                                 "verification_evidence": "EV-0001"}},
         {"call": "cli", "arguments": {"argv": ["status"]}},
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
         {"server_env": str(env_file)},
@@ -68,7 +69,7 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert init["serverInfo"]["name"] == "aew-lead"
     assert [t["name"] for t in listed["tools"]] == [  # no cli, no designed stage
         "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
-        "resolve"]
+        "resolve", "ticket_draft", "ticket_start"]
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])
@@ -77,7 +78,7 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert codes == ["UNKNOWN_TOOL", "TOOL_NOT_BUILT", "TOOL_NOT_EXPOSED", "INVALID_ARGUMENTS"]
     assert _rev(p) == rev + 1  # the refused calls committed nothing
     start = next(a for a in _content(r[11])["projection"]["actions"] if a["action"] == "ticket_start")
-    assert start["callable"] is False and start["cli_fallback"][:2] == ["work", "assign"]
+    assert start["callable"] is True and start["cli_fallback"][:2] == ["work", "assign"]  # built (M4-E E5a)
     # Custody: the server's environment, the transcript, the session's output and every file.
     env = json.loads(env_file.read_text(encoding="utf-8"))
     assert "AEW_LEAD_TOKEN" not in env["names"] and not env["credential_shaped"], env

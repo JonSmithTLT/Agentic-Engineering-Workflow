@@ -123,8 +123,9 @@ def test_a_ready_tickets_start_is_named_by_its_stage_with_todays_command(lab):
     out = run.run_tool(engine, CTX, "status", {"work_id": wid})
     start = _action(out, "ticket_start")
     assert start is not None and start["availability"] == AVAILABLE
-    assert start["callable"] is False  # designed: the reader uses the fallback until F15.2 builds the stage
-    assert start["auto_runnable"] is False
+    # Built (M4-E E5a) and policy-resolved: callable, and eligible for a stage runner while legal now.
+    assert start["callable"] is True and start["operation_class"] == "POLICY_RESOLVED"
+    assert start["auto_runnable"] is True
     assert start["cli_fallback"] == ["work", "assign", wid, "--launch", "--expect-rev", str(p.rev())]
 
 
@@ -175,10 +176,11 @@ def test_a_policy_edit_changes_availability_on_the_next_call_once_adopted(lab):
         "schema": "aew/guardrails/v1", "protected_paths": ["calc/**"], "generated_paths": [],
         "ticket_scope_enforcement": True, "review_triggers": [], "dependency_rules": [],
     }), encoding="utf-8", newline="\n")
-    # unadopted, the edit is never used: the policy no longer matches its pin, so nothing is offered as callable
+    # unadopted, the edit is never used: the policy no longer matches its pin, so nothing is eligible to run (the
+    # tool stays callable, presentation only: its call would be refused, INTEGRITY_ERROR)
     start = _action(run.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid}), "ticket_start")
     assert start["availability"] == UNKNOWN and start["reason_codes"] == ["INTEGRITY_ERROR"], start
-    assert not start["callable"]
+    assert not start["auto_runnable"]
     p.adopt_policy()
     start = _action(run.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid}), "ticket_start")
     assert start["availability"] == BLOCKED, start

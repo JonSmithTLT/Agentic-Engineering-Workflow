@@ -132,7 +132,7 @@ def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_prod
     p, wid, engine = ready
     out = R.run_tool(engine, CTX, "status", {"work_id": wid})
     [start] = [a for a in out["projection"]["actions"] if a["action"] == "ticket_start"]
-    assert start["availability"] == AVAILABLE and not start["auto_runnable"]  # not built until E5a
+    assert start["availability"] == AVAILABLE and start["auto_runnable"]  # built (E5a) and policy-resolved
     explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})["result"]
     assert [s["availability"] for s in explained["steps"]] == [AVAILABLE] * 3
     assert engine.store.read()["work"][wid]["state"] == "READY"  # asking changed nothing

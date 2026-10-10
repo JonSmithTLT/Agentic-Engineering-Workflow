@@ -47,12 +47,14 @@ def _create(a: dict[str, Any]) -> dict[str, Any]:
 
 
 def _propose(a: dict[str, Any]) -> dict[str, Any] | None:
-    """``ticket_draft``'s plan as ``plan.propose``'s request; no plan, no step."""
+    """``ticket_draft``'s plan as ``plan.propose``'s request; no plan, no step. Its unit is the one step 1 creates
+    (``produced_by``), unnamed until then."""
     plan = a.get("plan")
     if plan is None:
         return None
     assurance = plan.get("assurance")
-    return {"body": plan.get("body") or "", "reason": plan.get("reason"), "affected_paths": plan.get("affected"),
+    return {"work_id": None, "body": plan.get("body") or "", "reason": plan.get("reason"),
+            "affected_paths": plan.get("affected"),
             "review": None if assurance == "none" else (assurance or {}).get("review"),
             "verify": None if assurance == "none" else (assurance or {}).get("verify"),
             "no_assurance": assurance == "none"}

@@ -10,6 +10,7 @@ transaction finalizers) are filled in one documented order.
 from __future__ import annotations
 
 import ast
+import copy
 import inspect
 from pathlib import Path
 
@@ -118,8 +119,11 @@ def test_every_before_hook_is_a_query_the_guard_queries_ask(engine):
     for hook in engine._units.hooks.before:
         for unit in units:
             for to in ("RUNNING", "CANCELLED", "DONE"):
-                found = hook(dict(unit), {"from": unit["state"], "to": to})
+                given, change = copy.deepcopy(unit), {"from": unit["state"], "to": to}
+                found = hook(given, change)
                 assert found is None or (isinstance(found, Blocker) and found.error is not None), named(hook)
+                # pure: nothing it was given changed, nested state included (PR #170 re-review, finding 3)
+                assert given == unit and change == {"from": unit["state"], "to": to}, named(hook)
     publishing = {"kind": "ticket", "mutating": True, "state": "COMMIT_READY", "integration": {"status": "publishing"}}
     found = engine._units.state_change_query(publishing, {"from": "COMMIT_READY", "to": "RUNNING"})
     assert found is not None and found.code == "ILLEGAL_TRANSITION"

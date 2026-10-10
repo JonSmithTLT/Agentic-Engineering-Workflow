@@ -567,23 +567,32 @@ def _prepare(engine: Engine, p: Any, wid: str) -> Callable[[int], Any]:
 
 
 def untouched(p: Any) -> Callable[[], None]:
-    """A check that asking changed nothing a query must not touch: the control file, the refs, the real index and the
-    worktrees (a fingerprint writes only a throwaway index and content-addressed objects, as `status` always has)."""
+    """A check that asking changed nothing a query must not touch: the control file, the refs, the worktree list, and
+    every worktree's (the main one's and each linked one's) own index bytes and files (``git status``, run so that it
+    writes no index refresh). A fingerprint writes only a throwaway index in a temporary directory and
+    content-addressed objects, as `status` always has (PR #171 review, finding 6)."""
     from pathlib import Path
 
     from aew.workspace import git
 
     project = Path(p.root)  # the test's own project repository, never this checkout
+    quiet = {"GIT_OPTIONAL_LOCKS": "0"}  # `git status` must not refresh the index it is checking
+
+    def worktree(path: Path) -> tuple[Any, ...]:
+        index = Path(git.out("rev-parse", "--path-format=absolute", "--git-path", "index", cwd=path))
+        return (str(path), index.read_bytes() if index.exists() else b"",
+                git.out("status", "--porcelain=v2", "--untracked-files=all", cwd=path, env=quiet))
 
     def snapshot() -> tuple[Any, ...]:
-        index = project / ".git" / "index"
-        return ((project / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=project),
-                git.out("worktree", "list", "--porcelain", cwd=project), index.read_bytes() if index.exists() else b"")
+        listed = git.out("worktree", "list", "--porcelain", cwd=project)
+        paths = [Path(line.split(" ", 1)[1]) for line in listed.splitlines() if line.startswith("worktree ")]
+        return ((project / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=project), listed,
+                tuple(worktree(path) for path in paths))
 
     before = snapshot()
 
     def check() -> None:
-        assert snapshot() == before, "a query changed the control state, a ref, the index or a worktree"
+        assert snapshot() == before, "a query changed the control state, a ref, a worktree's index or its files"
 
     return check
 

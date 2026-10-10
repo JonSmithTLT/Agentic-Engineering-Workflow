@@ -989,7 +989,8 @@ def test_a_guest_refusal_is_filed_as_the_guests_words_never_as_an_evaluator_fact
 
     record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=refuse_run))
     assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:REQUEST_REFUSED"
-    assert "guest says: corrupt" in record["outcome"]["arm_error"] and "error" not in record["outcome"]
+    assert "guest says: corrupt" in record["outcome"]["arm_error"]
+    assert record["outcome"]["error"] == "REQUEST_REFUSED"  # the evaluator's own words: the code alone
     assert campaign.attester("outcome.arm_error") == campaign.GUEST
 
 
@@ -1006,5 +1007,65 @@ def test_a_run_reply_that_breaks_the_protocol_files_its_quoted_text_as_the_guest
 
     record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=malformed_run))
     assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:REPLY_MALFORMED"
-    assert "GUEST-CHOSEN-TEXT" in record["outcome"]["arm_error"] and "error" not in record["outcome"]
+    assert "GUEST-CHOSEN-TEXT" in record["outcome"]["arm_error"]
+    assert record["outcome"]["error"] == "REPLY_MALFORMED"
     assert campaign.attester("outcome.arm_error") == campaign.GUEST
+
+
+def test_an_agent_that_dies_files_its_stderr_as_the_guests_and_its_exit_as_the_evaluators(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    class Dying(LocalTransport):
+        def exchange(self, request: bytes, *, timeout_s: float, max_reply: int) -> bytes:
+            if b'"verb":"run"' in request[:request.index(b"\n")]:
+                saved = self.boot
+                self.boot = "import sys; sys.stderr.write('GUEST-STDERR-TEXT'); sys.exit(3)"
+                try:
+                    return super().exchange(request, timeout_s=timeout_s, max_reply=max_reply)
+                finally:
+                    self.boot = saved
+            return super().exchange(request, timeout_s=timeout_s, max_reply=max_reply)
+
+    record = release(f, {"C1": case}, tmp_path, Dying(tmp_path / "armhost"))
+    assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:HOST_FAILED"
+    assert record["outcome"]["error"] == "the arm-host agent exited 3"
+    assert "GUEST-STDERR-TEXT" in record["outcome"]["arm_error"]
+    # A timeout carries no guest text: the evaluator's words alone.
+    with pytest.raises(TransferError) as timed_out:
+        slow = LocalTransport(tmp_path / "armhost-slow")
+        slow.boot = "import time; time.sleep(60); " + slow.boot
+        slow.call("hello", run_id=None, timeout_s=1)
+    assert timed_out.value.code == "TIMEOUT" and timed_out.value.guest_detail == ""
+
+
+def test_a_refused_preflight_keeps_the_guests_words_apart_in_the_release_ledger(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def refuse(verb: str, raw: bytes) -> bytes:
+        if verb != "preflight":
+            return raw
+        return encode_frame({"kind": "reply", "verb": "preflight", "ok": False, "result": {},
+                             "error": {"code": "BAD_REQUEST", "message": "GUEST-PREFLIGHT-TEXT"}})
+
+    with pytest.raises(campaign.Refused):
+        release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=refuse))
+    [event] = ReleaseLedger(tmp_path / "ledger", "demo").lines()
+    assert event["event"] == "preflight_refused" and event["data"]["reason"] == "PREFLIGHT_REFUSED"
+    assert "GUEST-PREFLIGHT-TEXT" not in event["data"]["detail"]
+    assert "GUEST-PREFLIGHT-TEXT" in event["data"]["guest_detail"]
+
+
+def test_an_unexpected_evaluator_error_files_its_message_as_possibly_quoting_the_guest(tmp_path, monkeypatch):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def boom(*args, **kwargs):
+        raise ValueError("GUEST-PATH-IN-MESSAGE")
+
+    monkeypatch.setattr(campaign.fixture, "files_of", boom)
+    record = release(f, {"C1": case}, tmp_path, local(tmp_path))
+    assert record["validity"]["reason_code"] == "EVALUATOR_ERROR:ValueError"
+    assert "GUEST-PATH-IN-MESSAGE" not in record["outcome"]["error"]
+    assert "GUEST-PATH-IN-MESSAGE" in record["outcome"]["arm_error"]

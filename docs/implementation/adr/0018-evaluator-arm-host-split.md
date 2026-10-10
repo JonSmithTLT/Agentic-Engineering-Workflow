@@ -159,10 +159,15 @@ append repairs it.
   and the task's hashes and the chain head.
 - **The arm host's own words are kept under their own keys.** Nothing the agent reports can stand in for a fact the
   evaluator records: its outcome is `outcome.arm_outcome` (a forged `scoring` block or host name stays the guest's
-  claim), its error text and every failure about what it sent (anything but a failed channel, `TIMEOUT` or
-  `HOST_FAILED`: a `REQUEST_REFUSED`, a reply that breaks the protocol, a refused collect), whose text may quote it,
-  `outcome.arm_error`, and the paths it did not read `outcome.unread_paths` (with `unread_paths_omitted`). `outcome.changed_paths` is the evaluator's, computed from the files and links it received;
-  `outcome.error` is the evaluator's own text.
+  claim), and the paths it did not read `outcome.unread_paths` (with `unread_paths_omitted`). `outcome.changed_paths`
+  is the evaluator's, computed from the files and links it received.
+- **Error text is split by author.** `outcome.error` holds only the evaluator's own words: a failed channel's own
+  text (`TIMEOUT`, `HOST_FAILED` with the agent's exit status), the code alone of a failure about what the guest sent,
+  and only the type of an unexpected exception. Everything the guest produced or that may quote it is
+  `outcome.arm_error`: the arm's error, an agent's refusal, a refusal for another verb (`REQUEST_REFUSED`), a reply's
+  validation text, a refused collect, an agent's standard error, and an unexpected exception's message (raised while
+  handling the guest's results, it may quote them). A `preflight_refused` event keeps the same split, `detail` and
+  `guest_detail`.
 - **`outcome.attested_by`** labels each fact with who attests it (plan v5 §4). A fact's attester is that of its
   longest labelled path prefix, and every leaf of the record has one: the `evaluator` (the case, arm, assignment,
   profile, limits, release, changed paths, scoring, score, safety, validity and the record's own fields), the

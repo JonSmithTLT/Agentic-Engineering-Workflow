@@ -84,12 +84,15 @@ DEFAULT_LIMITS = Limits()
 
 
 class TransferError(Invalid):
-    """A frame or bundle refused. ``code`` is stable: tests and the run record rely on it."""
+    """A frame or bundle refused. ``code`` is stable: tests and the run record rely on it. ``detail`` is the refusing
+    side's own words; ``guest_detail`` is text the other side produced (an agent's standard error), kept apart so a
+    record never files it as the evaluator's (PR #189 re-review, M5)."""
 
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(f"{code}: {message}")
+    def __init__(self, code: str, message: str, *, guest_detail: str = "") -> None:
+        super().__init__(f"{code}: {message}" + (f" ({guest_detail})" if guest_detail else ""))
         self.code = code
         self.detail = message
+        self.guest_detail = guest_detail
 
 
 # ---------------------------------------------------------------------------------------------- frames
@@ -604,8 +607,8 @@ class LocalTransport(Transport):
         if over.is_set():
             raise TransferError("REPLY_TOO_LARGE", f"the reply exceeds {max_reply} bytes")
         if proc.returncode != 0:
-            raise TransferError("HOST_FAILED", f"the arm-host agent exited {proc.returncode}: "
-                                f"{bytes(err[-600:]).decode('utf-8', 'replace')}")
+            raise TransferError("HOST_FAILED", f"the arm-host agent exited {proc.returncode}",
+                                guest_detail=bytes(err[-600:]).decode("utf-8", "replace"))
         return bytes(out)
 
 

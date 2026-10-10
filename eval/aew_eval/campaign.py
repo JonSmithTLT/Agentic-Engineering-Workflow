@@ -42,7 +42,7 @@ from aew_eval.canonical import sha256_of
 from aew_eval.ledger import RUN_ID, AttemptLedger
 from aew_eval.release import ReleaseLedger, RunTerms, build_bundle, run_manifest, task_bytes
 from aew_eval.schemas import Invalid
-from aew_eval.transport import Limits, Received, TransferError, Transport, receive
+from aew_eval.transport import Limits, Received, TransferError, Transport, printable, receive
 
 RUN = "aew/eval-run/v1"
 EVALUATOR, GUEST, HYPERVISOR, MODEL = "evaluator", "guest_agent", "hypervisor", "model_influenced"
@@ -55,11 +55,36 @@ class Refused(Invalid):
 
 
 class Failure(Exception):  # noqa: N818 (a step's counted failure, carried to the finalize; never escapes)
-    def __init__(self, reason_code: str, detail: str, *, guest: bool = False) -> None:
+    """``detail`` goes to ``outcome.error`` (the evaluator's words) unless ``guest`` says the detail is the arm host's
+    own or quotes it; ``guest_detail`` is always the arm host's (its standard error, say) and goes to
+    ``outcome.arm_error``."""
+
+    def __init__(self, reason_code: str, detail: str, *, guest: bool = False, guest_detail: str = "") -> None:
         super().__init__(f"{reason_code}: {detail}")
         self.reason_code = reason_code
         self.detail = detail
-        self.guest = guest  # the detail is the arm host's own text
+        self.guest = guest
+        self.guest_detail = guest_detail
+
+
+def _split(exc: BaseException) -> tuple[str, str]:
+    """An exception's text as (the evaluator's words, the guest's words). A transfer failure other than a failed
+    channel is about what the guest sent and may quote it; a failed channel's own words are the evaluator's, and
+    any text it carries from the guest (an agent's standard error) is the guest's. Any other exception's message
+    may quote data the guest sent, so only its type is the evaluator's (PR #189 re-reviews, M3 to M5)."""
+    if isinstance(exc, TransferError):
+        if exc.code in CHANNEL_FAILURES:
+            return exc.detail, exc.guest_detail
+        return exc.code, exc.detail
+    if isinstance(exc, Invalid) and getattr(exc, "evaluator_words", False):
+        return str(exc), ""
+    return type(exc).__name__, str(exc)
+
+
+class EvaluatorRefusal(Invalid):
+    """A refusal worded wholly by the evaluator, quoting nothing the guest sent."""
+
+    evaluator_words = True
 
 
 CHANNEL_FAILURES = frozenset({"TIMEOUT", "HOST_FAILED"})  # the call itself failed, not what came back
@@ -77,8 +102,9 @@ def _call(transport: Transport, verb: str, run_id: str, **kw: Any) -> Any:
         # Anything but a failed channel is about what the guest sent (a refusal for another verb, a reply that
         # breaks the protocol, a refused collect), and its text may quote the guest: it is filed under arm_error,
         # whatever the verb (PR #189 re-reviews, M3 and M4).
+        ours, theirs = _split(exc)
         raise Failure(f"RESULT_REFUSED:{exc.code}" if result_side else f"TRANSPORT_ERROR:{exc.code}",
-                      exc.detail, guest=exc.code not in CHANNEL_FAILURES) from None
+                      ours, guest_detail=theirs) from None
     if not reply.ok:
         error = reply.error or {"code": "UNKNOWN", "message": ""}
         code = error["code"]
@@ -94,7 +120,7 @@ def _established(found: dict[str, Any]) -> bool:
     passed. A claim without them is refused outright (PR #189 review)."""
     passed = bool(found["checks"]) and all(c["ok"] for c in found["checks"])
     if found["established"] and not passed:
-        raise Invalid("the arm host's preflight claims corpus isolation without checks that all passed")
+        raise EvaluatorRefusal("the arm host's preflight claims corpus isolation without checks that all passed")
     return bool(found["established"]) and passed
 
 
@@ -164,17 +190,22 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
     try:
         reply = transport.call("preflight", run_id=run_id, args={"binding": binding})
         if not reply.ok:
-            raise Invalid(f"the arm host refused its preflight: {reply.error}")
+            error = reply.error or {"code": "UNKNOWN", "message": ""}
+            raise TransferError("PREFLIGHT_REFUSED", f"{error['code']}: {error['message']}")  # the guest's words
         found = reply.result
         if found["binding"] != binding:
-            raise Invalid("the preflight answered for another binding")
+            raise EvaluatorRefusal("the preflight answered for another binding")
         if not _established(found) and (held_out or arm["kind"] != "scripted"):
-            raise Invalid(f"the arm host's preflight did not establish corpus isolation, and cell {cell} is "
+            raise EvaluatorRefusal(f"the arm host's preflight did not establish corpus isolation, and cell {cell} is "
                           f"{'held out' if held_out else 'a model arm'}: nothing is released (held-out corpus "
                           "isolation decision, §3; HOC-06, HOC-07, HOC-11)")
     except Exception as exc:  # noqa: BLE001 (a preflight that fails or refuses releases nothing)
         reason = exc.code if isinstance(exc, TransferError) else "PREFLIGHT_REFUSED"
-        releases.append(run_id, "preflight_refused", {"host": host.name, "reason": reason, "detail": str(exc)[-600:]})
+        ours, theirs = _split(exc)
+        event = {"host": host.name, "reason": reason, "detail": ours[-600:]}
+        if theirs:
+            event["guest_detail"] = printable(theirs)[-600:]  # the arm host's words, kept apart from ours
+        releases.append(run_id, "preflight_refused", event)
         raise Refused(f"preflight on {host.name}: {exc}") from None
     preflight_sha256 = sha256_of(found)
     releases.append(run_id, "preflight", {"host": host.name, "preflight_sha256": preflight_sha256,
@@ -205,12 +236,12 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
     try:
         reply = _call(transport, "release", run_id, args={"bundle_sha256": bundle.sha256}, payload=bundle.tar)
         if reply.result["bundle_sha256"] != bundle.sha256:
-            raise Failure("TRANSFER_CORRUPT", "the arm host received another bundle", guest=True)
+            raise Failure("TRANSFER_CORRUPT", "the arm host received another bundle")
         releases.append(run_id, "released", {"bundle_sha256": bundle.sha256,
                                               "run_manifest_sha256": bundle.run_manifest_sha256})
         ran = _call(transport, "run", run_id, args={"deadline_s": terms.wall_s},
                     timeout_s=terms.wall_s + limits.timeout_s).result
-        releases.append(run_id, "ran", {"base_commit": ran["base_commit"], "error": ran["error"]})
+        releases.append(run_id, "ran", {"base_commit": ran["base_commit"], "arm_error": ran["error"]})
         reply = _call(transport, "collect", run_id)
         collected.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -247,10 +278,14 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
     except Failure as exc:
         validity = {"status": "invalid_measurement", "reason_code": exc.reason_code}
         outcome["arm_error" if exc.guest else "error"] = exc.detail[-600:]
+        if exc.guest_detail:
+            outcome["arm_error"] = exc.guest_detail[-600:]
         releases.append(run_id, "failed", {"reason_code": exc.reason_code})
     except Exception as exc:  # noqa: BLE001 (the attempt is counted either way; the reason is recorded)
         validity = {"status": "invalid_measurement", "reason_code": f"EVALUATOR_ERROR:{type(exc).__name__}"}
-        outcome["error"] = str(exc)[-600:]
+        # It was raised while handling what the arm host sent, and its message may quote that: only its type is ours.
+        outcome["error"] = f"{type(exc).__name__}, while handling the arm host's results"
+        outcome["arm_error"] = printable(str(exc))[-600:]
         releases.append(run_id, "failed", {"reason_code": validity["reason_code"]})
     chain = releases.head()
     # 7. Finalize, once, in score_run's shape.

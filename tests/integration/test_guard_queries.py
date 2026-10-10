@@ -566,12 +566,12 @@ def untouched(p: Any) -> Callable[[], None]:
 
     from aew.workspace import git
 
-    root = Path(p.root)
+    project = Path(p.root)  # the test's own project repository, never this checkout
 
     def snapshot() -> tuple[Any, ...]:
-        index = root / ".git" / "index"
-        return ((root / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=root),
-                git.out("worktree", "list", "--porcelain", cwd=root), index.read_bytes() if index.exists() else b"")
+        index = project / ".git" / "index"
+        return ((project / ".aew/state/control.yaml").read_bytes(), git.out("show-ref", cwd=project),
+                git.out("worktree", "list", "--porcelain", cwd=project), index.read_bytes() if index.exists() else b"")
 
     before = snapshot()
 
@@ -727,9 +727,9 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
-    root = Path(p.root)
-    (root / "README.md").write_text("# calc\n\nMoved on.\n", encoding="utf-8", newline="\n")
-    git.out("commit", "-q", "-am", "moves the authoritative head", cwd=root)
+    project = Path(p.root)  # the test's own project repository, never this checkout
+    (project / "README.md").write_text("# calc\n\nMoved on.\n", encoding="utf-8", newline="\n")
+    git.out("commit", "-q", "-am", "moves the authoritative head", cwd=project)
     engine = Engine.discover(p.root)
     args: dict[str, Any] = {}
     answer = engine.guard_query("integrate.publish", wid, args)

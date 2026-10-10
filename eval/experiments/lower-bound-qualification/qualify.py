@@ -71,7 +71,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DEFAULT_EXPERIMENT = "lbq-v1-deepseek-v4-flash"
 EXPERIMENTS = {
     "lbq-v1-deepseek-v4-flash": HERE / "prereg.yaml",                        # the paid twin; unavailable on Zen
-    "lbq-v1-deepseek-v4-1-flash": HERE / "prereg-deepseek-v4-1-flash.yaml",  # the replacement primary (4.1)
+    "lbq-v1-deepseek-v4-1-flash": HERE / "prereg-deepseek-v4-1-flash.yaml",  # the replacement primary (4.1); its
+    #                                                   ceiling was refused by a containment defect (fixed in aba5846)
+    "lbq-v2-deepseek-v4-1-flash": HERE / "prereg-v2-deepseek-v4-1-flash.yaml",  # the replacement primary, again
     "lbq-v1-gpt-5-nano": HERE / "prereg-gpt-5-nano.yaml",                    # the next-cheaper profile
 }
 LANE_MARK = "experiment.txt"  # in a lane directory: the experiment whose runs it holds
@@ -895,21 +897,6 @@ def frozen_arm(frozen: dict[str, Any], arm_id: str) -> dict[str, Any]:
 CONTAINMENT_FAILED = "CONTAINMENT_FAILED"
 
 
-def attempt_record(ledger: Any, attempt: Any) -> dict[str, Any] | None:
-    """A finalized attempt's run record, or None (lost, or not written)."""
-    if attempt.finalized is None:
-        return None
-    path = ledger.runs / (attempt.run_id.split("/", 1)[1] + ".json")
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-
-
-def never_launched(record: dict[str, Any] | None) -> bool:
-    """An attempt the raw arm refused before any harness process existed (its containment failed): it measured the
-    arm host, not the model, and spent nothing. A lane error: it uses no retry. Only records that say so
-    (``outcome.launched`` is False) qualify; a record from before the raw arm recorded it is counted as it was."""
-    return ((record or {}).get("outcome") or {}).get("launched") is False
-
-
 def ceiling_stop(record: dict[str, Any]) -> dict[str, Any] | None:
     """A ceiling attempt that measured the infrastructure, not the model: the lane error that stops the ceiling at
     once, as it stops the floor, instead of spending every later cell's attempts and this cell's retries on it.
@@ -943,12 +930,13 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
     for entry in frozen["assignment"]["order"]:
         cell = entry["cell"]
         while True:
+            # every registered attempt counts against the cell's retries, a never-launched one too: the ledger
+            # enforces the frozen retry policy over registrations (AttemptLedger._check_retry), and so does this loop,
+            # or a cell would ask the ledger for a retry it refuses (review F1 of aba5846)
             attempts = [a for a in ledger.attempts().values() if a.registered["assignment"]["cell"] == cell]
-            # an attempt that never launched uses no retry (never_launched); every other one counts
-            counted = [a for a in attempts if not never_launched(attempt_record(ledger, a))]
             latest = max(attempts, key=lambda a: a.registered["at"]) if attempts else None
             if latest is not None and (latest.status == "valid" or latest.status not in policy["allowed_for"]
-                                       or len(counted) - 1 >= policy["max_retries"]):
+                                       or len(attempts) - 1 >= policy["max_retries"]):
                 break
             spent = spent_so_far(out, ledger, caps)
             if spent + caps[entry["arm"]] + margin > budget:
@@ -964,19 +952,21 @@ def cmd_ceiling(args: argparse.Namespace, out: Path, hidden_root: Path | None) -
             say(run=record["run_id"], validity=record["validity"], charged_usd=record["cost"].get("charged_usd"),
                 truncated=record["outcome"].get("truncated_why"))
             stop = ceiling_stop(record)
+            # this attempt was the cell's attempt len(attempts) + 1 of max_retries + 1
+            left = max(int(policy["max_retries"]) - len(attempts), 0)
+            left_text = (f"the cell has {left} attempt{'' if left == 1 else 's'} left under the frozen retry policy"
+                         + ("" if left else " (a rerun moves on to the next cell)"))
             if stop and stop["reason_code"] == CONTAINMENT_FAILED:  # the arm host, not the model: every cell would
                 raise SystemExit(                                   # fail the same way until it is fixed
                     f"refused: cell {cell}'s raw run could not be contained ({stop['detail']}). "
-                    + ("It never launched: nothing was spent and no retry was used (charged $0). "
-                       if stop["launched"] is False else "")
+                    + ("It never launched, so nothing was spent (charged $0); " if stop["launched"] is False
+                       else "")
+                    + f"it is recorded as {CONTAINMENT_FAILED} and counts as one of the cell's attempts: {left_text}. "
                     + "Fix the arm host and rerun `qualify.py ceiling`; no later cell ran")
             if stop:  # the model never acted: every later cell would fail the same way
-                left = max(int(policy["max_retries"]) - len(counted), 0)  # this attempt is attempt len(counted)+1
                 raise SystemExit(lane_error_message(
                     stop, list(frozen_arm(frozen, entry["arm"])["config"]["provider_env"]),
-                    where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP}; under the frozen retry policy the "
-                          f"cell has {left} attempt{'' if left == 1 else 's'} left"
-                          + ("" if left else " (a rerun moves on to the next cell)") + "; no later cell ran",
+                    where=f"cell {cell}'s attempt is recorded as {NO_MODEL_STEP}; {left_text}; no later cell ran",
                     again="qualify.py ceiling"))
     say(ceiling="done", ledger=str(ledger_dir), status=ledger.status(),
         spent_usd=round(spent_so_far(out, ledger, caps), 4),

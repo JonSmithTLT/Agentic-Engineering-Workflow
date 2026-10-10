@@ -1,9 +1,11 @@
 # Lower-bound qualification lane (`lbq-v1`)
 
 **Status:** prepared and dry-run; **the runs are the operator's**. They need a provider credential and spend money
-(see "Operator steps"). Three experiments, each `purpose: qualification` ("Experiments"): `lbq-v1-deepseek-v4-flash`
-(its profile became unavailable on OpenCode Zen), `lbq-v1-deepseek-v4-1-flash` (the replacement primary) and
-`lbq-v1-gpt-5-nano` (the next-cheaper profile).
+(see "Operator steps"). Four experiments, each `purpose: qualification` ("Experiments"):
+- `lbq-v1-deepseek-v4-flash`: its profile became unavailable on OpenCode Zen;
+- `lbq-v1-deepseek-v4-1-flash`: the replacement primary. Its ceiling was refused by a containment defect, now fixed;
+- `lbq-v2-deepseek-v4-1-flash`: the replacement primary again, under a new id;
+- `lbq-v1-gpt-5-nano`: the next-cheaper profile.
 
 **Governed by:**
 - the agent-effectiveness adoption record
@@ -103,17 +105,32 @@ effective profile and its state at preregistration, and the harness.
 Each profile the lane qualifies is its own experiment (the preregistration's `amendment_policy`: a new experiment id
 per profile). Each has its own preregistration, sealed by `freeze` into its own frozen record, and its own lane
 directory (`--out`), and is selected with `qualify.py --experiment <id>`. The cases, oracles, rubric, schedule seed,
-limits and budget rules are the same in all three. Only the experiment id, its question, its amendment record and the
+limits and budget rules are the same in all four. Only the experiment id, its question, its amendment record and the
 profile pins differ, plus V4.1's overshoot margin and its expected outcome (see "Cost").
 
 | Experiment | Preregistration | Frozen record (written by `freeze`) | Profile | Lane directory on the VM |
 |---|---|---|---|---|
 | `lbq-v1-deepseek-v4-flash` (the default) | `prereg.yaml` | `prereg.frozen.yaml` | `lb-deepseek-v4-flash` | `~/aew-eval/lbq-v1` |
-| `lbq-v1-deepseek-v4-1-flash` (the cost cap binds before the step limit: behaviours 4 and 5 unobserved for a case with no finished run, by the operator's choice for cost) | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
+| `lbq-v1-deepseek-v4-1-flash` (ran 2026-10-10: floor passed, every ceiling attempt refused by the containment defect; its lane is kept untouched as the record) | `prereg-deepseek-v4-1-flash.yaml` | `prereg-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v1-deepseek-v4-1-flash` |
+| `lbq-v2-deepseek-v4-1-flash` (the cost cap binds before the step limit: behaviours 4 and 5 unobserved for a case with no finished run, by the operator's choice for cost) | `prereg-v2-deepseek-v4-1-flash.yaml` | `prereg-v2-deepseek-v4-1-flash.frozen.yaml` | `lb-deepseek-v4.1-flash` | `~/aew-eval/lbq-v2-deepseek-v4-1-flash` |
 | `lbq-v1-gpt-5-nano` | `prereg-gpt-5-nano.yaml` | `prereg-gpt-5-nano.frozen.yaml` | `lb-gpt-5-nano` | `~/aew-eval/lbq-v1-gpt-5-nano` |
 
 - **An experiment id has no dots** (`aew/eval-prereg/v1`), so V4.1's id spells it `4-1`. Its profile keeps the model's
   own name.
+- **Why V4.1 has a second experiment** (the operator, 2026-10-10).
+  - What happened: `lbq-v1-deepseek-v4-1-flash`'s floor passed, but every ceiling attempt was refused before any model
+    ran, by a defect in the raw arm's containment layout (the runs and mask files beside a run in `out/work`, fixed in
+    aba5846). Those attempts were recorded at their caps and counted against the retry policy, though Zen billed about
+    $0.07 in all.
+  - The amendment policy makes a change after the first run is registered a new experiment id. Recovering v1's
+    budget would have meant recounting attempts already registered, so the operator chose a new experiment over
+    reclassifying them.
+  - `lbq-v2-deepseek-v4-1-flash` is v1's preregistration with a new id and an amendment record saying why. Its own
+    floor runs again.
+  - v1's lane is kept untouched, as the record of the failure.
+- **Nano stays `lbq-v1-gpt-5-nano`.** The amendment policy asks for a new id only for a change after an experiment's
+  first run is registered. Nano's experiment has not been frozen and has registered nothing, and the containment fix
+  changes the arm's code, not its preregistration, so its first run is its first measurement.
 - **The first experiment is unchanged.** `prereg.yaml` is byte for byte the one its lane froze; the default
   `--experiment` is still that experiment.
 - **A lane directory holds one experiment.**
@@ -241,11 +258,11 @@ so the same `--out` directory runs the floor again once the key is fixed.
 
 **A raw run refused before it launched is a lane error too.** When a ceiling attempt's containment fails (its layout
 fails the self-test or the confidentiality probe), the raw arm refuses it before any harness process exists. Its
-record says `launched: false` and it is charged $0, since nothing could have been spent. It uses none of the cell's
-retries, and the ceiling stops at once with the probe's reason, so a rerun after the arm host is fixed runs the cell
-again. A record written before `launched` existed is counted as it was; any reclassification of those records is the
-operator's decision. (`CONTAINMENT_FAILED` still counts as the preregistration defines it: an `invalid_measurement`
-in the ledger.)
+record says `launched: false` and it is charged $0, since nothing could have been spent. The ceiling stops at once
+with the probe's reason. The attempt still counts as one of its cell's attempts: it is an `invalid_measurement`
+(`CONTAINMENT_FAILED`) in the ledger, which enforces the frozen retry policy over every registered attempt, so the
+stop message says how many attempts the cell has left. A rerun after the arm host is fixed retries the cell while it
+has attempts left, and moves on to the next cell once it has none.
 
 **Run state** goes to `--out`, outside every repository: the ledger, every run's scratch directory (**with its kept
 session database**), and the floor's records. The lane's reader may extract only the preregistered fields. Retention
@@ -261,7 +278,7 @@ is enforced, not only recorded: a database past its 180 days is refused, then pu
 
 **The other experiments** have the same bounds (each its own `budget_usd` 5.00, `floor_cap_usd` 1.00 and `cap_usd`
 0.75; V4.1's overshoot margin is $0.10), and their own expected cost:
-- **`lbq-v1-deepseek-v4-1-flash`: ≈ $2–4 if runs finish early, up to ≈ $4.5–5 if most ceiling runs reach the cap**
+- **`lbq-v2-deepseek-v4-1-flash` (and v1): ≈ $2–4 if runs finish early, up to ≈ $4.5–5 if most ceiling runs reach the cap**
   (as expected: the floor's $0.1–1.0 plus six runs at about $0.78). V4.1 costs about 2× V4 per input token and 4.3×
   per output token, so a step costs about $0.02–0.03.
   - **Its $0.75 cap is expected to end ceiling runs at about 25–37 steps, before the 80-step limit.** The operator
@@ -308,7 +325,7 @@ directory (the table in "Experiments"):
 | File | What it is |
 |---|---|
 | `prereg.yaml` | the preregistration of `lbq-v1-deepseek-v4-flash` (`aew/eval-prereg/v1`), unfrozen; it holds the structured behaviour definitions |
-| `prereg-deepseek-v4-1-flash.yaml`, `prereg-gpt-5-nano.yaml` | the preregistrations of `lbq-v1-deepseek-v4-1-flash` and `lbq-v1-gpt-5-nano`: `prereg.yaml` with their own id, question, amendment record and profile pins |
+| `prereg-deepseek-v4-1-flash.yaml`, `prereg-v2-deepseek-v4-1-flash.yaml`, `prereg-gpt-5-nano.yaml` | the preregistrations of `lbq-v1-deepseek-v4-1-flash`, `lbq-v2-deepseek-v4-1-flash` and `lbq-v1-gpt-5-nano`: `prereg.yaml` with their own id, question, amendment record and profile pins (v2: v1's, with a new id and amendment record) |
 | `oracle-validation.json` | the oracles validated against the real fixture (seed fails as designed, reference passes) |
 | `profiles.yaml` | the profile records (`aew/eval-profile/v1`) |
 | `rubric.md` | the floor, the ceiling (the eight behaviours, their metrics and thresholds), correctness, the verdict |

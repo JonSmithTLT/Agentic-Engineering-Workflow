@@ -218,10 +218,17 @@ def test_on_linux_a_lane_under_home_contains_each_run_beside_its_earlier_runs(tm
     (out / "floor").mkdir()
     (out / "floor" / "floor.json").write_text("{}", encoding="utf-8")
     (home / "aew-eval" / "lbq-v1" / "out" / "floor").mkdir(parents=True)
-    script(scripts, [{"do": "write", "files": {"calc.py": FIXED}}])
+    sibling = work / "LBQ-2-raw-2" / "repo" / "transcript.txt"
+    script(scripts, [{"do": "read", "path": str(sibling)}, {"do": "write", "files": {"calc.py": FIXED}}])
     record = run_raw(tmp_path, {**config, "contain": True}, work=work, run_name="LBQ-3-raw-1")
     containment = record["outcome"]["containment"]
     assert containment["ok"], containment
     assert record["validity"]["status"] == "valid", record["outcome"]
     assert record["outcome"]["launched"] is True
     assert record["outcome"]["changed_paths"] == ["calc.py"]
+    # the model's own attempt to read the earlier run's file, from inside: refused (review N1 of aba5846)
+    steps = [json.loads(line) for t in (work / "LBQ-3-raw-1").rglob("transcript.jsonl")
+             for line in t.read_text(encoding="utf-8").splitlines() if line.strip()]
+    read = next(s["result"] for s in steps if s["do"] == "read")
+    assert read["readable"] is False, read
+    assert sibling.read_text(encoding="utf-8") == "another run\n"

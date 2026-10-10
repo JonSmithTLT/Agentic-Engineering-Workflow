@@ -841,8 +841,12 @@ sections:
       experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and
       lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash`
       (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage
-      and a second model family). The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
-      split are still next'
+      and a second model family). `lbq-v1-deepseek-v4-1-flash` ran on 2026-10-10: its floor passed, but every ceiling attempt
+      was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the
+      runs beside each run inside the runs directory''s own tmpfs; fixed, and a run refused before launch is now charged
+      nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash`
+      (the same preregistration, a new id), and kept v1''s lane as the record. The session-observable metrics wait for D2''s
+      reader; the aew arm and the evaluator/arm-host split are still next'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1204,7 +1208,8 @@ sections:
       with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`).
       Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still
       lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary,
-      and to run `opencode/gpt-5-nano#high` after it, each as its own experiment'
+      and to run `opencode/gpt-5-nano#high` after it, each as its own experiment (V4.1''s is now `lbq-v2-deepseek-v4-1-flash`,
+      after a containment defect refused its first ceiling)'
 
   - '#': F33
     Work: 'Operator-approved exact-commit push, a delivery capability: after a Ticket is accepted on its verified local

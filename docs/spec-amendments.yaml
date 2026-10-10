@@ -343,3 +343,6 @@ considered:
   - path: docs/implementation/adr/0015-project-map-storage-and-registry.md
     reason: ADR (accepted 2026-10-07); storage, identity and the registry of derived project maps under project maps v0.5
       (F22.1); places derived data under KC §5.3's rebuildable local/; no WC/KC text replaced
+  - path: docs/implementation/adr/0017-coordination-messages.md
+    reason: ADR (accepted 2026-10-10); Lead-worker coordination messages under F9-A1 v0.1 (F9, F9-A); a record kind beside
+      control state that moves knowledge, never state; no WC/KC text replaced

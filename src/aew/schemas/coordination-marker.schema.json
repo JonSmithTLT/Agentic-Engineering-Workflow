@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/coordination-marker/v1",
+  "title": "AEW coordination marker",
+  "description": "F9-A (ADR-0017; plan v4 D-31): .aew/coordination/marker.yaml, written once, create-exclusive and synced, under the control lock before the project's first thread, and never removed. Reads ask whether any thread exists with one stat of it; no write-side decision trusts it.",
+  "type": "object",
+  "required": ["schema", "created_at", "first_thread"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/coordination-marker/v1"},
+    "created_at": {"type": "string"},
+    "first_thread": {"type": "string", "pattern": "^INV-[0-9]+$"}
+  }
+}

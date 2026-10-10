@@ -113,10 +113,17 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
 PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 
 
+MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
+PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
+
+
 def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
     """``maps.pack_slices`` is the string ``"off"`` or ``structural``. YAML 1.1 reads an unquoted ``off`` (and ``no``,
     ``false``, ``on``, ``yes``, ``true``) as a boolean, which the schema's enum would refuse without saying why: name
-    the cause and the fix (PR #143 review, m1). Run before the schema, at parse and at adoption."""
+    the cause and the fix (PR #143 review, m1). Run before the schema, at parse and at adoption.
+
+    ``coordination.messaging`` is a string enum, not a boolean (F9-A plan D-15), so ``messaging: on`` or ``yes`` is
+    refused the same way, with the words to write instead."""
     maps = policy.get("maps") if isinstance(policy, dict) else None
     value = maps.get("pack_slices") if isinstance(maps, dict) else None
     if isinstance(value, bool):
@@ -125,6 +132,27 @@ def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
             f"off (or no, false, on, yes, true) as a boolean. Quote the value: pack_slices: \"{PACK_SLICES_OFF}\" (or "
             f"{PACK_SLICES_STRUCTURAL})", reason="yaml_boolean", field="maps.pack_slices",
             allowed=[PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL])
+    coordination = policy.get("coordination") if isinstance(policy, dict) else None
+    value = coordination.get("messaging") if isinstance(coordination, dict) else None
+    if isinstance(value, bool):
+        raise ValidationFailed(
+            f"{source}: coordination.messaging was read as the YAML boolean {str(value).lower()}: the switch is a "
+            f"word, not a boolean. Write messaging: {MESSAGING_ENABLED} (or {MESSAGING_DISABLED})",
+            reason="yaml_boolean", field="coordination.messaging", allowed=[MESSAGING_DISABLED, MESSAGING_ENABLED])
+
+
+def messaging(policy: dict[str, Any] | None) -> str:
+    """The coordination switch (``coordination.messaging``, F9-A plan D-15): ``disabled`` unless the policy says
+    ``enabled``. Absent policy and absent key are ``disabled``. Callers pass the adopted policy only (D-15: the switch
+    is read from adopted bytes, ``aew.engine.coordination_ops.messaging_switch``)."""
+    value = ((policy or {}).get("coordination") or {}).get("messaging")
+    return MESSAGING_ENABLED if value == MESSAGING_ENABLED else MESSAGING_DISABLED
+
+
+def presentation(policy: dict[str, Any] | None) -> str:
+    """The typed surface's presentation (``surface.presentation``, F9-A plan D-33): ``standard`` unless ``compact``."""
+    value = ((policy or {}).get("surface") or {}).get("presentation")
+    return PRESENTATION_COMPACT if value == PRESENTATION_COMPACT else PRESENTATION_STANDARD
 
 
 def pack_slices(policy: dict[str, Any] | None) -> str:

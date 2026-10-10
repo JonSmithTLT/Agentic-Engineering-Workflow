@@ -104,7 +104,7 @@ SECONDARY: dict[str, dict[str, str]] = {
 # the others, and named by the plan at those versions (PR #188 review, m5).
 PER_SUCCESS = {"cost_per_success": ("1", "cost_usd"), "wall_s_per_success": ("1", "wall_s")}
 VERSIONS = {**{k: d["version"] for k, d in SECONDARY.items()}, **{k: v for k, (v, _) in PER_SUCCESS.items()}}
-# The draws' Monte Carlo allowance beside the convolution's 7h/6 bound: about 2.5 standard errors of a percentile of Δ
+# The draws' Monte Carlo allowance beside the convolution's 7h/6 bound: about 3 standard errors of a percentile of Δ
 # at 10^6 draws (PR #188 review, m3). A sealed tolerance below the sum could refuse a correct analysis.
 MC_ALLOWANCE = 5e-4
 
@@ -415,39 +415,84 @@ def per_success(rows: Sequence[Mapping[str, Any]], field: str) -> float | None:
     return math.fsum(float(v) for v in values if v is not None) / successes
 
 
-def reconciliation_reasons(record: Mapping[str, Any], plan: Mapping[str, Any]) -> list[str]:
-    """Why the cost data are invalid, by the sealed rule (plan v5 §2.6.4, §2.6.5), from reconciliation's record:
-    stable codes, never free text (PR #188 review, M2). Under layers (c) and (b), an arm whose mismatched runs exceed
-    the sealed ``reconciliation_mismatch_fraction`` of its counted runs; under (a), which has no per-run reconciliation,
-    an arm whose partition did not reconcile. Under (c) and (b) a partition mismatch is an instrument fault that S15
-    reports, not a cost verdict. The ``usage_estimated`` share joins when the plan seals it (S18).
+def reconcile(record: Mapping[str, Any], plan: Mapping[str, Any],
+              runs: Sequence[Mapping[str, Any]]) -> tuple[list[str], dict[str, Any]]:
+    """Why the cost data are invalid, by the sealed rule of the sealed spend layer (plan v5 §2.6.4, §2.6.5), from
+    reconciliation's per-run record; and the per-arm figures it was decided on. Reasons are stable codes, never free
+    text (PR #188 review, M2), and nothing in the record certifies itself (re-review, M3):
+
+    * the layer is the plan's ``cost.spend_layer``; a record made under another is refused;
+    * under (c) and (b) the record has one entry per counted run, and its run ids must be exactly the valid A and R
+      runs analysed (the primary and the F4 cells, all counted: §2.6.4 reconciles every counted run). The analysis
+      counts the mismatches itself; an arm whose mismatched runs exceed the sealed ``reconciliation_mismatch_fraction``
+      is ``MISMATCH_FRACTION_EXCEEDED``;
+    * under (c) each entry also carries the run's proxy spend and its ``usage_estimated`` part; an arm whose estimated
+      spend exceeds the sealed ``usage_estimated_share`` of its proxy spend is ``USAGE_ESTIMATED_SHARE_EXCEEDED``
+      (re-review, m7: §5 seals the share before calibration, S18 produces the flag, S15 produces the figures);
+    * under (a), which has no per-run reconciliation, the record has no run entries, and an arm whose partition did
+      not reconcile is ``PARTITION_MISMATCH``. Under (c) and (b) a partition mismatch is an instrument fault that S15
+      reports, not a cost verdict.
 
     ``aew/m4h-reconciliation/v1`` is defined here, minimally, because slice S15, which produces it, is not built yet;
-    S15 extends it, as a new version if it changes these fields' meaning."""
+    S15 adds fields (both figures per run, §2.6.4), and a change to these fields' meaning is a new version."""
     validate(RECONCILIATION_SCHEMA, record, what="the reconciliation record")
     if record["plan_sha256"] != plan_sha256(plan):
         raise Refused("RECONCILIATION_PLAN_MISMATCH", "the reconciliation record was made under another analysis plan "
                       "than this one: reconcile under the sealed plan")
-    fraction = plan["cost"]["reconciliation_mismatch_fraction"]
-    reasons = []
+    cost = plan["cost"]
+    layer = cost["spend_layer"]
+    if record["layer"] != layer:
+        raise Refused("RECONCILIATION_LAYER_MISMATCH", f"the reconciliation record was made under spend layer "
+                      f"{record['layer']!r}, and the plan seals layer {layer!r}: reconcile under the sealed layer")
+    analysed = {r["run_id"]: r["arm"] for r in runs if r["arm"] in (TREATMENT, BASELINE)}
+    entries = record["runs"]
+    ids = [e["run_id"] for e in entries]
+    if len(set(ids)) != len(ids):
+        raise Invalid("the reconciliation record lists a run twice")
+    if layer == "a":
+        if entries:
+            raise Invalid("under spend layer (a) there is no per-run reconciliation, so the record lists no runs")
+    else:
+        if set(ids) != set(analysed):
+            missing, extra = sorted(set(analysed) - set(ids)), sorted(set(ids) - set(analysed))
+            raise Refused("RECONCILIATION_RUNS_MISMATCH", f"the reconciliation record's runs are not the analysed A "
+                          f"and R runs (missing {missing[:5]}, not analysed {extra[:5]}): reconcile exactly these runs")
+        for e in entries:
+            if e["arm"] != analysed[e["run_id"]]:
+                raise Invalid(f"the reconciliation record puts run {e['run_id']!r} in arm {e['arm']!r}")
+            has_usage = "proxy_usd" in e and "usage_estimated_usd" in e
+            if (layer == "c") != has_usage:
+                raise Invalid(f"run {e['run_id']!r}: under spend layer ({layer}) an entry "
+                              f"{'needs' if layer == 'c' else 'has no'} proxy_usd and usage_estimated_usd")
+            if has_usage and e["usage_estimated_usd"] > e["proxy_usd"]:
+                raise Invalid(f"run {e['run_id']!r}: its estimated spend exceeds its proxy spend")
+    reasons, figures = [], {}
     for arm in (TREATMENT, BASELINE):
-        a = record["arms"][arm]
-        if a["mismatched_runs"] > a["counted_runs"]:
-            raise Invalid(f"the reconciliation record has {a['mismatched_runs']} mismatched of {a['counted_runs']} "
-                          f"counted {arm} runs")
-        if record["layer"] == "a":
-            if a["partition_mismatch"]:
+        mine = [e for e in entries if e["arm"] == arm]
+        mismatched = sum(1 for e in mine if e["mismatched"])
+        fig: dict[str, Any] = {"runs": len(mine), "mismatched": mismatched,
+                               "mismatch_fraction": mismatched / len(mine) if mine else None,
+                               "partition_mismatch": record["partitions"][arm]["mismatch"]}
+        if layer == "a":
+            if fig["partition_mismatch"]:
                 reasons.append(f"PARTITION_MISMATCH:{arm}")
-        elif a["counted_runs"] and a["mismatched_runs"] / a["counted_runs"] > fraction:
+        elif mine and mismatched / len(mine) > cost["reconciliation_mismatch_fraction"]:
             reasons.append(f"MISMATCH_FRACTION_EXCEEDED:{arm}")
-    return reasons
+        if layer == "c":
+            proxy = math.fsum(e["proxy_usd"] for e in mine)
+            estimated = math.fsum(e["usage_estimated_usd"] for e in mine)
+            fig["usage_estimated_share"] = estimated / proxy if proxy > 0 else 0.0
+            if fig["usage_estimated_share"] > cost["usage_estimated_share"]:
+                reasons.append(f"USAGE_ESTIMATED_SHARE_EXCEEDED:{arm}")
+        figures[arm] = fig
+    return reasons, {"layer": layer, "arms": figures}
 
 
 def cost_axis(rows: Sequence[Mapping[str, Any]], *, ceiling: float, unresolved: Sequence[str] = ()) -> dict[str, Any]:
     """Q7 §13.6: A's cost per success over R's, against the sealed cost-ratio ceiling, on the primary cells.
 
     ``COST_UNRESOLVED`` when either arm's estimator is undefined, or ``unresolved`` holds reconciliation's codes
-    (:func:`reconciliation_reasons`). The point estimate decides; the cell-stratified bootstrap interval is reported
+    (:func:`reconcile`). The point estimate decides; the cell-stratified bootstrap interval is reported
     beside it."""
     a = per_success([r for r in rows if r["arm"] == TREATMENT], "cost_usd")
     r_ = per_success([r for r in rows if r["arm"] == BASELINE], "cost_usd")
@@ -674,7 +719,7 @@ def analyze(plan: Mapping[str, Any], runs: Sequence[Mapping[str, Any]], events: 
     valid = _check_runs(runs, plan)
     by_id = {r["run_id"]: r for r in valid}
     checked = _check_events(events, plan, by_id)
-    unresolved = reconciliation_reasons(reconciliation, plan)
+    unresolved, reconciled = reconcile(reconciliation, plan, valid)
     primary_cells = plan["cells"]["primary"]
     primary = [r for r in valid if r["cell"] in primary_cells]
     counts = cell_counts(primary, primary_cells)
@@ -689,6 +734,7 @@ def analyze(plan: Mapping[str, Any], runs: Sequence[Mapping[str, Any]], events: 
     verdict = correctness_verdict(governing["mean"], governing["lower"], governing["upper"])
     ab = [r for r in primary if r["arm"] in (TREATMENT, BASELINE)]
     cost = cost_axis(ab, ceiling=plan["cost"]["ceiling_ratio"], unresolved=unresolved)
+    cost["reconciliation"] = reconciled
     cost["bootstrap"] = bootstrap_cost_ratio(ab, replicates=plan["cost"]["bootstrap"]["replicates"],
                                              seed=plan["cost"]["bootstrap"]["seed"],
                                              numpy_version=decision["numpy_version"])

@@ -73,7 +73,8 @@
     },
     "cost": {
       "type": "object",
-      "required": ["estimator", "ceiling_ratio", "verdict_basis", "bootstrap", "reconciliation_mismatch_fraction"],
+      "required": ["estimator", "ceiling_ratio", "verdict_basis", "bootstrap", "spend_layer",
+                   "reconciliation_mismatch_fraction", "usage_estimated_share"],
       "additionalProperties": false,
       "properties": {
         "estimator": {"const": "ratio_of_totals"},
@@ -85,7 +86,9 @@
                          "replicates": {"type": "integer", "minimum": 100},
                          "seed": {"type": "integer", "minimum": 0}}
         },
-        "reconciliation_mismatch_fraction": {"type": "number", "minimum": 0, "maximum": 1}
+        "spend_layer": {"enum": ["c", "b", "a"]},
+        "reconciliation_mismatch_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "usage_estimated_share": {"type": "number", "minimum": 0, "maximum": 1}
       }
     },
     "safety": {

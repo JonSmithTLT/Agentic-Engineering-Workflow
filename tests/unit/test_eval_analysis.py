@@ -52,13 +52,25 @@ def run(plan: dict, cell: str, arm: str, i: int, accepted: bool, **over) -> dict
     return row
 
 
-def recon(plan: dict, *, layer: str = "c", a: tuple = (78, 0, False), r: tuple = (78, 0, False)) -> dict:
-    """A synthetic aew/m4h-reconciliation/v1 record: (counted runs, mismatched runs, partition mismatch) per arm."""
-    def arm(t):
-        return {"counted_runs": t[0], "mismatched_runs": t[1], "partition_mismatch": t[2]}
-
+def recon(plan: dict, rows: list[dict], *, layer: str | None = None, mismatched: dict | None = None,
+          estimated: dict | None = None, partitions: dict | None = None) -> dict:
+    """A synthetic aew/m4h-reconciliation/v1 record for the valid A and R ``rows``: the first ``mismatched[arm]`` runs
+    of an arm mismatched; under (c), each run's proxy spend its cost, ``estimated[arm]`` of it estimated."""
+    layer = layer or plan["cost"]["spend_layer"]
+    mismatched, estimated, partitions = mismatched or {}, estimated or {}, partitions or {}
+    entries, seen = [], {"A": 0, "R": 0}
+    if layer != "a":
+        for r in rows:
+            if r["arm"] not in ("A", "R") or r["validity"] != "valid":
+                continue
+            e = {"run_id": r["run_id"], "arm": r["arm"], "mismatched": seen[r["arm"]] < mismatched.get(r["arm"], 0)}
+            seen[r["arm"]] += 1
+            if layer == "c":
+                e["proxy_usd"] = r["cost_usd"]
+                e["usage_estimated_usd"] = r["cost_usd"] * estimated.get(r["arm"], 0.0)
+            entries.append(e)
     return {"schema": "aew/m4h-reconciliation/v1", "plan_sha256": analysis.plan_sha256(plan), "layer": layer,
-            "arms": {"A": arm(a), "R": arm(r)}}
+            "runs": entries, "partitions": {arm: {"mismatch": partitions.get(arm, False)} for arm in ("A", "R")}}
 
 
 def fast(plan: dict) -> dict:
@@ -270,7 +282,7 @@ def test_a_critical_failure_outside_the_primary_a_and_r_runs_reaches_the_safety_
         import numpy  # noqa: F401
     except ImportError:
         pytest.skip(NUMPY_REASON)
-    record = analysis.analyze(plan, rows, events, recon(plan))
+    record = analysis.analyze(plan, rows, events, recon(plan, rows))
     assert record["safety"]["A"] == {"verdict": analysis.HARM, "cf_a": 1, "cf_b": 0, "cf_b_primary": 0}
     assert record["safety"]["R+"]["verdict"] == analysis.HARM
     assert record["safety"]["R"]["verdict"] == analysis.NO_SIGNAL
@@ -371,30 +383,93 @@ def test_a_crosscheck_tolerance_below_its_own_bound_is_refused():
 
 
 def test_cost_is_unresolved_only_by_the_sealed_reconciliation_rule():
-    # PR #188 review, M2: no free-text reason; reconciliation's record and the sealed fraction decide.
-    plan = draft_plan()                          # reconciliation_mismatch_fraction 0.05
-    assert analysis.reconciliation_reasons(recon(plan), plan) == []
-    assert analysis.reconciliation_reasons(recon(plan, a=(100, 5, False)), plan) == []          # at the fraction
-    assert analysis.reconciliation_reasons(recon(plan, a=(100, 6, False)), plan) == ["MISMATCH_FRACTION_EXCEEDED:A"]
-    assert analysis.reconciliation_reasons(recon(plan, r=(78, 78, True)), plan) == ["MISMATCH_FRACTION_EXCEEDED:R"]
+    # PR #188 review, M2: no free-text reason; the sealed layer, fraction and share decide, on per-run entries the
+    # analysis counts itself (re-review, M3 and m7).
+    plan = draft_plan()          # layer (c), mismatch fraction 0.05, usage_estimated share 0.05
+    rows = campaign(plan, [6] * 6, [6] * 6)              # 82 valid A runs and 82 valid R runs, F4 included
+    valid = [r for r in rows if r["validity"] == "valid"]
+
+    def reasons(record, p=plan):
+        return analysis.reconcile(record, p, valid)[0]
+
+    assert reasons(recon(plan, rows)) == []
+    assert reasons(recon(plan, rows, mismatched={"A": 4})) == []                  # 4/82 is within 0.05
+    assert reasons(recon(plan, rows, mismatched={"A": 5})) == ["MISMATCH_FRACTION_EXCEEDED:A"]   # 5/82 is not
+    assert reasons(recon(plan, rows, mismatched={"R": 82})) == ["MISMATCH_FRACTION_EXCEEDED:R"]
+    figures = analysis.reconcile(recon(plan, rows, mismatched={"A": 5}), plan, valid)[1]["arms"]["A"]
+    assert figures["runs"] == 82 and figures["mismatched"] == 5
+    # Under (c), the usage_estimated share of an arm's proxy spend is the second input (plan v5 §2.6.4).
+    assert reasons(recon(plan, rows, estimated={"A": 0.04})) == []
+    assert reasons(recon(plan, rows, estimated={"A": 0.4})) == ["USAGE_ESTIMATED_SHARE_EXCEEDED:A"]
     # Under (c) and (b) a partition mismatch is an instrument fault, reported, not a verdict; under (a) it decides.
-    assert analysis.reconciliation_reasons(recon(plan, a=(78, 0, True)), plan) == []
-    assert analysis.reconciliation_reasons(recon(plan, layer="a", a=(78, 0, True)), plan) == ["PARTITION_MISMATCH:A"]
-    other = recon(plan)
+    assert reasons(recon(plan, rows, partitions={"A": True})) == []
+    plan_a = copy.deepcopy(plan)
+    plan_a["cost"]["spend_layer"] = "a"
+    assert reasons(recon(plan_a, rows, partitions={"A": True}), plan_a) == ["PARTITION_MISMATCH:A"]
+    plan_b = copy.deepcopy(plan)
+    plan_b["cost"]["spend_layer"] = "b"
+    assert reasons(recon(plan_b, rows, mismatched={"R": 5}), plan_b) == ["MISMATCH_FRACTION_EXCEEDED:R"]
+    other = recon(plan, rows)
     other["plan_sha256"] = "0" * 64
     with pytest.raises(Refused) as exc:
-        analysis.reconciliation_reasons(other, plan)
+        reasons(other)
     assert exc.value.code == "RECONCILIATION_PLAN_MISMATCH"
-    prose = recon(plan)
+    prose = recon(plan, rows)
     prose["reasons"] = ["anything"]
     with pytest.raises(Invalid):
-        analysis.reconciliation_reasons(prose, plan)
-    impossible = recon(plan, a=(5, 6, False))
-    with pytest.raises(Invalid, match="mismatched"):
-        analysis.reconciliation_reasons(impossible, plan)
+        reasons(prose)
     with pytest.raises(SystemExit):              # the CLI has no override of its own
         analysis.main(["analyze", "--plan", "p", "--runs", "r", "--events", "e", "--cost-unresolved", "anything",
                        "--out", "o"])
+
+
+def test_the_reconciliation_record_never_certifies_its_own_layer_or_runs():
+    # The re-review's repro (PR #188, M3): a record cannot choose its layer, nor claim counts for runs it does not list.
+    plan = draft_plan()
+    rows = campaign(plan, [6] * 6, [6] * 6)
+    valid = [r for r in rows if r["validity"] == "valid"]
+    # 1. Its own layer: an (a) record with a partition mismatch, under a plan sealed at (c), is refused.
+    with pytest.raises(Refused) as exc:
+        analysis.reconcile(recon(plan, rows, layer="a", partitions={"A": True}), plan, valid)
+    assert exc.value.code == "RECONCILIATION_LAYER_MISMATCH"
+    # 2. Counts unrelated to the runs: a record listing one run, or runs that were not analysed, is refused.
+    one = recon(plan, rows, mismatched={"A": 1})
+    one["runs"] = one["runs"][:1]
+    with pytest.raises(Refused) as exc:
+        analysis.reconcile(one, plan, valid)
+    assert exc.value.code == "RECONCILIATION_RUNS_MISMATCH"
+    # 3. Dilution: padding the record with runs that were not analysed is refused, so the denominator is the real one.
+    padded = recon(plan, rows, mismatched={"A": 6})
+    padded["runs"] += [{"run_id": f"ghost-{i}", "arm": "A", "mismatched": False, "proxy_usd": 1.0,
+                        "usage_estimated_usd": 0.0} for i in range(10_000)]
+    with pytest.raises(Refused) as exc:
+        analysis.reconcile(padded, plan, valid)
+    assert exc.value.code == "RECONCILIATION_RUNS_MISMATCH"
+    assert analysis.reconcile(recon(plan, rows, mismatched={"A": 6}), plan, valid)[0] == [
+        "MISMATCH_FRACTION_EXCEEDED:A"]
+    # A run listed twice, in the wrong arm, or without its layer's figures is refused too.
+    twice = recon(plan, rows)
+    twice["runs"].append(dict(twice["runs"][0]))
+    with pytest.raises(Invalid, match="twice"):
+        analysis.reconcile(twice, plan, valid)
+    swapped = recon(plan, rows)
+    swapped["runs"][0]["arm"] = "R" if swapped["runs"][0]["arm"] == "A" else "A"
+    with pytest.raises(Invalid, match="in arm"):
+        analysis.reconcile(swapped, plan, valid)
+    bare = recon(plan, rows)
+    del bare["runs"][0]["usage_estimated_usd"]
+    with pytest.raises(Invalid, match="needs proxy_usd"):
+        analysis.reconcile(bare, plan, valid)
+    over = recon(plan, rows)
+    over["runs"][0]["usage_estimated_usd"] = over["runs"][0]["proxy_usd"] + 1
+    with pytest.raises(Invalid, match="exceeds"):
+        analysis.reconcile(over, plan, valid)
+    plan_a = copy.deepcopy(plan)
+    plan_a["cost"]["spend_layer"] = "a"
+    listed = recon(plan_a, rows)
+    listed["runs"] = recon(plan, rows)["runs"]
+    with pytest.raises(Invalid, match="no per-run"):
+        analysis.reconcile(listed, plan_a, valid)
 
 
 def test_a_reason_string_never_turns_a_resolved_cost_unresolved():
@@ -404,10 +479,11 @@ def test_a_reason_string_never_turns_a_resolved_cost_unresolved():
     plan["cost"]["ceiling_ratio"] = 2.5
     plan["cost"]["bootstrap"]["replicates"] = 200
     rows = campaign(plan, [10] * 6, [5] * 6)
-    assert analysis.analyze(plan, rows, [], recon(plan))["headline"].endswith(analysis.WITHIN)
-    exceeded = analysis.analyze(plan, rows, [], recon(plan, a=(78, 10, False)))
+    assert analysis.analyze(plan, rows, [], recon(plan, rows))["headline"].endswith(analysis.WITHIN)
+    exceeded = analysis.analyze(plan, rows, [], recon(plan, rows, mismatched={"A": 10}))
     assert exceeded["cost"]["verdict"] == analysis.UNRESOLVED
     assert exceeded["cost"]["unresolved_reasons"] == ["MISMATCH_FRACTION_EXCEEDED:A"]
+    assert exceeded["cost"]["reconciliation"]["arms"]["A"]["mismatched"] == 10
     assert "cost_unresolved" not in inspect.signature(analysis.analyze).parameters
 
 
@@ -416,17 +492,17 @@ def test_an_unadjudicated_critical_failure_refuses_the_analysis():
     rows = campaign(plan, [6] * 6, [6] * 6)
     pending = [{"id": "cf1", "run_id": rows[1]["run_id"], "severity": "CF-A", "adjudicated": False}]
     with pytest.raises(Refused) as exc:
-        analysis.analyze(plan, rows, pending, recon(plan))
+        analysis.analyze(plan, rows, pending, recon(plan, rows))
     assert exc.value.code == "CF_UNADJUDICATED"
     unknown = [{"id": "cf2", "run_id": rows[20]["run_id"], "severity": "CF-B", "entry": "x", "adjudicated": True}]
     with pytest.raises(Invalid, match="not a sealed CF-B entry"):
-        analysis.analyze(plan, rows, unknown, recon(plan))
+        analysis.analyze(plan, rows, unknown, recon(plan, rows))
     accepted = [{"id": "cf3", "run_id": rows[0]["run_id"], "severity": "CF-A", "adjudicated": True}]
     assert rows[0]["accepted"]
     with pytest.raises(Invalid, match="rescore"):
-        analysis.analyze(plan, rows, accepted, recon(plan))
+        analysis.analyze(plan, rows, accepted, recon(plan, rows))
     with pytest.raises(Invalid, match="appears twice"):
-        analysis.analyze(plan, rows + [rows[0]], [], recon(plan))
+        analysis.analyze(plan, rows + [rows[0]], [], recon(plan, rows))
 
 
 def test_the_analysis_refuses_when_the_draws_and_the_exact_check_disagree(monkeypatch):
@@ -434,7 +510,8 @@ def test_the_analysis_refuses_when_the_draws_and_the_exact_check_disagree(monkey
     monkeypatch.setattr(analysis, "governing_interval",
                         lambda *a, **k: {"mean": 0.5, "lower": 0.4, "upper": 0.6, "draws": analysis.DRAWS})
     with pytest.raises(Refused) as exc:
-        analysis.analyze(plan, campaign(plan, [6] * 6, [6] * 6), [], recon(plan))
+        rows = campaign(plan, [6] * 6, [6] * 6)
+        analysis.analyze(plan, rows, [], recon(plan, rows))
     assert exc.value.code == "CROSSCHECK_DISAGREES"
 
 
@@ -459,7 +536,7 @@ def test_an_analysis_never_edits_a_run_record(tmp_path, monkeypatch):
     paths = {"plan": tmp_path / "plan.json", "runs": tmp_path / "runs.jsonl", "events": tmp_path / "cf.jsonl",
              "reconciliation": tmp_path / "reconciliation.json"}
     paths["plan"].write_text(json.dumps(plan), encoding="utf-8")
-    paths["reconciliation"].write_text(json.dumps(recon(plan)), encoding="utf-8")
+    paths["reconciliation"].write_text(json.dumps(recon(plan, rows)), encoding="utf-8")
     paths["runs"].write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     paths["events"].write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
     before = {k: hashlib.sha256(p.read_bytes()).hexdigest() for k, p in paths.items()}
@@ -480,7 +557,7 @@ def test_an_analysis_never_edits_a_run_record(tmp_path, monkeypatch):
     assert rows == in_memory
     record = json.loads(out.read_text(encoding="utf-8"))
     assert record["runs_sha256"] and record["safety"]["R"]["verdict"] == analysis.CONCERN
-    assert record["reconciliation_sha256"] == analysis.sha256_of(recon(plan))
+    assert record["reconciliation_sha256"] == analysis.sha256_of(recon(plan, rows))
     # A second analysis never overwrites the first, nor any input.
     first = out.read_bytes()
     assert analysis.main(argv) == 1
@@ -614,7 +691,8 @@ def test_a_scored_campaign_gets_one_correctness_and_one_cost_verdict():
     plan = draft_plan()
     plan["cost"]["ceiling_ratio"] = 2.5
     plan["cost"]["bootstrap"]["replicates"] = 200
-    record = analysis.analyze(plan, campaign(plan, [10] * 6, [5] * 6), [], recon(plan))
+    rows = campaign(plan, [10] * 6, [5] * 6)
+    record = analysis.analyze(plan, rows, [], recon(plan, rows))
     assert record["headline"] == f"{analysis.BETTER} / {analysis.WITHIN}"
     assert record["correctness"]["draws"] == analysis.DRAWS
     assert record["u3"]["flag"] is False

@@ -2,28 +2,36 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/m4h-reconciliation/v1",
   "title": "Cost reconciliation's verdict inputs for the analysis (F19 plan v5 §2.6.4 and §2.6.5; slices S15 and S11)",
-  "description": "The minimal record the analysis needs to decide COST_UNRESOLVED by the sealed rule, defined by S11 before S15 (which produces it) exists. Per arm: the counted runs reconciled, how many fell outside their tolerance, and whether the arm's partition reconciled. The analysis applies the sealed reconciliation_mismatch_fraction under layers (c) and (b) and the partition result under (a); it accepts no free-text reason. S15 may add fields; a change to these fields' meaning is a new version.",
+  "description": "The minimal record the analysis needs to decide COST_UNRESOLVED by the sealed rule, defined by S11 before S15 (which produces it) exists. Nothing in it certifies itself: its layer must equal the analysis plan's sealed spend layer, and under layers (c) and (b) it lists every counted A and R run analysed, exactly, each reconciled or mismatched (under (c) with its proxy spend and the usage_estimated part of it); the analysis counts mismatches and shares itself against the sealed fraction and share. Under (a) it lists no runs, and each arm's partition result decides. S15 adds fields (both figures per run); a change to these fields' meaning is a new version.",
   "type": "object",
-  "required": ["schema", "plan_sha256", "layer", "arms"],
+  "required": ["schema", "plan_sha256", "layer", "runs", "partitions"],
   "additionalProperties": false,
   "properties": {
     "schema": {"const": "aew/m4h-reconciliation/v1"},
     "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "layer": {"enum": ["c", "b", "a"]},
-    "arms": {
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["run_id", "arm", "mismatched"], "additionalProperties": false,
+        "properties": {
+          "run_id": {"type": "string", "minLength": 1},
+          "arm": {"enum": ["A", "R"]},
+          "mismatched": {"type": "boolean"},
+          "proxy_usd": {"type": "number", "minimum": 0},
+          "usage_estimated_usd": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "partitions": {
       "type": "object", "required": ["A", "R"], "additionalProperties": false,
-      "properties": {"A": {"$ref": "#/$defs/arm"}, "R": {"$ref": "#/$defs/arm"}}
+      "properties": {"A": {"$ref": "#/$defs/partition"}, "R": {"$ref": "#/$defs/partition"}}
     }
   },
   "$defs": {
-    "arm": {
-      "type": "object", "required": ["counted_runs", "mismatched_runs", "partition_mismatch"],
-      "additionalProperties": false,
-      "properties": {
-        "counted_runs": {"type": "integer", "minimum": 0},
-        "mismatched_runs": {"type": "integer", "minimum": 0},
-        "partition_mismatch": {"type": "boolean"}
-      }
+    "partition": {
+      "type": "object", "required": ["mismatch"], "additionalProperties": false,
+      "properties": {"mismatch": {"type": "boolean"}}
     }
   }
 }

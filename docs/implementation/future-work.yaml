@@ -942,7 +942,15 @@ sections:
       the session-observable half. The session-observable metrics wait for D2''s reader; the aew arm and the evaluator/arm-host
       split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm
       (arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged: before MS5b, every `aew harness send` is refused while
-      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge'
+      messaging is on (HS1, register E55), so such an arm would silently lose the Lead''s nudge. **The M4-H instrument (the
+      F19 M4-H instrument plan v5, slices S0 to S18; note layout from 2026-10-10):** each slice''s progress is its own paragraph
+      of [implementation-status.md](implementation-status.md)''s section "The evaluation instrument (register F19)", so
+      slices landing in parallel never edit this cell; this row keeps the decisions and gates. **S4 built (2026-10-10):**
+      the evaluator/arm-host split''s core ([ADR-0018](adr/0018-evaluator-arm-host-split.md), ledger EAS): a cell released
+      to an arm host through a transport, registered before its bundle leaves, collected under hostile receive and finalized
+      for deferred scoring on the evaluator, with a hash-chained release ledger and the run manifest `aew/m4h-run-manifest/v1`;
+      scripted arm only until the run supervisor (S8), and no held-out case released until S5''s preflight can establish
+      isolation'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

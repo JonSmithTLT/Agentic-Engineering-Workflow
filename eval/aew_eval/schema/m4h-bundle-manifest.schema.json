@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-bundle-manifest/v1",
+  "title": "The manifest of a bundle crossing between the evaluator and an arm host (ADR-0018 D5)",
+  "description": "`MANIFEST.json` at the root of a release or result tar, written by the side that packs it: every regular file with its SHA-256 and size, and every link as data (its target text), sorted by path. Directories are implied. The bundle's hash is the SHA-256 of this file's canonical bytes; the receiving side recomputes it from what it received and refuses a mismatch (TRANSFER_CORRUPT).",
+  "type": "object",
+  "required": ["schema", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/m4h-bundle-manifest/v1"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"type": "object", "required": ["path", "kind", "sha256", "size"], "additionalProperties": false,
+           "properties": {"path": {"type": "string", "minLength": 1}, "kind": {"const": "file"},
+                          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                          "size": {"type": "integer", "minimum": 0}}},
+          {"type": "object", "required": ["path", "kind", "target"], "additionalProperties": false,
+           "properties": {"path": {"type": "string", "minLength": 1}, "kind": {"const": "link"},
+                          "target": {"type": "string"}}}
+        ]
+      }
+    }
+  }
+}

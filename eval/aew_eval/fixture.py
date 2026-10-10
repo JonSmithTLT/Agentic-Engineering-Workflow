@@ -197,16 +197,22 @@ def build(snap: Snapshot, repo: Path, *, seeded: bool = False) -> dict[str, byte
     """The starting point as a fresh one-commit git repository at ``repo``, written from the snapshot (never from
     disk again). Returns the files it holds, by relative path, for :func:`changed_paths`."""
     files = starting_files(snap, seeded=seeded)
+    return build_files(files, repo, f"{snap.case.id}: starting point" + (" (seeded)" if seeded else ""))
+
+
+def build_files(files: dict[str, bytes], repo: Path, message: str) -> dict[str, bytes]:
+    """``files`` as a fresh one-commit git repository at ``repo``: :func:`build`'s second half, which an arm host
+    runs on the starting files a release bundle carried (ADR-0018), with no case manifest at hand."""
     if repo.exists():
         raise Invalid(f"{repo} exists: a fixture is built into a fresh directory")
     repo.mkdir(parents=True)
     for rel, data in files.items():
-        dest = repo / rel
+        dest = repo / safe_relative(rel, "a starting file")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
     git(repo, "init", "-q", "--template=", "-b", "main")
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--no-verify", "-m", f"{snap.case.id}: starting point" + (" (seeded)" if seeded else ""))
+    git(repo, "commit", "-q", "--no-verify", "-m", message)
     return files
 
 

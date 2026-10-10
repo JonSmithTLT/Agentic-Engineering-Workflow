@@ -3,15 +3,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { Buffer } from 'node:buffer';
-import ts from 'typescript';
-import { URL, pathToFileURL } from 'node:url';
-async function loadProjector(file) {
-  const location = pathToFileURL(path.resolve(file));
-  const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022}}).outputText
-    .replace(/from (['"])(\.[^'"]+)\1/g, (_match, quote, reference) => `from ${quote}${new URL(reference + '.ts', location).href}${quote}`);
-  return import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'));
-}
+import { URL } from 'node:url';
+import { loadProjector } from './load-projector.mjs';
 const { DemoProjector } = await loadProjector('src/api/mock/projector.ts');
 const { JournalProjector, previewBase } = await loadProjector('src/api/preview/journal/projector.ts');
 const { InvestigationProjector, investigationBase } = await loadProjector('src/api/preview/investigation/projector.ts');

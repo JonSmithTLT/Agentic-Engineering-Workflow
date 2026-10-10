@@ -95,6 +95,13 @@ class GateUnsatisfied(IllegalTransition):
     code = "GATE_UNSATISFIED"
 
 
+class DispositionRequired(GateUnsatisfied):
+    """An ingest would advance a Ticket past a finding or claim that policy marks ``requires_disposition`` and the Lead
+    has not disposed of (M4-E plan v3 §2.4): a gate input, shared by the primitive and the stage."""
+
+    code = "DISPOSITION_REQUIRED"
+
+
 class DependencyUnsatisfied(IllegalTransition):
     code = "DEPENDENCY_UNSATISFIED"
 

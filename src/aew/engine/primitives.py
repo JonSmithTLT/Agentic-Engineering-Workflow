@@ -71,6 +71,22 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # (`harness_process`). Each is observed (test_a_cancellations_effects_are_declared; PR #177 review, finding 1).
     PrimitiveSpec("work.transition", MECHANICAL, (), ("gates",), (),
                   "control_state+workspace+credential+harness_process", "expected_revision", "work.transition"),
+    # A mutating Ticket's report, accepted (M4-E E5b: declared with `ticket_request_verification`, plan v3 E5). The
+    # acceptance is the Lead's; its legality is the ingest's own guard, `DISPOSITION_REQUIRED` included (§2.4). It
+    # completes the reporter's invocation, revoking its credential (`credential`), and a run still live under that
+    # credential is ended by its supervisor (`harness_process`); the reporter shares the Ticket's workspace, so no
+    # worktree is removed. Each is observed (test_declared_effects_cover_observed_effects).
+    PrimitiveSpec("review.ingest", JUDGMENT_BEARING, ("accept_review_evidence",), ("gates", "guardrails", "roles"),
+                  ("review",), "control_state+credential+harness_process", "expected_revision", "review.ingest"),
+    # The Ticket-scope acceptance of a verification report (`verify ingest` with the Ticket's scope). Declared in E5b
+    # with the same guard rule; `ticket_prepare` (E6a) is the first stage to run it.
+    PrimitiveSpec("verify.ingest", JUDGMENT_BEARING, ("accept_verification",), ("gates", "checks", "guardrails"),
+                  ("verification",), "control_state+credential+harness_process", "expected_revision", "verify.ingest"),
+    # The Lead's disposition of a finding, claim or anomaly (M4-E E5b; plan v3 §2.4): one transaction under the
+    # caller's expected revision, through `resolve` or `aew work dispose`. Always a judgment; it never resolves a
+    # required finding and never moves a unit.
+    PrimitiveSpec("work.dispose", JUDGMENT_BEARING, ("disposition",), ("gates",), (), "control_state",
+                  "expected_revision", None),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
@@ -135,6 +151,7 @@ NOT_STEPS: dict[str, str] = {
     # F9-A plan v4 D-17 (v1 review F6): `message_send` has no stage planner and is never journaled.
     "message.send": "it commits nothing (a coordination message is recorded on its thread, not in a transition)",
     "stage.resolve": "it resolves another stage's journal; a stage never runs inside one",
+    "work.dispose": "a disposition is one judgment in one transaction, made through `resolve`: never a stage step",
 }
 # Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
 # says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).

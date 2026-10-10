@@ -257,8 +257,8 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
         stopped = {"at": t.name, "boundary": boundary_of(stale), "error": _error(stale)}
     else:
         try:
-            planner = STAGES.get(t.name)
-            payload = run_stage(call, t, planner(call.a)) if planner is not None else RUNNERS[t.name](call)
+            payload = (run_stage(call, t, stage.plan_for(engine, t.name, call.a)) if t.name in STAGES
+                       else RUNNERS[t.name](call))
         except errors.AEWError as refusal:
             at = call.steps[-1]["primitive"] if call.steps else t.name
             stopped = {"at": at, "boundary": boundary_of(refusal), "error": _error(refusal)}

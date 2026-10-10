@@ -27,6 +27,7 @@ from collections.abc import Callable
 from typing import Any
 
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN
+from aew.errors import AEWError
 from aew.surface import contract
 
 RESOLVE_STAGE = "RESOLVE_STAGE"  # an unfinished stage holds the subject: `resolve` it first (the projection's decision)
@@ -94,6 +95,27 @@ STAGES: dict[str, tuple[StepArgs, ...]] = {
 APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], bool]]] = {
     "ticket_prepare": {4: _verifier_mode, 5: _verifier_mode},
 }
+# The request stages launch every card the effective gates require (plan v3 E5): their dispatch step (and the launch
+# after it) repeats once per card, by stage: (that step, the role slot). The cards are the policy's now
+# (:func:`stage_cards`); each card's dispatch is asked its own decision, and the step answers for all of them.
+CARDS: dict[str, tuple[int, str]] = {"ticket_request_review": (2, "review"),
+                                     "ticket_request_verification": (3, "verify")}
+CARD_CHOICE_REQUIRED = "CARD_CHOICE_REQUIRED"  # a required gate several cards (or none) satisfy: the Lead staffs it
+
+
+def card_args(base: dict[str, Any], card: str | None) -> dict[str, Any]:
+    """A per-card dispatch's guard arguments: the step's, with the card (``None``: the decision picks it)."""
+    return {**base, **({"card": card} if card is not None else {})}
+
+
+def stage_cards(engine: Any, stage: str, arguments: dict[str, Any], *,
+                state: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The cards request stage ``stage`` launches for ``arguments`` now: ``{"cards": [...], "unresolved": [...]}``
+    (``Engine.stage_cards``). No card pending is one dispatch whose decision picks the card (``[None]``), as the
+    dispatch does without a card."""
+    _n, slot = CARDS[stage]
+    found = engine.stage_cards(arguments.get("work_id"), slot, state=state)
+    return {"cards": list(found["cards"]) or [None], "unresolved": list(found["unresolved"])}
 
 
 # ---------------------------------------------------------------------------------------------- produced inputs
@@ -173,6 +195,29 @@ def _held(t: contract.Tool, arguments: dict[str, Any], state: dict[str, Any]) ->
             for sid, si in sorted((state.get("stage_intents") or {}).items()) if si["subject"]["id"] == subject]
 
 
+def _per_card(engine: Any, stage: str, arguments: dict[str, Any], current: dict[str, Any], scratch: dict[str, Any],
+              primitive: str, work_id: str | None, args: dict[str, Any]) -> dict[str, Any]:
+    """A request stage's dispatch step: each card's decision on the state the earlier steps leave, BLOCKED when any
+    card's is, UNKNOWN when any cannot be asked; BLOCKED with ``CARD_CHOICE_REQUIRED`` when a required gate has no
+    single card (the planner refuses the call then too: ``stage.plan_for``)."""
+    try:
+        found = stage_cards(engine, stage, arguments, state=current)
+    except AEWError as err:  # not a guard's answer (an integrity failure): the stage is UNKNOWN, never BLOCKED
+        return {"availability": UNKNOWN, "reason_codes": [err.code], "blocking_conditions": [], "cards": []}
+    if found["unresolved"]:
+        gates = ", ".join(u["gate"] for u in found["unresolved"])
+        return {"availability": BLOCKED, "reason_codes": [CARD_CHOICE_REQUIRED], "cards": [],
+                "blocking_conditions": [{"code": CARD_CHOICE_REQUIRED,
+                                         "message": f"no single card satisfies {gates}: staff the slot first (`aew "
+                                                    "work staff`), a recorded choice",
+                                         "details": {"unresolved": found["unresolved"]}}]}
+    answers = [engine.guard_query(primitive, work_id, card_args(args, card), state=scratch) for card in found["cards"]]
+    found_at = [a["availability"] for a in answers]
+    overall = BLOCKED if BLOCKED in found_at else UNKNOWN if UNKNOWN in found_at else AVAILABLE
+    return {"availability": overall, "reason_codes": sorted({c for a in answers for c in a["reason_codes"]}),
+            "blocking_conditions": [b for a in answers for b in a["blocking_conditions"]], "cards": found["cards"]}
+
+
 def migrated(stage: str) -> bool:
     return stage in STAGES
 
@@ -223,6 +268,10 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
         if scratch is None:
             steps.append({**entry, "availability": UNKNOWN, "reason_codes": [INPUT_NOT_PRODUCED],
                           "blocking_conditions": [], "not_produced": [contract.CANDIDATE]})
+            done[n] = (primitive, args)
+            continue
+        if stage in CARDS and n == CARDS[stage][0]:  # one decision per card the stage launches (M4-E E5b)
+            steps.append({**entry, **_per_card(engine, stage, arguments, current, scratch, primitive, work_id, args)})
             done[n] = (primitive, args)
             continue
         answer = engine.guard_query(primitive, work_id, args, state=scratch)

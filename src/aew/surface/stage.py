@@ -57,7 +57,8 @@ if TYPE_CHECKING:
     from aew.surface.run import Call
 
 StepRunner = Callable[["Call", dict[str, Any], int], dict[str, Any]]  # (call, step arguments, expect_rev) -> output
-Planner = Callable[[dict[str, Any]], list[dict[str, Any]]]  # the call's arguments -> [{primitive, args}]
+# The call's arguments -> [{primitive, args}]; a request stage's planner also takes the cards it launches (E5b).
+Planner = Callable[..., list[dict[str, Any]]]
 
 STOP_ATTEMPTS = 3  # recording a stop is the journal's bookkeeping, not a step: it follows the revision a few times
 
@@ -94,6 +95,19 @@ def _transition(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
                                     reason=a.get("reason"))
 
 
+def _invoke(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """A reviewer or verifier for one card (M4-E E5b), made with ``launch``: its run 1 goes to its supervisor as the
+    assignment's does (:func:`_assign`)."""
+    out = c.engine.invoke_create(token=c.token(), expect_rev=rev, work_id=a["work_id"], role=a.get("role"),
+                                 card=a.get("card"), scope=a.get("scope") or "ticket",
+                                 execution_profile=a.get("execution"), launch=launches(a))
+    return c.engine.launch_dispatched(out) if launches(a) else out
+
+
+def _review_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    return c.engine.review_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"])
+
+
 def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     """A launch never runs as a step of its own: its dispatch's commit records it (``covers``), and its dispatch's step
     runner hands its run to the supervisor. Reaching this is a plan the journal would refuse at its opening."""
@@ -103,7 +117,8 @@ def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 
 STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign": _assign, "work.create": _create,
                                        "plan.propose": _propose, "work.transition": _transition,
-                                       "dispatch.launch": _covered}
+                                       "dispatch.launch": _covered, "invoke.create.mutating": _invoke,
+                                       "review.ingest": _review_ingest}
 
 
 # ---------------------------------------------------------------------------------------------- the Ticket stages
@@ -130,8 +145,67 @@ def _plan_start(a: dict[str, Any]) -> list[dict[str, Any]]:
             {"primitive": "work.transition", "args": transition}]
 
 
-# The built stage tools and their planners (E5a builds the first two; tests register probe stages here too).
-STAGES: dict[str, Planner] = {"ticket_draft": _plan_draft, "ticket_start": _plan_start}
+def _per_card(a: dict[str, Any], dispatch: dict[str, Any] | None, launch: dict[str, Any] | None,
+              cards: list[str | None] | None) -> list[dict[str, Any]]:
+    """A request stage's dispatches: per card, the invocation made with ``launch`` and its run 1 (``dispatch.launch``,
+    recorded in its commit), each card's guard arguments as availability asks them (``availability.card_args``).
+    ``None``: one dispatch whose decision picks the card, as availability asks it without cards."""
+    execution = {"execution": a["execution"]} if "execution" in a else {}
+    out: list[dict[str, Any]] = []
+    for card in cards if cards is not None else [None]:
+        out += [{"primitive": "invoke.create.mutating", "args": {**SA.card_args(dispatch or {}, card), "launch": True,
+                                                                **execution}},
+                {"primitive": "dispatch.launch", "args": launch}]
+    return out
+
+
+def _plan_request_review(a: dict[str, Any], cards: list[str | None] | None = None) -> list[dict[str, Any]]:
+    """``ticket_request_review`` (M4-E E5b): RUNNING -> REVIEW_PENDING, then a reviewer per card the effective gates
+    require, each launched."""
+    transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_review"])
+    return [{"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
+
+
+def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None = None) -> list[dict[str, Any]]:
+    """``ticket_request_verification`` (M4-E E5b): accept the named review (its ingest's guard refuses past an
+    undisposed marked finding, `DISPOSITION_REQUIRED`), REVIEW_PASSED -> VERIFY_PENDING, then a verifier per card the
+    effective gates require, each launched."""
+    ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
+    return [{"primitive": "review.ingest", "args": ingest}, {"primitive": "work.transition", "args": transition},
+            *_per_card(a, dispatch, launch, cards)]
+
+
+# The built stage tools and their planners (E5a builds the first two, E5b the request stages; tests register probe
+# stages here too). A request stage's planner also takes the cards it launches (``plan_for``).
+STAGES: dict[str, Planner] = {"ticket_draft": _plan_draft, "ticket_start": _plan_start,
+                              "ticket_request_review": _plan_request_review,
+                              "ticket_request_verification": _plan_request_verification}
+
+
+def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
+    """The plan of stage ``name`` for the call ``a``: its planner's, with the cards a request stage launches resolved
+    from the effective gates now (``availability.stage_cards``, the function availability asks). A requirement no
+    single card satisfies refuses the call before anything commits: choosing among cards is the Lead's (`aew work
+    staff`), never the stage's."""
+    planner = STAGES[name]
+    if name not in SA.CARDS:
+        return planner(a)
+    found = SA.stage_cards(engine, name, a)
+    if found["unresolved"]:
+        gates = ", ".join(u["gate"] for u in found["unresolved"])
+        raise errors.IllegalTransition(
+            f"{name} cannot choose a card for {gates}: several cards (or none) satisfy it. Staff the slot first (`aew "
+            "work staff`), a recorded choice, then call the stage again", reason=SA.CARD_CHOICE_REQUIRED,
+            unresolved=found["unresolved"])
+    return planner(a, found["cards"])
+
+
+def recorded_cards(si: dict[str, Any]) -> list[str | None] | None:
+    """The cards an intent's plan launches, as its planner was given them (None: not a stage that launches per
+    card)."""
+    if si["tool"] not in SA.CARDS:
+        return None
+    return [(p.get("args") or {}).get("card") for p in si["plan"] if p["primitive"] == "invoke.create.mutating"]
 
 
 def contract_digest(t: contract.Tool) -> str:
@@ -153,7 +227,8 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     """Run stage ``t`` with ``plan``. Engine refusals before the intent opens propagate (nothing committed); after it
     opens, they stop the stage and are reported on ``c.stopped``."""
     planned = [p["primitive"] for p in plan]
-    expected = _contract_steps(t, c.a)
+    expected = _contract_steps(t, c.a, sum(p["primitive"] == "invoke.create.mutating" for p in plan)
+                               if t.name in SA.CARDS else 1)
     if planned != expected:
         raise errors.UsageError(f"stage {t.name} planned {planned}, but its contract expands to {expected} for this "
                                 "call")
@@ -173,14 +248,19 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     return _run_steps(c, intent, plan, 1, rev)
 
 
-def _contract_steps(t: contract.Tool, a: dict[str, Any]) -> list[str]:
+def _contract_steps(t: contract.Tool, a: dict[str, Any], cards: int = 1) -> list[str]:
     """The primitives stage ``t`` expands to for the call ``a``: its contract's, less a step the call does not ask for,
     exactly as availability leaves it unplanned (its guard arguments are None: `ticket_draft` without a plan). Never
-    reordered, and never a step the contract does not name (M4-E E5a)."""
+    reordered, and never a step the contract does not name (M4-E E5a). A request stage's dispatch and its launch
+    repeat once per card it launches (``cards``, at least one; M4-E E5b), in place."""
     builders = SA.STAGES.get(t.name)
     if builders is None:
         return list(t.expands_to)
-    return [p for p, build in zip(t.expands_to, builders, strict=True) if build(a) is not None]
+    steps = [p for p, build in zip(t.expands_to, builders, strict=True) if build(a) is not None]
+    if t.name not in SA.CARDS:
+        return steps
+    n = SA.CARDS[t.name][0]  # the dispatch step; its launch is the next
+    return [*steps[:n - 1], *(steps[n - 1:n + 1] * max(cards, 1)), *steps[n + 1:]]
 
 
 def _covers(plan: list[dict[str, Any]], n: int, args: dict[str, Any]) -> bool:
@@ -399,7 +479,11 @@ def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] 
     t, planner = contract.tool(si["tool"]), STAGES.get(si["tool"])
     if t is None or not t.built or planner is None:
         return None, None, []
-    plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planner(dict(si["arguments"]))]
+    # A request stage re-resolves with the cards it planned: they were the policy's when it opened, bound by the intent
+    # (each card's own commit is decided by its dispatch decision when it runs).
+    planned = (planner(dict(si["arguments"])) if si["tool"] not in SA.CARDS
+               else planner(dict(si["arguments"]), recorded_cards(si)))
+    plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planned]
     missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
     return contract_digest(t), plan, missing
 
@@ -457,6 +541,19 @@ def unfinished(engine: Any) -> list[dict[str, Any]]:
     return [assess(engine, si) for si in engine.stage_intents_view()]
 
 
+def dispose(c: Call) -> dict[str, Any]:
+    """The ``resolve`` tool for a disposition (M4-E E5b; plan v3 §2.4): the Lead's judgment on a finding or claim
+    policy marks ``requires_disposition``, or on an anomaly. One transaction, so no stage intent (like the
+    checkpoint)."""
+    a = c.a
+    out = c.engine.work_dispose(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"], choice=a["choice"],
+                                rationale=a["rationale"], follow_up=a.get("follow_up"))
+    c.subject = out.get("work_id")
+    c.committed("work.dispose", out, f"{out['subject']} disposed of: {out['choice']} ({out['disposition']})",
+                [str(out["disposition"])])
+    return out
+
+
 def resolve_stage(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a stage: the current Lead's explicit continue or abandon (rule 8).
 
@@ -472,6 +569,8 @@ def resolve_stage(c: Call) -> dict[str, Any]:
     from aew.surface.run import _error
 
     a = c.a
+    if a["choice"] in contract.DISPOSITION_CHOICES:
+        return dispose(c)
     sid = a["subject"]
     si = c.engine.stage_intent(sid)
     c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])

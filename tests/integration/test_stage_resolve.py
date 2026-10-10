@@ -500,9 +500,11 @@ def test_a_blank_rationale_is_an_input_error_that_reaches_nothing():
         check_call("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "continue", "rationale": " \n"},
                    "normal")
     assert exc.value.code == "INVALID_ARGUMENTS"
+    # E5b's dispositions are built: an accept_risk is well formed; a follow_up without its Ticket is not
+    check_call("resolve", {"expect_rev": 1, "subject": "AN-0001", "choice": "accept_risk", "rationale": "x"}, "normal")
     with pytest.raises(AdapterInputError):
-        check_call("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "accept_risk", "rationale": "x"},
-                   "normal")  # E5's dispositions are not built
+        check_call("resolve", {"expect_rev": 1, "subject": "AN-0001", "choice": "follow_up", "rationale": "x"},
+                   "normal")
 
 
 # ---------------------------------------------------------------------------------------------- equivalence (M11.5)

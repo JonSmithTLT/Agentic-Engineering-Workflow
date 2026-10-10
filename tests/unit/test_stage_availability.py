@@ -18,7 +18,7 @@ from guard_reads import GUARD_READS
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN, GuardQueries, NotQueryable
 from aew.engine.seams import MUTATING, NON_MUTATING, GuardTable
-from aew.errors import GateUnsatisfied, IntegrityError
+from aew.errors import GateUnsatisfied, IllegalTransition, IntegrityError
 from aew.surface import availability as SA
 from aew.surface import contract
 from aew.surface.classify import auto_runnable, effective_class
@@ -36,6 +36,11 @@ class FakeEngine:
 
     gate_memo = staticmethod(contextlib.nullcontext)
     mode = "verifier"
+    cards: list[str] = []  # the cards a request stage launches (M4-E E5b): none pending is one dispatch, no card
+    unresolved: list[dict[str, Any]] = []
+
+    def stage_cards(self, work_id, slot, *, state=None):
+        return {"cards": list(self.cards), "unresolved": list(self.unresolved)}
 
     def validation_mode(self, work_id, *, state=None):
         return self.mode
@@ -48,7 +53,7 @@ class FakeEngine:
         self.seen.append((primitive, work_id, state))
         if primitive in self.found:
             args["found"] = self.found[primitive]
-        answer = self.answers.get(primitive, AVAILABLE)
+        answer = self.answers.get((primitive, args.get("card")), self.answers.get(primitive, AVAILABLE))
         blockers = [{"code": "GATE_UNSATISFIED", "message": "no"}] if answer == BLOCKED else []
         codes = {BLOCKED: ["GATE_UNSATISFIED"], UNKNOWN: [GUARD_NOT_QUERYABLE]}.get(answer, [])
         return {"availability": answer, "reason_codes": codes, "blocking_conditions": blockers}
@@ -384,3 +389,56 @@ def test_recording_args_record_every_way_of_reading(read):
     assert "secret" in rec.inputs_read()
     rec.setdefault("found", {})["x"] = 1  # writing what a query found works, and is not an input
     assert "found" not in rec.inputs_read() and rec.data()["found"] == {"x": 1}
+
+
+# ---------------------------------------------------------------------------------------------- per card (M4-E E5b)
+
+
+def test_a_request_stage_asks_each_cards_decision_and_blocks_on_any():
+    """Plan v3 E5: a request stage launches every card the effective gates require, so its dispatch step is asked one
+    decision per card, on the state step 1 leaves; one refused card blocks the stage (it would stop there)."""
+    engine = FakeEngine(_state("RUNNING"))
+    engine.cards = ["reviewer", "security_reviewer"]
+    out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
+    assert out["availability"] == AVAILABLE and out["steps"][1]["cards"] == ["reviewer", "security_reviewer"]
+    asked = [(p, s["work"]["T-0001"]["state"]) for p, _w, s in engine.seen if p == "invoke.create.mutating"]
+    assert asked == [("invoke.create.mutating", "REVIEW_PENDING")] * 2
+    engine = FakeEngine(_state("RUNNING"), answers={("invoke.create.mutating", "security_reviewer"): BLOCKED})
+    engine.cards = ["reviewer", "security_reviewer"]
+    out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
+    assert out["availability"] == BLOCKED and out["steps"][1]["availability"] == BLOCKED
+    assert out["steps"][2]["availability"] == BLOCKED  # the launch is covered by its dispatch's decisions
+
+
+def test_a_requirement_no_single_card_satisfies_blocks_the_request_stage():
+    """Choosing among several cards is the Lead's (`aew work staff`), never the stage's: the step is BLOCKED with
+    CARD_CHOICE_REQUIRED, and the planner refuses the call the same way (``stage.plan_for``)."""
+    from aew.surface import stage
+
+    engine = FakeEngine(_state("RUNNING"))
+    engine.unresolved = [{"gate": "review_security", "candidates": ["a", "b"]}]
+    out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
+    assert out["availability"] == BLOCKED and SA.CARD_CHOICE_REQUIRED in out["reason_codes"]
+    with pytest.raises(IllegalTransition) as exc:
+        stage.plan_for(engine, "ticket_request_review", {"work_id": "T-0001", "expect_rev": 1})
+    assert exc.value.details["reason"] == SA.CARD_CHOICE_REQUIRED
+
+
+@pytest.mark.parametrize("name", sorted(SA.CARDS))
+def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
+    """The PR #170 agreement, per card: the planner's dispatch for each card is the availability builder's question
+    with that card (``availability.card_args``), each followed by its launch, and the cards a continue re-resolves
+    are the ones the intent recorded (``stage.recorded_cards``)."""
+    from aew.surface import stage
+
+    call = CALLS[name][0]
+    engine = FakeEngine(_state())
+    engine.cards = ["c1", "c2"]
+    plan = stage.plan_for(engine, name, dict(call, expect_rev=1))
+    n = SA.CARDS[name][0]
+    base = SA.STAGES[name][n - 1](call)
+    dispatches = [p for p in plan if p["primitive"] == "invoke.create.mutating"]
+    assert [p["args"] for p in dispatches] == [{**SA.card_args(base, c), "launch": True} for c in ("c1", "c2")]
+    assert [p["primitive"] for p in plan[n - 1:]] == ["invoke.create.mutating", "dispatch.launch"] * 2
+    si = {"tool": name, "plan": plan}
+    assert stage.STAGES[name](dict(call), stage.recorded_cards(si)) == plan

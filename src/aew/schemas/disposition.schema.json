@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/disposition/v1",
+  "title": "AEW disposition",
+  "description": "M4-E E5b (plan v3 §2.4): the Lead's disposition of a finding or verification claim that policy marks `requires_disposition`, or of an anomaly. Written once, immutable, beside the Ticket it concerns (`work/<T>/dispositions/<DP>.yaml`, pointed to from the Ticket while it is live and pinned by its bundle once archived) or under `records/dispositions/` for the project. An anomaly's record carries the anomaly whole, with its disposition: it is the anomaly's cold home.",
+  "type": "object",
+  "required": ["schema", "id", "subject", "work_unit", "choice", "follow_up", "rationale", "generation", "rev", "at", "by",
+               "anomaly"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/disposition/v1"},
+    "id": {"type": "string", "pattern": "^DP-[0-9]{4,}$"},
+    "subject": {
+      "description": "What is disposed of: a finding `<evidence>#<finding>`, a claim `<evidence>#claim-<n>` (with the report), or an anomaly `AN-<n>`.",
+      "type": "object", "required": ["id", "kind", "evidence"], "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["finding", "claim", "anomaly"]},
+        "evidence": {"type": ["string", "null"]}
+      }
+    },
+    "work_unit": {"description": "The unit it concerns; null for the project.", "type": ["string", "null"]},
+    "choice": {"enum": ["accept_risk", "follow_up", "not_applicable"]},
+    "follow_up": {"description": "The Ticket that follows it up (only for `follow_up`).", "type": ["string", "null"]},
+    "rationale": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "generation": {"description": "The Lead generation that disposed of it.", "type": "integer", "minimum": 1},
+    "rev": {"type": "integer", "minimum": 1},
+    "at": {"type": "string"},
+    "by": {"description": "The Lead actor.", "type": "object"},
+    "anomaly": {
+      "description": "The anomaly disposed of, as it was open, with its disposition; null for a finding or claim.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["id", "source", "severity", "subject", "detail", "details", "key", "opened_at", "rev", "disposition"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {"type": "string", "pattern": "^AN-[0-9]{4,}$"},
+            "source": {"type": "string", "minLength": 1},
+            "severity": {"enum": ["high", "low"]},
+            "subject": {"type": ["string", "null"]},
+            "detail": {"type": "string"},
+            "details": {"type": "object"},
+            "key": {"type": "string"},
+            "opened_at": {"type": "string"},
+            "rev": {"type": "integer", "minimum": 1},
+            "disposition": {
+              "type": "object", "required": ["id", "choice", "follow_up", "rationale", "generation", "rev", "at"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string", "pattern": "^DP-[0-9]{4,}$"},
+                "choice": {"enum": ["accept_risk", "follow_up", "not_applicable"]},
+                "follow_up": {"type": ["string", "null"]},
+                "rationale": {"type": "string"},
+                "generation": {"type": "integer", "minimum": 1},
+                "rev": {"type": "integer", "minimum": 1},
+                "at": {"type": "string"}
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

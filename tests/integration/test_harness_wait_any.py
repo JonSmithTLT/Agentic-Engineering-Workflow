@@ -151,20 +151,31 @@ def test_a_waiter_parses_no_control_state_between_commits(lab, tmp_path, monkeyp
     def wait() -> None:
         try:
             result["out"] = engine.harness_wait([RA, RB], any_=True, timeout=300)  # a hang guard: `over` ends it
-        except BaseException as exc:  # noqa: BLE001 -- reported by the assertion below, not lost with the thread
+        except BaseException as exc:  # noqa: BLE001 -- re-raised in the test's thread, not lost with the waiter's
             result["error"] = exc
+
+    def waiting(predicate) -> Any:
+        """``predicate``, while the waiter is still waiting: a waiter that ended early (only ``over`` ends it) fails
+        the test with its own error, not a sync point's timeout (independent review of #156, F1)."""
+        if not waiter.is_alive():
+            if "error" in result:
+                raise result["error"]
+            raise AssertionError(f"the waiter returned before the test ended it: {result}")
+        return predicate()
 
     waiter = threading.Thread(target=wait, daemon=True)
     waiter.start()
     try:
-        lab.until(lambda: reads, what="the waiter's initial read")
+        lab.until(lambda: waiting(lambda: reads), what="the waiter's initial read")
         create_planned_ticket(lab.project, tmp_path, title="A commit")  # several commits, all after that read
         last = engine.store.read_committed()["revision"]
-        lab.until(lambda: reads[-1] >= last, what="the waiter to parse the last commit")
+        lab.until(lambda: waiting(lambda: reads[-1] >= last), what="the waiter to parse the last commit")
     finally:
         over.set()
         outbox.bump_wake(lab.aew_root)
         waiter.join(timeout=60)
+    if "error" in result:
+        raise result["error"]
     assert not waiter.is_alive() and "out" in result, result
     out = result["out"]
     assert out["run"] == RA and not out["timed_out"] and "ended_by" not in out, out  # no commit ended the wait

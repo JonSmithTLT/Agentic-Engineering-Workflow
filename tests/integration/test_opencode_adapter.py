@@ -18,6 +18,7 @@ import pytest
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir
+from proxy_env import RecordingProxy, proxy_env
 
 from aew.harness import runlog
 from aew.harness.opencode import projection
@@ -144,6 +145,17 @@ def test_a_slow_model_catalog_is_waited_for(lab, tmp_path):
     _, _, run = launch(lab, tmp_path)
     assert lab.wait(run)["status"] == "ended_with_evidence"
     assert lab.record(run)["launch"]["health"]["catalog_wait_s"] >= 2.5
+
+
+def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab, tmp_path):
+    """Every proxy variable set, in both cases, with no NO_PROXY exception for 127.0.0.1: the supervisor's calls to
+    the run's own server go direct, so the run ends normally and the proxy (answering 502) sees no connection."""
+    with RecordingProxy() as proxy:
+        lab.env.update(proxy_env(proxy.url))
+        script(lab, IMPLEMENT)
+        _, _, run = launch(lab, tmp_path)
+        assert lab.wait(run)["status"] == "ended_with_evidence"
+    assert (proxy.connections, proxy.request_lines) == (0, [])
 
 
 def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):

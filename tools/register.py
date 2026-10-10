@@ -8,7 +8,8 @@ dashboard keep reading the markdown; triage tooling reads the YAML.
 
     python tools/register.py render            # normalize the YAML (§Closed in id order), rewrite future-work.md
     python tools/register.py check             # exit 1 if either file is not what render would write
-    python tools/register.py import            # one-time: parse future-work.md into future-work.yaml
+    python tools/register.py resolve           # after a merge stopped on the register: re-merge the YAML, render
+    python tools/register.py import            # rebuild future-work.yaml from future-work.md
     python tools/register.py summary           # open rows by section and target
     python tools/register.py due               # print the decisions-due view
 
@@ -19,25 +20,43 @@ first, with the blocked rows beside what they wait for. ``check`` keeps it curre
 has closed is stale; one row has at most one item; every open question (§4) must have its own item, and every open row
 targeted **Designer** must have one or be blocked by one (it then waits for that item's decision).
 
-The markdown is plain GitHub tables, one per section, with optional prose before the table. A cell never contains a
-literal ``|`` (the table would break), so cells split on it. Rows are kept exactly as written: the YAML holds text,
-not interpretation; a row's id is its first cell and its target is read from the column named in ``target_column``.
+The markdown gives every row its own block, never a table line: a ``### <id>`` heading (the row's first cell), then
+one paragraph per non-empty cell, ``**<column>:** <text>``, each between blank lines. Each section names its columns in
+an HTML comment (``<!-- columns: # | Work | ... -->``, invisible on GitHub) so the page parses back to the YAML. A cell
+never holds a blank line, which would end its paragraph (``problems`` reports one). Rows are kept exactly as written:
+the YAML holds text, not interpretation; a row's id is its first cell and its target is read from the column named in
+``target_column``.
 
-Merges. Two changes to the register collide only where they touch the same lines, so the file keeps nothing that
-every change edits: the preamble carries no per-change log (the history is ``git log`` on the YAML; each row carries
-its own dates), and §Closed is kept in id order rather than closing order, so two changes that close different
-entries insert at different places; ``decisions-due.yaml`` is kept the same way, in (due, row) order, and two
-branches that add an item for the same row merge into a duplicate that ``check`` refuses. After every sync with main
-run ``render``, conflict or not: a clean merge can still leave §Closed or the items unsorted and the markdown stale,
-which only ``check`` (CI) catches. When a merge does conflict,
-resolve the YAML only and run ``render``: the markdown is derived and is never merged by hand.
+Merges. Git's three-way merge conflicts where two changes touch the same or neighbouring lines, and merges them when
+at least one unchanged line lies between. A table put each row on one line, so changes to neighbouring rows always
+conflicted in the markdown even when the YAML merged cleanly (PR #142 against main, 2026-10-09). Now a row's heading
+and the blank lines around it separate it from its neighbours on the page, and in both YAML files a blank line follows
+every row and every item (``dump``), so changes to different rows merge in all four files, including a row added
+next to a row that another change edits, and GitHub's merge button (which runs no local merge driver) sees no conflict
+(``tests/unit/test_docs_merge.py`` proves it with real merges). The exception is two insertions at one place, which
+git conflicts on whatever the layout: two rows closed into the same gap of §Closed's id order (nothing closed sorts
+between F15.2 and F15.3, say), two new rows appended at one place (both took the next free id, which they must settle
+anyway), two new decisions-due items in one (due, row) gap. ``resolve`` settles all of these with one command. The
+files also keep nothing that every change edits: the preamble carries no per-change log (the history is ``git log`` on
+the YAML; each row carries its own dates), and §Closed is kept in id order rather than closing order, so closings in
+different gaps insert at different places; ``decisions-due.yaml`` is kept the same way, in (due, row) order, and two
+branches that add an item for the same row at different due points merge into a duplicate that ``check`` refuses.
+After every sync with main run ``render``, conflict or not: a clean merge can still leave §Closed or the items
+unsorted and the markdown stale, which only ``check`` (CI) catches. When a merge does conflict, run ``resolve``: it
+merges the YAML again from its three sides row by row and cell by cell (not line by line), and renders, so only a
+real conflict is left, marked in the YAML: the same cell changed on both sides, a row changed on one side and closed
+on the other, a section reordered differently on both, or like-named rows changed on both sides that cannot be told
+apart (``_paired`` never guesses). The markdown is derived and is never merged by hand.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import re
+import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -62,6 +81,9 @@ TARGETS = ("Gate", "M4", "M5", "M6", "Hierarchy revision", "M4 candidate", "Desi
 TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|M4|M5|M6|Hierarchy revision|M4 candidate|Designer|Evaluation|"
                        r"On measured need|Unscheduled)")
 SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
+COLUMNS_RE = re.compile(r"^<!-- columns: (.+) -->$")
+ROW_RE = re.compile(r"^### (.+)$")
+BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
 ID_RE = re.compile(r"^[A-Z][0-9]+(?:\.[0-9]+)?$")
 ID_KEY_RE = re.compile(r"^([A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
 CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
@@ -82,12 +104,23 @@ _Dumper.add_representer(str, _str)
 
 # ------------------------------------------------------------------------------------------------------- import
 
-def _split_row(line: str) -> list[str]:
-    assert line.startswith("| ") and line.endswith(" |"), line[:80]
-    return [c.strip() for c in line[2:-2].split(" | ")]
+def _field(line: str, columns: list[str]) -> tuple[str, str] | None:
+    """The cell a ``**<column>:** <text>`` paragraph opens, if its column is one of ``columns``."""
+    for column in columns:
+        prefix = f"**{column}:** "
+        if line.startswith(prefix):
+            return column, line[len(prefix):]
+    return None
+
+
+def _skip_blank(lines: list[str], i: int) -> int:
+    while i < len(lines) and not lines[i]:
+        i += 1
+    return i
 
 
 def parse_markdown(text: str) -> dict[str, Any]:
+    """The YAML's data from the rendered page: the inverse of ``render_markdown``."""
     lines = text.split("\n")
     first = next(i for i, ln in enumerate(lines) if SECTION_RE.match(ln))
     title = lines[0].removeprefix("# ")
@@ -100,18 +133,26 @@ def parse_markdown(text: str) -> dict[str, Any]:
         number, heading = int(m.group(1)), m.group(2)
         i += 1
         intro: list[str] = []
-        while i < len(lines) and not lines[i].startswith("|"):
+        while not (cols := COLUMNS_RE.match(lines[i])):
+            assert not SECTION_RE.match(lines[i]), f"§{number} has no columns comment"
             intro.append(lines[i])
             i += 1
-        columns = _split_row(lines[i])
-        assert re.fullmatch(r"\|(---\|)+", lines[i + 1]), lines[i + 1]
-        i += 2
+        columns = [c.strip() for c in cols.group(1).split(" | ")]
+        i += 1
         rows: list[dict[str, str]] = []
-        while i < len(lines) and lines[i].startswith("|"):
-            cells = _split_row(lines[i])
-            assert len(cells) == len(columns), f"§{number} row has {len(cells)} cells, not {len(columns)}: {cells[0]}"
-            rows.append(dict(zip(columns, cells, strict=True)))
-            i += 1
+        while (j := _skip_blank(lines, i)) < len(lines) and (head := ROW_RE.match(lines[j])):
+            row = {c: "" for c in columns} | {columns[0]: head.group(1)}
+            i, rest = j + 1, columns[1:]
+            # each cell is a paragraph, in column order; an empty cell has none
+            while (j := _skip_blank(lines, i)) < len(lines) and (found := _field(lines[j], rest)):
+                column, value = found
+                j += 1
+                while j < len(lines) and lines[j]:  # a cell written over several lines
+                    value += "\n" + lines[j]
+                    j += 1
+                row[column] = value
+                i, rest = j, rest[rest.index(column) + 1:]
+            rows.append(row)
         trailing: list[str] = []
         while i < len(lines) and not SECTION_RE.match(lines[i]):
             trailing.append(lines[i])
@@ -135,17 +176,20 @@ def parse_markdown(text: str) -> dict[str, Any]:
 # ------------------------------------------------------------------------------------------------------- render
 
 def render_markdown(data: dict[str, Any]) -> str:
+    """The page: each row a ``### <first cell>`` heading and one paragraph per non-empty cell, blank lines between,
+    so no line of one row touches a line of another (the module's *Merges*)."""
     out = [f"# {data['title']}", "", data["preamble"], ""]
     for section in data["sections"]:
         out += [f"## {section['number']}. {section['title']}", ""]
         if section.get("intro"):
             out += [section["intro"], ""]
         columns = section["columns"]
-        out.append("| " + " | ".join(columns) + " |")
-        out.append("|" + "---|" * len(columns))
+        out += [f"<!-- columns: {' | '.join(columns)} -->", ""]
         for row in section["rows"]:
-            out.append("| " + " | ".join(row[c] for c in columns) + " |")
-        out.append("")
+            out += [f"### {row[columns[0]]}", ""]
+            for column in columns[1:]:
+                if row[column]:
+                    out += [f"**{column}:** {row[column]}", ""]
         if section.get("after"):
             out += [section["after"], ""]
     text = "\n".join(out)
@@ -157,7 +201,31 @@ def load() -> dict[str, Any]:
 
 
 def dump(data: dict[str, Any]) -> str:
-    return yaml.dump(data, Dumper=_Dumper, sort_keys=False, allow_unicode=True, width=118)
+    return _apart(yaml.dump(data, Dumper=_Dumper, sort_keys=False, allow_unicode=True, width=118))
+
+
+# The block sequences whose entries ``_apart`` separates: the register's rows (``  rows:``, entries ``  - ``, their
+# lines indented further) and the decisions-due items (``items:``, entries ``- ``).
+_LISTS = {"  rows:": "  - ", "items:": "- "}
+
+
+def _apart(text: str) -> str:
+    """A blank line after every row of the register and every decisions-due item, as on the page: without one, the last
+    line of a row touches the first line of whatever follows, so a row added after a row that another change edits
+    conflicts in the YAML (the module's *Merges*). YAML reads the blank line as nothing."""
+    out: list[str] = []
+    entry: str | None = None
+    for line in text.split("\n"):
+        if entry is not None and line and not line.startswith((entry, " " * len(entry))):
+            entry = None  # a line indented less than the entries ends the list, after a blank line
+            out.append("")
+        if entry is not None and line.startswith(entry) and out[-1] not in _LISTS:
+            out.append("")
+        out.append(line)
+        entry = _LISTS.get(line, entry)
+    if entry is not None:  # the file ends in the list: its last entry is followed by a blank line too
+        out.append("")
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------------------------------------------- order
@@ -183,9 +251,17 @@ def closed_order(section: dict[str, Any]) -> list[dict[str, Any]]:
     return gates + others
 
 
+def _settled(value: Any) -> Any:
+    """A cell or field without trailing newlines. A YAML literal block (``Notes: |``) ends in one, which the page
+    cannot carry (its paragraph ends there), and two or more make ``dump`` write a keep-chomping scalar that grows by
+    one newline on every ``render`` (review of PR #151, 4)."""
+    return value.rstrip("\n") if isinstance(value, str) else value
+
+
 def normalize(data: dict[str, Any]) -> dict[str, Any]:
-    """The data as ``render`` writes it: every Closed section in ``closed_order``."""
+    """The data as ``render`` writes it: no cell ends in a newline, and every Closed section is in ``closed_order``."""
     for section in data["sections"]:
+        section["rows"] = [{column: _settled(cell) for column, cell in row.items()} for row in section["rows"]]
         if section["title"].startswith("Closed"):
             section["rows"] = closed_order(section)
     return data
@@ -217,6 +293,13 @@ def problems(data: dict[str, Any]) -> list[str]:
         if r["section"] not in (1, 4) and r["target"] is None:
             out.append(f"§{r['section']} {r['id'] or '?'}: its target column does not start with a bold target")
     for section in data["sections"]:
+        for row in section["rows"]:
+            first = next(iter(row.values()))
+            if not first.strip() or "\n" in first:
+                out.append(f"§{section['number']}: a row's first cell is its heading, so it is one non-empty line: "
+                           f"{first[:40]!r}")
+            out += [f"§{section['number']} {first[:20]}: its {column} holds a blank line, which would end its paragraph"
+                    for column, value in row.items() if BLANK_LINE_RE.search(value)]
         if section["title"].startswith("Closed") and section["rows"] != closed_order(section):
             out.append(f"§{section['number']} {section['title']} is not in id order (run `python tools/register.py "
                        "render`): rows appended in closing order collide on every merge")
@@ -252,7 +335,8 @@ def due_key(item: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def normalize_due(due: dict[str, Any]) -> dict[str, Any]:
-    due["items"] = sorted(due.get("items") or [], key=due_key)
+    """The items as ``render`` writes them: in (due, row) order, no field ending in a newline."""
+    due["items"] = sorted(({k: _settled(v) for k, v in item.items()} for item in due.get("items") or []), key=due_key)
     return due
 
 
@@ -316,27 +400,297 @@ def render_due(due: dict[str, Any]) -> str:
            "*Generated by `python tools/register.py render` from `decisions-due.yaml`; edit the YAML, never this page. "
            "Each item points to its row in the [future-work register](future-work.md), which holds the detail.*", "",
            str(due.get("intro") or "").strip(), "",
-           "## Owed, soonest first", "",
-           "| Due by | Owner | Needs | What | Row | Blocks |", "|---|---|---|---|---|---|"]
-    for i in items:
-        out.append(f"| {i.get('due')} | {i.get('owner')} | {i.get('needs')} | {_cell(i.get('what', ''))} | "
-                   f"{i.get('row')} | {', '.join(i.get('blocks') or []) or '-'} |")
+           "## Owed, soonest first", ""]
+    for i in items:  # one block per item, like the register's rows, so changes to different items merge
+        out += [f"### {i.get('row')}", "",
+                f"**Due by:** {i.get('due')} · **Owner:** {i.get('owner')} · **Needs:** {i.get('needs')}", "",
+                f"**What:** {_cell(i.get('what', ''))}", "",
+                f"**Blocks:** {', '.join(i.get('blocks') or []) or '-'}", ""]
     blocked: dict[str, list[str]] = {}
     for i in items:
         for row in i.get("blocks") or []:
             blocked.setdefault(row, []).append(
                 f"{i.get('row')} ({i.get('needs')}, {i.get('owner')}, by {i.get('due')})")
-    out += ["", "## Blocked until then", "", "| Row | Waits for |", "|---|---|"]
+    out += ["## Blocked until then", ""]
     for row in sorted(blocked, key=id_key):
-        out.append(f"| {row} | {'; '.join(blocked[row])} |")
-    return "\n".join(out) + "\n"
+        out += [f"- **{row}** waits for {'; '.join(blocked[row])}", ""]
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+# ------------------------------------------------------------------------------------------------------- files
+
+def _paths(root: Path) -> tuple[Path, Path, Path, Path]:
+    """The register's YAML and page, then the decisions-due YAML and page, in the checkout at ``root``."""
+    return tuple(root / p.relative_to(ROOT) for p in (YAML, MD, DUE_YAML, DUE_MD))  # type: ignore[return-value]
+
+
+def render(root: Path = ROOT) -> None:
+    """Normalize both YAML files and write both pages from them."""
+    yaml_path, md, due_yaml, due_md = _paths(root)
+    data = normalize(yaml.safe_load(yaml_path.read_text(encoding="utf-8")))
+    due = normalize_due(yaml.safe_load(due_yaml.read_text(encoding="utf-8")))
+    for path, text in ((due_yaml, dump(due)), (yaml_path, dump(data))):
+        if text != path.read_text(encoding="utf-8"):
+            path.write_text(text, encoding="utf-8", newline="\n")
+            print(f"normalized {path.relative_to(root)}")
+    due_md.write_text(render_due(due), encoding="utf-8", newline="\n")
+    md.write_text(render_markdown(data), encoding="utf-8", newline="\n")
+    print(f"rendered {md.relative_to(root)}")
+
+
+# ------------------------------------------------------------------------------------------------------- resolve
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+_ABSENT: Any = object()  # a key or row one side does not have
+# The lists merged entry by entry, and what identifies an entry: a section by its number, a row by its first cell (its
+# id), a decisions-due item by its row. Every other list (columns, blocks) is one value.
+_KEYED: dict[str, Any] = {"sections": lambda s: s.get("number"), "rows": lambda r: next(iter(r.values()), None),
+                          "items": lambda i: i.get("row")}
+_MARKER_RE = re.compile(r"^(<{7}|>{7})( |$)|^={7}$", re.M)
+
+
+def _likeness(a: Any, b: Any) -> float:
+    """How much of an entry survived on one side: the share of its other fields (all but the first) left unchanged."""
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return 0.0
+    others = [k for k in list(a)[1:] if k in b]
+    return sum(a[k] == b[k] for k in others) / len(others) if others else 0.0
+
+
+def _paired(sides: tuple[list[Any], ...], key: Any) -> tuple[list[Any], ...]:
+    """A key for every entry of the base, ours and theirs, the same on each side for the same entry. An entry whose
+    first cell is unique on every side is keyed by that cell (its id). Entries that share a first cell (the §1 gates
+    named alike, the §9 ``Gate`` rows) are matched by content instead of position (review of PR #151 at 1546799, 2):
+    each side's entry to the base entry it equals, else to the one it most resembles (at least half its other fields
+    unchanged); what is left on a side was added there, and an entry both sides added is one entry only when they
+    added it identically. So closing one of two like-named gates and editing the other merges, as git would.
+
+    It never guesses (review of PR #151 at fdeecc6): when a changed entry resembles two base entries equally, or two
+    changed entries resemble the same one best, the whole group of like-named entries is keyed ``(first cell,
+    "unmatched")`` on every side and merges as one value, so a group both sides changed is marked as a conflict
+    instead of an edit landing on the wrong twin."""
+    groups: dict[Any, tuple[list[int], ...]] = {}
+    for i, side in enumerate(sides):
+        for pos, entry in enumerate(side):
+            groups.setdefault(key(entry) if isinstance(entry, dict) else repr(entry), ([], [], []))[i].append(pos)
+    keyed: tuple[list[Any], ...] = tuple([None] * len(side) for side in sides)
+    base = sides[0]
+    for k, positions in groups.items():
+        if all(len(p) <= 1 for p in positions):
+            for i, p in enumerate(positions):
+                for pos in p:
+                    keyed[i][pos] = (k,)
+            continue
+        in_base = positions[0]
+        for n, pos in enumerate(in_base):
+            keyed[0][pos] = (k, n)
+        added: list[list[int]] = [[], [], []]
+        ambiguous = False
+        for i in (1, 2):
+            free = list(range(len(in_base)))
+            rest = []
+            for pos in positions[i]:  # the entries this side left as they were
+                n = next((n for n in free if base[in_base[n]] == sides[i][pos]), None)
+                if n is None:
+                    rest.append(pos)
+                else:
+                    keyed[i][pos] = (k, n)
+                    free.remove(n)
+            best: dict[int, int] = {}
+            for pos in rest:  # the entries it changed: the base entry each most resembles, if exactly one does
+                scores = {n: _likeness(base[in_base[n]], sides[i][pos]) for n in free}
+                top = max(scores.values(), default=0.0)
+                if top < 0.5:
+                    added[i].append(pos)
+                    continue
+                likeliest = [n for n, score in scores.items() if score == top]
+                ambiguous |= len(likeliest) > 1 or likeliest[0] in best.values()
+                best[pos] = likeliest[0]
+            for pos, n in best.items():
+                keyed[i][pos] = (k, n)
+        if ambiguous:
+            for i, p in enumerate(positions):
+                for pos in p:
+                    keyed[i][pos] = (k, "unmatched")
+            continue
+        new = 0
+        for pos in added[1]:
+            twin = next((q for q in added[2] if sides[2][q] == sides[1][pos]), None)
+            keyed[1][pos] = (k, "added", new)
+            if twin is not None:
+                keyed[2][twin] = (k, "added", new)
+                added[2].remove(twin)
+            new += 1
+        for pos in added[2]:
+            keyed[2][pos] = (k, "added", new)
+            new += 1
+    return keyed
+
+
+def _order(shared: list[Any], *sides: list[Any]) -> list[Any]:
+    """``shared`` with each side's other entries after their predecessor on that side (and after what an earlier side
+    put there, so ours come before theirs)."""
+    order = list(shared)
+    for side in sides:
+        mine = set(side)
+        for i, k in enumerate(side):
+            if k not in order:
+                before = next((p for p in reversed(side[:i]) if p in order), None)
+                at = order.index(before) + 1 if before is not None else 0
+                while at < len(order) and order[at] not in mine:
+                    at += 1
+                order.insert(at, k)
+    return order
+
+
+def _merge3(base: Any, ours: Any, theirs: Any, where: str, conflicts: list[str], field: str = "") -> tuple[Any, ...]:
+    """A three-way merge of the register's data, by key rather than by line: the merged value as each side should see
+    it, ``(ours, base, theirs)``. The three agree wherever the merge is clean; where both sides changed the same value
+    differently they keep their own, and ``where`` is recorded in ``conflicts``. Mappings merge key by key (a row cell
+    by cell), the keyed lists entry by entry, so two rows closed into the same gap of §Closed, or added to the same
+    place, are two independent entries; normalizing afterwards puts them in order. A keyed list's order merges three
+    ways too: a side that moved entries keeps its move, and two different moves conflict."""
+    if ours == theirs:
+        return ours, ours, ours
+    if ours == base:
+        return theirs, theirs, theirs
+    if theirs == base:
+        return ours, ours, ours
+    if isinstance(ours, dict) and isinstance(theirs, dict) and (base is _ABSENT or isinstance(base, dict)):
+        b = {} if base is _ABSENT else base
+        views: tuple[dict[str, Any], ...] = ({}, {}, {})
+        for k in [*ours, *(k for k in theirs if k not in ours), *(k for k in b if k not in ours and k not in theirs)]:
+            merged = _merge3(b.get(k, _ABSENT), ours.get(k, _ABSENT), theirs.get(k, _ABSENT), f"{where} {k}".strip(),
+                             conflicts, k)
+            for view, value in zip(views, merged, strict=True):
+                if value is not _ABSENT:
+                    view[k] = value
+        return views
+    if field in _KEYED and all(isinstance(v, list) for v in (base, ours, theirs)):
+        keys = _paired((base, ours, theirs), _KEYED[field])
+        b, o, t = ({}, {}, {})
+        for found, ks, side in zip((b, o, t), keys, (base, ours, theirs), strict=True):
+            for k, entry in zip(ks, side, strict=True):
+                if k[-1] == "unmatched":  # like-named entries not matched unambiguously: one value, the group
+                    found.setdefault(k, []).append(entry)
+                else:
+                    found[k] = entry
+        kb, ko, kt = (list(dict.fromkeys(ks)) for ks in keys)
+        shared = [k for k in kb if k in o and k in t]
+        moved_o, moved_t = ([k for k in ks if k in shared] for ks in (ko, kt))
+        if moved_o == shared or moved_t == shared or moved_o == moved_t:  # at most one side moved entries
+            merged_order = _order(moved_t if moved_o == shared else moved_o, ko, kt)
+            orders = (merged_order, merged_order, merged_order)
+        else:
+            conflicts.append(f"{where} order")
+            orders = (_order(moved_o, ko, kt), _order(shared, ko, kt), _order(moved_t, ko, kt))
+        orders = tuple([*order, *(k for k in kb if k not in order)] for order in orders)
+        merged_by_key = {}
+        for k in orders[0]:
+            name = (k[0] if len(k) == 1 else f"{k[0]} (rows sharing that first cell, not matched unambiguously)"
+                    if k[-1] == "unmatched" else f"{k[0]} ({k[-1] + 1}{', added' if k[1] == 'added' else ''})")
+            merged_by_key[k] = _merge3(b.get(k, _ABSENT), o.get(k, _ABSENT), t.get(k, _ABSENT), f"{where} {name}",
+                                       conflicts)
+            if k[-1] == "unmatched" and merged_by_key[k][0] != merged_by_key[k][2]:
+                # without the base's group, each side's group is an insertion at one place, which the text merge
+                # always marks whole: a line-by-line merge of rows nobody could match would be a guess
+                merged_by_key[k] = (merged_by_key[k][0], _ABSENT, merged_by_key[k][2])
+        views_l: tuple[list[Any], ...] = ([], [], [])
+        for i, (view, order) in enumerate(zip(views_l, orders, strict=True)):
+            for k in order:
+                if merged_by_key[k][i] is _ABSENT:
+                    continue
+                if k[-1] == "unmatched":
+                    view.extend(merged_by_key[k][i])
+                else:
+                    view.append(merged_by_key[k][i])
+        return views_l
+    conflicts.append(where or "the whole file")
+    return ours, base, theirs
+
+
+def merge_data(base: Any, ours: Any, theirs: Any, canonical: Any) -> tuple[str | None, list[str], tuple[str, ...]]:
+    """The merged YAML text when the sides merge cleanly by key, else None with the conflicts, and the three views'
+    canonical texts (each side's own value only where it conflicts) for a text merge that marks just those."""
+    conflicts: list[str] = []
+    views = _merge3(base if base is not None else _ABSENT, ours, theirs, "", conflicts)
+    texts = tuple(canonical(copy.deepcopy(v)) for v in views)
+    return (None if conflicts else texts[0]), conflicts, texts
+
+
+def _in_progress(root: Path) -> bool:
+    return any(_git(root, "rev-parse", "-q", "--verify", ref).returncode == 0
+               for ref in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD"))
+
+
+def resolve(root: Path = ROOT) -> int:
+    """Finish a merge that stopped on the register. Each YAML file still in conflict is merged again from its three
+    sides (the merge base, ours and theirs) by key (``_merge3``): rows and items added, changed or closed on one side
+    apply, cell by cell, wherever they land, so the conflicts git reports for two insertions at one place (two rows
+    closed into the same gap of §Closed, say) and for layout or order go away. Then both pages are rendered. Only a
+    real conflict stays (the same cell or field changed differently on both sides, a row changed on one side and closed
+    on the other, a section reordered differently on both, like-named rows changed on both sides that cannot be told
+    apart): marked in the YAML, with nothing else marked, to fix by hand before ``render``. The pages are never merged:
+    they are rendered.
+
+    It refuses outside a merge (or a cherry-pick, revert or rebase), and it never overwrites a resolution: a conflicted
+    YAML file with no conflict markers left was resolved by hand, and is kept."""
+    if not _in_progress(root):
+        print("no merge in progress: `resolve` finishes a merge that stopped on the register; outside one, use "
+              "`python tools/register.py render`", file=sys.stderr)
+        return 2
+    yaml_path, _, due_yaml, _ = _paths(root)
+    left = 0
+    for path, canonical in ((yaml_path, lambda d: dump(normalize(d))), (due_yaml, lambda d: dump(normalize_due(d)))):
+        rel = path.relative_to(root).as_posix()
+        ours, base, theirs = (_git(root, "show", f":{stage}:{rel}") for stage in (2, 1, 3))
+        if ours.returncode or theirs.returncode:
+            continue  # not in conflict
+        if path.exists() and not _MARKER_RE.search(path.read_text(encoding="utf-8")):
+            print(f"{rel}: already resolved (no conflict markers), kept: `git add` it once it is right")
+            continue
+        try:
+            sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
+        except yaml.YAMLError as e:
+            print(f"{rel}: a side is not valid YAML, nothing written: {e}", file=sys.stderr)
+            return 2
+        text, conflicts, views = merge_data(*sides, canonical=canonical)
+        if text is None:
+            with tempfile.TemporaryDirectory() as tmp:
+                files = [Path(tmp) / name for name in ("ours", "base", "theirs")]
+                for f, view in zip(files, views, strict=True):
+                    f.write_text(view, encoding="utf-8", newline="\n")
+                merged = _git(root, "merge-file", "-p", "-L", "ours", "-L", "base", "-L", "theirs", *map(str, files))
+            if merged.returncode < 0 or merged.returncode > 127 or not merged.stdout:  # 255: git failed, wrote nothing
+                print(f"{rel}: git merge-file failed (exit {merged.returncode}), nothing written: "
+                      f"{merged.stderr.strip()}", file=sys.stderr)
+                return 2
+            text = merged.stdout
+            if merged.returncode:
+                left += len(conflicts)
+                print(f"{rel}: {len(conflicts)} conflict(s) left, marked: " + "; ".join(conflicts))
+            else:  # the conflicting values differ on different lines of their text, which git merges line by line
+                print(f"{rel}: merged (line by line within " + "; ".join(conflicts) + ")")
+        else:
+            print(f"{rel}: merged")
+        path.write_text(text, encoding="utf-8", newline="\n")
+    if left:
+        print("fix the marked conflicts in the YAML, then run `python tools/register.py render`")
+        return 1
+    render(root)
+    print("resolved: `git add` the register's YAML and pages, then commit the merge")
+    return 0
 
 
 # ------------------------------------------------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("command", choices=["render", "check", "import", "summary", "due"])
+    ap.add_argument("command", choices=["render", "check", "resolve", "import", "summary", "due"])
     args = ap.parse_args(argv)
     if args.command == "import":
         data = parse_markdown(MD.read_text(encoding="utf-8"))
@@ -347,24 +701,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"imported {sum(len(s['rows']) for s in data['sections'])} rows into {YAML.relative_to(ROOT)}")
         return 0
+    if args.command == "render":
+        render()
+        return 0
+    if args.command == "resolve":
+        return resolve()
     data = normalize(load())
     due = load_due()
-    if args.command == "render":
-        due_text = dump(normalize_due(due))
-        if due_text != DUE_YAML.read_text(encoding="utf-8"):
-            DUE_YAML.write_text(due_text, encoding="utf-8", newline="\n")
-            print(f"normalized {DUE_YAML.relative_to(ROOT)}")
     if args.command == "due":
         print(render_due(due), end="")
-        return 0
-    if args.command == "render":
-        DUE_MD.write_text(render_due(due), encoding="utf-8", newline="\n")
-        text = dump(data)
-        if text != YAML.read_text(encoding="utf-8"):
-            YAML.write_text(text, encoding="utf-8", newline="\n")
-            print(f"normalized {YAML.relative_to(ROOT)}")
-        MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
-        print(f"rendered {MD.relative_to(ROOT)}")
         return 0
     if args.command == "summary":
         print(summary(data))

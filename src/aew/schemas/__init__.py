@@ -60,9 +60,9 @@ def _registry() -> Registry:
 
 @cache
 def _validator(name: str) -> Draft202012Validator:
-    schema = _load(name)
-    Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema, registry=_registry())
+    # AEW ships these schemas, so a test checks them against the metaschema once (test_schemas_records) instead of
+    # every process paying ``check_schema`` (about 45 ms a schema) on each CLI call (E52).
+    return Draft202012Validator(_load(name), registry=_registry())
 
 
 def validate(name: str, instance: Any, *, source: str) -> None:

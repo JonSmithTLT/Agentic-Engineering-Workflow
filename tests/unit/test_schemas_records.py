@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from aew.errors import ValidationFailed
 from aew.knowledge.records import (
@@ -10,14 +11,16 @@ from aew.knowledge.records import (
     read_record,
     work_unit_record,
 )
-from aew.schemas import SCHEMAS, _validator, validate
+from aew.schemas import SCHEMAS, _validator, schema, validate
 
 WHO = {"kind": "lead", "session_label": "lead-a", "generation": 1}
 
 
 @pytest.mark.parametrize("name", sorted(SCHEMAS))
 def test_every_schema_is_valid_draft_2020_12(name):
-    _validator(name)  # raises SchemaError when the schema itself is malformed
+    # The only metaschema check of AEW's schemas: runtime validators skip check_schema for speed.
+    Draft202012Validator.check_schema(schema(name))  # raises SchemaError when the schema itself is malformed
+    _validator(name)
 
 
 def test_ids():

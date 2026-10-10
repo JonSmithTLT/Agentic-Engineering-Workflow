@@ -1054,8 +1054,10 @@ sections:
       P for the Verifier, where KAD-06 lists project and repository navigation among every worker invocation''s normal capabilities;
       a cross-reference, not new scope. **Decided by the designer (D2, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
       MCD-03 to MCD-05):** the adoption governs over v0.8''s table: knowledge and safe navigation are C for every admitted
-      role, and independence remains selector-controlled (the plan selectors of CEA-54); the ledger marks CEA-36 superseded
-      by MCD-04 for those two cells. Which navigation reads count as safe is F38''s encoding to state.'
+      role, and independence remains selector-controlled (the plan selectors of CEA-54; v0.8''s * kept for the Reviewer
+      and the Verifier). The ledger marks CEA-36 superseded by MCD-04 for its `G_KNOWLEDGE_READ` cells and, as far as safe
+      navigation goes, its `G_DERIVED_READ` cells; which derived reads are safe navigation is F38''s encoding to state,
+      and until then the Verifier''s P stands for the rest.'
 
   - '#': F22
     Work: 'Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first)
@@ -1182,14 +1184,16 @@ sections:
       reuses the MS0/U1 recorder and fake model. The app-server method names here (`turn/steer`, `activeTurnNotSteerable`,
       `thread/queue/changed`, `thread/compact/start`) come from the protocol schema Codex 0.160.0 generates (`codex app-server
       generate-json-schema`), not from T9''s write-up; the probe confirms them on its pin. **M6a native edit/write decision
-      (v0.9 §7, designer candidate; F40):** the probe is where it is first observed whether Codex''s native file-edit tools
-      can be hidden or denied in a worker''s model-visible schema; a cross-reference, not new scope. **Designer decisions
-      on its findings (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger
-      MCD; filed on F24):** D4, for C1''s compaction policy: an AEW-owned proactive budget is preferred if Codex can be
-      qualified for it, otherwise Codex-native compaction is a recorded adapter residual, and Codex is never rejected solely
-      for mandatory compaction (MCD-07 to MCD-10); the brief''s proposed lever for that qualification, untested, is a declared
-      context window above the provider''s real one, so that AEW''s own path runs before Codex compacts. D5: steer''s cancel-and-restart
-      satisfies next-step semantics, and held-session staging without message identity is refused (MCD-11, MCD-12)'
+      (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** the probe is where
+      it is first observed whether Codex''s native file-edit tools can be hidden or denied in a worker''s model-visible
+      schema; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new scope.
+      **Designer decisions on its findings (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      ledger MCD; filed on F24):** D4, for C1''s compaction policy: an AEW-owned proactive budget is preferred if Codex
+      can be qualified for it, otherwise Codex-native compaction is a recorded adapter residual, and Codex is never rejected
+      solely for mandatory compaction (MCD-07 to MCD-10); the brief''s proposed lever for that qualification, untested,
+      is a declared context window above the provider''s real one, so that AEW''s own path runs before Codex compacts. D5:
+      steer''s cancel-and-restart satisfies next-step semantics, and held-session staging without message identity is refused
+      (MCD-11, MCD-12)'
 
   - '#': F24.2
     Work: 'Claude Code headless as a further harness adapter, a stretch goal after the Codex adapter: the same F24.1-style
@@ -1197,9 +1201,10 @@ sections:
     Source (governing): 'operator request, 2026-10-10 (a stretch goal: support for every harness the operator uses)'
     Belongs to or gated by: '**Unscheduled**: a stretch goal, after F24 (Codex) and the milestones it follows'
     Notes: F24 already names Claude Code headless as an alternative second adapter. This row records the operator's intent
-      to support both, Codex first. **M6a native edit/write decision (v0.9 §7, designer candidate; F40):** its runtime probe
-      is where it is first observed whether Claude Code's native edit and write tools can be hidden or denied in a worker's
-      model-visible schema; a cross-reference, not new scope
+      to support both, Codex first. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01,
+      MCD-02); takes effect at M6; F40):** its runtime probe is where it is first observed whether Claude Code's native
+      edit and write tools can be hidden or denied in a worker's model-visible schema; shell writes are stopped by the read-only
+      source, and the shell is kept; a cross-reference, not new scope
 
   - '#': F25
     Work: 'An engine-owned cost and usage ledger: per run (model/profile, token categories, wall time, provider-reported
@@ -1495,9 +1500,11 @@ sections:
       ledger MCD):** D1, M6 supersedes ADR-0009/ADR-0006 native source mutation, with read-only source, writable scratch,
       mediated authoritative mutation and the shell kept (MCD-01, MCD-02; F40, whose ADR amendments are due with M6); D2,
       the knowledge adoption governs over v0.8''s table, knowledge and safe navigation C for every admitted role and independence
-      selector-controlled (MCD-03 to MCD-05; CEA-36 superseded by MCD-04 for those cells; F21); D3, the messaging-enabled
-      operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE` (MCD-06; F9), which the
-      named profile catalog models. These do not adopt the model; its adoption is still this row''s item in [decisions due](decisions-due.md).'
+      selector-controlled (MCD-03 to MCD-05; CEA-36 superseded by MCD-04 for its knowledge cells and, as far as safe navigation
+      goes, its derived-read cells, the Verifier''s P standing for the rest until this row''s encoding says what is safe;
+      F21); D3, the messaging-enabled operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`
+      (MCD-06; F9), which the named profile catalog models. These do not adopt the model; its adoption is still this row''s
+      item in [decisions due](decisions-due.md).'
 
   - '#': F39
     Work: 'M6a Gate B, deployed bypass-freedom: proof, against the exact pinned deployment (harness, providers, containment),
@@ -1901,9 +1908,11 @@ sections:
       HNI)'
     When: '**M4 candidate**: the worker-run parts; the Lead MCP parts land with F15''s typed surface'
     Notes: 'Codex qualification is F24; the capability registry is F13. ARV-05 (operator, 2026-10-05): whether the current
-      OpenCode release still fits is this row''s question. **M6a native edit/write decision (v0.9 §7, designer candidate;
-      F40):** whether OpenCode''s native `edit` and `write` can be hidden or denied in the worker''s model-visible schema,
-      not only refused when called, is first established in the worker profile here; a cross-reference, not new scope'
+      OpenCode release still fits is this row''s question. **M6a native edit/write decision (v0.9 §7, approved by the designer,
+      D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** whether OpenCode''s native `edit` and `write` can be hidden
+      or denied in the worker''s model-visible schema, not only refused when called, is first established in the worker
+      profile here; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new
+      scope'
 
   - '#': E39
     Work: The requirements-ledger gate identifies a source's sections by document plus a hierarchical or explicit anchor

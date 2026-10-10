@@ -70,9 +70,10 @@ designer's reviewer-independence ruling (KDR-03 to KDR-05) make knowledge lookup
 capability of every admitted role, with reviewer and verifier lookup filtered rather than excluded.
 
 D2 approves the adoption over v0.8's table: knowledge lookup and safe navigation are C for every admitted role, and
-reviewer and verifier independence stays a matter of plan selectors (CEA-54, CEA-63), not of withholding the grant.
-Which navigation reads count as safe is for F38's encoding to state; the brief proposed keeping P for anything wider
-than lookup, such as bulk reads or another unit's private material.
+reviewer and verifier independence stays a matter of plan selectors (CEA-54, CEA-63), not of withholding the grant:
+for the Reviewer and the Verifier the cells keep v0.8's * (plan-visible independence selectors). Which derived
+reads count as safe navigation is for F38's encoding to state, and until then the Verifier's P stands for the rest;
+the brief proposed keeping P for anything wider than lookup, such as bulk reads or another unit's private material.
 
 ### D3. Worker coordination writes and the messaging switch
 
@@ -113,7 +114,8 @@ is refused.
 - **Ledger:** MCD-01 to MCD-12.
 - **D1 to D3** answer the reconciliation points of F38's adoption item in decisions due; the item now asks only for
   the adoption itself. The ledger marks v0.8's role-table entry (CEA-36) `superseded-by:` MCD-04 for its
-  `G_KNOWLEDGE_READ` and `G_DERIVED_READ` cells, beside its existing supersession by GAE-17, and notes D1 on GAE-12
+  `G_KNOWLEDGE_READ` cells and, as far as safe navigation goes, its `G_DERIVED_READ` cells (the * kept for the
+  Reviewer and the Verifier), beside its existing supersession by GAE-17, and notes D1 on GAE-12
   and CEA-55, D2 on GAE-17 and CEA-54, and D3 on ADR-0017's switch (CMG-11). Register: F40 (D1), F21 (D2), F9 and
   F38 (D3).
 - **ADR-0009, ADR-0006 and ADR-0017 are not amended now.** D1 takes effect at M6: the amendments of ADR-0009 and

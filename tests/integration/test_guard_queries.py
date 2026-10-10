@@ -777,3 +777,33 @@ def test_a_superseded_candidate_is_blocked_with_its_requeue(tmp_path):
     assert answer["availability"] == BLOCKED and answer["disposition"] == "requeue"
     details = answer["blocking_conditions"][0]["details"]
     assert details["disposition"] == "requeue" and details["reason"].startswith("candidate built from an earlier")
+
+
+def test_the_prepare_and_publish_queries_never_sync_the_state_they_are_given(tmp_path):
+    """PR #171 review, finding 4 (its r4): on states where the queue's sync would act (a COMMIT_READY Ticket not yet
+    enqueued, as an overlay sees it; a lease whose custodian ended), asking changes nothing of the state passed in, so
+    a query that synced in place would fail here."""
+    import copy
+
+    from aewflow import to_commit_ready
+
+    p = sample_project(tmp_path)
+    wid, _ = to_commit_ready(p, tmp_path)
+    engine = Engine.discover(p.root)
+    fresh = engine.store.read()
+    fresh["queue"]["entries"].clear()  # not enqueued yet: sync would enqueue it
+    before = copy.deepcopy(fresh)
+    assert engine.guard_query("integrate.prepare", wid, {}, state=fresh)["availability"] == AVAILABLE
+    assert fresh == before, "integrate.prepare's query synced the state it was given"
+    engine.guard_query("integrate.publish", wid, {}, state=fresh)
+    assert fresh == before, "integrate.publish's query synced the state it was given"
+    p.lead("integrate", "prepare", wid)
+    leased = engine.store.read()
+    custodian = leased["queue"]["lease"]["custodian"]
+    leased["invocations"][custodian]["status"] = "cancelled"  # sync would mark the lease for reconciliation
+    before = copy.deepcopy(leased)
+    answer = engine.guard_query("integrate.publish", wid, {}, state=leased)
+    assert answer["reason_codes"] == ["LEASE_RECONCILE_REQUIRED"]  # what the synced copy says
+    assert leased == before, "integrate.publish's query synced the state it was given"
+    engine.guard_query("integrate.prepare", wid, {}, state=leased)
+    assert leased == before, "integrate.prepare's query synced the state it was given"

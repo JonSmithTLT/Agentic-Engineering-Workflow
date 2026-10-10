@@ -67,7 +67,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     init, listed = r[0]["reply"]["result"], r[2]["reply"]["result"]
     assert init["serverInfo"]["name"] == "aew-lead"
     assert [t["name"] for t in listed["tools"]] == [  # no cli, no designed stage
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering"]
+        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "resolve"]
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])

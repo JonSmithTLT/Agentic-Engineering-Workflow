@@ -65,9 +65,9 @@ def test_the_handshake_echoes_a_known_revision_or_answers_with_the_newest():
 def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget():
     normal = mcp.tools_list("normal")
     names = [t["name"] for t in normal["tools"]]
-    # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`.
+    # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`.
     assert names == ["status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint",
-                     "steering"]
+                     "steering", "resolve"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
     assert recovery == [*names, "cli"]
     size = len(json.dumps(normal, separators=(",", ":")))
@@ -76,6 +76,10 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
     assert not by_name["checkpoint"]["annotations"]["readOnlyHint"]
     assert not by_name["steering"]["annotations"]["readOnlyHint"]
+    assert not by_name["resolve"]["annotations"]["readOnlyHint"]
+    # Under §2.6's 11,900-byte stop line with every M4-E tool built: E3c's `resolve` takes no more than the 771 bytes
+    # the plan measured for it with E5's dispositions (5,135 bytes at E3c).
+    assert len(json.dumps(by_name["resolve"], separators=(",", ":"))) <= 771
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised
 

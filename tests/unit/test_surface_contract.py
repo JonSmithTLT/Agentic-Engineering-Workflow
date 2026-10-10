@@ -97,7 +97,8 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering", "cli",
+        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "resolve", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}

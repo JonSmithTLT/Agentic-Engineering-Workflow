@@ -107,6 +107,7 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                             "generation": int((state.get("lead") or {}).get("generation") or 0),
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
                             "blockers": []}
+    _stage_decisions(part, state, subject)
     if subject == "project":
         return part
     unit = engine.status(subject)["work_unit"]  # hot, or archived as it stands now
@@ -120,6 +121,19 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     if unit.get("kind") == "ticket":
         _ticket_actions(part, subject, int(part["revision"]))
     return part
+
+
+def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) -> None:
+    """An unfinished stage of the subject (every one, for the project) is the current Lead's to resolve, continue or
+    abandon, never inferred (M4-E E3c; §3.4 rule 8). The decision names the intent and carries no choice: no
+    default."""
+    r = str(part["revision"])
+    for sid, si in sorted((state.get("stage_intents") or {}).items()):
+        if subject == "project" or si["subject"]["id"] == subject:
+            part["decisions"].append({"decision": "RESOLVE_STAGE", "tool": "resolve", "evidence": [sid],
+                                      "arguments": {"expect_rev": part["revision"], "subject": sid},
+                                      "cli": ["stage", "<continue|abandon>", sid, "--rationale", "<why>",
+                                              "--expect-rev", r]})
 
 
 def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
@@ -259,7 +273,7 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     for d in part["decisions"]:
         if "role" not in d:
             out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=d.get("arguments"),
-                                 cli_fallback=list(d["cli"])))
+                                 cli_fallback=list(d["cli"]), evidence=d.get("evidence")))
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e}

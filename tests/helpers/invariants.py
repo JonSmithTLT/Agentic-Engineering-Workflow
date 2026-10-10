@@ -248,7 +248,7 @@ def control_violations(root: Path) -> list[str]:
     problems += steering_violations(root, hot)
     # 46. Run usage (F25 R1, R5), over the hot state and every rehydrated bundle.
     problems += usage_violations(state)
-    # 47-49. M4-E E3: the StageIntent journal, hot and cold.
+    # 47-50. M4-E E3: the StageIntent journal, hot and cold, and its resolutions (E3c).
     problems += stage_intent_violations(root, hot, state)
     # 50. F4 S1: every unit key and record field is classified by the Ticket field registry.
     problems += ticket_field_violations(root, state)
@@ -288,7 +288,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
     49: every intent ever opened (``counters.stage_intent``) lives in exactly one place: hot, or one immutable cold
         record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
-        note carries the record's hash; a record with no unit (``records/``) is pinned by no hash."""
+        note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
+    50: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
     from aew.engine import stage_intents as S
     from aew.schemas import validate
 
@@ -316,6 +317,31 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
             problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
+        resolutions(si, where)
+
+    def resolutions(si: dict[str, Any], where: str) -> None:
+        """50 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held
+        the seat; the owner is the last one rebound to; the latest resolution is the last continue, or the abandon
+        that ended the intent; and nothing is resolved before it opened or after it closed."""
+        rebound, resolution = si["rebound"], si["resolution"]
+        owner = rebound[0]["from_generation"] if rebound else si["generation"]
+        for r in rebound:
+            if r["from_generation"] != owner or not owner <= r["to_generation"] <= hot["lead"]["generation"]:
+                problems.append(f"{where}: a continue rebinds generation {r['from_generation']} to "
+                                f"{r['to_generation']}, but generation {owner} owned it")
+            owner = r["to_generation"]
+        if owner != si["generation"]:
+            problems.append(f"{where}: owned by generation {si['generation']}, last rebound to {owner}")
+        revs = [si["opened"]["rev"], *(r["rev"] for r in rebound)]
+        if revs != sorted(set(revs)) or (si["closed"] and revs[-1] > si["closed"]["rev"]):
+            problems.append(f"{where}: its continues are not ordered between its opening and its end: {revs}")
+        if (si["status"] == S.ABANDONED) != bool(resolution and resolution["choice"] == "abandon"):
+            problems.append(f"{where}: {si['status']} with resolution {resolution and resolution['choice']}")
+        if resolution and resolution["choice"] == "continue" and not (
+                rebound and (resolution["rev"], resolution["generation"]) == (rebound[-1]["rev"], owner)):
+            problems.append(f"{where}: its latest continue is not its last rebind")
+        if resolution is None and rebound:
+            problems.append(f"{where}: continued with no resolution recorded")
 
     for sid, si in sorted(intents.items()):
         where = f"stage intent {sid}"

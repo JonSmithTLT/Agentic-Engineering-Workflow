@@ -264,3 +264,43 @@ def test_a_failing_review_blocks_the_verification_stage_where_it_would_stop(impl
     with pytest.raises(AEWError) as refused:
         engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="VERIFY_PENDING")
     assert refused.value.code == "ILLEGAL_TRANSITION"
+
+
+# ---------------------------------------------------------------------------------------------- work.create
+
+DRAFT = {"kind": "ticket", "title": "Add multiply()", "risk_class": 1, "scope_paths": ["calc/**", "tests/**"],
+         "goal_backwards": ["multiply(2, 3) == 6"], "contract": ["changes stay in calc/ and tests/"]}
+
+
+def _create(engine: Engine, p: Any, fields: dict[str, Any]) -> Callable[[int], Any]:
+    return lambda rev: engine.work_create(token=p.token, expect_rev=rev, **fields)
+
+
+@pytest.mark.parametrize(("change", "code"), [
+    ({"kind": "task"}, "USAGE"),
+    ({"risk_class": 5}, "USAGE"),
+    ({"scope_paths": ["calc/**,tests/**"]}, "USAGE"),  # the scope lint (M3-D9)
+    ({"class0_assertions": ["inputs_complete"]}, "USAGE"),  # only with class 0
+    ({"parent": "S-0099"}, "NOT_FOUND"),
+    ({"depends_on": ["T-0099"]}, "NOT_FOUND"),
+    ({"card": "code_reviewer"}, "USAGE"),  # a reviewer card cannot fill the execute slot
+    ({"card": "no_such_card"}, "NOT_FOUND"),
+])
+def test_guard_query_matches_execute_work_create_refusals(ready, change, code):
+    p, _wid, engine = ready
+    fields = {**DRAFT, **change}
+    before = engine.store.read()["counters"]
+    assert equivalent(engine, "work.create", None, dict(fields), _create(engine, p, fields))["reason_codes"] == [code]
+    assert engine.store.read()["counters"] == before
+
+
+def test_guard_query_matches_execute_work_create(ready):
+    """The query drafts the unit on a copy (the counter, the graph and the record untouched) and names the id the
+    creation then takes."""
+    p, wid, engine = ready
+    args = dict(DRAFT, depends_on=[wid])
+    before = engine.store.read()
+    equivalent(engine, "work.create", None, args, _create(engine, p, {**DRAFT, "depends_on": [wid]}))
+    created = args["found"]["work_id"]
+    assert created not in before["work"] and created in engine.store.read()["work"]
+    assert args["found"]["unit"]["depends_on"] == engine.store.read()["work"][created]["depends_on"]

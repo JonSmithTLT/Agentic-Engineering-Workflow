@@ -350,21 +350,67 @@ class WorkCommands:
         acceptance_inputs: list[str] | None = None,
         class0_assertions: list[str] | None = None,
     ) -> dict[str, Any]:
+        args: dict[str, Any] = {
+            "kind": kind, "title": title, "risk_class": risk_class, "mutating": mutating, "parent": parent,
+            "depends_on": depends_on, "scope_paths": scope_paths, "goal_backwards": goal_backwards,
+            "contract": contract, "mandatory_gates": mandatory_gates, "min_descendant_class": min_descendant_class,
+            "rationale": rationale, "external_refs": external_refs, "body": body, "card": card,
+            "promoted_from": promoted_from, "acceptance_checks": acceptance_checks,
+            "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions}
+        self._check_create_arguments(args)  # before the transaction, as always: a malformed request needs no state
+        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
+            # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
+            require(self.create_query(ctx.state, None, args))
+            work_id, unit, text = self._draft_unit(ctx.state, args, ctx.actor)
+            path = unit["record"]
+            ctx.session.write(path, text)
+            ctx.refs.append(path)
+            ctx.summary = f"created {kind} {work_id}: {title}"
+            self.units.before_commit(ctx)
+        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
+        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
+        if unmatched:
+            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                               "otherwise a change there needs a scope that names it" for g in unmatched]
+        return out
+
+    # ---- `work.create`'s guard as a query (M4-E E4; aew.engine.guards)
+
+    def create_query(self, state: dict[str, Any], work_id: str | None, args: dict[str, Any]) -> Any:
+        """``work.create`` with ``args`` (the request's fields): the request is well formed (the argument checks and
+        the scope lint, M3-D9), and drafting the unit on a copy of ``state`` succeeds (its parent takes children, its
+        dependencies exist, no cycle, its record matches the work-unit schema, its card fills the execute slot). It
+        records the unit it would create as ``found["work_id"]`` and ``found["unit"]``; ``work_id`` is unused."""
+        def check() -> None:
+            self._check_create_arguments(args)
+            lead = state.get("lead") or {}
+            actor = {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead.get("generation")}
+            scratch = {**state, "work": dict(state["work"]), "counters": dict(state.get("counters") or {}),
+                       "archived_refs": dict(state.get("archived_refs") or {})}
+            wid, unit, _text = self._draft_unit(scratch, args, actor)
+            args.setdefault("found", {}).update(work_id=wid, unit=unit)
+
+        return checked(check)
+
+    @staticmethod
+    def _check_create_arguments(a: dict[str, Any]) -> None:
+        kind, risk_class, scope_paths = a.get("kind"), a.get("risk_class"), a.get("scope_paths")
+        acceptance_checks, acceptance_inputs = a.get("acceptance_checks"), a.get("acceptance_inputs")
         if kind not in RECORD_NAME:
             raise UsageError("kind must be ticket, story or epic")
-        if not 0 <= risk_class <= 4:
+        if not isinstance(risk_class, int) or not 0 <= risk_class <= 4:
             raise UsageError("risk class must be 0..4")
-        if min_descendant_class is not None and not rationale:
+        if a.get("min_descendant_class") is not None and not a.get("rationale"):
             raise UsageError("a minimum descendant class requires a recorded rationale (WC §7.4)")
         if (acceptance_checks or acceptance_inputs) and kind != "ticket":
             raise UsageError("acceptance checks and inputs belong to a Ticket; a Story's or Epic's acceptance is its "
                              "children and its own gates")
-        if acceptance_checks and kind == "ticket" and mutating is False:
+        if acceptance_checks and kind == "ticket" and a.get("mutating") is False:
             raise UsageError(
                 "--acceptance-check gates a mutating Ticket's change (Class 0 amendment, section 9 item 4); a "
                 "non-mutating Ticket changes no source, so the check would be recorded and never run. State what its "
                 "evidence must show in --goal or --contract instead", acceptance_checks=acceptance_checks)
-        if class0_assertions and risk_class != 0:
+        if a.get("class0_assertions") and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")
         joined = [s for s in scope_paths or [] if "," in s]
@@ -373,60 +419,55 @@ class WorkCommands:
             raise UsageError(f"scope {joined[0]!r} is one glob containing a comma, which is almost certainly several "
                              "globs: give one glob per --scope and repeat --scope for each",
                              scope=joined)
-        with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
-            state = ctx.state
-            if parent is not None:
-                self.units.check_parent(state, kind, parent)
-            edges = self.units.parse_edges(state, depends_on or [])
-            counter = kind
-            state["counters"][counter] = state["counters"].get(counter, 0) + 1
-            work_id = format_id(KIND_PREFIX[kind], state["counters"][counter])
-            is_mutating = (kind == "ticket") if mutating is None else (mutating and kind == "ticket")
-            policy = None
-            if kind != "ticket" and (mandatory_gates or min_descendant_class is not None):
-                policy = {"mandatory_gates": list(mandatory_gates or []),
-                          "min_descendant_class": min_descendant_class, "rationale": rationale}
-            record = work_unit_record(
-                unit_id=work_id, kind=kind, title=title, created_at=utc_now(),
-                created_by={k: ctx.actor[k] for k in ("kind", "session_label", "generation")},
-                risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=scope_paths,
-                goal_backwards=goal_backwards, contract=contract, policy=policy,
-                external_refs=external_refs, body=body, promoted_from=promoted_from,
-                acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
-                class0_assertions=class0_assertions,
-            )
-            text = record.render()
-            path = f"work/{work_id}/{RECORD_NAME[kind]}"
-            ctx.session.write(path, text)
-            ctx.refs.append(path)
-            unit: dict[str, Any] = {
-                "kind": kind, "title": title, "record": path, "record_sha256": sha256_text(text),
-                "parent": parent, "state": "PLANNING" if kind != "ticket" else "BLOCKED", "state_reason": "created",
-                "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
-                "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
-            }
-            if kind == "ticket":
-                unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
-                            implementer_invocation=None, evidence=[], classifications=[], waivers=[],
-                            integration=None)
-            if promoted_from:
-                unit["promoted_from"] = promoted_from
-            state["work"][work_id] = unit
-            self.units.refuse_cycles(state)
-            if card:
-                chosen = self.roles.role_catalog().get(card)
-                self.roles.slot_ok(unit, "execute", chosen)
-                unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
-                                                  "selected_by": "lead", "pinned": False}],
-                                     "review": [], "verify": [], "forbidden": []}
-            ctx.summary = f"created {kind} {work_id}: {title}"
-            self.units.before_commit(ctx)
-        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
-        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and is_mutating else []
-        if unmatched:
-            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
-                               "otherwise a change there needs a scope that names it" for g in unmatched]
-        return out
+
+    def _draft_unit(self, state: dict[str, Any], a: dict[str, Any],
+                    actor: dict[str, Any]) -> tuple[str, dict[str, Any], str]:
+        """Create the unit in ``state`` (the transaction's, or the query's copy): its id from the counter, its record
+        text and its control entry, checked against the graph. Returns (id, unit, record text)."""
+        kind, title, risk_class, parent = a["kind"], a["title"], a["risk_class"], a.get("parent")
+        mutating, min_descendant_class = a.get("mutating"), a.get("min_descendant_class")
+        if parent is not None:
+            self.units.check_parent(state, kind, parent)
+        edges = self.units.parse_edges(state, a.get("depends_on") or [])
+        state["counters"][kind] = state["counters"].get(kind, 0) + 1
+        work_id = format_id(KIND_PREFIX[kind], state["counters"][kind])
+        is_mutating = (kind == "ticket") if mutating is None else (mutating and kind == "ticket")
+        policy = None
+        if kind != "ticket" and (a.get("mandatory_gates") or min_descendant_class is not None):
+            policy = {"mandatory_gates": list(a.get("mandatory_gates") or []),
+                      "min_descendant_class": min_descendant_class, "rationale": a.get("rationale")}
+        record = work_unit_record(
+            unit_id=work_id, kind=kind, title=title, created_at=utc_now(),
+            created_by={k: actor[k] for k in ("kind", "session_label", "generation")},
+            risk_class=risk_class, mutating=is_mutating, parent=parent, scope_paths=a.get("scope_paths"),
+            goal_backwards=a.get("goal_backwards"), contract=a.get("contract"), policy=policy,
+            external_refs=a.get("external_refs"), body=a.get("body") or "", promoted_from=a.get("promoted_from"),
+            acceptance_checks=a.get("acceptance_checks"), acceptance_inputs=a.get("acceptance_inputs"),
+            class0_assertions=a.get("class0_assertions"),
+        )
+        text = record.render()
+        path = f"work/{work_id}/{RECORD_NAME[kind]}"
+        unit: dict[str, Any] = {
+            "kind": kind, "title": title, "record": path, "record_sha256": sha256_text(text),
+            "parent": parent, "state": "PLANNING" if kind != "ticket" else "BLOCKED", "state_reason": "created",
+            "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
+            "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
+        }
+        if kind == "ticket":
+            unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
+                        implementer_invocation=None, evidence=[], classifications=[], waivers=[],
+                        integration=None)
+        if a.get("promoted_from"):
+            unit["promoted_from"] = a["promoted_from"]
+        state["work"][work_id] = unit
+        self.units.refuse_cycles(state)
+        if a.get("card"):
+            chosen = self.roles.role_catalog().get(a["card"])
+            self.roles.slot_ok(unit, "execute", chosen)
+            unit["role_plan"] = {"execute": [{"card": chosen.id, "version": chosen.meta.get("version"),
+                                              "selected_by": "lead", "pinned": False}],
+                                 "review": [], "verify": [], "forbidden": []}
+        return work_id, unit, text
 
     def _unmatched_scope(self, scope_paths: list[str]) -> list[str]:
         """The scope globs that match no file at the authoritative commit (M3 dogfood report §6.6, E10: a Lead that

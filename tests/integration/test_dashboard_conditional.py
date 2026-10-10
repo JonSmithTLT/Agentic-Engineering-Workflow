@@ -236,8 +236,12 @@ def test_a_pending_route_is_refused_as_without_it_before_authentication_or_by_it
     """Without a session, a pending route that no template matches is ``404`` "no such route" (routing comes before
     authentication), and one a template matches is that template's ``401``: exactly today's answers (change note
     §3.3)."""
-    pending = pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"]))
-    assert pending, "the change note's routes are pending until S1 and S2 serve them"
+    # Every route contract 0.1.3 adds is served now (S1, S2): a later version's routes stand in for pending ones, one
+    # that no template matches and one a template does (``/runs/{id}``).
+    later = {"/maps/semantic", "/runs/latest"}
+    pending = pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"]) | later)
+    assert pending == later
+    assert match_route("/maps/semantic") is None and match_route("/runs/latest") is not None
     world.gate.closed = True
     try:
         for route in sorted(pending):

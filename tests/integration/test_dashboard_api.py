@@ -48,7 +48,12 @@ CONTRACT = CT.Contract(ROOT / CT.CONTRACT_REL)
 # world (its switch is not adopted), so it is swept where it is on: tests/integration/test_dashboard_history_search.py.
 SERVED = sorted(r for r in CONTRACT.paths if r in ROUTES)
 assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
-PENDING = sorted(pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"])))
+# Every route contract 0.1.3 adds is served now (S1, S2), so a later version's routes stand in for the pending ones:
+# one that no template matches and one a template does (``/runs/latest`` is ``/runs/{id}`` with the id ``latest``).
+LATER_ROUTES = {"/maps/semantic", "/runs/latest"}
+PENDING = sorted(pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"])
+                                | LATER_ROUTES))
+assert set(PENDING) == LATER_ROUTES  # nothing the accepted contract or the change note adds is left pending
 
 
 class OpenAccess:

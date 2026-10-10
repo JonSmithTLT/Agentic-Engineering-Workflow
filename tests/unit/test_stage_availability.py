@@ -214,10 +214,26 @@ CALLS = {
 }
 
 
+# The arguments each step's guard reads (`Engine.guard_query`): a dispatch decision its role, card and scope; the
+# migrated queries their request's fields. A planner's other arguments (`launch`, `execution`) no guard reads.
+DISPATCH_READS = frozenset({"work_id", "role", "card", "scope"})
+GUARD_READS = {
+    "work.assign": DISPATCH_READS, "invoke.create.mutating": DISPATCH_READS, "dispatch.launch": frozenset(),
+    "work.transition": frozenset({"work_id", "to", "reason"}),
+    "review.ingest": frozenset({"work_id", "evidence"}),
+    "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
+                              "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
+                              "external_refs", "body", "card", "promoted_from", "acceptance_checks",
+                              "acceptance_inputs", "class0_assertions"}),
+    "plan.propose": frozenset({"work_id", "body", "reason", "affected_paths", "review", "verify", "no_assurance"}),
+}
+
+
 def disagreements(stage_planners: dict[str, Any]) -> list[str]:
-    """Where a planner's step arguments differ from the arguments the step's guard is asked with: every argument the
-    availability builder gives must be the planner's too, the same value, or an earlier step's output (`$from`) where
-    `produced_by` says that step produces it."""
+    """Where a planner's step arguments differ from the arguments the step's guard is asked with, both ways: every
+    argument the availability builder gives must be the planner's too (the same value, or an earlier step's output,
+    `$from`, where `produced_by` says that step produces it), and the planner gives no argument a guard reads that
+    the builder does not give (PR #170 re-review, finding 2)."""
     out = []
     for name in sorted(set(SA.STAGES) & set(stage_planners)):
         t = contract.tool(name)
@@ -234,6 +250,9 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
                         m == got["$from"][0] for _input, m in t.produced_by[n - 1])
                     if got != value and not produced and not (value is None and key not in given):
                         out.append(f"{name} step {n} {key}: guard asked {value!r}, planner gives {got!r}")
+                for key in sorted(set(given) & GUARD_READS[t.expands_to[n - 1]] - set(asked or {})):
+                    out.append(f"{name} step {n} {key}: planner gives {given[key]!r}, which the guard reads but is "
+                               "never asked with")
     return out
 
 
@@ -252,6 +271,24 @@ def test_the_agreement_check_binds_a_planner_that_differs():
 
     found = disagreements({"ticket_start": start})
     assert any("step 1 launch" in d for d in found) and any("step 3 to" in d for d in found)
+
+
+def test_the_agreement_check_binds_a_planner_that_adds_what_a_guard_reads():
+    """The other direction: a planner that asks a step's guard more than availability does (a card for the reviewer's
+    decision, a reason for the transition) changes the question resume and R5-1 ask. Arguments no guard reads
+    (`launch`, `execution`) are the planner's own."""
+    def review(a: dict[str, Any]) -> list[dict[str, Any]]:
+        return [{"primitive": "work.transition", "args": {"work_id": a["work_id"], "to": "REVIEW_PENDING",
+                                                          "reason": "ready"}},
+                {"primitive": "invoke.create.mutating", "args": {"work_id": a["work_id"], "role": "reviewer",
+                                                                 "card": "security_reviewer", "launch": True,
+                                                                 "execution": {"model": "p/m"}}},
+                {"primitive": "dispatch.launch", "args": {"work_id": a["work_id"]}}]
+
+    found = disagreements({"ticket_request_review": review})
+    assert any("step 1 reason" in d for d in found) and any("step 2 card" in d for d in found)
+    assert not any("launch" in d or "execution" in d for d in found)
+    assert set(GUARD_READS) >= {p for steps in SA.STAGES for p in contract.tool(steps).expands_to}
 
 
 @pytest.mark.parametrize(("codes", "says"), [

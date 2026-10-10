@@ -75,7 +75,13 @@
         "raw_history_search": {"x-aew-class": "operational", "enum": ["off", "explicit"], "default": "off"}
       }
     },
-    "description": {"x-aew-class": "operational", "type": "string"}
+    "description": {"x-aew-class": "operational", "type": "string"},
+    "maps": {
+      "type": "object",
+      "description": "Project maps in context (register F22.1, plan §5.1; ADR-0015). pack_slices \"off\" (the default; quote it, since YAML reads a bare off as a boolean) leaves every pack and the Lead's resume view byte-identical to a project without maps; structural adds the bounded structural-map section to the packs of roles whose context names codebase_map, and the map's row to the resume view. Turning it on is the operator's configuration decision.",
+      "additionalProperties": false,
+      "properties": {"pack_slices": {"x-aew-class": "legality_affecting", "enum": ["off", "structural"], "default": "off"}}
+    }
   },
   "$defs": {
     "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},

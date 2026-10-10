@@ -42,13 +42,24 @@ from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, LaunchContract
 from aew.harness.opencode import capabilities, projection
-from aew.harness.opencode.client import Client, EventStream, OpenCodeError, OpenCodeUnavailable, Server, location
+from aew.harness.opencode.client import (
+    EVENT_CONNECT_S,
+    REQUEST_TIMEOUT_S,
+    START_TIMEOUT_S,
+    Client,
+    EventStream,
+    OpenCodeError,
+    OpenCodeUnavailable,
+    Server,
+    location,
+)
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
 PAGES = 100  # at most this many pages of 200 messages are read for a run's snapshot (more: `truncated`)
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
+OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
 LOGGED_EVENTS = frozenset({
@@ -196,6 +207,15 @@ class OpenCodeAdapter(HarnessAdapter):
                 "context": {"prompt_bytes": len(contract.prompt.encode("utf-8")),
                             "system_bytes": len(config["agents"][projection.AGENT]["system"].encode("utf-8"))}}
 
+    @classmethod
+    def launch_bound_s(cls) -> float:
+        """``launch``'s steps in series, each at its own timeout: the server's address; ``/api/info``; the schema; the
+        catalog and the agent projection, each waited for up to ``CATALOG_WAIT_S`` with a request in flight at the end;
+        the stored-credential check, the session, its environment and the first prompt; the event stream's connect."""
+        request = REQUEST_TIMEOUT_S
+        return (START_TIMEOUT_S + request + OPENAPI_TIMEOUT_S + 2 * (CATALOG_WAIT_S + request) + 4 * request
+                + EVENT_CONNECT_S)
+
     def deliver_contract(self, contract: LaunchContract) -> None:
         """The first prompt: the launch contract (subclasses in tests act without a model instead)."""
         try:
@@ -212,7 +232,7 @@ class OpenCodeAdapter(HarnessAdapter):
         assert self.client is not None
         t0 = time.monotonic()
         version = (self.client.get("/api/info") or {}).get("version")
-        spec = self.client.get("/openapi.json", timeout=60)
+        spec = self.client.get("/openapi.json", timeout=OPENAPI_TIMEOUT_S)
         gaps = capabilities.version_problems(version) + capabilities.problems(spec, self.extra_requirements())
         if gaps:
             raise HarnessIncompatible(f"OpenCode {version} lacks what AEW needs: " + "; ".join(gaps),

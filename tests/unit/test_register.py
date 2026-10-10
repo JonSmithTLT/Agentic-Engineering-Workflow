@@ -36,6 +36,38 @@ def test_the_yaml_round_trips_through_the_markdown():
     assert register.parse_markdown(register.render_markdown(DATA)) == DATA
 
 
+def test_a_cell_written_over_several_lines_round_trips_and_one_that_would_split_its_row_is_reported():
+    """Each row is a block (a heading, then one paragraph per cell) so that changes to neighbouring rows merge: a cell
+    may run over several lines, but a blank line inside it, or a heading cell over two lines, would split the block."""
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["Notes"] = "first line\nsecond line"
+    assert register.parse_markdown(register.render_markdown(data)) == data
+    assert register.problems(data) == []
+    data["sections"][1]["rows"][0]["Notes"] = "one paragraph\n\nanother"
+    assert any("holds a blank line" in p for p in register.problems(data))
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["#"] = "F3\nF4"
+    assert any("one non-empty line" in p for p in register.problems(data))
+
+
+def test_a_cell_or_item_field_ending_in_newlines_is_settled_by_render():
+    """A YAML literal block (`Notes: |`) ends in a newline, which the page cannot carry; two or more made `dump` write a
+    keep-chomping scalar that grew on every render. `render` strips them, so the page parses back exactly and a second
+    render changes nothing (review of PR #151, 4)."""
+    data = copy.deepcopy(DATA)
+    data["sections"][1]["rows"][0]["Notes"] = yaml.safe_load("v: |\n  first line\n  second line\n")["v"]
+    data["sections"][1]["rows"][1]["Work"] += "\n\n\n"
+    settled = register.normalize(data)
+    assert settled["sections"][1]["rows"][0]["Notes"] == "first line\nsecond line"
+    assert register.parse_markdown(register.render_markdown(settled)) == settled
+    assert register.dump(register.normalize(yaml.safe_load(register.dump(settled)))) == register.dump(settled)
+    due = copy.deepcopy(DUE)
+    due["items"][-1]["what"] = "x\n\n"
+    text = register.dump(register.normalize_due(due))
+    assert yaml.safe_load(text)["items"][-1]["what"] == "x"
+    assert register.dump(register.normalize_due(yaml.safe_load(text))) == text
+
+
 def test_ids_are_unique_and_open_rows_carry_a_target():
     assert register.problems(DATA) == []
 
@@ -151,7 +183,8 @@ def test_an_item_names_a_known_due_point_owner_and_need():
 
 def test_the_view_lists_the_soonest_first():
     owed = register.render_due(DUE).split("## Owed, soonest first")[1].split("## Blocked")[0]
-    dues = [line.split(" | ")[0].removeprefix("| ") for line in owed.splitlines() if line.startswith("| ")][1:]
+    dues = [line.removeprefix("**Due by:** ").split(" · ")[0] for line in owed.splitlines()
+            if line.startswith("**Due by:** ")]
     order = [register.DUE_ORDER.index(d) for d in dues]
     assert len(dues) == len(DUE["items"]) and order == sorted(order)
 
@@ -172,7 +205,7 @@ def test_a_malformed_item_is_named_never_a_crash():
     due = copy.deepcopy(DUE)
     due["items"][0] = {"row": "Q11", "due": "soon"}
     text = register.render_due(due)
-    assert "| soon |" in text
+    assert "**Due by:** soon ·" in text
     assert any("missing needs, owner, what" in p for p in register.due_problems(DATA, due))
 
 

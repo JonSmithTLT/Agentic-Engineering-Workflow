@@ -280,3 +280,31 @@ def test_lead_bridge_arguments_are_typed():
         bridge.validate_request({"op": "submit", "args": {"kind": "k", "text": "t"}}, lead_broker.OPERATIONS)
     with pytest.raises(errors.PermissionDenied):
         bridge.validate_request(ok, bridge.OPERATIONS)
+
+
+def _start_deadline(**env: str) -> float:
+    """``starting_limit_s("opencode")`` in a fresh process, as a supervisor reads its settings at import."""
+    import subprocess
+    import sys
+
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("AEW_RUN_START_S", "AEW_OPENCODE_CATALOG"))}
+    out = subprocess.run([sys.executable, "-c", "from aew.harness import supervisor; "
+                          "print(supervisor.starting_limit_s('opencode'))"], env={**base, **env}, capture_output=True,
+                         text=True, timeout=120, stdin=subprocess.DEVNULL,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert out.returncode == 0, out.stderr
+    return float(out.stdout)
+
+
+def test_a_start_deadline_never_cuts_off_the_adapters_own_launch_bounds():
+    """Independent review of PR #149, F1: a fixed 300 s deadline was shorter than the OpenCode adapter's own launch
+    timeouts in series, so raising its catalog wait (as the guide suggests for a slow catalog) abandoned starts the
+    adapter would still have waited for. The default deadline is derived from those bounds, from the same settings."""
+    from aew.harness.containment import probe
+    from aew.harness.opencode.adapter import OpenCodeAdapter
+
+    default = _start_deadline()
+    assert default >= OpenCodeAdapter.launch_bound_s() + probe.BOUND_S
+    raised = _start_deadline(AEW_OPENCODE_CATALOG_S="300")
+    assert raised - default == pytest.approx(2 * (300 - 90))  # the catalog and the agent projection each wait for it
+    assert _start_deadline(AEW_OPENCODE_CATALOG_S="300", AEW_RUN_START_S="45") == 45  # the operator's override wins

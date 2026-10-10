@@ -359,6 +359,23 @@ class Resume:
         return {"name": name, "path": rel, "freshness": "CURRENT" if source == current else "STALE",
                 "source_revision": source, "authoritative_revision": current}
 
+    def _derived_knowledge(self) -> list[dict[str, Any]]:
+        """The derived knowledge rows. With the execution policy's ``maps.pack_slices`` on (register F22.1 plan
+        §5.4), the codebase_map row is the selected structural map with its freshness and qualification (T5-INV-10);
+        off (the default), the rows are exactly what they were before maps existed. Never raises for a map."""
+        rows = [self._freshness(n, r) for n, r in sorted(self.k.manifest["knowledge"].items())]
+        try:
+            policy, _ = self.k.execution_policy()
+        except Exception:  # an unreadable policy turns nothing on
+            return rows
+        from aew.maps import slices
+        from aew.policy import execution as X
+
+        if X.pack_slices(policy) != X.PACK_SLICES_STRUCTURAL:
+            return rows
+        row = slices.resume_row(self.k.aew_root, self.k.repo_root, self.k.authoritative_commit())
+        return [row if r["name"] == slices.NAME else r for r in rows]
+
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
         """``session``: inside a Lead session, whether its broker holds Lead authority (``lead_broker.
         session_authority``; M3-D10). ``None`` (outside a Lead session) keeps the guidance for a fresh reader."""
@@ -460,7 +477,7 @@ class Resume:
             "authority_candidates_pending": [c for c in self.k.manifest["authority"]["candidates"]
                                              if c["status"] == "proposed"],
             "guardrails": self.k.manifest["policy"]["guardrails"],
-            "derived_knowledge": [self._freshness(n, r) for n, r in sorted(self.k.manifest["knowledge"].items())],
+            "derived_knowledge": self._derived_knowledge(),
             "role_catalog": [{"id": c.id, "display_name": c.meta["display_name"], "extends": c.archetype,
                               "use_when": c.meta.get("use_when", [])}
                              for c in sorted(catalog.cards.values(), key=lambda c: c.id)],

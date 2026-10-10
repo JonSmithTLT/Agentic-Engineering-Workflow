@@ -34,6 +34,7 @@ from aew.errors import HarnessLaunchFailed
 START_TIMEOUT_S = 60.0
 LOOPBACK_URL = re.compile(r"http://127\.0\.0\.1:[0-9]{1,5}/?")
 REQUEST_TIMEOUT_S = 30.0
+EVENT_CONNECT_S = 10.0  # how long a launch waits for the event stream's first connection
 
 
 class OpenCodeError(Exception):
@@ -188,7 +189,7 @@ class EventStream:
         self._sock: socket.socket | None = None
         self._thread = threading.Thread(target=self._run, name="aew-opencode-events", daemon=True)
 
-    def start(self, wait_s: float = 10.0) -> None:
+    def start(self, wait_s: float = EVENT_CONNECT_S) -> None:
         self._thread.start()
         self.connected.wait(wait_s)
 

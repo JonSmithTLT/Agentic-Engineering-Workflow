@@ -110,11 +110,15 @@ def check_semantics(policy: dict[str, Any], *, source: str) -> None:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
 
 
+PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
+
+
 # The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
 # an unquoted ``off`` (and ``no``, ``false``, ``on``, ``yes``, ``true``) as a boolean, which a schema enum refuses
 # without saying why; ``refuse_yaml_boolean`` names the cause and the quoted fix (the convention of PR #143's
 # ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.
 STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("maps", "pack_slices"): (PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL),  # register F22.1 (plan §5.1)
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
 }
 
@@ -134,6 +138,12 @@ def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
                 f"{source}: {field} was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted off (or "
                 f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{allowed[0]}\" (or "
                 f"{', '.join(allowed[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
+
+
+def pack_slices(policy: dict[str, Any] | None) -> str:
+    """The project-map switch (``maps.pack_slices``, register F22.1 plan §5.1): ``off`` unless the operator set it.
+    Absent policy, absent key and an unreadable policy all mean ``off``, so a map can never change a pack by default."""
+    return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
 
 
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:

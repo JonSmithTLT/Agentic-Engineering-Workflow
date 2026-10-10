@@ -17,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -222,6 +223,57 @@ def test_a_run_that_takes_long_to_end_is_not_reported_lost(lab, tmp_path):
     held.unlink()
     done = lab.wait(R1)
     assert done["status"] == "ended_with_evidence" and len(done["evidence"]) == 2
+    assert_control_invariants(lab.project)
+
+
+def test_a_start_that_wedges_after_custody_reads_lost_within_its_bound_and_never_runs(lab, tmp_path, sync):
+    """Independent review of PR #147 (register E3): the starting heartbeat had no limit, so a supervisor wedged between
+    its custody acknowledgement and `running` kept a single-run `harness wait` on `starting` until the wait's own
+    timeout. The start now has a deadline (from the adapter's own launch bounds; `AEW_RUN_START_S` overrides it): its
+    heartbeat stops there, so the run
+    reads `lost` within the deadline plus the stale window, its bridge refuses the agent, and a start that comes back
+    afterwards ends `launch_failed`, never `running`."""
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script(R1, [wait(sync / "go", 300), {"do": "aew", "args": ["whoami"]}, touch(sync / "asked"),
+                    wait(sync / "never", 300)])
+    held, ending = hold(tmp_path / "start-held"), hold(tmp_path / "ending")
+    res = lab.lead_res("work", "assign", wid, "--launch", env={
+        "AEW_FAULT": "harness.launch.after_handoff", "AEW_RUN_START_S": "3",
+        **pause_env(("harness.supervisor.launched", held), ("harness.supervisor.finishing", ending))})
+    assert res.returncode == 86
+    lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor wedged after launching the harness")
+    # 3 s of start, then the 4 s stale window: well inside the wait's own 60 s, which must not be what ends it.
+    stale = {**lab.env, "AEW_RUN_STALE_S": "4"}
+    lost = run_aew("-C", str(lab.root), "harness", "wait", R1, "--timeout", "60", env=stale, timeout=180)
+    assert lost.returncode == 0 and lost.json["status"] == "lost" and not lost.json["timed_out"], lost.json
+    (sync / "go").touch()  # the agent, still alive under the wedged supervisor, tries to act
+    lab.until(lambda: (sync / "asked").exists(), what="the agent's bridge call")
+    who = lab.step(R1, 1)
+    assert who["exit"] != 0 and error_code(who) == "HARNESS_LAUNCH_FAILED", who
+    status = {"AEW_RUN_STALE_S": "4"}
+    assert lab.ok("harness", "status", "INV-0001", env=status)["runs"][0]["status"] == "lost"
+    held.unlink()  # the start comes back: it ends the run instead of running it, and does not beat again meanwhile
+    lab.until(lambda: Path(f"{ending}.reached").exists(), what="the abandoned start ending")
+    assert lab.ok("harness", "status", "INV-0001", env=status)["runs"][0]["status"] == "lost"
+    ending.unlink()
+    record = lab.until(lambda: (r := lab.record(R1)).get("status") == "launch_failed" and r, what="launch_failed")
+    assert "the start took longer than 3s (AEW_RUN_START_S)" in record["reason"], record
+    assert "started" not in [e["event"] for e in record["timeline"]], record["timeline"]
+    lab.script(R2, IMPLEMENT)
+    assert lab.lead("harness", "launch", "INV-0001")["run"] == R2  # neither lost nor launch_failed is live
+    assert lab.wait(R2)["status"] == "ended_with_evidence"
+    assert_control_invariants(lab.project)
+
+
+def test_a_run_that_outlasts_the_start_deadline_once_running_is_unaffected_by_it(lab, tmp_path, sync):
+    """The start deadline caps the start only (review of PR #149, mutation M5): a running run past it keeps its bridge
+    and its heartbeat, and ends with its evidence."""
+    wid, out = assigned(lab, tmp_path, [wait(sync / "go"), *IMPLEMENT], env={"AEW_RUN_START_S": "10"})
+    lab.until(lambda: lab.record(R1).get("status") == "running", what="the run running")
+    time.sleep(11)  # past the deadline, measured from custody, which came before `running`
+    (sync / "go").touch()
+    done = lab.wait(R1)
+    assert done["status"] == "ended_with_evidence" and len(done["evidence"]) == 2, done
     assert_control_invariants(lab.project)
 
 

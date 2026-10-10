@@ -239,8 +239,11 @@ left to the implementation, and what this slice adds beside them:
 - **The hot list.** `coordination_unseen` holds at most 20 entries `{message, invocation, work_unit, seal}`, with
   `omitted` and `omitted_revs`; it leaves control state when emptied. `message_mark_shown` records that a
   Lead-credentialed result carried worker messages: `DELIVERED via: lead_result` on a live thread, a line in
-  `.aew/coordination/lead-seen.jsonl` for a sealed one; MS6's broker and own-shell runner call it. The next commit's
-  seal step prunes what the seen log records, and resets the omitted count once a `recovered` line covers its range.
+  `.aew/coordination/lead-seen.jsonl` for a sealed one, and only for a message its seal lists as unseen (one shown or
+  answered before the seal is already seen); MS6's broker and own-shell runner call it. Each commit's seal step first
+  prunes what the seen log records, and resets the omitted count once a `recovered` line covers its range, and only then
+  adds the omissions of the invocations it ends, so a recovery is honoured by a commit that omits more. The recovery read
+  reads a seal the transition log names only through the unit pointer that pins its full sha256.
 - **The reads.** `work show` and `history show` gain `coordination` (per invocation of the unit with a thread: its
   state, counts and last 10 messages), and the operator reads are `aew message thread`, `aew message list --work` and
   `aew message unseen`. Each exists only while the reads are on: the project marker exists, or the project is registered
@@ -250,10 +253,13 @@ left to the implementation, and what this slice adds beside them:
   only once its seal matches the pointer's hash and the thread its seal's; a worker's text is labelled
   `untrusted_text` with its author (MS6 adds the rendering). `doctor` adds a `coordination` line only where messaging
   was ever enabled or a thread exists: the registration it lacks, and every ended invocation whose thread no seal pins.
-- **Evidence inputs.** `coordination_inputs` is an engine-owned evidence field, refused in a submission.
+- **Evidence inputs.** `coordination_inputs` is an engine-owned evidence field, refused in a submission, and recorded on
+  every evidence kind an invocation produces: its submissions and its check results (`check run`).
 - **Rollback.** The downgrade test vendors main's control and transition schemas from before this slice. That schema
   leaves a unit's keys open, so the unit's seal pointer alone would pass it; the registration key, which every state
-  holding a thread or a pointer holds (oracle rule 56), is what an older engine refuses.
+  holding a thread or a pointer holds (oracle rule 56), is what an older engine refuses. A v1 project cannot hold the
+  v2-only key, so its adoption of `enabled` registers nothing; `aew migrate` registers it in the v1-to-v2 commit
+  (`{since_rev, decision: null, via: migrate}`).
 - **Not here.** The shared diff helper does not exist yet (E5a, E7 and F4 S2a have not merged), so its named exclusion
   and the stage-step equivalence test land with whichever creates it (the plan's coupling table). The oracle rules are
   51 to 57 (C1 to C7, `tests/helpers/invariants.py`).

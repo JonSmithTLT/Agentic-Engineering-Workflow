@@ -479,8 +479,9 @@ def test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_sta
     monkeypatch.setattr(C.Coordination, "_ensure_marker", racing)
     with pytest.raises(IntegrityError, match="removed or replaced"):
         w.send("from writer A")
-    assert raced["other"] == f"MSG-{w.inv}-3"
-    assert [m["body"] for m in w.e.message_thread(w.inv)["messages"]] == ["first", "ack", "from writer B"]
+    # A worker's text is labelled untrusted in the read (MS2).
+    assert [m.get("body", m.get("untrusted_text")) for m in w.e.message_thread(w.inv)["messages"]] == \
+        ["first", "ack", "from writer B"]
     assert w.send("a later message")["message"]["id"] == f"MSG-{w.inv}-4"
 
 

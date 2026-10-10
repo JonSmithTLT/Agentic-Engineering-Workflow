@@ -983,8 +983,10 @@ def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         problems.append(f"56: sealed by the commit check's fallback (a path missed its seal call): {fallbacks}")
     if any(str(op).startswith("message.") for op in ops.values()):
         problems.append("57: a transition records a message operation")
-    if store is not None and ops.get(store["since_rev"], "manifest.adopt") != "manifest.adopt":
-        problems.append(f"57: coordination_store was written by {ops[store['since_rev']]}, not an adoption")
+    if store is not None:
+        wrote = "migrate" if store.get("via") == "migrate" else "manifest.adopt"  # a v1 adoption registers at migrate
+        if ops.get(store["since_rev"], wrote) != wrote:
+            problems.append(f"57: coordination_store was written by {ops[store['since_rev']]}, not {wrote}")
     seen_lines: list[dict[str, Any]] = []
     seen_path = aew / "coordination/lead-seen.jsonl"
     if seen_path.is_file():

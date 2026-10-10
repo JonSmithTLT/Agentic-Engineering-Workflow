@@ -414,7 +414,7 @@ class Engine:
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
-        self._migration = Migration(k, hierarchy=hierarchy, archive=archive)
+        self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         self._stages = stages = StageIntents(k, archive=archive)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)

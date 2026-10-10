@@ -665,6 +665,10 @@ class EvidenceCommands:
                 meta["check"]["baseline_known_failure"] = True
             if inv.get("attempt") is not None:
                 meta["attempt"] = inv["attempt"]  # engine-bound: the non-mutating attempt it belongs to
+            # F9-A plan D-35, every evidence kind: a Lead message can steer which checks run (PR #167 review, nit 5).
+            inputs = self.coordination.evidence_inputs(work_id, inv_id)
+            if inputs:
+                meta["coordination_inputs"] = inputs
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": log_rel}

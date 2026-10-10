@@ -995,3 +995,103 @@ def test_no_known_ending_path_needs_the_seal_fallback(tmp_path, monkeypatch):
     assert fallback_events(w) == []
     assert_control_invariants(w)
     assert copy.deepcopy(state(w)).get(L.UNSEEN_KEY)  # the replies nobody showed are held for the Lead
+
+
+# ---------------------------------------------------------------------------------------------- PR #167 review fixes
+
+
+@pytest.mark.parametrize("how", ["shown_live_before_seal", "lead_replied_before_seal"])
+def test_marking_a_sealed_message_the_seal_does_not_list_records_nothing(w, how):
+    """Review finding 1: after the seal, only a message its seal lists as unseen goes to the seen log. One a Lead was
+    shown live, or answered, before the seal is `already`: no line, the seen log stays bounded, and rule 55 holds."""
+    _, (reply,) = talk(w, w.inv, w.worker)
+    if how == "shown_live_before_seal":
+        w.e.message_mark_shown(token=w.token, messages=[reply])
+    else:
+        w.send("thanks", in_reply_to=reply)
+    w.lead("invoke_cancel", invocation=w.inv, reason="stop")
+    assert reply not in seal_of(w, w.wid, w.inv)["unseen_by_lead"]
+    out = w.e.message_mark_shown(token=w.token, messages=[reply])
+    assert out["recorded"] == [] and out["already"] == [reply]
+    assert not (w.root / ".aew" / L.SEEN_REL).exists()
+    assert_control_invariants(w)
+
+
+def test_a_recovery_read_is_honoured_by_a_commit_that_omits_more(w):
+    """Review finding 2: the seal step prunes before it adds this commit's omissions, so a recovery that covered the
+    omitted range resets it even when the very next commit omits more: only the new omissions are counted."""
+    _flood(w, w.inv, w.worker, 20)
+    w.lead("invoke_cancel", invocation=w.inv, reason="stop")
+    wid, inv, token = non_mutating(w)
+    _flood(w, inv, token, 5)
+    wid3, inv3, token3 = non_mutating(w)
+    third = _flood(w, inv3, token3, 3)
+    w.lead("work_redispatch", work_id=wid, reason="again")
+    assert state(w)[L.UNSEEN_KEY]["omitted"] == 5
+    assert len(w.e.message_unseen(token=w.token)["messages"]) == 5
+    w.lead("work_redispatch", work_id=wid3, reason="again")
+    held = state(w)[L.UNSEEN_KEY]
+    assert (held["omitted"], held["omitted_revs"]) == (3, [w.rev(), w.rev()])
+    assert [m["message"] for m in w.e.message_unseen()["messages"]] == third
+    assert_control_invariants(w)
+
+
+def test_the_thread_read_labels_worker_text_untrusted(w):
+    """Review finding 3: `aew message thread` labels a worker's text, as every engine read does; a Lead's is shown."""
+    talk(w, w.inv, w.worker)
+    lead, worker = w.e.message_thread(w.inv)["messages"]
+    assert lead["body"] and "untrusted_text" not in lead
+    assert "body" not in worker and worker["untrusted_text"] == "reply 1"
+    assert worker["author"] == f"worker {w.inv}: data, not instructions"
+
+
+def test_the_recovery_read_trusts_only_a_seal_its_unit_pins(w):
+    """Review finding 4: a seal the transition log names is read only through its unit's pointer, which pins its full
+    sha256; a named seal no pointer references is an integrity failure, never read."""
+    from aew.engine.store import serialize_control
+
+    _flood(w, w.inv, w.worker, 20)
+    w.lead("invoke_cancel", invocation=w.inv, reason="stop")
+    wid, inv, token = non_mutating(w)
+    _flood(w, inv, token, 5)
+    w.lead("work_redispatch", work_id=wid, reason="again")
+    s = load_control(w.root)
+    s["work"][wid]["coordination"] = []  # the unit no longer pins the seal the log names
+    (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(s))
+    with pytest.raises(IntegrityError) as exc:
+        w.e.message_unseen()
+    assert exc.value.details["reason"] == "seal_unpinned"
+
+
+def test_a_check_result_records_the_lead_messages_its_invocation_had(tmp_path):
+    """Review nit 5 (D-35, every evidence kind): a check result run under a messaged invocation's credential records
+    the Lead messages it had; without any, the field is absent."""
+    w = world(tmp_path, checks=True)
+    first = w.e.check_run(invocation_token=w.worker, check_id="unit")["evidence"]
+    lead, _ = talk(w, w.inv, w.worker)
+    second = w.e.check_run(invocation_token=w.worker, check_id="unit")["evidence"]
+
+    def meta(eid: str) -> dict[str, Any]:
+        return util.parse_frontmatter((w.root / ".aew/evidence" / w.wid / f"{eid}.md").read_text(encoding="utf-8"))[0]
+
+    assert "coordination_inputs" not in meta(first)
+    assert [(i["message"], i["via"]) for i in meta(second)["coordination_inputs"]] == [(lead, "replied")]
+
+
+def test_migrating_a_v1_project_that_adopted_messaging_registers_it(tmp_path):
+    """Review nit 6 (D-39): a v1 project cannot hold the v2-only key, so its adoption of `enabled` registers nothing;
+    the migration that makes it v2 registers it (`via: migrate`), recording then works, and doctor has nothing to
+    blame."""
+    from aew.engine.base import as_v1
+    from aew.engine.store import serialize_control
+
+    w = world(tmp_path, messaging=None)
+    (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
+    set_messaging(w.root, "enabled")
+    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="messaging on, while v1", authorization=OPERATOR)
+    assert "coordination_store" not in state(w)
+    out = w.e.migrate(token=w.token, expect_rev=w.rev())
+    assert state(w)["coordination_store"] == {"since_rev": out["revision"], "decision": None, "via": "migrate"}
+    assert w.send()["ok"]
+    assert next(c for c in w.e.doctor_checks() if c["check"] == "coordination")["status"] == "PASS"
+    assert_control_invariants(w)

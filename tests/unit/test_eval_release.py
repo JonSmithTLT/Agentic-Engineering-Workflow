@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import os
+import stat
 import sys
 import tarfile
 import time
@@ -431,9 +432,9 @@ def test_the_run_record_labels_who_attests_each_fact(tmp_path):
                                                              ensure_ascii=False).encode("utf-8")).hexdigest()
                                    for ln in ReleaseLedger(tmp_path / "ledger", "demo").lines()}
     assert ReleaseLedger(tmp_path / "ledger", "demo").verify([rel["chain_sha256"]]) == []
-    manifest = json.loads((tmp_path / "armhost" / "runs" / "demo" / "r1" / "bundle" / "run-manifest.json")
+    manifest = json.loads((tmp_path / "armhost.state" / "runs" / "demo" / "r1" / "bundle" / "run-manifest.json")
                           .read_text(encoding="utf-8"))
-    assert hashlib.sha256((tmp_path / "armhost" / "runs" / "demo" / "r1" / "bundle" / "run-manifest.json")
+    assert hashlib.sha256((tmp_path / "armhost.state" / "runs" / "demo" / "r1" / "bundle" / "run-manifest.json")
                           .read_bytes()).hexdigest() == rel["run_manifest_sha256"]
     assert manifest["task_input_sha256"] == rel["task_input_sha256"] == hashlib.sha256(b"Make add add.\n").hexdigest()
 
@@ -523,7 +524,7 @@ def test_the_attempt_ledger_and_the_runner_are_unchanged_without_a_release(tmp_p
 
 
 def test_the_agent_runs_each_verb_once_and_in_order(tmp_path):
-    agent = Agent(tmp_path / "root")
+    agent = Agent(tmp_path / "root", state_root=tmp_path / "state")
     with pytest.raises(Exception, match="never released"):
         agent.handle("run", "demo/r1", {}, b"")
     case = make_case(tmp_path / "c", "C1", None)
@@ -630,7 +631,7 @@ def test_the_agents_bounds_come_from_its_host_record_and_bound_what_it_reads(tmp
 
     record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", before=plant, agent_limits=small))
     assert record["validity"] == {"status": "invalid_measurement", "reason_code": "RESULT_REFUSED:OVER_BOUNDS"}
-    assert json.loads((tmp_path / "armhost" / "limits.json").read_text(encoding="utf-8"))["file_bytes"] == 4096
+    assert json.loads((tmp_path / "armhost.limits.json").read_text(encoding="utf-8"))["file_bytes"] == 4096
     bad = tmp_path / "bad.json"
     bad.write_text(json.dumps({**limits_record(Limits()), "file_bytes": 0}), encoding="utf-8")
     with pytest.raises(ValueError, match="positive"):
@@ -701,6 +702,7 @@ def test_a_collect_entry_outside_the_tree_or_a_clashing_unread_path_is_refused(t
 
     record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=outside))
     assert record["validity"]["reason_code"] == "RESULT_REFUSED:UNEXPECTED_ENTRY"
+    assert "outside tree/" in record["outcome"]["arm_error"] and "error" not in record["outcome"]  # it quotes the guest
 
     def clash(verb: str, raw: bytes) -> bytes:
         if verb != "collect":
@@ -796,7 +798,8 @@ def test_a_lost_collect_reply_can_be_collected_again_with_the_same_bytes(tmp_pat
     first = decode_frame(lost[0], what="reply", limits=Limits(), max_payload=Limits().tar_bytes())
     assert again.ok and again.payload == first[1] and again.result == first[0]["result"]
     with pytest.raises(Exception, match="already released"):  # release and run stay once-only
-        Agent(tmp_path / "armhost").handle("release", "demo/r1", {"bundle_sha256": "0" * 64}, b"")
+        Agent(tmp_path / "armhost", state_root=tmp_path / "armhost.state").handle(
+            "release", "demo/r1", {"bundle_sha256": "0" * 64}, b"")
 
 
 def test_every_fact_of_the_record_has_an_attester(tmp_path):
@@ -888,3 +891,103 @@ def test_a_released_run_is_never_retried_while_its_verdicts_are_provisional(tmp_
     with pytest.raises(campaign.Refused, match="never retried while its validity verdicts are provisional"):
         release(f, {"C1": case}, tmp_path, local(tmp_path), name="r2", retry_of="demo/r1")
     assert list(AttemptLedger(tmp_path / "ledger", f).attempts()) == ["demo/r1"]
+
+
+def test_nothing_planted_in_the_work_tree_is_served_followed_or_trusted_by_the_agent(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+    victim = tmp_path / "victim.txt"
+    victim.write_text("untouched\n", encoding="utf-8")
+    forged, _ = pack([Entry("tree/calc.py", "file", data=b"forged = True\n")])
+
+    def plant(verb: str, run: Path) -> None:
+        if verb != "collect":
+            return
+        # A forged cache and phase where the agent once kept them, and links where it once wrote its temporary files.
+        (run / "collect.tar").write_bytes(forged)
+        (run / "collect.json").write_text(json.dumps({"manifest_sha256": "0" * 64, "other": {},
+                                                      "other_omitted": 0}), encoding="utf-8")
+        (run / "state.json").write_text(json.dumps({"run_id": "demo/r1", "phase": "collected"}), encoding="utf-8")
+        for name in ("collect.tar.partial", "state.json.partial", "collect.json.partial"):
+            try:
+                os.symlink(victim, run / name)
+            except OSError:  # Windows without the symlink privilege: a plain file stands in
+                (run / name).write_text("planted\n", encoding="utf-8")
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", before=plant))
+    assert record["validity"]["status"] == "valid", (record["validity"], record["outcome"].get("arm_error"))
+    assert (tmp_path / "collected" / "r1" / "tree" / "calc.py").read_text(encoding="utf-8") == FIX["content"]
+    assert victim.read_text(encoding="utf-8") == "untouched\n"
+    state = tmp_path / "armhost.state" / "runs" / "demo" / "r1"
+    assert json.loads((state / "state.json").read_text(encoding="utf-8"))["phase"] == "collected"
+    assert (state / "collect.tar").is_file() and (state / "bundle" / "task.json").is_file()
+    if sys.platform != "win32":
+        assert stat.S_IMODE(os.stat(state).st_mode) == 0o700
+    # A state file that is a link is never read through it.
+    if sys.platform != "win32":
+        (state / "state.json").unlink()
+        os.symlink(victim, state / "state.json")
+        with pytest.raises(OSError):
+            armhost.read_private(state / "state.json")
+
+
+def test_concurrent_appends_never_make_verify_report_a_sound_ledger_as_broken(tmp_path):
+    import threading
+
+    ledger = ReleaseLedger(tmp_path, "demo")
+    errors: list[BaseException] = []
+
+    def writer() -> None:
+        try:
+            for n in range(150):
+                ReleaseLedger(tmp_path, "demo").append(f"demo/r{n}", "preflight", {"n": n})
+        except BaseException as exc:  # noqa: BLE001 (reported below)
+            errors.append(exc)
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    seen = []
+    while thread.is_alive():
+        seen.append(ledger.verify())
+        ledger.head()
+        ledger.lines()
+    thread.join(timeout=120)
+    assert errors == [] and not thread.is_alive()
+    assert all(problems == [] for problems in seen), [p for p in seen if p][:3]
+    assert ledger.verify() == [] and len(ledger.lines()) == 150
+
+
+def test_an_anchor_that_cannot_be_written_never_fails_a_durable_append_and_reads_as_a_lag(tmp_path, monkeypatch):
+    from aew_eval import release as release_module
+
+    ledger = ReleaseLedger(tmp_path, "demo")
+    ledger.append("demo/r1", "preflight")
+
+    def refused(src, dst):
+        raise PermissionError(5, "Access is denied")  # a Windows reader holding the anchor open
+
+    monkeypatch.setattr(release_module.os, "replace", refused)
+    monkeypatch.setattr(release_module.time, "sleep", lambda s: None)
+    head = ledger.append("demo/r1", "registered")  # durable, so it returns
+    monkeypatch.undo()
+    assert ledger.head() == head and len(ledger.lines()) == 2
+    problems = ledger.verify()
+    assert len(problems) == 1 and "lags the chain by one line" in problems[0] and "not a removal" in problems[0]
+    ledger.append("demo/r1", "released")  # the next append repairs the anchor
+    assert ledger.verify() == []
+
+
+def test_a_guest_refusal_is_filed_as_the_guests_words_never_as_an_evaluator_fact(tmp_path):
+    case = make_case(tmp_path / "c", "C1", None)
+    f = plan_for([case])
+
+    def refuse_run(verb: str, raw: bytes) -> bytes:
+        if verb != "run":
+            return raw
+        return encode_frame({"kind": "reply", "verb": "hello", "ok": False, "result": {},
+                             "error": {"code": "TRANSFER_CORRUPT", "message": "guest says: corrupt"}})
+
+    record = release(f, {"C1": case}, tmp_path, Hooked(tmp_path / "armhost", after=refuse_run))
+    assert record["validity"]["reason_code"] == "TRANSPORT_ERROR:REQUEST_REFUSED"
+    assert "guest says: corrupt" in record["outcome"]["arm_error"] and "error" not in record["outcome"]
+    assert campaign.attester("outcome.arm_error") == campaign.GUEST

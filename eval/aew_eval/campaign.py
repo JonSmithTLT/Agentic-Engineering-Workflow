@@ -74,8 +74,10 @@ def _call(transport: Transport, verb: str, run_id: str, **kw: Any) -> Any:
         reply = transport.call(verb, run_id=run_id, **kw)
     except TransferError as exc:
         result_side = verb == "collect" and exc.code not in CHANNEL_FAILURES
+        # A refusal the agent sent for another verb, and anything wrong with a collect reply, quotes the guest:
+        # its text is the guest's, filed under arm_error (PR #189 re-review, M3).
         raise Failure(f"RESULT_REFUSED:{exc.code}" if result_side else f"TRANSPORT_ERROR:{exc.code}",
-                      exc.detail) from None
+                      exc.detail, guest=result_side or exc.code == "REQUEST_REFUSED") from None
     if not reply.ok:
         error = reply.error or {"code": "UNKNOWN", "message": ""}
         code = error["code"]
@@ -214,15 +216,17 @@ def run_released_cell(frozen: dict[str, Any], *, ledger_dir: Path, cell: str, ca
             received = receive(reply.payload, collected, limits=limits,
                                expected_sha256=reply.result["manifest_sha256"])
         except TransferError as exc:
-            raise Failure(f"RESULT_REFUSED:{exc.code}", exc.detail) from None
+            raise Failure(f"RESULT_REFUSED:{exc.code}", exc.detail, guest=True) from None
         stray = sorted(p for p in [*received.files, *received.links] if not p.startswith(TREE))
         if stray:
-            raise Failure("RESULT_REFUSED:UNEXPECTED_ENTRY", f"the result bundle holds {stray[0]} outside {TREE}")
+            raise Failure("RESULT_REFUSED:UNEXPECTED_ENTRY", f"the result bundle holds {stray[0]} outside {TREE}",
+                          guest=True)
         links = {p.removeprefix(TREE): t for p, t in received.links.items()}
         unread = dict(reply.result["other"])
         clash = sorted(set(unread) & ({p.removeprefix(TREE) for p in received.files} | set(links)))
         if clash:
-            raise Failure("RESULT_REFUSED:OTHER_CONFLICT", f"{clash[0]} is both received and listed as unread")
+            raise Failure("RESULT_REFUSED:OTHER_CONFLICT", f"{clash[0]} is both received and listed as unread",
+                          guest=True)
         export = collected / "tree"
         export.mkdir(exist_ok=True)
         final = fixture.files_of(export)

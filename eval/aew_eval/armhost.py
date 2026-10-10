@@ -3,7 +3,10 @@
 The evaluator reaches it through one forced command (``python -I -m aew_eval.armhost --limits <host record>``): each
 call is one request frame on standard input and one reply frame on standard output (:mod:`aew_eval.transport`). Its
 transfer bounds come from its host record (``--limits``; root-owned on an arm host, S17), never from a request. It
-keeps one directory per released run under its root, ``runs/<experiment>/<name>/``:
+keeps two directories per released run, ``runs/<experiment>/<name>/``: one under its own state root (``--state``,
+0700, outside every tree the arm can write) for the run's state, its released bundle and its collect cache, and one
+under the work root (``--root``) for the arm's ``repo``. Nothing it trusts is read from the work root, and every file
+it writes is created exclusively, never through a link:
 
 * ``hello`` and ``preflight`` keep no state; the order of a release (a preflight first) is the evaluator's;
 * ``hello``: the agent's protocol, process and platform;
@@ -30,6 +33,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import stat
 import sys
 import time
@@ -55,7 +59,8 @@ from aew_eval.transport import (
 )
 
 PROTOCOL_VERSION = 1
-DEFAULT_ROOT = Path("/srv/aew-run/arm")
+DEFAULT_ROOT = Path("/srv/aew-run/arm")  # the work root: the arm's own tree
+DEFAULT_STATE_ROOT = Path("/srv/aew-run/state/armhost")  # the agent's own, 0700 (plan v5 §2.1)
 RUN_ID = re.compile(r"^(?P<experiment>[a-z0-9][a-z0-9-]*)/(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)$")
 OTHER_BYTES = 256 * 1024  # the serialized size of a collect reply's ``other``; the rest are counted
 OTHER_PATH_CHARS = 1024
@@ -77,31 +82,38 @@ def _facts() -> dict[str, Any]:
 
 
 class Agent:
-    def __init__(self, root: Path, limits: Limits = DEFAULT_LIMITS) -> None:
-        self.root = root
+    """The agent over two roots: ``state_root``, its own (0700, outside every tree the arm can write: plan v5 §2.1's
+    ``/srv/aew-run/state/``), holding each run's state, released bundle and collect cache; and ``work_root``, where
+    the arm works (each run's ``repo``), which the agent only builds and walks. Nothing the agent trusts is read from
+    the work root, and every file it writes is created ``O_CREAT|O_EXCL`` (and ``O_NOFOLLOW`` where the platform has
+    it) and read back without following a link (PR #189 re-review)."""
+
+    def __init__(self, root: Path, limits: Limits = DEFAULT_LIMITS, *, state_root: Path | None = None) -> None:
+        self.root = root  # the work root
+        self.state_root = state_root if state_root is not None else DEFAULT_STATE_ROOT
         self.limits = limits
 
     # ------------------------------------------------------------------ per-run state
 
-    def _run_dir(self, run_id: str | None) -> Path:
+    def _run_dirs(self, run_id: str | None) -> tuple[Path, Path]:
+        """The run's private state directory and its work directory."""
         found = RUN_ID.match(run_id or "")
         if found is None:
             raise AgentError("BAD_REQUEST", f"{run_id!r} is not a run id")
-        return self.root / "runs" / found["experiment"] / found["name"]
+        rel = Path("runs") / found["experiment"] / found["name"]
+        return self.state_root / rel, self.root / rel
 
-    def _state(self, run: Path) -> dict[str, Any]:
-        path = run / "state.json"
-        if not path.is_file():
-            raise AgentError("OUT_OF_ORDER", "this run was never released here")
-        return json.loads(path.read_text(encoding="utf-8"))
+    def _state(self, state_dir: Path) -> dict[str, Any]:
+        try:
+            return json.loads(read_private(state_dir / "state.json"))
+        except FileNotFoundError:
+            raise AgentError("OUT_OF_ORDER", "this run was never released here") from None
 
-    def _advance(self, run: Path, state: dict[str, Any], expect: str, phase: str) -> None:
+    def _advance(self, state_dir: Path, state: dict[str, Any], expect: str, phase: str) -> None:
         if state["phase"] != expect:
             raise AgentError("OUT_OF_ORDER", f"this run is {state['phase']}; the verb needs it {expect}")
         state["phase"] = phase
-        tmp = run / "state.json.partial"
-        tmp.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, run / "state.json")
+        write_private(state_dir / "state.json", json.dumps(state, sort_keys=True).encode("utf-8"))
 
     # ------------------------------------------------------------------ verbs
 
@@ -110,13 +122,13 @@ class Agent:
             return {"protocol": PROTOCOL_VERSION, **_facts()}, b""
         if verb == "preflight":
             return self.preflight(run_id, args), b""
-        run = self._run_dir(run_id)
+        state_dir, work = self._run_dirs(run_id)
         if verb == "release":
-            return self.release(run, run_id or "", args, payload), b""
+            return self.release(state_dir, work, run_id or "", args, payload), b""
         if verb == "run":
-            return self.run(run, args), b""
+            return self.run(state_dir, work, args), b""
         if verb == "collect":
-            return self.collect(run)
+            return self.collect(state_dir, work)
         raise AgentError("BAD_REQUEST", f"no verb {verb!r}")
 
     def preflight(self, run_id: str | None, args: dict[str, Any]) -> dict[str, Any]:
@@ -127,30 +139,32 @@ class Agent:
         # scan) and the attestation. Until then nothing is established, and no held-out case is released.
         return {"binding": binding, "established": False, "checks": [], "facts": _facts()}
 
-    def release(self, run: Path, run_id: str, args: dict[str, Any], payload: bytes) -> dict[str, Any]:
+    def release(self, state_dir: Path, work: Path, run_id: str, args: dict[str, Any],
+                payload: bytes) -> dict[str, Any]:
         expected = args.get("bundle_sha256")
         if not isinstance(expected, str):
             raise AgentError("BAD_REQUEST", "a release names the bundle's hash")
-        if run.exists():
+        if os.path.lexists(state_dir) or os.path.lexists(work):
             raise AgentError("OUT_OF_ORDER", "this run was already released here: a run is released once")
-        run.parent.mkdir(parents=True, exist_ok=True)
-        run.mkdir()
-        received = receive(payload, run / "bundle", limits=self.limits, expected_sha256=expected)
-        task = self._task(run, received.files)
+        private_dirs(state_dir)
+        received = receive(payload, state_dir / "bundle", limits=self.limits, expected_sha256=expected)
+        task = self._task(state_dir, received.files)
         if task["run_id"] != run_id:
             raise AgentError("TRANSFER_CORRUPT", "the bundle is for another run")
+        work.mkdir(parents=True)
         state = {"run_id": run_id, "phase": "received", "bundle_sha256": received.sha256}
-        (run / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
-        self._advance(run, state, "received", "released")
+        write_private(state_dir / "state.json", json.dumps(state, sort_keys=True).encode("utf-8"))
+        self._advance(state_dir, state, "received", "released")
         return {"bundle_sha256": received.sha256}
 
-    def _task(self, run: Path, files: dict[str, tuple[str, int]]) -> dict[str, Any]:
+    def _task(self, state_dir: Path, files: dict[str, tuple[str, int]]) -> dict[str, Any]:
         """The bundle's ``task.json``, checked for what the agent reads from it."""
         if "task.json" not in files or "run-manifest.json" not in files:
             raise AgentError("TRANSFER_CORRUPT", "the bundle lacks task.json or run-manifest.json")
+        bundle = state_dir / "bundle"
         try:
-            task = json.loads((run / "bundle" / "task.json").read_text(encoding="utf-8"))
-            validate(RUN_MANIFEST, json.loads((run / "bundle" / "run-manifest.json").read_text(encoding="utf-8")),
+            task = json.loads(read_private(bundle / "task.json"))
+            validate(RUN_MANIFEST, json.loads(read_private(bundle / "run-manifest.json")),
                      what="the released run manifest")
         except (ValueError, Invalid) as exc:  # json's errors are ValueErrors
             raise AgentError("TRANSFER_CORRUPT", str(exc)) from None
@@ -158,20 +172,20 @@ class Agent:
             raise AgentError("TRANSFER_CORRUPT", "task.json is not a task")
         return task
 
-    def run(self, run: Path, args: dict[str, Any]) -> dict[str, Any]:
-        state = self._state(run)
-        self._advance(run, state, "released", "running")
-        bundle = run / "bundle"
-        task = json.loads((bundle / "task.json").read_text(encoding="utf-8"))
+    def run(self, state_dir: Path, work: Path, args: dict[str, Any]) -> dict[str, Any]:
+        state = self._state(state_dir)
+        self._advance(state_dir, state, "released", "running")
+        bundle = state_dir / "bundle"
+        task = json.loads(read_private(bundle / "task.json"))
         arm = task["arm"]
         if arm.get("kind") != "scripted":
             raise AgentError("ARM_KIND_REFUSED", f"this agent runs the scripted arm only, not {arm.get('kind')!r}: "
                              "the model arms run under the supervisor (F19 plan v5, S8)")
-        files = {p.relative_to(bundle / "files").as_posix(): p.read_bytes()
+        files = {p.relative_to(bundle / "files").as_posix(): read_private(p)
                  for p in sorted((bundle / "files").rglob("*")) if p.is_file()} if (bundle / "files").is_dir() else {}
         task_text = None
         if task.get("task_file"):
-            task_text = (bundle / check_path(task["task_file"], "the task file")).read_text(encoding="utf-8")
+            task_text = read_private(bundle / check_path(task["task_file"], "the task file")).decode("utf-8")
         deadline_s = float(args.get("deadline_s", 3600.0))
         started, t0 = _now(), time.monotonic()
         base = None
@@ -179,7 +193,7 @@ class Agent:
         outcome: dict[str, Any] = {}
         harness: dict[str, Any] = {"name": "scripted"}
         try:
-            repo = run / "repo"
+            repo = work / "repo"
             fixture.build_files(files, repo, f"{task['case']}: starting point" + (" (seeded)" if task.get("seeded")
                                                                                   else ""))
             base = fixture.git(repo, "rev-parse", "HEAD")
@@ -187,38 +201,75 @@ class Agent:
             outcome, harness = result.outcome, result.harness
         except Exception as exc:  # noqa: BLE001 (the run happened and failed: recorded, never a lost reply)
             error = f"{type(exc).__name__}: {exc}"[-600:]
-        self._advance(run, state, "running", "ran")
+        self._advance(state_dir, state, "running", "ran")
         return {"started_at": started, "ended_at": _now(), "wall_s": round(time.monotonic() - t0, 3),
                 "base_commit": base, "outcome": outcome, "harness": harness, "environment": _facts(), "error": error}
 
-    def collect(self, run: Path) -> tuple[dict[str, Any], bytes]:
+    def collect(self, state_dir: Path, work: Path) -> tuple[dict[str, Any], bytes]:
         """The final tree as a bundle. Repeatable once the run has ended: the first collect keeps its bundle and
-        reply, and a later one (after a reply lost in transit) returns the same bytes (PR #189 review, F11)."""
-        state = self._state(run)
-        cached_tar, cached_reply = run / "collect.tar", run / "collect.json"
+        reply in the run's private state directory, and a later one (after a reply lost in transit) returns the same
+        bytes (PR #189 review, F11). Nothing in the work tree is ever served as the cache."""
+        state = self._state(state_dir)
+        cached_tar, cached_reply = state_dir / "collect.tar", state_dir / "collect.json"
         if state["phase"] == "collected":
-            return json.loads(cached_reply.read_text(encoding="utf-8")), cached_tar.read_bytes()
+            return json.loads(read_private(cached_reply)), read_private(cached_tar)
         if state["phase"] != "ran":
             raise AgentError("OUT_OF_ORDER", f"this run is {state['phase']}; the verb needs it ran")
-        repo = run / "repo"
+        repo = work / "repo"
         try:
-            entries, other = _walk(repo, self.limits) if repo.is_dir() else ([], {})
+            entries, other = _walk(repo, self.limits) if repo.is_dir() and not fixture.is_link(repo) else ([], {})
             data, digest = pack([Entry(f"tree/{e.path}", e.kind, e.data, e.target) for e in entries],
                                 limits=self.limits)
         except TransferError as exc:
             raise AgentError(exc.code, exc.detail) from None
         listed, omitted = bound_other(other)
         reply = {"manifest_sha256": digest, "other": listed, "other_omitted": omitted}
-        _write_new(cached_tar, data)
-        _write_new(cached_reply, json.dumps(reply, sort_keys=True).encode("utf-8"))
-        self._advance(run, state, "ran", "collected")
+        write_private(cached_tar, data)
+        write_private(cached_reply, json.dumps(reply, sort_keys=True).encode("utf-8"))
+        self._advance(state_dir, state, "ran", "collected")
         return reply, data
 
 
-def _write_new(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".partial")
-    tmp.write_bytes(data)
+O_BINARY = getattr(os, "O_BINARY", 0)
+O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def private_dirs(path: Path) -> None:
+    """``path`` and its missing parents, created 0700; refused if any of them is a link or not a directory."""
+    missing = []
+    here = path
+    while not os.path.lexists(here):
+        missing.append(here)
+        here = here.parent
+    for d in reversed(missing):
+        os.mkdir(d, 0o700)
+    for d in [path, *missing]:
+        if fixture.is_link(d) or not d.is_dir():
+            raise AgentError("STATE_UNSAFE", f"{d} is a link or not a directory")
+
+
+def write_private(path: Path, data: bytes) -> None:
+    """``data`` at ``path``, through a fresh temporary file created ``O_CREAT|O_EXCL|O_NOFOLLOW`` (never through a
+    link or over an existing file), synced, then renamed into place."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.partial")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     os.replace(tmp, path)
+
+
+def read_private(path: Path) -> bytes:
+    """A regular file's bytes, opened without following a link."""
+    fd = os.open(path, os.O_RDONLY | O_NOFOLLOW | O_BINARY)
+    with os.fdopen(fd, "rb") as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode) or fixture.is_link(path):
+            raise AgentError("STATE_UNSAFE", f"{path} is not a regular file")
+        return fh.read()
 
 
 def bound_other(other: dict[str, str]) -> tuple[dict[str, str], int]:
@@ -334,7 +385,9 @@ def _failure(verb: str, code: str, message: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m aew_eval.armhost")
-    ap.add_argument("--root", type=Path, default=DEFAULT_ROOT)
+    ap.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="the work root, where the arm works")
+    ap.add_argument("--state", type=Path, default=DEFAULT_STATE_ROOT,
+                    help="the agent's own state root, outside every tree the arm can write")
     ap.add_argument("--limits", type=Path, default=None,
                     help="the host record of this agent's transfer bounds (root-owned on an arm host; S17)")
     args = ap.parse_args(argv)
@@ -342,7 +395,8 @@ def main(argv: list[str] | None = None) -> int:
     verb = "hello"
     body = b""
     try:
-        agent = Agent(args.root.resolve(), load_limits(args.limits) if args.limits else DEFAULT_LIMITS)
+        agent = Agent(args.root.resolve(), load_limits(args.limits) if args.limits else DEFAULT_LIMITS,
+                      state_root=args.state.resolve())
         message, payload = read_frame(stdin, what="request", limits=agent.limits,
                                       max_payload=agent.limits.tar_bytes())
         verb = message["verb"]

@@ -25,8 +25,9 @@ line breaks the chain. The trailing lines, which no later line names, are anchor
 * :meth:`ReleaseLedger.verify` cross-checks the attempt ledger: every attempt registered with a release has its
   ``registered`` event, and every finalized one its ``finalized`` event naming the same result hash.
 
-A crash between an append and its anchor leaves the anchor one line behind; ``verify`` reports it, for the operator to
-inspect, never silently.
+A crash between an append and its anchor, or an anchor that could not be rewritten (retried briefly, then left: the
+append has succeeded once its line is durable), leaves the anchor one line behind; ``verify`` reports that as a lag,
+never as removed lines, and the next append repairs it. Every read takes the release lock and reads the file once.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
+import time
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -50,6 +53,7 @@ from aew_eval.transport import DEFAULT_LIMITS, Entry, Limits, pack
 RUN_MANIFEST = "aew/m4h-run-manifest/v1"
 EVENT = "aew/m4h-release-event/v1"
 GENESIS = hashlib.sha256(EVENT.encode("utf-8")).hexdigest()
+ANCHOR_TRIES = 8
 TASK_FILE = "task.md"
 
 
@@ -129,12 +133,12 @@ class ReleaseLedger:
             yield
 
     def _raw_lines(self) -> list[bytes]:
-        return [chunk for chunk in complete_lines(self.path).split(b"\n")[:-1]]
+        """The complete lines, from one read of the file."""
+        return complete_lines(self.path).split(b"\n")[:-1]
 
-    def lines(self) -> list[dict[str, Any]]:
-        """Every complete line, parsed and validated (a torn tail is ignored, as in the attempt ledger)."""
+    def _parse(self, raw: list[bytes]) -> list[dict[str, Any]]:
         out = []
-        for n, chunk in enumerate(self._raw_lines(), 1):
+        for n, chunk in enumerate(raw, 1):
             try:
                 line = json.loads(chunk.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -143,13 +147,22 @@ class ReleaseLedger:
             out.append(line)
         return out
 
+    def lines(self) -> list[dict[str, Any]]:
+        """Every complete line, parsed and validated (a torn tail is ignored, as in the attempt ledger), read once
+        under the release lock, so a concurrent append is never seen half-way."""
+        with self._locked():
+            return self._parse(self._raw_lines())
+
     def head(self) -> str:
         """The chain's head: the SHA-256 of the last complete line (the genesis hash when there is none)."""
-        raw = self._raw_lines()
+        with self._locked():
+            raw = self._raw_lines()
         return hashlib.sha256(raw[-1]).hexdigest() if raw else GENESIS
 
     def append(self, run_id: str, event: str, data: dict[str, Any] | None = None) -> str:
-        """Append one event; returns the chain's new head (this line's hash)."""
+        """Append one event; returns the chain's new head (this line's hash). Once the line is durable the append
+        has succeeded: a failure to rewrite the anchor afterwards never fails it, and leaves the anchor one line
+        behind, which :meth:`verify` reports as a lag (PR #189 re-review, M2)."""
         with self._locked():
             raw = self._raw_lines()
             line = {"schema": EVENT, "seq": len(raw), "prev_sha256": hashlib.sha256(raw[-1]).hexdigest()
@@ -162,42 +175,63 @@ class ReleaseLedger:
             self._write_anchor(head)
             return head
 
-    def _write_anchor(self, head: str) -> None:
-        tmp = self.anchor.with_name(self.anchor.name + ".partial")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o644)
-        try:
-            os.write(fd, head.encode("ascii") + b"\n")
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        os.replace(tmp, self.anchor)
+    def _write_anchor(self, head: str) -> bool:
+        """Rewrite the anchor; retried briefly (a Windows reader holding the file refuses the rename). False when it
+        could not be written: the line it anchors is durable either way."""
+        for attempt in range(ANCHOR_TRIES):
+            tmp = self.anchor.with_name(f".{self.anchor.name}.{os.getpid()}.{secrets.token_hex(6)}.partial")
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+                             | getattr(os, "O_BINARY", 0), 0o644)
+                try:
+                    os.write(fd, head.encode("ascii") + b"\n")
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.replace(tmp, self.anchor)
+                return True
+            except OSError:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                time.sleep(0.02 * (attempt + 1))
+        return False
 
     def verify(self, heads: Iterable[str] = (), attempts: Mapping[str, Any] | None = None) -> list[str]:
-        """Problems with the chain: a line that does not name its predecessor's hash or breaks the sequence, a line of
-        another experiment, a chain that does not end at its anchor, any of ``heads`` (the chain hashes run records
-        name) no longer in it, and, given ``attempts`` (:meth:`AttemptLedger.attempts`), a released attempt whose
+        """Problems with the chain, read once under the release lock: a line that does not name its predecessor's
+        hash or breaks the sequence, a line of another experiment, a chain that does not end at its anchor (an anchor
+        exactly one line behind is reported as a lag, an append whose anchor was not written; one naming no line of
+        the chain, or further behind, as removed lines), any of ``heads`` (the chain hashes run records name) no
+        longer in it, and, given ``attempts`` (:meth:`AttemptLedger.attempts`), a released attempt whose
         ``registered`` or ``finalized`` event is missing or names another result. Empty when sound."""
+        with self._locked():
+            raw = self._raw_lines()
+            anchor = self.anchor.read_text(encoding="ascii").strip() if self.anchor.is_file() else None
         problems = []
-        prev = GENESIS
-        hashes = set()
         try:
-            parsed = self.lines()
+            parsed = self._parse(raw)
         except Invalid as exc:
             return [str(exc)]
-        for n, (chunk, line) in enumerate(zip(self._raw_lines(), parsed, strict=True)):
+        chain = [GENESIS]
+        for n, (chunk, line) in enumerate(zip(raw, parsed, strict=True)):
             if line["seq"] != n:
                 problems.append(f"line {n + 1} has sequence number {line['seq']}: a line was removed or inserted")
-            if line["prev_sha256"] != prev:
+            if line["prev_sha256"] != chain[-1]:
                 problems.append(f"line {n + 1} does not follow the line before it: the chain was edited")
             if line["experiment"] != self.experiment:
                 problems.append(f"line {n + 1} belongs to experiment {line['experiment']!r}")
-            prev = hashlib.sha256(chunk).hexdigest()
-            hashes.add(prev)
+            chain.append(hashlib.sha256(chunk).hexdigest())
+        hashes = set(chain[1:])
         problems += [f"the chain no longer holds {h}, which a run record names" for h in heads if h not in hashes]
-        anchor = self.anchor.read_text(encoding="ascii").strip() if self.anchor.is_file() else None
-        if (anchor or GENESIS) != prev:
-            problems.append(f"the chain ends at {prev}, but its anchor names {anchor or 'no line'}: its last lines "
-                            "were removed, or an append's anchor was lost in a crash")
+        named = anchor or GENESIS
+        if named != chain[-1]:
+            if len(chain) >= 2 and named == chain[-2]:
+                problems.append(f"the anchor lags the chain by one line (it names {named}; the chain ends at "
+                                f"{chain[-1]}): an append whose anchor was not written, not a removal")
+            else:
+                problems.append(f"the chain ends at {chain[-1]}, but its anchor names {anchor or 'no line'}: its "
+                                "last lines were removed")
         for rid, attempt in sorted((attempts or {}).items()):
             if "release" not in attempt.registered:
                 continue

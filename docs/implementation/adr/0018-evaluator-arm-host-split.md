@@ -55,8 +55,11 @@ frames and the bundle format), `fixture.py`, `arms.py`, `canonical.py` and `sche
   `ok: false` reply for another verb (the agent refused a request it could not read) is `REQUEST_REFUSED`, with the
   agent's own code in its text only: a code the guest chooses never stands for one the evaluator classifies.
 - **The verbs.** `hello` and `preflight` keep no state on the agent; the order of a release (a preflight before the
-  release) is the evaluator's (D3). Per run, the agent keeps one directory, `runs/<experiment>/<name>/`, and enforces
-  the rest (`OUT_OF_ORDER` otherwise): `release` once, `run` once after it, and `collect` after `run`. **`collect` is
+  release) is the evaluator's (D3). Per run, the agent keeps `runs/<experiment>/<name>/` under two roots: its own state
+  root (`--state`, 0700, outside every tree the arm can write; plan v5 §2.1's `/srv/aew-run/state/`) for the run's
+  state, its released bundle and its collect cache, and the work root (`--root`) for the arm's `repo` only. Nothing
+  the agent trusts is read from the work root; every file it writes is created exclusively and never through a link,
+  and it reads its own files without following one. It enforces the rest (`OUT_OF_ORDER` otherwise): `release` once, `run` once after it, and `collect` after `run`. **`collect` is
   repeatable:** the first one keeps its bundle and reply, and a later one (after a reply lost in transit) returns the
   same bytes, so a lost reply never loses the deliverable (plan v5 §2.4, "Restart").
 - **Every call is bounded** by its own timeout (`TIMEOUT`), and the reading side stops at its byte bound and says so.
@@ -138,8 +141,11 @@ anchored twice: every append writes the new head to `releases.head` (replaced at
 lock), and `verify` cross-checks the attempt ledger (every attempt registered with a release has its `registered`
 event, and every finalized one its `finalized` event naming the same result hash). `verify(heads, attempts)` reports
 every break, a chain that does not end at its anchor, every named head no longer in the chain and every missing or
-mismatched event. A crash between an append and its anchor leaves the anchor one line behind, which `verify` reports
-for the operator to inspect.
+mismatched event. Every read (`lines`, `head`, `verify`) takes the release lock and reads the file once, so a
+concurrent append is never seen half-way. Once a line is durable its append has succeeded: an anchor that cannot be
+rewritten (retried briefly, for a Windows reader holding it) is left one line behind, as a crash between the two
+would leave it, and `verify` reports an anchor exactly one line behind as a lag, never as removed lines; the next
+append repairs it.
 
 ### D7. The run record: `score_run`'s shape, the arm host's facts, and who attests each fact
 
@@ -153,8 +159,8 @@ for the operator to inspect.
   and the task's hashes and the chain head.
 - **The arm host's own words are kept under their own keys.** Nothing the agent reports can stand in for a fact the
   evaluator records: its outcome is `outcome.arm_outcome` (a forged `scoring` block or host name stays the guest's
-  claim), its error text `outcome.arm_error`, and the paths it did not read `outcome.unread_paths` (with
-  `unread_paths_omitted`). `outcome.changed_paths` is the evaluator's, computed from the files and links it received;
+  claim), its error text and any refusal that quotes it (a `REQUEST_REFUSED`, a refused collect reply)
+  `outcome.arm_error`, and the paths it did not read `outcome.unread_paths` (with `unread_paths_omitted`). `outcome.changed_paths` is the evaluator's, computed from the files and links it received;
   `outcome.error` is the evaluator's own text.
 - **`outcome.attested_by`** labels each fact with who attests it (plan v5 §4). A fact's attester is that of its
   longest labelled path prefix, and every leaf of the record has one: the `evaluator` (the case, arm, assignment,

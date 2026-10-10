@@ -520,11 +520,13 @@ STDERR_TAIL = 64 * 1024
 class LocalTransport(Transport):
     """The arm-host agent as a separate local process, rooted at ``root`` (the stand-in for S6's SSH transport). Its
     environment is an allow-list: nothing the evaluator holds (the hidden root above all) is inherited.
-    ``agent_limits`` is the agent's host record of its bounds (by default the evaluator's ``limits``)."""
+    ``agent_limits`` is the agent's host record of its bounds (by default the evaluator's ``limits``). ``root`` is the
+    agent's work root; its private state root is the sibling ``<root>.state``, outside the work tree."""
 
     def __init__(self, root: Path, *, host: Host | None = None, limits: Limits = DEFAULT_LIMITS,
                  agent_limits: Limits | None = None, python: str = sys.executable) -> None:
         self.root = root.resolve()
+        self.state_root = self.root.with_name(self.root.name + ".state")
         self.host = host or Host("local")
         self.limits = limits
         self.agent_limits = agent_limits or limits
@@ -545,10 +547,10 @@ class LocalTransport(Transport):
 
     def exchange(self, request: bytes, *, timeout_s: float, max_reply: int) -> bytes:
         self.root.mkdir(parents=True, exist_ok=True)
-        record = self.root / "limits.json"
+        record = self.root.with_name(self.root.name + ".limits.json")  # outside the work tree, as on a host
         record.write_text(json.dumps(limits_record(self.agent_limits)), encoding="utf-8")
         argv = [self.python, "-I", "-B", "-c", self.boot, self.package_parent, "--root", str(self.root),
-                "--limits", str(record)]
+                "--limits", str(record), "--state", str(self.state_root)]
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 cwd=str(self.root), env=self._env(), creationflags=NO_WINDOW)
         out = bytearray()

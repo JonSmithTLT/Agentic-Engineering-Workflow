@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from guard_reads import GUARD_READS
 
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import AVAILABLE, BLOCKED, GUARD_NOT_QUERYABLE, UNKNOWN, GuardQueries, NotQueryable
@@ -214,21 +215,6 @@ CALLS = {
 }
 
 
-# The arguments each step's guard reads (`Engine.guard_query`): a dispatch decision its role, card and scope; the
-# migrated queries their request's fields. A planner's other arguments (`launch`, `execution`) no guard reads.
-DISPATCH_READS = frozenset({"work_id", "role", "card", "scope"})
-GUARD_READS = {
-    "work.assign": DISPATCH_READS, "invoke.create.mutating": DISPATCH_READS, "dispatch.launch": frozenset(),
-    "work.transition": frozenset({"work_id", "to", "reason"}),
-    "review.ingest": frozenset({"work_id", "evidence"}),
-    "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
-                              "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
-                              "external_refs", "body", "card", "promoted_from", "acceptance_checks",
-                              "acceptance_inputs", "class0_assertions"}),
-    "plan.propose": frozenset({"work_id", "body", "reason", "affected_paths", "review", "verify", "no_assurance"}),
-}
-
-
 def disagreements(stage_planners: dict[str, Any]) -> list[str]:
     """Where a planner's step arguments differ from the arguments the step's guard is asked with, both ways: every
     argument the availability builder gives must be the planner's too (the same value, or an earlier step's output,
@@ -307,3 +293,14 @@ def test_resume_says_why_a_guard_is_unknown_by_its_code(codes, says):
     assert (found, reasons) == (UNKNOWN, codes)
     check = stage._unknown_guard(reasons)
     assert check["status"] == stage.UNKNOWN_STATUS and check["reason_codes"] == codes and says in check["message"]
+
+
+def test_recording_args_see_every_key_a_query_reads():
+    """The mechanical check behind GUARD_READS: a query's reads (get, [], in) are recorded; what it records under
+    `found` is not an input."""
+    from guard_reads import RecordingArgs
+
+    args = RecordingArgs({"work_id": "T-0001", "to": "RUNNING"})
+    assert args.get("reason") is None and args["to"] == "RUNNING" and "card" not in args
+    args.setdefault("found", {})["rule"] = 1
+    assert args.inputs_read() == {"reason", "to", "card"}

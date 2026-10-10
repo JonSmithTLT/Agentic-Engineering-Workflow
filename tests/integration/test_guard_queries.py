@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from aewflow import create_planned_ticket, sample_project
+from guard_reads import GUARD_READS, RecordingArgs
 
 from aew.engine.api import Engine
 from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
@@ -34,8 +35,12 @@ def _fresh_cache():
 
 def equivalent(engine: Engine, primitive: str, work_id: str | None, args: dict[str, Any],
                execute: Callable[[int], Any]) -> dict[str, Any]:
-    """Ask ``primitive``'s guard on the committed state, then execute it there: the same answer (§13)."""
-    answer = engine.guard_query(primitive, work_id, args)  # keeps what the query found
+    """Ask ``primitive``'s guard on the committed state, then execute it there: the same answer (§13). The query reads
+    only the arguments ``GUARD_READS`` lists for it (the planner agreement check relies on that list)."""
+    recorded = RecordingArgs(args)
+    answer = engine.guard_query(primitive, work_id, recorded)
+    args.update(recorded)  # keeps what the query found
+    assert recorded.inputs_read() <= GUARD_READS[primitive], (primitive, recorded.inputs_read())
     rev = engine.store.read()["revision"]
     try:
         execute(rev)

@@ -343,3 +343,22 @@ def test_ticket_draft_is_composed_from_the_creation_and_the_unit_it_produces(rea
     assert [s["availability"] for s in undeclared["steps"]] == [AVAILABLE, BLOCKED]
     assert undeclared["availability"] == BLOCKED and undeclared["reason_codes"] == ["USAGE"]
     assert engine.store.read()["counters"] == before["counters"] and engine.store.read()["work"] == before["work"]
+
+
+# ---------------------------------------------------------------------------------------------- resume and R5-1
+
+
+def test_the_stage_rechecks_ask_the_migrated_guards(ready):
+    """`resume`'s guard recheck of an unfinished stage's next step, and R5-1's availability condition, ask the same
+    guard (`aew.surface.stage.guard_status`): a migrated one now answers AVAILABLE or BLOCKED, no longer UNKNOWN; one
+    with no query form stays UNKNOWN (E3c's `unknown_checks`)."""
+    from aew.surface import stage
+
+    p, wid, engine = ready
+    assert stage.guard_status(engine, "work.transition", {"work_id": wid, "to": "RUNNING"}) == (
+        BLOCKED, ["ILLEGAL_TRANSITION"])
+    assert stage.guard_status(engine, "plan.propose", {"work_id": wid, "body": "b", "no_assurance": True,
+                                                       "reason": "r"}) == (AVAILABLE, [])
+    assert stage.guard_status(engine, "verify.classify", {"work_id": wid})[0] == UNKNOWN
+    p.lead("work", "assign", wid)
+    assert stage.guard_status(engine, "work.transition", {"work_id": wid, "to": "RUNNING"}) == (AVAILABLE, [])

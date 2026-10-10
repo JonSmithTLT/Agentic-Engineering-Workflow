@@ -366,7 +366,11 @@ sections:
       of pull request 142. A launching step whose supervisor never started or has ended stops the intent as `launch_failed`,
       never completing the stage over a run that did not start, and the continue never relaunches (a relaunch is `harness.launch`,
       which rotates the credential). The other remains. E5a reconciles the `dispatch.launch` step catalogued for `ticket_start`
-      with the launch inside the assignment step; until then it fails closed, since the primitive is undeclared
+      with the launch inside the assignment step; until then it fails closed, since the primitive is undeclared. **E4a (2026-10-10)**
+      makes the guards of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition` with `implementer_active`,
+      `ready_for_review` and `review_current`, `review.ingest`, `work.create` and `plan.propose`, each a pure query its
+      execute path calls first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`);
+      `explain` answers a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

@@ -8,6 +8,7 @@ reading a new argument fails there until this list says so.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping, MutableMapping
 from typing import Any
 
 # A dispatch decision reads its role, card and scope; the migrated queries their request's fields. A planner's other
@@ -30,24 +31,44 @@ GUARD_READS: dict[str, frozenset[str]] = {
 FOUND = "found"  # where a query records what it found: written, never an input
 
 
-class RecordingArgs(dict[str, Any]):
-    """A query's arguments that remember which keys the query read (``get``, ``[]``, ``in``)."""
+class RecordingArgs(MutableMapping[str, Any]):
+    """A query's arguments that remember which keys the query read. A mapping, not a ``dict`` subclass, so every
+    access goes through a recorded method (``dict(a)`` and ``{**a}`` take no C fast path): ``[]``, ``get`` and ``in``
+    record the key; ``keys``, ``values``, ``items``, iteration and ``copy`` record every key (PR #171 review,
+    finding 5). Writing (``found``, through ``setdefault``) is not reading."""
 
-    def __init__(self, *a: Any, **k: Any) -> None:
-        super().__init__(*a, **k)
+    def __init__(self, data: Mapping[str, Any] | None = None) -> None:
+        self._data: dict[str, Any] = dict(data or {})
         self.read: set[str] = set()
 
-    def get(self, key: Any, default: Any = None) -> Any:
+    def __getitem__(self, key: str) -> Any:
         self.read.add(key)
-        return super().get(key, default)
+        return self._data[key]
 
-    def __getitem__(self, key: Any) -> Any:
-        self.read.add(key)
-        return super().__getitem__(key)
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._data[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        self.read.update(self._data)
+        return iter(list(self._data))
+
+    def __len__(self) -> int:
+        return len(self._data)
 
     def __contains__(self, key: object) -> bool:
         self.read.add(str(key))
-        return super().__contains__(key)
+        return key in self._data
+
+    def copy(self) -> dict[str, Any]:
+        self.read.update(self._data)
+        return dict(self._data)
+
+    def data(self) -> dict[str, Any]:
+        """The arguments as they stand (what the query found included), read without recording."""
+        return dict(self._data)
 
     def inputs_read(self) -> set[str]:
         return self.read - {FOUND}

@@ -39,8 +39,8 @@ def equivalent(engine: Engine, primitive: str, work_id: str | None, args: dict[s
     only the arguments ``GUARD_READS`` lists for it (the planner agreement check relies on that list)."""
     recorded = RecordingArgs(args)
     answer = engine.guard_query(primitive, work_id, recorded)
-    args.update(recorded)  # keeps what the query found
     assert recorded.inputs_read() <= GUARD_READS[primitive], (primitive, recorded.inputs_read())
+    args.update(recorded.data())  # keeps what the query found
     rev = engine.store.read()["revision"]
     try:
         execute(rev)

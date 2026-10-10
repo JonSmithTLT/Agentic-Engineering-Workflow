@@ -358,3 +358,18 @@ def test_resume_names_a_blocked_steps_disposition(disposition, says):
     assert says in check["message"] and check["availability"] == BLOCKED
     assert check["status"] == ("blocked" if disposition is None else stage.BLOCKED_WITH_DISPOSITION)
     assert check.get("disposition") == disposition
+
+
+@pytest.mark.parametrize("read", [lambda a: dict(a)["secret"], lambda a: {**a}["secret"],
+                                  lambda a: [v for k, v in a.items() if k == "secret"], lambda a: list(a.values()),
+                                  lambda a: list(a.keys()), lambda a: [k for k in a], lambda a: a.copy()["secret"],
+                                  lambda a: a["secret"], lambda a: a.get("secret"), lambda a: "secret" in a])
+def test_recording_args_record_every_way_of_reading(read):
+    """PR #171 review, finding 5: copies, views and iteration record the keys they read, as `[]`, `get` and `in` do."""
+    from guard_reads import RecordingArgs
+
+    rec = RecordingArgs({"work_id": "T-0001", "secret": 1})
+    read(rec)
+    assert "secret" in rec.inputs_read()
+    rec.setdefault("found", {})["x"] = 1  # writing what a query found works, and is not an input
+    assert "found" not in rec.inputs_read() and rec.data()["found"] == {"x": 1}

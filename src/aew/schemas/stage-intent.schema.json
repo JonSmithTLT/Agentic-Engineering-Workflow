@@ -27,7 +27,7 @@
       "properties": {"expect_rev": {"type": "integer", "minimum": 0}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}}
     },
     "binding": {
-      "description": "What every step is checked against. A legality digest that moved is STALE_POLICY (rule 6); the operational digest is recorded, never enforced. The authorization, obligations and lease bindings arrive with E5b and E6.",
+      "description": "What every step is checked against. A legality digest that moved is STALE_POLICY (rule 6); the operational digest is recorded, never enforced. A stage that accepts evidence binds the obligations digest (the subject's effective obligations, E5b), recorded for attribution; the authorization and lease bindings arrive with E6.",
       "type": "object", "required": ["legality_digest", "operational_digest", "authorization_digest", "obligations_digest", "lease"], "additionalProperties": false,
       "properties": {
         "legality_digest": {"$ref": "#/$defs/policy_digest"},

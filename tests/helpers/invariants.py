@@ -254,6 +254,54 @@ def control_violations(root: Path) -> list[str]:
     problems += ticket_field_violations(root, state)
     # 52-58. F9-A: coordination threads, their seals and the coordination keys (plan v4 §7, C1 to C7).
     problems += coordination_violations(root, hot, state)
+    # 59-61. M4-E E5b: the anomaly record and the dispositions.
+    problems += disposition_violations(root, hot, state)
+    return problems
+
+
+def disposition_violations(root: Path, hot: dict[str, Any], full: dict[str, Any]) -> list[str]:
+    """59. Only open anomalies are hot: each is undisposed, issued by its counter, about a unit (hot or archived: it may
+    finish meanwhile) or the project, and its key is open once. 60. Every disposition pointer, hot or archived, names
+    an immutable record that hashes to it, is its own (id, subject, kind, choice, unit), and was issued by the counter;
+    an anomaly disposed of is no longer hot. 61. A disposed finding is never a required finding still open on its
+    unit."""
+    import hashlib
+
+    import yaml
+
+    from aew.schemas import validate
+
+    problems: list[str] = []
+    aew = Path(root) / ".aew"
+    anomalies = hot.get("anomalies") or {}
+    issued = int((hot.get("counters") or {}).get("anomaly", 0))
+    keys: dict[str, str] = {}
+    for an, a in anomalies.items():
+        if a["id"] != an or a["disposition"] is not None or int(an.split("-")[1]) > issued:
+            problems.append(f"59: open anomaly {an} is malformed, disposed of, or never issued")
+        if a["subject"] is not None and a["subject"] not in full["work"]:
+            problems.append(f"59: open anomaly {an} concerns {a['subject']}, which is no work unit")
+        if a["key"] in keys:
+            problems.append(f"59: anomalies {keys[a['key']]} and {an} are the same open signal")
+        keys[a["key"]] = an
+    dps = int((hot.get("counters") or {}).get("disposition", 0))
+    for wid, unit in full["work"].items():
+        for ptr in unit.get("dispositions") or []:
+            path = aew / ptr["path"]
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != ptr["sha256"]:
+                problems.append(f"60: {wid}'s disposition {ptr['id']} does not match its record {ptr['path']}")
+                continue
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            validate("disposition", doc, source=ptr["path"])
+            if (doc["id"], doc["subject"]["id"], doc["subject"]["kind"], doc["choice"], doc["work_unit"]) != (
+                    ptr["id"], ptr["subject"], ptr["kind"], ptr["choice"], wid) or int(ptr["id"].split("-")[1]) > dps:
+                problems.append(f"60: {wid}'s pointer {ptr['id']} is not its record's, or was never issued")
+            if ptr["kind"] == "anomaly" and ptr["subject"] in anomalies:
+                problems.append(f"60: anomaly {ptr['subject']} is disposed of ({ptr['id']}) and still open")
+            open_required = {f["id"] for f in unit.get("findings") or [] if f.get("required")
+                             and f.get("status") == "open"}
+            if ptr["subject"] in open_required:
+                problems.append(f"61: {wid}'s required finding {ptr['subject']} was disposed of")
     return problems
 
 

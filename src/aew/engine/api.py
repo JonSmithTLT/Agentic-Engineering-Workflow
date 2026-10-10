@@ -453,11 +453,11 @@ class Engine:
         # coordination seal (F9-A plan D-16) runs after every finalizer that can end an invocation (the queue's ends a
         # custodian and its children) and immediately before archival, so a seal's pointer is on its unit when
         # archival bundles it; a finalizer added later that can end an invocation goes before it.
-        # The anomaly record (M4-E E5b) runs just before archival: it only adds what is signalled to the hot state,
-        # ends nothing, and reads the contradictions of the committed state the transaction starts from.
+        # The anomaly record (M4-E E5b) runs before the seal: it only adds what is signalled to the hot state, ends
+        # nothing, and reads the contradictions of the committed state the transaction starts from.
         k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
-                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, coordination.finalize,
-                                   dispositions.finalize, archive.finalize])
+                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, dispositions.finalize,
+                                   coordination.finalize, archive.finalize])
         # A Lead transaction refused with a recorded signal (WORKSPACE_MUTATED, OBSERVATION_MUTATED) records it.
         k.refusal_hooks.append(dispositions.record_refusal)
         # Session.commit's seal check seals a missed ending through it (D-16, R3).

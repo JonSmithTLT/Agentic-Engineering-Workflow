@@ -33,7 +33,8 @@ an earlier one, or to a field no step records, when the intent opens (#142 revie
 The plan is the contract's steps for the call, in order: a step is left out only where availability leaves it
 unplanned (``ticket_draft`` without a plan). A launch planned right after its dispatch is recorded by the dispatch's
 commit (``covers``) and never runs on its own (M4-E E5a). The Ticket stages' planners (E5a: ``ticket_draft``,
-``ticket_start``) take each step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck and R5-1 ask
+``ticket_start``; E5b: the two request stages, whose dispatch and launch repeat once per card, ``plan_for``) take each
+step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck and R5-1 ask
 each guard what ``explain`` and the projection ask (PR #170 review, finding 3).
 """
 

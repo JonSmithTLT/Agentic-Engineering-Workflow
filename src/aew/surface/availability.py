@@ -10,7 +10,9 @@ legality itself:
   the earlier step would leave them (:func:`_overlay`). A step whose only input is an earlier step's dispatch decision
   (``dispatch.launch``) is covered by that decision and not queried (plan v3 §1);
 - **any other unmigrated input** (a guard with no query form) makes the step, and so the stage, ``UNKNOWN`` (frozen
-  decision 3), never ``BLOCKED``. A step whose producer found nothing to produce (it is blocked) is ``UNKNOWN`` too.
+  decision 3), never ``BLOCKED``. A step whose producer found nothing to produce (it is blocked) is ``UNKNOWN`` too;
+- **a request stage's dispatch** (M4-E E5b, ``CARDS``) is asked once per card the stage launches, each with its card,
+  and answers for all of them.
 
 The stage is ``BLOCKED`` when any step is (it would stop there, rule 3), or when an unfinished stage holds its subject
 (the unit, or the project for a stage that creates its unit): opening refuses another stage there until the Lead

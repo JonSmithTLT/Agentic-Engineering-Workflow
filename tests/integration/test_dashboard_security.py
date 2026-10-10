@@ -593,3 +593,80 @@ def test_the_logged_method_never_carries_control_bytes(live, caplog):
     text = "\n".join(r.getMessage() for r in caplog.records if r.name == "aew.dashboard")
     assert "\x1b" not in text and "\x07" not in text and "<bad method>" in text, text
     assert "GET /api/v1/project 200" in text
+
+
+# ------------------------------------------------------------------------------------------- refusals that close
+
+def _read_to_end(s: socket.socket) -> tuple[int, dict[str, str], bytes]:
+    """Everything the server sends until its end of output, parsed (status, headers, the body Content-Length
+    names): a reset on the way raises, so a lost answer can never pass for a complete one."""
+    data = b""
+    while got := s.recv(65536):
+        data += got
+    head, _, rest = data.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, v in (ln.split(":", 1) for ln in lines[1:] if ":" in ln)}
+    body = rest[:int(headers.get("content-length", "0"))]
+    assert len(body) == int(headers.get("content-length", "0")), (lines[0], len(rest))
+    return int(lines[0].split()[1]), headers, body
+
+
+@pytest.mark.parametrize("kind", ["line", "headers", "body", "method"])
+def test_a_refused_request_always_delivers_its_complete_error_body(live, monkeypatch, kind):
+    """A refusal that ends the connection leaves the client's input unread (the rest of a 70 KB request line, a
+    header block past its bound, a body). Closing over unread input resets the connection, and on Windows the reset
+    discards the answer in flight (a once-seen flake of the oversized-line test under load): the server half-closes
+    and reads what the client sends before the close, so the client always reads the whole ``Error``. The client
+    here sends more after the answer has begun, which a close without that drain turns into a reset every time."""
+    monkeypatch.setattr(SV, "REFUSAL_DRAIN_S", 10.0)  # the late bytes below arrive within it however loaded the host
+    host = f"Host: {live.host}\r\n"
+    request, status, code = {
+        "line": (b"GET /" + b"w" * 70000, 414, "REQUEST_TOO_LARGE"),
+        "headers": (f"GET / HTTP/1.1\r\n{host}X-Big: {'b' * 70000}".encode("latin-1"), 431, "REQUEST_TOO_LARGE"),
+        "body": (f"GET / HTTP/1.1\r\n{host}Content-Length: 140000\r\n\r\n{'b' * 70000}".encode("latin-1"), 400,
+                 "INVALID_REQUEST"),
+        "method": (f"POST / HTTP/1.1\r\n{host}Content-Length: 140000\r\n\r\n{'b' * 70000}".encode("latin-1"), 405,
+                   "METHOD_NOT_ALLOWED"),
+    }[kind]
+    for _ in range(3):
+        with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+            s.sendall(request)
+            first = s.recv(1)  # the answer has begun: the server has refused, and is ending the connection
+            time.sleep(0.05)
+            s.sendall(b"b" * 70000)  # input the server never asked for, after its answer
+            got, headers, body = _read_to_end(s)
+            assert first == b"H" and got == status and error_code(body) == code, (kind, got)
+            assert headers.get("connection") == "close"
+            assert_headers(headers)
+
+
+def test_a_refused_client_that_keeps_sending_is_cut_off_at_the_drain_byte_bound(live, monkeypatch):
+    """R23 bounds the drain too: with its deadline out of reach, a refused client sending without end is still cut
+    off once ``DRAIN_MAX_BYTES`` are read, never read for as long as it cares to send."""
+    monkeypatch.setattr(SV, "REFUSAL_DRAIN_S", 60.0)
+    chunk = b"w" * 65536
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=10) as s:
+        started = time.monotonic()
+        cut = False
+        s.sendall(b"GET /" + chunk)
+        while time.monotonic() - started < 8.0:
+            try:
+                s.sendall(chunk)
+            except OSError:  # the server closed over the unread rest: a reset
+                cut = True
+                break
+        assert cut, "the server read a refused client's input without bound"
+        assert time.monotonic() - started < 6.0
+
+
+def test_a_refused_client_that_neither_sends_nor_closes_is_let_go_at_the_drain_deadline(live):
+    """R23's short deadline: a refused client that reads its answer and then holds the connection open, sending
+    nothing, holds its handler (and a connection slot) for ``REFUSAL_DRAIN_S`` at most."""
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
+    with socket.create_connection(("127.0.0.1", live.server.port), timeout=30) as s:
+        s.sendall(b"GET /" + b"w" * 5000 + b" HTTP/1.1\r\n\r\n")
+        got, _, body = _read_to_end(s)  # the end of output is the half-close; the connection itself stays open
+        assert got == 414 and error_code(body) == "REQUEST_TOO_LARGE"
+        started = time.monotonic()
+        _wait_for_connections(live, SV.MAX_CONNECTIONS)
+        assert time.monotonic() - started < SV.REFUSAL_DRAIN_S + 2.0

@@ -68,9 +68,13 @@ MAX_IN_FLIGHT = 16
 # alive; beyond this the connection gets a 503 at once and is closed, so neither half-sent requests nor idle
 # keep-alive connections can hold more threads than this (lead developer's review of PR #90).
 MAX_CONNECTIONS = 32
-# After the prepared 503, how long the accept loop drains what the refused client already sent before closing: a
-# close with unread input resets the connection, and the client would see a reset instead of the 503.
+# A close with unread input resets the connection, and on Windows the reset discards the answer still in flight to
+# the client, which then sees a reset instead of it. So a connection that ends with an answer is half-closed and
+# what the client already sent is read before the close, within a deadline and a byte bound (R23: never unbounded):
+# after the prepared 503 in the accept loop, and after a refusal that ends the connection in its handler thread.
 BUSY_DRAIN_S = 0.1
+REFUSAL_DRAIN_S = 0.5
+DRAIN_MAX_BYTES = 256 * 1024
 LOG_PATH_MAX = 256  # characters of a path the request log records
 LOG_QUEUE = 1024  # request log lines waiting for the writer; beyond this they are dropped, counted and reported
 # The characters a logged path keeps as they are: everything else, a control character or a CR/LF above all, is
@@ -200,6 +204,23 @@ class _ClientGone(Exception):
     """The client's input ended before its request head did: there is nobody to answer."""
 
 
+def _drain(sock: socket.socket, seconds: float) -> None:
+    """End a connection whose answer is written so that the client reads all of it: a half-close (the client sees
+    the end of the response), then what the client already sent is read, until its end of input, ``seconds`` or
+    ``DRAIN_MAX_BYTES``, so the close that follows is not a reset that discards the answer."""
+    try:
+        sock.shutdown(socket.SHUT_WR)
+        end, left = time.monotonic() + seconds, DRAIN_MAX_BYTES
+        while left > 0 and (wait := end - time.monotonic()) > 0:
+            sock.settimeout(wait)
+            got = sock.recv(min(65536, left))
+            if not got:
+                break
+            left -= len(got)
+    except OSError:  # a timeout, or the client already gone: either way the close comes next
+        pass
+
+
 Route = Callable[[P.Projector, dict[str, str], dict[str, str]], dict[str, Any]]
 
 
@@ -273,14 +294,10 @@ class _Listener(ThreadingHTTPServer):
             try:
                 request.settimeout(1.0)
                 request.sendall(self.busy)
-                request.shutdown(socket.SHUT_WR)  # the 503 is complete: the client sees the end of the response
-                end = time.monotonic() + BUSY_DRAIN_S
-                while (left := end - time.monotonic()) > 0:  # read what it sent, so the close is not a reset
-                    request.settimeout(left)
-                    if not request.recv(65536):
-                        break
             except OSError:
                 pass
+            else:
+                _drain(request, BUSY_DRAIN_S)
             self.shutdown_request(request)
             return
         try:
@@ -325,12 +342,18 @@ class DashboardServer:
             server_version = "aew-dashboard"
             sys_version = ""
             timeout = SOCKET_TIMEOUT_S
+            answered_close = False  # an answer said `Connection: close`: its request may carry bytes not yet read
 
             def handle(self) -> None:
                 try:
                     super().handle()
                 except (ConnectionError, TimeoutError, _ClientGone):
                     pass  # the client went away, or ran out its head deadline: nothing to answer
+
+            def finish(self) -> None:
+                super().finish()
+                if self.answered_close:  # a refusal ends the connection: the client must still read all of it
+                    _drain(self.connection, REFUSAL_DRAIN_S)
 
             def _readline(self, limit: int) -> bytes:
                 """One line of at most ``limit`` bytes, read before the head deadline however slowly it arrives:
@@ -447,6 +470,11 @@ class DashboardServer:
             def send_response(self, code: int, message: str | None = None) -> None:
                 self.log_request(code)
                 self.send_response_only(code, message)  # no Server or Date header
+
+            def send_header(self, keyword: str, value: str) -> None:
+                super().send_header(keyword, value)
+                if keyword.lower() == "connection" and value.lower() == "close":
+                    self.answered_close = True
 
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 (http.server's name)
                 pass  # stdlib's messages can carry the request line (a query); the request log is log_request

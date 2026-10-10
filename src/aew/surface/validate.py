@@ -45,6 +45,10 @@ def check_call(name: Any, arguments: Any, profile: str) -> Tool:
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
     if t.name == "steering":
         _check_steering(arguments)
+    if t.name == "resolve" and not arguments["rationale"].strip():
+        # Kept out of the schema to keep the advertised bytes (plan v3 §2.6); an input error all the same.
+        raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the rationale says why, and is never blank",
+                                violations=["rationale: blank"])
     return t
 
 

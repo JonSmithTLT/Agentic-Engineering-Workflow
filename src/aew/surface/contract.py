@@ -99,6 +99,9 @@ STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
                       "request_raise": (("mode", "rationale"), ("mode", "rationale")),
                       "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
 
+# The `resolve` tool's choices (plan v3 E3; E5 adds the dispositions).
+RESOLVE_CHOICES = ("continue", "abandon")
+
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
 
@@ -176,6 +179,16 @@ TOOLS: dict[str, Tool] = _catalog(
                "rationale": TEXT},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),
+    # ---- the Lead's explicit resolution of an unfinished stage (M4-E E3c; §3.4 rule 8): continue runs the stage's
+    # remaining steps, abandon ends it. E5 adds the finding and anomaly dispositions to `choice` (plan v3 §2.6).
+    Tool("resolve", STAGE, JUDGMENT_BEARING,
+         "Settle an unfinished stage that resume lists: continue it from its first uncommitted step, or abandon it.",
+         _obj({"expect_rev": EXPECT_REV,
+               "subject": {"type": "string", "minLength": 1, "description": "the stage intent id"},
+               "choice": {"enum": list(RESOLVE_CHOICES)},
+               "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
+              ("expect_rev", "subject", "choice", "rationale")),
+         expands_to=("stage.resolve",), required_judgments=("stage_resolution",), mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",

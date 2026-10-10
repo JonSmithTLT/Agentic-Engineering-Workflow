@@ -34,7 +34,7 @@ from aew.engine import outbox
 from aew.engine.primitives import spec_for
 from aew.harness.contract import redact
 from aew.schemas import validate
-from aew.surface import SURFACE
+from aew.surface import SURFACE, stage
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project
@@ -87,7 +87,9 @@ def _status(c: Call) -> Any:
 
 
 def _resume(c: Call) -> Any:
-    return c.engine.resume(session=c.ctx.lead_session)
+    report = c.engine.resume(session=c.ctx.lead_session)
+    # Unfinished stages, each with whether a continue would pass its rechecks now (M4-E E3c; §3.4 rule 8).
+    return {**report, "stage_intents": stage.unfinished(c.engine)}
 
 
 def _work_show(c: Call) -> Any:
@@ -183,7 +185,7 @@ def _steering(c: Call) -> Any:
 RUNNERS: dict[str, Runner] = {
     "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
     "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
-    "steering": _steering, "cli": _cli,
+    "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
 }
 
 

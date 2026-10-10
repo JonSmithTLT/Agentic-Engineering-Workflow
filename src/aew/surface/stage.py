@@ -113,9 +113,17 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
         ingress=c.ctx.ingress)
     intent, rev = opened["intent"], opened["revision"]
     c.intent, c.binding = intent, opened["binding"]
+    return _run_steps(c, intent, plan, 1, rev)
+
+
+def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev: int) -> dict[str, Any]:
+    """Run ``plan`` from step ``first`` (1 for a new stage; the first uncommitted step for a continued one) from
+    revision ``rev``, stopping at the first refusal, and complete the intent when the last step launched."""
     outputs: list[dict[str, Any]] = []
     final = False
     for n, step in enumerate(plan, start=1):
+        if n < first:  # committed before this call: a continued stage never repeats a step (its key is recorded)
+            continue
         try:
             args = _resolve(c, intent, step.get("args") or {})
         except errors.AEWError as refusal:
@@ -154,12 +162,16 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
 
 
 def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
+    return _resolve_args(c.engine, intent, args)
+
+
+def _resolve_args(engine: Any, intent: str, args: dict[str, Any]) -> dict[str, Any]:
     """``args`` with each ``{"$from": [m, field]}`` replaced by the one id step ``m`` recorded under ``field``."""
     out: dict[str, Any] = {}
     for name, value in args.items():
         if isinstance(value, dict) and set(value) == {"$from"}:
             m, field = value["$from"]  # its form and order were checked when the intent opened
-            steps = c.engine.stage_intent(intent)["steps"]
+            steps = engine.stage_intent(intent)["steps"]
             ids = steps[m - 1]["outputs"][field] if 0 < m <= len(steps) else []
             if len(ids) != 1:
                 raise errors.IllegalTransition(f"{name} comes from step {m}'s {field}, which recorded {len(ids)} "
@@ -172,14 +184,21 @@ def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
 def availability(c: Call, primitive: str, args: dict[str, Any]) -> str:
     """Whether ``primitive`` with ``args`` is legal now, asked of the predicate its own commit evaluates. Only dispatch
     decisions are queryable yet; every other guard is UNKNOWN (E4 migrates them)."""
+    return guard_status(c.engine, primitive, args)[0]
+
+
+def guard_status(engine: Any, primitive: str, args: dict[str, Any]) -> tuple[str, list[str]]:
+    """:func:`availability`, with the reason codes of a dispatch decision that refuses."""
     guard = spec_for(primitive).guard_id
     if guard is None or guard not in contract.EXPLAINABLE or not args.get("work_id"):
-        return UNKNOWN
+        return UNKNOWN, []
     try:
-        decision = c.engine.dispatch_explain(args["work_id"], entrypoint=guard)
+        decision = engine.dispatch_explain(args["work_id"], entrypoint=guard)
     except errors.AEWError:
-        return UNKNOWN
-    return AVAILABLE if decision.get("allowed") else BLOCKED
+        return UNKNOWN, []
+    if decision.get("allowed"):
+        return AVAILABLE, []
+    return BLOCKED, [str(r) for r in decision.get("reason_codes") or []]
 
 
 def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
@@ -254,3 +273,123 @@ def _payload(c: Call, intent: str, outputs: list[dict[str, Any]]) -> dict[str, A
         left = c.left_active
         out["left_active"] = {"code": left.code, "message": left.message} if left is not None else None
     return out
+
+
+# ---------------------------------------------------------------------------------------------- resume and resolve
+# (M4-E E3c; typed surface §3.4 rule 8: a replacement Lead explicitly continues or abandons, never inferred)
+
+PASSING = ("ok", "not_applicable", "not_queryable")  # not_queryable: the step's own commit decides its guard (E4)
+UNKNOWN_STATUS = "not_queryable"
+
+
+def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] | None, list[str]]:
+    """The stage contract and plan ``si``'s tool resolves to now: its catalog row's digest and its planner's plan for
+    the recorded arguments (``(None, None)`` when this surface has no such stage any more), and the remaining steps'
+    primitives that have no step runner here (a continue could not run them)."""
+    t, planner = contract.tool(si["tool"]), STAGES.get(si["tool"])
+    if t is None or not t.built or planner is None:
+        return None, None, []
+    plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planner(dict(si["arguments"]))]
+    missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
+    return contract_digest(t), plan, missing
+
+
+def _runners_check(missing: list[str]) -> dict[str, Any]:
+    if not missing:
+        return {"status": "ok", "message": "every remaining step has a step runner"}
+    return {"status": "no_step_runner", "primitives": missing,
+            "message": f"no step runner here for {', '.join(missing)}: a continue could not run the remaining steps"}
+
+
+def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
+    """One unfinished intent as ``resume`` lists it, all result payload (nothing here is advertised in `tools/list`).
+
+    - ``safe_to_continue``: every recheck a continue makes passes now, **counting a check that cannot be answered yet
+      as passing**; such checks are listed in ``unknown_checks`` (today only ``guard`` when the next step's guard is
+      not a queryable dispatch decision: the step's own commit then decides, and a refusal stops the stage, rule 3).
+    - each recheck (the policy, the stage contract and plan, the step runners, the subject, a launching step's run, the
+      continue count, the next step's guard), the next planned step and the boundary a continue would stop at;
+    - the call a continue endorses: its bound ``arguments``, ``judgment_inputs`` and classes (#166 review, finding 4);
+    - the owning and current generations."""
+    digest_now, plan_now, missing = _contract_now(si)
+    check = engine.stage_recheck(si["id"], contract_digest=digest_now, plan=plan_now)
+    checks = dict(check["checks"])
+    checks["runners"] = _runners_check(missing)
+    nxt = check["next_step"]
+    if nxt is None or check["boundary"] is not None or missing:
+        checks["guard"] = {"status": "not_applicable", "message": "no step would run"}
+    else:
+        try:
+            args = _resolve_args(engine, si["id"], nxt.get("args") or {})
+        except errors.AEWError as exc:
+            checks["guard"] = {"status": "unresolved", "message": exc.message}
+        else:
+            found, reasons = guard_status(engine, nxt["primitive"], args)
+            checks["guard"] = {AVAILABLE: {"status": "ok", "message": "its dispatch decision allows it now"},
+                               UNKNOWN: {"status": UNKNOWN_STATUS, "message": "its guard is not queryable yet: "
+                                                                               "its own commit decides (E4)"},
+                               BLOCKED: {"status": "blocked", "reason_codes": reasons,
+                                         "message": "its dispatch decision refuses it now"}}[found]
+            checks["guard"]["availability"] = found
+    failing = [name for name, v in checks.items() if v["status"] not in PASSING]
+    boundary = check["boundary"] or ("refused" if failing else None)
+    return {"intent": si["id"], "tool": si["tool"], "subject": si["subject"]["id"], "status": si["status"],
+            "arguments": dict(si["arguments"]), "judgment_inputs": list(si["judgment_inputs"]),
+            "base_class": si["base_class"], "effective_class": si["effective_class"],
+            "steps_committed": len(si["steps"]), "steps_planned": len(si["plan"]),
+            "safe_to_continue": not failing, "failing": failing,
+            "unknown_checks": [name for name, v in checks.items() if v["status"] == UNKNOWN_STATUS],
+            "checks": checks,
+            "policy": {"legality_digest": si["binding"]["legality_digest"], "status": checks["policy"]["status"]},
+            "next_step": nxt, "boundary": boundary, "owner_generation": check["owner_generation"],
+            "current_generation": check["current_generation"], "rebind": check["rebind"],
+            "opened": dict(si["opened"]), "rebound": list(si["rebound"])}
+
+
+def unfinished(engine: Any) -> list[dict[str, Any]]:
+    """Every unfinished stage, assessed (``resume``: the typed tool and ``aew resume`` both add it)."""
+    return [assess(engine, si) for si in engine.stage_intents_view()]
+
+
+def resolve_stage(c: Call) -> dict[str, Any]:
+    """The ``resolve`` tool for a stage: the current Lead's explicit continue or abandon (rule 8).
+
+    - **abandon** ends the intent ABANDONED; its committed steps stand.
+    - **continue** re-resolves the stage contract and plan from this surface's catalog, refuses a next step whose
+      guard refuses it now (nothing commits), and has the engine recheck the rest and rebind the intent to the current
+      generation in one commit (F18 §14). It then runs the remaining steps from the first uncommitted one, under the
+      same rules as a new stage (§3.4 rules 3 to 7). With every step committed, that commit ends the stage itself:
+      completed, or stopped as ``launch_failed`` when a launching step's run never started or has ended. A continue
+      never relaunches a run: that is `aew harness launch`, which rotates the credential (#142 review)."""
+    from aew.surface.run import _error
+
+    a = c.a
+    sid = a["subject"]
+    si = c.engine.stage_intent(sid)
+    c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])
+    if a["choice"] == "abandon":
+        c.engine.stage_abandon(token=c.token(), expect_rev=a["expect_rev"], intent=sid, rationale=a["rationale"])
+        return _payload(c, sid, [])
+    digest_now, plan_now, missing = _contract_now(si)
+    if si["status"] == SI.ACTIVE and missing:
+        raise errors.IllegalTransition(f"{sid} cannot be continued: {_runners_check(missing)['message']}",
+                                       reason="no_step_runner", intent=sid, primitives=missing)
+    if si["status"] == SI.ACTIVE and plan_now is not None:
+        guard = assess(c.engine, si)["checks"]["guard"]
+        if guard["status"] == "blocked":
+            raise errors.IllegalTransition(
+                f"{sid} cannot be continued: its next step is refused now "
+                f"({', '.join(guard['reason_codes']) or 'by its dispatch decision'}). Abandon it (committed steps "
+                "stand) and decide anew from the projection", reason="next_step_blocked", intent=sid,
+                reason_codes=guard["reason_codes"])
+    out = c.engine.stage_continue(token=c.token(), expect_rev=a["expect_rev"], intent=sid,
+                                  contract_digest=digest_now, plan=plan_now, rationale=a["rationale"])
+    if out["status"] == SI.STOPPED:  # the launching step's run never started, or has ended: never completed
+        launch = out["launch"]
+        failed = errors.HarnessLaunchFailed(launch["message"], run=launch["run"], committed=True,
+                                            observed=launch["observed"], reason=launch["status"])
+        c.stopped = {"at": c.engine.stage_intent(sid)["steps"][-1]["primitive"], "boundary": "launch_failed",
+                     "error": _error(failed)}
+    if out["status"] != SI.ACTIVE:
+        return _payload(c, sid, [])
+    return _run_steps(c, sid, si["plan"], out["next"], out["revision"])

@@ -79,6 +79,10 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # nothing; the switch it needs is execution policy's `coordination.messaging`. Its `expect_rev` is checked like
     # every stage's, but a repeat is recognized by its `idempotency_id` (D-8): recording moves no revision.
     PrimitiveSpec("message.send", MECHANICAL, (), ("execution",), (), "coordination_record", "idempotency_id", None),
+    # The current Lead's resolution of an unfinished stage (M4-E E3c; typed surface §3.4 rule 8): continue (rebind it
+    # to this generation, then run its remaining steps, each its own primitive) or abandon. Always a Lead judgment.
+    PrimitiveSpec("stage.resolve", JUDGMENT_BEARING, ("stage_resolution",), (), (), "control_state",
+                  "expected_revision", None),
 )}
 
 
@@ -96,6 +100,7 @@ COMMIT_OPS: dict[str, frozenset[str]] = {
     "invoke.create.non_mutating": frozenset({"invoke.create"}),
     "invoke.create.parent": frozenset({"invoke.create"}),
     "steering": frozenset({"steering.lower", "steering.request"}),
+    "stage.resolve": frozenset({"stage.continue", "stage.abandon"}),
 }
 # Declared primitives that cannot run as one stage step, each with the reason: a step is one primitive in one Lead
 # transaction whose op says which primitive committed (#140 re-reviews). They are refused at a stage's opening, never
@@ -108,6 +113,7 @@ NOT_STEPS: dict[str, str] = {
                                  "say which of the two committed",
     # F9-A plan v4 D-17 (v1 review F6): `message_send` has no stage planner and is never journaled.
     "message.send": "it commits nothing (a coordination message is recorded on its thread, not in a transition)",
+    "stage.resolve": "it resolves another stage's journal; a stage never runs inside one",
 }
 # Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
 # says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).

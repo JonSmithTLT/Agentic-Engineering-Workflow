@@ -906,6 +906,17 @@ class Engine:
     def stage_abandon(self, *, token: str, expect_rev: int, intent: str, rationale: str) -> dict[str, Any]:
         return self._stages.abandon(token=token, expect_rev=expect_rev, intent=intent, rationale=rationale)
 
+    def stage_continue(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
+                       plan: list[dict[str, Any]] | None, rationale: str) -> dict[str, Any]:
+        return self._stages.continue_(token=token, expect_rev=expect_rev, intent=intent,
+                                      contract_digest=contract_digest, plan=plan, rationale=rationale)
+
+    def stage_recheck(self, intent: str, *, contract_digest: str | None,
+                      plan: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """What continuing an unfinished stage would meet now (read-only: ``resume``, and the surface before a
+        continue)."""
+        return self._stages.recheck_active(self._k.store.read(), intent, contract_digest=contract_digest, plan=plan)
+
     def stage_intents_view(self) -> list[dict[str, Any]]:
         return self._stages.view(self._k.store.read())
 

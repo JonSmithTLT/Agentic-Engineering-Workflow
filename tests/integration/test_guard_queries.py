@@ -529,3 +529,24 @@ def test_a_failing_verifications_predicted_state_is_the_ingests(reviewed):
     args: dict[str, Any] = {"evidence": report}
     equivalent(engine, "verify.ingest", wid, args, _verify_ingest(engine, p, wid, report))
     assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "VERIFICATION_FAILED"
+
+
+def test_guard_query_matches_execute_all_gates_current(reviewed):
+    """VERIFIED -> COMMIT_READY (`all_gates_current`): refused while the workspace differs from what the gates were
+    met on, allowed again once it holds it; the acceptance recorded is the snapshot the query evaluated."""
+    from aewflow import SUBTRACT_PATCH, verify
+
+    p, wid, engine, impl = reviewed
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "# after verification\n"})
+    answer = equivalent(engine, "work.transition", wid, {"to": "COMMIT_READY"},
+                        _transition(engine, p, wid, "COMMIT_READY"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "-> COMMIT_READY" in (
+        answer["blocking_conditions"][0]["message"])
+    impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"]})
+    args: dict[str, Any] = {"to": "COMMIT_READY"}
+    equivalent(engine, "work.transition", wid, args, _transition(engine, p, wid, "COMMIT_READY"))
+    unit = engine.store.read()["work"][wid]
+    assert unit["state"] == "COMMIT_READY" and unit["commit_ready_seq"] == 1
+    assert unit["commit_ready_snapshot"] == args["found"]["gate_context"]["snapshot"]

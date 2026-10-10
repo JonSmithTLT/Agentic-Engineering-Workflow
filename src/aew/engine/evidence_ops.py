@@ -326,7 +326,8 @@ class Gates:
                                   self._guard_commit_ready_without_review_or_verification),
                 GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current),
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification),
-                GuardRegistration("all_gates_current", self._guard_all_gates_current)]
+                GuardRegistration("all_gates_current", self._guard_all_gates_current,
+                                  query=self._query_all_gates_current)]
 
     def _query_ready_for_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """RUNNING -> REVIEW_PENDING (M4-E E4: its query form): a review gate applies, and the pre-review gates are
@@ -379,15 +380,36 @@ class Gates:
             raise GateUnsatisfied("verification gates apply to this Ticket", required=self.verification_gates(gc))
         self._commit_ready(ctx, work_id, unit, gc)
 
-    def _guard_all_gates_current(self, ctx, work_id, unit, to) -> None:
-        self._commit_ready(ctx, work_id, unit, self.gate_context(ctx.state, work_id))
+    def _query_all_gates_current(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """VERIFIED -> COMMIT_READY (M4-E E4b: its query form): every effective gate is current for the workspace's
+        snapshot and no required finding is open. It records the gate context it evaluated
+        (``found["gate_context"]``): the acceptance the transition records is that context's snapshot."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            self._require_commit_ready(gc)
+            args.setdefault("found", {})["gate_context"] = gc
 
-    def _commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        return guard_checked(check)
+
+    def _guard_all_gates_current(self, ctx, work_id, unit, to) -> None:
+        args: dict[str, Any] = {"to": to}
+        require(self._query_all_gates_current(ctx.state, work_id, args))
+        self._accept_commit_ready(ctx, work_id, unit, args["found"]["gate_context"])
+
+    def _require_commit_ready(self, gc: dict[str, Any]) -> None:
         """WC §8: VERIFIED -> COMMIT_READY needs every effective gate current and required findings resolved/waived."""
         self.require_gates(gc, gc["obligations"]["gates"], what="-> COMMIT_READY")
         if gc["open_required_findings"]:
             raise GateUnsatisfied("mandatory review findings are unresolved and not waived",
                                   findings=[f["id"] for f in gc["open_required_findings"]])
+
+    def _commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        self._require_commit_ready(gc)
+        self._accept_commit_ready(ctx, work_id, unit, gc)
+
+    def _accept_commit_ready(self, ctx: TxnContext, work_id: str, unit: dict[str, Any], gc: dict[str, Any]) -> None:
+        """The COMMIT_READY acceptance: the evidence relied on is pinned, the gated snapshot recorded, and the
+        acceptance's identity (``commit_ready_seq``) moves on."""
         self.record_relied_on(ctx, unit, gc, list(gc["gates"]))
         unit["commit_ready_snapshot"] = gc["snapshot"]
         unit["commit_ready_gates"] = {g: v["status"] for g, v in gc["gates"].items()}

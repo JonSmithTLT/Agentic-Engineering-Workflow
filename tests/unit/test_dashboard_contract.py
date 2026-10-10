@@ -55,19 +55,22 @@ def test_every_served_route_is_in_the_contract_and_the_rest_are_pending():
     assert pending_routes(CONTRACT.paths) == set(CONTRACT.paths) - SERVED
 
 
-def test_the_history_search_is_served_conditionally_and_no_longer_pending():
-    """S2 serves ``/history/search`` as a conditional route, so it is no longer pending; the maps routes still are
-    until S1 serves them. Off, the search is still answered by today's routing: it matches the ``/history/{id}``
-    template, and no template matches a maps route."""
+MAPS = {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs", "/maps/diff"}
+
+
+def test_s1_serves_the_maps_routes_and_s2_the_search_conditionally_so_none_is_pending():
+    """S1 serves the five maps routes and S2 serves ``/history/search`` as a conditional route: none of 0.1.3's added
+    routes is pending. Off, the search is still answered by today's routing: it matches the ``/history/{id}``
+    template."""
     added = set(proposed(note_text(), base_contract())["paths"]) - set(base_contract()["paths"])
-    assert added == {"/maps", "/maps/structural", "/maps/structural/{root}", "/maps/structural/{root}/inputs",
-                     "/maps/diff", "/history/search"}
+    assert added == MAPS | {"/history/search"}
+    assert MAPS <= set(ROUTES) and not pending_routes(set(CONTRACT.paths) | added) & added
     assert "/history/search" in CONDITIONAL_ROUTES and "/history/search" not in ROUTES
-    assert "/history/search" not in pending_routes(set(CONTRACT.paths) | added)
     assert P.ENVELOPE_VERSION["/history/search"] == "0.1.3"
-    for route in added - {"/history/search"} - set(ROUTES):
-        assert route in pending_routes(set(CONTRACT.paths) | added), route
-        assert match_route(route.replace("{root}", "0" * 64)) is None, route
+    assert match_route("/history/search") == ("/history/{id}", {"id": "search"})
+    for route in MAPS:
+        assert P.ENVELOPE_VERSION[route] == "0.1.3" == CONTRACT.envelope_version(CT.RESPONSE_SCHEMAS[route])
+        assert match_route(route.replace("{root}", "0" * 64)) == (route, {"root": "0" * 64} if "{" in route else {})
     assert match_route("/history/search") == ("/history/{id}", {"id": "search"})
 
 
@@ -115,6 +118,13 @@ def test_routes_match_by_template():
     assert match_route("/history/integrity") == ("/history/integrity", {})
     assert match_route("/history/AU-0001") == ("/history/{id}", {"id": "AU-0001"})
     assert match_route("/work/") is None and match_route("/work/a/b") is None and match_route("/queue") is None
+    # contract 0.1.3: a placeholder at any depth, and an exact path wins over a template
+    assert match_route("/maps/diff") == ("/maps/diff", {}) and match_route("/maps/structural") == (
+        "/maps/structural", {})
+    assert match_route("/maps/structural/x") == ("/maps/structural/{root}", {"root": "x"})
+    assert match_route("/maps/structural/x/inputs") == ("/maps/structural/{root}/inputs", {"root": "x"})
+    assert match_route("/maps/structural//inputs") is None and match_route("/maps/structural/") is None
+    assert match_route("/maps/structural/x/other") is None and match_route("/maps/x") is None
 
 
 def test_error_bodies_conform_and_use_registered_codes():

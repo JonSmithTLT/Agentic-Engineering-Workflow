@@ -24,6 +24,7 @@ describe('Additive contract readiness', () => {
   it('old routes still reject new envelope versions', () => {
     const fixture = JSON.parse(fs.readFileSync('src/api/mock/fixtures/F1.json','utf8'));
     for (const [route,payload] of Object.entries(fixture.responses)) {
+      if (route === '/history/search') continue; // Additive route has its own 0.1.3 validator above.
       const schema = responseSchemas[fixture.models[route] as keyof typeof responseSchemas];
       expect(schema.safeParse(payload).success, route).toBe(true);
       expect(schema.safeParse({ ...(payload as object), schema_version:'0.1.3' }).success,route).toBe(false);

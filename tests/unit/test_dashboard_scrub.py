@@ -6,11 +6,17 @@ The credential-shaped value is built here from the engine's credential pattern a
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import PurePosixPath
+
+import pytest
 
 from aew.dashboard import projections as P
 from aew.dashboard.projections import Projector
+from aew.engine.archive_ops import redact
 from aew.harness import contract as K
 
 SHAPED = "aew1." + "tk_" + "0123456789abcdef" + "." + "S" * 12 + "_" + "s" * 12  # matches K.CREDENTIAL_RE
@@ -25,6 +31,46 @@ def test_scrub_masks_verifiers():
     body = {"tokens": [{"id": "TK-1", "verifier": "sha256:abc"}], "nested": {"verifier": {"any": "shape"}}}
     assert P.scrub(body) == {"tokens": [{"id": "TK-1", "verifier": "<redacted>"}],
                              "nested": {"verifier": "<redacted>"}}
+
+
+@dataclass
+class Row:
+    id: str
+    verifier: str
+    note: str
+
+
+@pytest.mark.parametrize("body, expected", [
+    ({"rows": ({"id": "TK-1", "verifier": "v"},)}, {"rows": [{"id": "TK-1", "verifier": "<redacted>"}]}),
+    ([({"verifier": "v"}, [{"verifier": "v"}])], [[{"verifier": "<redacted>"}, [{"verifier": "<redacted>"}]]]),
+    (({"a": ({"b": [({"verifier": "v", "c": 1},)]},)},),
+     [{"a": [{"b": [[{"verifier": "<redacted>", "c": 1}]]}]}]),
+    ({"rows": frozenset({"x", "y"})}, {"rows": ["x", "y"]}),
+    ({"row": Row("TK-1", "v", "n")}, {"row": {"id": "TK-1", "verifier": "<redacted>", "note": "n"}}),
+    ({"rows": [Row("TK-2", "v", "n")]}, {"rows": [{"id": "TK-2", "verifier": "<redacted>", "note": "n"}]}),
+])
+def test_scrub_masks_verifiers_in_every_container(body, expected):
+    assert P.scrub(body) == expected
+
+
+def test_scrub_redacts_credentials_in_every_container():
+    body = {"t": (SHAPED,), "s": {SHAPED, "y"}, "d": Row("TK-3", "v", SHAPED), "l": [({"k": SHAPED},)]}
+    out = P.scrub(body)
+    assert SHAPED not in repr(out)
+    assert out["t"] == [MARKER] and set(out["s"]) == {MARKER, "y"} and out["d"]["note"] == MARKER
+    assert out["l"] == [[{"k": MARKER}]]
+
+
+def test_scrub_redacts_a_string_subclass_and_bytes():
+    class Label(StrEnum):
+        A = "x " + SHAPED
+
+    out = P.scrub({"v": Label.A, "b": SHAPED.encode()})
+    assert type(out["v"]) is str and SHAPED not in json.dumps(out) and MARKER in out["v"] and MARKER in out["b"]
+
+
+def test_the_engines_verifier_masking_walks_tuples():
+    assert redact({"rows": ({"verifier": "v"},)}) == {"rows": [{"verifier": "<redacted>"}]}
 
 
 def test_scrub_applies_the_engines_credential_redaction_to_every_string():

@@ -62,11 +62,14 @@ def is_v2(state: dict[str, Any]) -> bool:
     return state.get("schema") == V2
 
 
+VERIFIER_MASK = "<redacted>"
+
+
 def redact(value: Any) -> Any:
     """A record for display or for a pack: credential verifiers are hashes of secrets and never shown."""
     if isinstance(value, dict):
-        return {k: "<redacted>" if k == "verifier" else redact(v) for k, v in value.items()}
-    if isinstance(value, list):
+        return {k: VERIFIER_MASK if k == "verifier" else redact(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
         return [redact(v) for v in value]
     return value
 

@@ -24,6 +24,7 @@ computes the validator over that and then stamps the real time in (F20.4), so th
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import logging
 import os
@@ -42,7 +43,7 @@ from aew.dashboard.reader import INVALID, NONE, MapsReader, Registry, Snapshot
 from aew.dashboard.reasons import reason
 from aew.engine import outbox, recall
 from aew.engine import transitions as T
-from aew.engine.archive_ops import held_evidence, is_v2, redact
+from aew.engine.archive_ops import VERIFIER_MASK, held_evidence, is_v2
 from aew.engine.freshness import record_freshness
 from aew.engine.history_ops import TRUST_LABEL
 from aew.engine.history_ops import _public as public_entry
@@ -1387,20 +1388,24 @@ def _architecture_id(value: str) -> bool:
 
 
 def scrub(value: Any) -> Any:
-    """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers."""
-    return _credential_strings(redact(value))
+    """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers.
 
-
-def _credential_strings(value: Any) -> Any:
-    """``value`` with the engine's credential redaction (:func:`aew.harness.contract.redact`) applied to every string
-    in it, dictionary keys included. A leaf that is not a JSON scalar is first made the string the response's
-    ``json.dumps(default=str)`` would make of it, so no text reaches a response without passing here."""
+    One walk does both, so they cover the same containers: a ``verifier`` key's value is masked as the engine masks
+    it (:data:`aew.engine.archive_ops.VERIFIER_MASK`), and every string, dictionary keys included, passes the engine's
+    credential redaction (:func:`aew.harness.contract.redact`). Dictionaries, lists, tuples, sets and dataclass
+    instances are walked (a set in a stable order); any other leaf that is not a JSON scalar is first made the string
+    the response's ``json.dumps(default=str)`` would make of it, so no text reaches a response without passing here."""
     if isinstance(value, dict):
-        return {(K.redact(k) if isinstance(k, str) else k): _credential_strings(v) for k, v in value.items()}
+        return {(K.redact(k) if isinstance(k, str) else k): VERIFIER_MASK if k == "verifier" else scrub(v)
+                for k, v in value.items()}
     if isinstance(value, list | tuple):
-        return [_credential_strings(v) for v in value]
+        return [scrub(v) for v in value]
+    if isinstance(value, set | frozenset):
+        return sorted((scrub(v) for v in value), key=canonical_json)
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return scrub({f.name: getattr(value, f.name) for f in dataclasses.fields(value)})
     if isinstance(value, str):
-        return K.redact(value)
+        return K.redact(str(value))
     if value is None or isinstance(value, bool | int | float):
         return value
     return K.redact(str(value))

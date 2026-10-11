@@ -845,15 +845,16 @@ def test_collection_proves_the_lanes_split():
     assert collected("--lane", "vertical") == {lanes.VERTICAL_PATH}
 
 
-def test_the_vertical_job_runs_in_shadow_and_uploads_its_ledgers():
-    """Structure of the `vertical` job: every pull request and main, both OSes, its ledgers uploaded whatever the
-    outcome, not a lane report, not in the merge gate's needs, and honestly red (no continue-on-error)."""
+def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_ledgers():
+    """Structure of the `vertical` workflow: every pull request and main, both OSes, its ledgers uploaded whatever the
+    outcome, not a lane report, and honestly red (no continue-on-error). It is a workflow of its own, so the red job
+    never makes ci.yml's run (the merge gate's) conclude red; ci.yml neither runs nor names it."""
     from vertical.ledger import VERTICAL_MODE
 
-    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
-    jobs = wf["jobs"]
-    job = jobs["vertical"]
-    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    job = wf["jobs"]["vertical"]
+    assert list(wf["jobs"]) == ["vertical"]
+    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]  # PyYAML reads `on:` as True
     assert "if" not in job and "needs" not in job and "continue-on-error" not in job
     assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
     run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
@@ -862,10 +863,9 @@ def test_the_vertical_job_runs_in_shadow_and_uploads_its_ledgers():
     upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
     assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
     assert not upload["with"]["name"].startswith("lane-report-")  # assurance downloads lane-report-* only
-    assert "vertical" not in jobs["assurance"]["needs"] and VERTICAL_MODE == "shadow"
-    for name, other in jobs.items():  # no other job runs the vertical lane or names its module
-        if name != "vertical":
-            assert "vertical" not in json.dumps(other.get("steps", [])), name
+    assert VERTICAL_MODE == "shadow"
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "vertical" not in ci  # not a job of the gate's workflow, nor anything its jobs run
 
 
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():

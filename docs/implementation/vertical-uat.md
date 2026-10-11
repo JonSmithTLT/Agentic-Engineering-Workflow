@@ -7,7 +7,7 @@ when the job is green. This page holds its thresholds; the test module pins the 
 which needs the operator.** It is an implementation document, not a design.
 
 Code: `tests/acceptance/test_vertical_path.py` (marker `acceptance("VUAT")`, lane `vertical`) and
-`tests/helpers/vertical/` (the ledger and the scripted actors). CI: the `vertical` job, per OS
+`tests/helpers/vertical/` (the ledger and the scripted actors). CI: the `vertical` workflow (`vertical.yml`), per OS
 ([testing-and-ci-strategy.md](testing-and-ci-strategy.md), §2 and §3).
 
 ## 1. What it proves
@@ -62,12 +62,17 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | A decision has no typed tool | its `cli_fallback`, from the shell; for `RECONCILE` (an INTERRUPTED Ticket), with the phase it was interrupted from and a reason |
 | Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and `--launch` filled in as refusals ask) |
 | A prepared candidate whose post-integration verification reported, with no decision offered | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
-| Anything else | the Lead tells the operator it is stuck; the run ends there, and the ledger says where |
+| The gate still lacks the local check after the operator's own workaround (U14) | `aew harness launch` of the implementer's invocation, from the shell, so its check runs again |
+| A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete, then stuck |
+| Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
 
 **The workers** come from the fake harness: implementer, reviewer, verifier and integration verifier, each run's
 script chosen by its role and scope (the operator and the Lead never name a run). They make **a real one-line fix**
 to a real Python sample, with a real test. **The project's unit check is a real `python -m pytest`**, which writes
-`__pycache__`; no fake hides it.
+`__pycache__`; no fake hides it, and the sample has **no `.gitignore`** for the caches (a fresh project has none). If
+the gate is then observed to refuse (the Lead stuck on `GATE_UNSATISFIED` with the caches in the Ticket's workspace),
+the operator's counted fallback is today's U14 workaround: the caches go into `.git/info/exclude`, and the operator
+tells the Lead to carry on.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
 installed tool: its variables are not the operator's.
@@ -94,7 +99,9 @@ installed tool: its variables are not the operator's.
 - **Steering on.** V1 and V2 also run with steering on, in the mode that lets the loop push the stages (Run), so "the
   Lead does no stage-pushing" can be measured. Whether that mode completes a Ticket on today's `main` with the fake
   harness is recorded, not assumed: the ledger lists the stages the loop ran and where it stopped. **Raising the mode
-  is an operator decision**, recorded under decisions, never a `lifecycle_step`; it is not one of V1's two.
+  is an operator decision**, recorded under decisions, never a `lifecycle_step`; it is not one of V1's two. With
+  steering on, the Lead leaves an action the projection marks `auto_runnable` to the loop: it waits for an event (the
+  revision moves, or the loop records a stop) and pushes the action itself, counted, only when the loop declined.
 
 ## 4. The burden ledger (the measurement, and the assertions)
 
@@ -121,7 +128,8 @@ the end and writes its ledger before it asserts.
 
 **Operator decisions** are listed, not counted against: every question AEW or the Lead put to the operator, with the
 answer. V1 must list exactly `plan`, `publish`. Any other question fails that comparison and is reviewed by hand: is it
-a real product, policy or safety judgement?
+a real product, policy or safety judgement? The summary shows, for each decision, the tool its answer drives and
+whose decision the projection says it is (today it says nowhere); the test does not settle that ownership.
 
 **Lead counters (all must be 0):**
 
@@ -139,13 +147,14 @@ a real product, policy or safety judgement?
 
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:
 `did_not_refuse` (a safety regression), `refused_without_naming` (an explanation gap), `rebuilt_not_published` (a
-conflicting change carried on with, rebuilt and re-verifying, instead of refused) and `not_observed` (the
-sub-scenario never reached its step). Every one of them fails the test; only `held` passes.
+conflicting change carried on with, rebuilt and re-verifying, instead of refused) and `not_exercised` (the run
+never reached the limit's step: no harness run, no publish, no check). `did_not_refuse` means the protected action
+actually went ahead. Every one of them fails the test; only `held` passes.
 
 | Hard limit | Sub-scenario | Holds when |
 |---|---|---|
 | `semantic_conflict` | V1, with main moved under the prepared publish by a change to the very line the Ticket fixes | the step refuses, with a message that names the change (its commit, subject or path); "last writer wins" fails, and so does a rebuild that carries on |
-| `evidence_mismatch` | V1, with the check's cache files kept in the snapshot (no `.gitignore`) | the gate refuses (or AEW flags the check), naming the changed paths; an auto-waived mismatch fails |
+| `evidence_mismatch` | V1, with a check that also rewrites a tracked file (`ledger/build-stamp.txt`), which no scrubbing of caches can make legitimate | the gate refuses (or AEW flags the check), naming that path; an auto-waived mismatch fails |
 | `publish_needs_decision` | every scenario | main moves only after the operator's publish decision (or a grant) |
 | `containment` | every scenario | every run record carries the platform's containment label, unchanged from today's minimum |
 
@@ -162,7 +171,8 @@ never weakens it.
   and collects it only with `--lane vertical` (or when named on the command line). No required lane's job collects
   it: a red shadow test must never block a merge, and a collected test that did not run would fail `assurance`.
   `tests/unit/test_ci_tools.py` proves both.
-- **Its own job, in shadow.** The `vertical` job (Linux and Windows) runs on every pull request and on `main`, uploads
+- **Its own workflow, in shadow.** The `vertical` job (`vertical.yml`, Linux and Windows; outside `ci.yml`, so its red
+  never colours the merge gate's run) runs on every pull request and on `main`, uploads
   the ledgers and summaries as artifacts (`vertical-ledger-<OS>`), and writes the summaries to the run's summary page.
   It is not in `assurance`'s needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered
   assertion.

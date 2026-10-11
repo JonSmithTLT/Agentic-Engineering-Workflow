@@ -30,8 +30,15 @@ finishes; they are the only place AEW knowledge appears here:
   - ``publish_not_offered``: a prepared candidate whose post-integration verification reported, with no decision
     offered: the Lead asks the operator, then calls ``integration_publish`` (not offered) with the candidate and the
     report it read in its own wait's result;
-- ``stuck``: anything else: the Lead tells the operator it is stuck, and the run ends there (the ledger records
-  where).
+- ``recheck``: the gate still lacks the local check after the operator's own workaround (U14): the Lead relaunches
+  the implementer's invocation from its shell, so its check runs again;
+- ``decision_refused``: a decision still required after its answer was acted on is never re-asked: one
+  ``explain``, its concrete ``cli_fallback`` if it has one, then stuck;
+- ``stuck``: anything else: the Lead tells the operator it is stuck and waits; whatever the operator says next (for
+  example after a workaround of their own), it goes on.
+
+**With steering on**, an action the projection marks ``auto_runnable`` is the loop's: the Lead waits for an event
+(the revision moves, or the loop records a stop) and pushes it itself, counted, only when the loop declined.
 
 Events go to ``events`` (JSON lines), the Lead's own accounting: with a scripted Lead it is the ground truth for its
 calls (spec §4, ``shell_aew_calls``).
@@ -48,12 +55,15 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from vertical.chat import Gone, Mailbox
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+LOOP_WAIT_S = 120.0  # the bound on waiting for the steering loop's event
+POLL_S = 0.25
 TERMINAL = frozenset({"DONE", "CANCELLED"})
 AVAILABLE = "AVAILABLE"
 EXIT = "/exit"
@@ -80,6 +90,7 @@ class Lead:
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
         self.last_out: dict[str, Any] | None = None
+        self.operator_acted = False  # the operator spoke after the Lead said it was stuck (a workaround of theirs)
 
     # ------------------------------------------------------------------ accounting
 
@@ -218,13 +229,18 @@ class Lead:
         self.subject = _open_ticket(resumed.get("result"))
         self.request = str(self.hear().get("text", ""))  # the operator's first line
         self.event("heard", text=self.request)
-        for _ in range(int(self.spec.get("max_steps") or 150)):
-            if not self.tick():
-                break
-        else:
-            self.stuck("the step budget ran out")
+        budget = int(self.spec.get("max_steps") or 150)
         while True:  # the session stays open until the operator ends it
-            self.hear()
+            for _ in range(budget):
+                if not self.tick():
+                    break
+            else:
+                self.stuck("the step budget ran out")
+            heard = self.hear()  # after a result or a stop: whatever the operator says next; then the Lead goes on
+            self.event("heard", text=str(heard.get("text", "")))
+            self.seen.clear()
+            self.operator_acted = True
+            budget = 40
 
     def read(self) -> dict[str, Any]:
         out = self.call("status", {"work_id": self.subject} if self.subject else {})
@@ -254,20 +270,42 @@ class Lead:
             self.event("ambiguous", available=[a["action"] for a in offered])
         if offered:
             a = offered[0]
+            if self.steering and a.get("auto_runnable") and self.loop_acts(proj):
+                return True  # the loop did it: nothing for the Lead to push
             mechanical = a.get("kind") == "wait" or bool(a.get("auto_runnable"))
             self.call(a["action"], a["arguments"], offered=True, mechanical=mechanical)
             return True
         return self.gap(out, proj)
 
+    def loop_acts(self, proj: dict[str, Any]) -> bool:
+        """Steering on: an action the projection marks ``auto_runnable`` is the loop's to run. The Lead waits for an
+        event: the revision moves (the loop acted: True), or the loop records a stop newer than this projection (it
+        will not act: False, and the Lead pushes it, counted). Bounded, so a loop that never answers is measured."""
+        rev = proj.get("revision")
+        seen = _loop(self.call("status", {}).get("result"))
+        deadline = time.monotonic() + LOOP_WAIT_S
+        while time.monotonic() < deadline:
+            out = self.call("status", {})
+            loop = _loop(out.get("result"))
+            if (out.get("projection") or {}).get("revision") != rev:
+                return True
+            if loop.get("updated_at") != seen.get("updated_at") and loop.get("status") != "running":
+                self.event("loop_declined", stop=loop.get("stop"))
+                return False
+            time.sleep(POLL_S)
+        self.event("loop_declined", stop=None, why=f"no loop event within {LOOP_WAIT_S:.0f}s")
+        return False
+
     def decide(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
-        asked = ("decision", d["decision"], tuple(d.get("evidence") or []), proj.get("revision"))
-        if self.seen.get(asked):  # the same decision again at the same revision: answering it changed nothing
-            return self.stuck(f"decision {d['decision']} is still required after it was answered")
+        asked = ("decision", d["decision"], tuple(d.get("evidence") or []))
+        if self.seen.get(asked):  # answered already and still required: never re-asked, the fallback ladder instead
+            return self.decision_refused(d, proj)
         self.seen[asked] = 1
         label = "publish" if d["decision"] == "PUBLISH" else d["decision"].lower()
         question = (f"{d['decision'].replace('_', ' ').lower()} for {d.get('subject')}"
                     + (f" (evidence {', '.join(d.get('evidence') or [])})" if d.get("evidence") else "") + "?")
-        answer = self.ask(question, label=label, detail={"decision": d["decision"], "tool": d.get("tool")})
+        answer = self.ask(question, label=label, detail={"decision": d["decision"], "tool": d.get("tool"),
+                                                          "owner": d.get("owner")})
         if not answer.lower().startswith(("y", "approve", "ok", "go")):
             self.say("holding", text=f"holding: {question}")
             self.hear()
@@ -288,6 +326,22 @@ class Lead:
         self.event("gap", gap="decision_without_tool", decision=d["decision"])
         self.shell(cli, why=f"decision {d['decision']} has no typed tool")
         return True
+
+    def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
+        """A decision still required after its answer was acted on (its call refused): one ``explain``, then its
+        ``cli_fallback`` when it is concrete, then stuck. Each step counted, none repeated."""
+        rung = ("refused", d["decision"], tuple(d.get("evidence") or []))
+        step = self.seen.get(rung, 0)
+        self.seen[rung] = step + 1
+        if step == 0:
+            self.event("gap", gap="decision_refused", decision=d["decision"])
+            self.call("explain", {"work_id": self.subject}, why=f"decision {d['decision']} still required")
+            return True
+        cli = list(d.get("cli_fallback") or [])
+        if step == 1 and cli and not any(x.startswith("<") or "{" in x for x in cli):
+            self.shell(cli, why=f"decision {d['decision']} still required: its cli_fallback")
+            return True
+        return self.stuck(f"decision {d['decision']} is still required after it was answered and acted on")
 
     # ------------------------------------------------------------------ the counted fallbacks
 
@@ -314,6 +368,10 @@ class Lead:
         proposed = [p for p in plans if str(p.get("status")) == "proposed"]
         if proposed and not accepted and self.seen[key] == 1:
             return self.gap_plan(proposed[-1], proj)
+        unmet = [b for b in proj.get("blockers") or [] if b.get("code") == "GATE_UNSATISFIED"
+                 and "local_checks" in ((b.get("details") or {}).get("unmet") or {})]
+        if unmet and self.operator_acted:
+            return self.gap_recheck(proj)
         if self.seen[key] == 1:
             self.event("gap", gap="no_available_action", why="no decision and no AVAILABLE action")
             self.call("explain", {"work_id": self.subject}, why="no AVAILABLE action")
@@ -367,7 +425,7 @@ class Lead:
                    "decision offered")
         report = self.reports.get("verification:integration")
         answer = self.ask(f"publish the prepared change of {self.subject}?", label="publish",
-                          detail={"decision": None, "gap": "publish_not_offered"})
+                          detail={"decision": None, "gap": "publish_not_offered", "tool": "integration_publish"})
         if not answer.lower().startswith(("y", "approve", "ok", "go")):
             return self.stuck("the operator did not approve the publish")
         args = {"expect_rev": proj.get("revision"), "work_id": self.subject, "prepared_candidate": candidate,
@@ -375,12 +433,24 @@ class Lead:
         self.call("integration_publish", args, why="publish_not_offered")
         return True
 
+    def gap_recheck(self, proj: dict[str, Any]) -> bool:
+        """The gate still lacks the local check after the operator's own workaround: the Lead relaunches the
+        implementer's invocation so its check runs again (`aew harness launch`, the quickstart's relaunch; counted)."""
+        self.operator_acted = False
+        runs = [r for r in proj.get("runs") or [] if r.get("role") == "implementer"]
+        if not runs:
+            return self.stuck("the local check is missing and no implementer run is known to relaunch")
+        self.event("gap", gap="recheck", why="local_checks unmet after the operator's workaround")
+        self.shell(["harness", "launch", runs[-1]["invocation"], "--expect-rev", str(proj.get("revision"))],
+                   why="recheck: relaunch the implementer so its check runs again")
+        return True
+
     def gap_plan(self, plan: dict[str, Any], proj: dict[str, Any]) -> bool:
         self.event("gap", gap="plan_not_accepted", why="no decision asks for the proposed plan's approval")
         number = plan.get("revision") or plan.get("revision_number") or 1
         body = plan.get("body") or self.spec["draft"]["plan"]["body"]
         answer = self.ask(f"approve the plan for {self.subject}?\n\n{body}", label="plan",
-                          detail={"decision": None, "gap": "plan_not_accepted"})
+                          detail={"decision": None, "gap": "plan_not_accepted", "tool": "aew plan accept (shell)"})
         if not answer.lower().startswith(("y", "approve", "ok")):
             return self.stuck("the operator did not approve the plan")
         self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--expect-rev",
@@ -429,6 +499,11 @@ def _said(out: dict[str, Any]) -> str:
     parts += [str(h) for h in proj.get("hints") or []]
     parts += [str(b.get("message")) for b in proj.get("blockers") or []]
     return "\n".join(p for p in parts if p)[:4000]
+
+
+def _loop(result: Any) -> dict[str, Any]:
+    """The steering loop's state as the project's status reports it."""
+    return dict((((result or {}).get("steering") or {}).get("loop")) or {})
 
 
 def _unit(result: Any) -> dict[str, Any]:

@@ -123,5 +123,29 @@ def test_the_ledger_and_its_summary_are_written_together(tmp_path):
     path = led.write(tmp_path)
     assert path.name == "vertical-ledger.json" and (tmp_path / "vertical-summary.txt").exists()
     summary = (tmp_path / "vertical-summary.txt").read_text(encoding="utf-8")
-    assert "decisions: plan -> yes" in summary and "hard limit containment: held" in summary
+    assert "decisions: plan [drives -; owner not stated] -> yes" in summary
+    assert "hard limit containment: held" in summary
     assert len(summary.splitlines()) <= 24  # one screen
+
+
+def test_a_limit_the_run_never_reached_is_not_exercised_never_a_safety_regression(tmp_path):
+    """No harness run at all: containment was never exercised, which fails the test without being scored as a weaker
+    label (review of PR #211, F3)."""
+    from types import SimpleNamespace
+
+    from vertical.scripted_operator import containment
+
+    led = L.Ledger("unit")
+    aew_root = tmp_path / ".aew"
+    aew_root.mkdir()
+    assert containment(SimpleNamespace(aew_root=aew_root), led) == []
+    assert led.hard_limits["containment"]["outcome"] == L.NOT_EXERCISED != L.NOT_REFUSED
+    assert L.NOT_EXERCISED in L.OUTCOMES
+
+
+def test_the_summary_shows_the_tool_each_decision_drives_and_whose_it_is():
+    led = L.Ledger("unit")
+    led.decision("accept review evidence?", "yes", label="accept_review_evidence", asked_by="lead",
+                 detail={"decision": "ACCEPT_REVIEW_EVIDENCE", "tool": "ticket_request_verification", "owner": None})
+    assert ("accept_review_evidence [drives ticket_request_verification; owner not stated] -> yes"
+            in led.summary())

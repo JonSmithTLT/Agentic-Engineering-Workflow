@@ -40,11 +40,12 @@ HARD_LIMITS = ("semantic_conflict", "evidence_mismatch", "publish_needs_decision
 # Each harness run's containment label, unchanged from today's minimum per platform (the test never weakens it).
 CONTAINMENT_MINIMUM = {"win32": "workdir_separation_only", "linux": "os_readonly_roots"}
 # Hard-limit outcomes. Every one but `held` fails the test; the ledger keeps them apart: `did_not_refuse` is a safety
-# regression, `refused_without_naming` an explanation gap, `rebuilt_not_published` a conflicting change AEW carried on
-# with (rebuilt and re-verifying) instead of refusing, and `not_observed` a sub-scenario that never reached its step.
+# regression (the protected action went ahead), `refused_without_naming` an explanation gap, `rebuilt_not_published` a
+# conflicting change AEW carried on with (rebuilt and re-verifying) instead of refusing, and `not_exercised` a limit
+# whose step the run never reached (no run, no publish, no check): never scored as a safety regression.
 HELD, NOT_REFUSED, UNNAMED = "held", "did_not_refuse", "refused_without_naming"
-REBUILT, NOT_OBSERVED = "rebuilt_not_published", "not_observed"
-OUTCOMES = (HELD, NOT_REFUSED, UNNAMED, REBUILT, NOT_OBSERVED)
+REBUILT, NOT_EXERCISED = "rebuilt_not_published", "not_exercised"
+OUTCOMES = (HELD, NOT_REFUSED, UNNAMED, REBUILT, NOT_EXERCISED)
 
 CREDENTIAL = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")
 INVOCATION_ID = re.compile(r"\bINV-\d{4,}\b")
@@ -204,7 +205,7 @@ class Ledger:
                  f"mode {VERTICAL_MODE})",
                  "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
                  "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
-                 "decisions: " + (", ".join(f"{d['label']} -> {d['answer']}" for d in self.decisions) or "none")]
+                 "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none")]
         for name, r in sorted(self.hard_limits.items()):
             lines.append(f"hard limit {name}: {r['outcome']}")
         for o in self.observations:
@@ -225,3 +226,12 @@ class Ledger:
         path.write_text(text + "\n", encoding="utf-8")
         (directory / "vertical-summary.txt").write_text(self.summary() + "\n", encoding="utf-8")
         return path
+
+
+def decision_line(d: dict[str, Any]) -> str:
+    """One decision as the summary shows it: what was asked, the tool its answer drives, whose decision the
+    projection says it is (it says nowhere today: the test does not settle that), and the answer (bounded)."""
+    detail = d.get("detail") or {}
+    tool = detail.get("tool") or "-"
+    owner = detail.get("owner") or "not stated"
+    return f"{d['label']} [drives {tool}; owner {owner}] -> {str(d['answer'])[:40]}"

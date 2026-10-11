@@ -9,8 +9,6 @@ name: ci
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only)
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
-#   vertical (per OS)    the vertical UAT and its burden ledger (docs/implementation/vertical-uat.md), in shadow:
-#                        not in the merge gate, and no required job collects its tests
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
 #   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
 #   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, and web
@@ -196,48 +194,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
-
-  vertical:
-    # The vertical UAT (docs/implementation/vertical-uat.md): a fresh project from setup to a published one-line fix,
-    # with the burden ledger as its measurement. In shadow (`VERTICAL_MODE` in tests/helpers/vertical/ledger.py): it
-    # runs on every pull request and on main, uploads each scenario's ledger and summary, and is honestly red while
-    # the ledger is not zero. It is NOT in `assurance`'s needs, and no required job collects its tests
-    # (tests/helpers/lanes.py), so it never blocks a merge. Flipping it to enforce is the operator's decision.
-    name: vertical (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {os: ubuntu-latest, python: "3.11"}
-          - {os: windows-latest, python: "3.13"}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-aew
-        with:
-          python-version: ${{ matrix.python }}
-      - name: pytest --lane vertical (the ledgers go to the runner's temp directory)
-        env:
-          AEW_VERTICAL_OUT: ${{ runner.temp }}/vertical
-        run: >-
-          python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py
-          -n auto --dist worksteal --test-timeout 1800
-      - name: The ledgers' one-screen summaries
-        if: always()
-        shell: bash
-        run: |
-          for f in "${{ runner.temp }}"/vertical/*/vertical-summary.txt; do
-            [ -f "$f" ] || continue
-            { echo '```'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          done
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: vertical-ledger-${{ runner.os }}
-          path: ${{ runner.temp }}/vertical/
-          if-no-files-found: warn
-          retention-days: 30
 
   fastbase:
     # The coverage premise's base (CI plan v7 §5, V5-1): the whole fast lane at the base tip (GITHUB_SHA^1), under

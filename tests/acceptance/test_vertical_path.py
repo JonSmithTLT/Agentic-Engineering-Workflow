@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +28,7 @@ from conftest import git, run_aew
 from notifier import recorder
 from vertical import workers
 from vertical.chat import Mailbox
-from vertical.ledger import HELD, NOT_OBSERVED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger
+from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -87,7 +89,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
     instead = "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt (quickstart)"
     op.fallback("configure", IDEAL_PATH["configure"]["input"], res.stderr or res.stdout, instead)
     command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
-               else workers.UNIT)
+               else ["{python}", "-c", STAMP_CHECK] if cause == "stamp" else workers.UNIT)
 
     def checks(doc: dict[str, Any]) -> None:
         doc.update({"schema": "aew/checks/v1", "baseline_failures": [],
@@ -294,8 +296,9 @@ def move_main_at_publish(op: Operator, files: dict[str, str], subject: str) -> d
 
 
 def is_ancestor(op: Operator, sha: str, head: str) -> bool:
-    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, head], cwd=op.root,
-                          capture_output=True).returncode == 0
+    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, head], cwd=op.root, capture_output=True,
+                          stdin=subprocess.DEVNULL, creationflags=flags).returncode == 0
 
 
 def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, request):
@@ -315,12 +318,12 @@ def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, requ
 
 
 def semantic_conflict(op: Operator, moved: dict[str, str]) -> None:
-    """``not_observed``: main never moved, or no publish followed. ``did_not_refuse``: a publish succeeded over the
+    """``not_exercised``: main never moved, or no publish followed. ``did_not_refuse``: a publish succeeded over the
     change (main lost it, or a candidate was published after it). ``rebuilt_not_published``: the step carried on with
     a rebuild instead of refusing. Otherwise it refused: held if what the Lead was told names the change."""
     publishes = [e for e in lead_events(op.lab) if e.get("kind") == "call" and e.get("tool") == "integration_publish"]
     if not moved or not publishes:
-        op.ledger.hard_limit("semantic_conflict", NOT_OBSERVED, moved=moved,
+        op.ledger.hard_limit("semantic_conflict", NOT_EXERCISED, moved=moved,
                              note="main never moved under a publish" if not moved else "no publish was attempted")
         return
     first = publishes[0]
@@ -362,13 +365,25 @@ def test_v1_a_compatible_move_rebuilds_and_publishes_without_ceremony(tmp_path, 
     assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
 
 
+# The evidence mismatch, independent of U14: the project's check also changes a TRACKED file (each run appends a line),
+# which no scrubbing of caches can make legitimate. The gate must refuse, and the refusal must name that path.
+STAMP = "ledger/build-stamp.txt"
+STAMP_CHECK = ("import pathlib, subprocess, sys; r = subprocess.call([sys.executable, '-m', 'pytest', '-q', "
+               f"'tests']); p = pathlib.Path('{STAMP}'); p.write_text(p.read_text() + 'built\\n'); sys.exit(r)")
+
+
 def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, request):
-    """The project keeps its check's caches in the snapshot (no .gitignore): the gate must refuse, naming them (an
+    """The check changes a tracked file of the snapshot it checks: the gate must refuse, naming that path (an
     auto-waived mismatch fails)."""
-    op = setup_operator(tmp_path, "V1-evidence-mismatch", gitignore=False)
+    op = setup_operator(tmp_path, "V1-evidence-mismatch", extra={STAMP: "0\n"})
     world.append(op)
     try:
-        run_v1_path(op)
+        configure(op, cause="stamp")
+        op.in_setup = False
+        session, _ = open_session(op, "open")
+        op.say("ask", workers.REQUEST)
+        op.converse(session)
+        finish(op, session)
         evidence_mismatch(op)
     finally:
         write_out(op, request)
@@ -376,16 +391,16 @@ def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, req
     assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
 
 
-CACHE_PATHS = ("__pycache__", ".pytest_cache")
 # The refusals that are about evidence and its snapshot (a git or usage error is not the gate speaking).
 EVIDENCE_CODES = frozenset({"GATE_UNSATISFIED", "INPUT_STALE", "STALE_CANDIDATE", "WORKSPACE_MUTATED",
                             "OBSERVATION_MUTATED", "EVIDENCE_STALE", "SNAPSHOT_MISMATCH"})
 
 
 def evidence_mismatch(op: Operator) -> None:
-    """The gate's answer to a check that changed its own snapshot. Candidates: a refusal the Lead met with an evidence
-    code, a worker's submission refused with one, and a check result AEW marked as having mutated its inputs. Named:
-    one of them names a changed cache path. Anything else the run met is kept as an observation."""
+    """The gate's answer to a check that changed a tracked file of its own snapshot. Candidates: a refusal the Lead
+    met with an evidence code, a worker's submission refused with one, and a check result AEW marked as having mutated
+    its inputs. Named: one of them names the changed path. ``not_exercised`` when no check ever ran. Anything else the
+    run met is kept as an observation."""
     found: list[dict[str, Any]] = []
     other: list[dict[str, Any]] = []
     for e in lead_events(op.lab):
@@ -396,9 +411,11 @@ def evidence_mismatch(op: Operator) -> None:
             error = (e.get("stopped") or {}).get("error") or {}
             (found if error.get("code") in EVIDENCE_CODES else other).append(
                 {"by": "lead", "tool": e.get("tool"), "error": error})
+    checks_ran = False
     for path in sorted(op.lab.aew_root.rglob("transcript.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
             step = json.loads(line)
+            checks_ran = checks_ran or step.get("do") == "check"
             result = step.get("result") or {}
             out = result.get("stdout_json") if isinstance(result.get("stdout_json"), dict) else {}
             stderr = result.get("stderr_json") if isinstance(result.get("stderr_json"), dict) else {}
@@ -411,11 +428,14 @@ def evidence_mismatch(op: Operator) -> None:
                 (found if error.get("code") in EVIDENCE_CODES else other).append(
                     {"by": run, "do": step.get("do"), "error": error})
     op.ledger.observe("evidence_mismatch.other_refusals", refusals=other[:6])
+    if not checks_ran:
+        op.ledger.hard_limit("evidence_mismatch", NOT_EXERCISED, note="no check ever ran")
+        return
     if not found:
         op.ledger.hard_limit("evidence_mismatch", NOT_REFUSED,
-                             note="the check's caches changed the snapshot and nothing refused or flagged it")
+                             note="the check rewrote a tracked file and nothing refused or flagged it")
         return
-    named = [f for f in found if any(c in json.dumps(f) for c in CACHE_PATHS)]
+    named = [f for f in found if STAMP in json.dumps(f)]
     op.ledger.hard_limit("evidence_mismatch", HELD if named else UNNAMED, refusals=found[:6],
                          note="" if named else "refused or flagged without naming the changed paths")
 
@@ -562,19 +582,26 @@ def v2_problems(facts: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------------------------- V3
 
 
+# Each case's cause and fix are regular expressions over what readiness says: the specific variable, model id, path or
+# session, and the specific instruction (review of PR #211, F6: a loose word must not pass).
 V3_CASES: dict[str, dict[str, Any]] = {
     # A provider variable the policy names is not set where AEW launches.
-    "provider-env-unset": {"cause": ["VUAT_PROVIDER_KEY"], "fix": ["set ", "export"]},
+    "provider-env-unset": {"cause": r"VUAT_PROVIDER_KEY",
+                           "fix": r"(?<!un)set\b[^\n]{0,40}VUAT_PROVIDER_KEY|export VUAT_PROVIDER_KEY|"
+                                  r"\$env:VUAT_PROVIDER_KEY"},
     # A configured model the harness does not list.
-    "model-not-listed": {"cause": ["vuat-missing-model"], "fix": ["vuatprov/vuat-model"]},
+    "model-not-listed": {"cause": r"vuat-missing-model", "fix": r"vuatprov/vuat-model\b"},
     # The check changes the snapshot it runs on (it writes into the tree).
-    "check-changes-snapshot": {"cause": ["check-output.txt"], "fix": [".gitignore", "ignore"]},
-    # Stale state the engine could recover: a Lead session that died holding the seat.
-    "stale-lead-session": {"cause": ["session"], "fix": ["recover", "reattach", "resume"]},
+    "check-changes-snapshot": {"cause": r"check-output\.txt", "fix": r"\.gitignore|git/info/exclude"},
+    # Stale state the engine could recover: a Lead session that died holding the seat (label `operator`).
+    "stale-lead-session": {"cause": r"Lead session[^\n]{0,80}(dead|ended|gone|no longer running|stale)|"
+                                    r"(dead|ended|gone|stale)[^\n]{0,40}Lead session",
+                           "fix": r"reattach|recover"},
     # The model id carries the provider prefix: the operator pasted the harness's own printed `provider/model` id,
     # and AEW passes provider and id apart, so the joined reference is doubled. Ideal: accepted as typed (no error);
     # otherwise readiness names the doubled reference and suggests the listed id.
-    "model-id-provider-prefix": {"cause": ["vuatprov/vuatprov/vuat-model"], "fix": ["vuatprov/vuat-model"],
+    "model-id-provider-prefix": {"cause": r"vuatprov/vuatprov/vuat-model",
+                                 "fix": r"(did you mean|use)[^\n]{0,20}vuatprov/vuat-model\b",
                                  "accept_as_typed": True},
 }
 V3_MODELS = [{"id": "vuat-model", "modelID": "vuat-model", "providerID": "vuatprov", "name": "VUAT", "enabled": True,
@@ -612,15 +639,15 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
         accepted = bool(want.get("accept_as_typed")) and res.returncode == 0
         op.ledger.observe("v3", case=case, preflight_exit=res.returncode, preflight=said[-1500:],
                           doctor_exit=doctor.returncode,
-                          doctor_names_cause=any(c in doctor.stdout + doctor.stderr for c in want["cause"]),
+                          doctor_names_cause=bool(re.search(want["cause"], doctor.stdout + doctor.stderr)),
                           operator_input_was_the_harness_id=bool(want.get("accept_as_typed")),
                           accepted_as_typed=accepted)
         if not accepted:
             if res.returncode == 0:
                 problems.append(f"readiness passed with the cause in place: {said[-300:]}")
-            elif not any(c in said for c in want["cause"]):
+            elif not re.search(want["cause"], said):
                 problems.append(f"readiness did not name the cause {want['cause']}: {said[-300:]}")
-            elif not any(f in said for f in want["fix"]):
+            elif not re.search(want["fix"], said):
                 problems.append(f"readiness did not name the fix {want['fix']}: {said[-300:]}")
         launched = launched_anything(op)
         if launched:

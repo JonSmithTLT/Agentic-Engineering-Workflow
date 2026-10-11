@@ -38,7 +38,7 @@ from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import workers
 from vertical.chat import Gone, Mailbox
-from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_REFUSED, Ledger
+from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_EXERCISED, NOT_REFUSED, Ledger
 
 SESSION_START_S = 300.0
 CONVERSATION_S = 1800.0
@@ -72,6 +72,7 @@ class Operator:
     credential: str = ""
     transcript: list[dict[str, Any]] = field(default_factory=list)
     allowed_heads: set[str] = field(default_factory=set)  # main's heads not published by AEW
+    excluded_caches: bool = False  # the U14 workaround, applied once after the gate was observed to refuse
     publish_approved: bool = False
     reports: list[dict[str, Any]] = field(default_factory=list)
     said: list[dict[str, Any]] = field(default_factory=list)
@@ -212,6 +213,8 @@ class Operator:
                 if label == "publish" and answer.startswith("y"):
                     self.publish_approved = True
                 self.say(f"answer:{label}", answer)
+            elif kind == "stuck" and self.cache_workaround(msg):
+                continue
             elif kind in ("report", "stuck"):
                 if kind == "report":
                     self.reports.append(msg)
@@ -238,6 +241,28 @@ class Operator:
         except subprocess.TimeoutExpired:
             return None
 
+    def cache_workaround(self, msg: dict[str, Any]) -> bool:
+        """U14's workaround, only after the gate was observed to refuse (the Lead stuck on GATE_UNSATISFIED while the
+        check's caches sat untracked in the Ticket's workspace): the operator excludes the caches for every worktree
+        (`.git/info/exclude`) and tells the Lead to carry on. Counted as a fallback with its evidence, once."""
+        text = str(msg.get("text", ""))
+        if self.excluded_caches or "GATE_UNSATISFIED" not in text:
+            return False
+        caches = sorted({p.name for p in self.root.parent.glob(".aew-workspaces/*/*/**/__pycache__")} |
+                        {p.name for p in self.root.parent.glob(".aew-workspaces/*/*/.pytest_cache")})
+        if not caches:
+            return False
+        self.excluded_caches = True
+        exclude = self.root / ".git" / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a", encoding="utf-8") as fh:
+            fh.write("\n" + workers.GITIGNORE)
+        self.fallback("caches", "(nothing: the check's own caches should not change its snapshot)", text,
+                      "add __pycache__/ and .pytest_cache/ to .git/info/exclude, then tell the Lead to carry on")
+        self.typed("caches", "$EDITOR .git/info/exclude  (adds __pycache__/, .pytest_cache/, *.pyc)")
+        self.say("caches:ask", "I excluded the test caches from git. Carry on.")
+        return True
+
     # ------------------------------------------------------------------ hard limit: publish needs a decision
 
     def check_heads(self, when: str) -> None:
@@ -261,11 +286,10 @@ class Operator:
 # ---------------------------------------------------------------------------------------------- the world
 
 
-def new_world(tmp: Path, *, gitignore: bool = True, gate: Path | None = None) -> HarnessLab:
-    """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode)."""
-    files = dict(workers.SAMPLE)
-    if gitignore:
-        files[".gitignore"] = workers.GITIGNORE
+def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
+    """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
+    sample has no `.gitignore` for the check's caches: a fresh project does not, and nothing may hide U14."""
+    files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
     (tmp / "sync").mkdir(parents=True, exist_ok=True)
@@ -315,7 +339,9 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
         record = runlog.read_record(d) or {}
         labels[d.name] = (record.get("containment") or {}).get("filesystem")
     weaker = sorted(r for r, label in labels.items() if label != want)
-    ledger.hard_limit("containment", HELD if labels and not weaker else NOT_REFUSED, labels=labels, minimum=want,
-                      note="" if labels else "no harness run recorded a label")
+    if not labels:
+        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, note="no harness run was launched")
+        return []
+    ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, minimum=want)
     return weaker
 

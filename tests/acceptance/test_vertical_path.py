@@ -26,7 +26,7 @@ from conftest import git, run_aew
 from notifier import recorder
 from vertical import workers
 from vertical.chat import Mailbox
-from vertical.ledger import HELD, NOT_REFUSED, UNNAMED, V1_DECISIONS, Ledger
+from vertical.ledger import HELD, NOT_OBSERVED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -271,22 +271,40 @@ def test_v1_fresh_path_reaches_a_published_fix_with_no_machinery(tmp_path, world
 # ---------------------------------------------------------------------------------------------- V1: the hard limits
 
 
-def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, request):
-    """Main moves under the prepared publish: the step must refuse, with a message that names the change ("last
-    writer wins" fails)."""
-    op = setup_operator(tmp_path, "V1-semantic-conflict")
-    world.append(op)
+# Someone else's change lands on main while the publish is prepared. A conflicting one rewrites the very line the
+# Ticket fixes (thousands separators), so the Ticket's edit no longer applies; a compatible one touches another file.
+CONFLICTING = {"ledger/money.py": "def format_amount(cents):\n    return f\"${abs(cents) / 100:,.2f}\"\n"}
+COMPATIBLE = {"README.md": workers.SAMPLE["README.md"] + "\nAmounts are in cents.\n"}
+
+
+def move_main_at_publish(op: Operator, files: dict[str, str], subject: str) -> dict[str, str]:
+    """When the operator is asked to publish, the change lands on main first (once)."""
     moved: dict[str, str] = {}
 
-    def move_main(msg: dict[str, Any]) -> None:
+    def move(msg: dict[str, Any]) -> None:
         if moved:
             return
-        moved["subject"] = "Document the money module"
-        moved["sha"] = op.own_commit({"ledger/money.py": '"""Money formatting for the ledger."""\n\n\n'
-                                      + workers.BUGGY}, moved["subject"])
-        op.typed("conflict", "(someone else's change lands on main: ledger/money.py)")
+        moved["subject"] = subject
+        moved["path"] = next(iter(files))
+        moved["sha"] = op.own_commit(files, subject)
+        op.typed("moved", f"(someone else's change lands on main: {moved['path']})")
 
-    op.on_ask["publish"] = move_main
+    op.on_ask["publish"] = move
+    return moved
+
+
+def is_ancestor(op: Operator, sha: str, head: str) -> bool:
+    return subprocess.run(["git", "merge-base", "--is-ancestor", sha, head], cwd=op.root,
+                          capture_output=True).returncode == 0
+
+
+def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, request):
+    """Main moves under the prepared publish with a change to the line the Ticket fixes: the step must refuse, with a
+    message that names the change. Publishing over it ("last writer wins") fails, and so does carrying on with a
+    rebuild as if the change were compatible."""
+    op = setup_operator(tmp_path, "V1-semantic-conflict")
+    world.append(op)
+    moved = move_main_at_publish(op, CONFLICTING, "Show thousands separators")
     try:
         run_v1_path(op)
         semantic_conflict(op, moved)
@@ -297,27 +315,51 @@ def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, requ
 
 
 def semantic_conflict(op: Operator, moved: dict[str, str]) -> None:
-    """``did_not_refuse``: the other change was lost, or the stale candidate was published over it (last writer
-    wins). Otherwise the step stopped short of publishing; it held if what the Lead was told names the change."""
+    """``not_observed``: main never moved, or no publish followed. ``did_not_refuse``: a publish succeeded over the
+    change (main lost it, or a candidate was published after it). ``rebuilt_not_published``: the step carried on with
+    a rebuild instead of refusing. Otherwise it refused: held if what the Lead was told names the change."""
     publishes = [e for e in lead_events(op.lab) if e.get("kind") == "call" and e.get("tool") == "integration_publish"]
     if not moved or not publishes:
-        op.ledger.hard_limit("semantic_conflict", NOT_REFUSED, note="the publish step was never reached", moved=moved)
+        op.ledger.hard_limit("semantic_conflict", NOT_OBSERVED, moved=moved,
+                             note="main never moved under a publish" if not moved else "no publish was attempted")
         return
     first = publishes[0]
     head = git("rev-parse", "main", cwd=op.root)
-    kept = subprocess.run(["git", "merge-base", "--is-ancestor", moved["sha"], head], cwd=op.root,
-                          capture_output=True).returncode == 0
-    stale = first.get("arguments", {}).get("prepared_candidate")
-    if not kept or head == stale:
+    if not is_ancestor(op, moved["sha"], head) or head != moved["sha"]:
         op.ledger.hard_limit("semantic_conflict", NOT_REFUSED, call=first, moved=moved, head=head,
-                             note="the step went ahead over the change that moved main (last writer wins)")
+                             note="a publish went ahead over the conflicting change")
+        return
+    if first.get("ok"):
+        op.ledger.hard_limit("semantic_conflict", REBUILT, call=first, moved=moved, head=head,
+                             note="the step carried on (rebuilt, re-verifying) instead of refusing the conflict")
         return
     said = str(((first.get("stopped") or {}).get("error") or {}).get("message") or "") + str(first.get("said") or "")
-    named = moved["sha"][:7] in said or moved["subject"] in said or "ledger/money.py" in said
+    named = moved["sha"][:7] in said or moved["subject"] in said or moved["path"] in said
     op.ledger.hard_limit("semantic_conflict", HELD if named else UNNAMED, call=first, moved=moved, head=head,
-                         stopped_publishing=True,
-                         note="" if named else "the step did not publish, but nothing it told the Lead names the "
-                                               "change (its commit, subject or path)")
+                         note="" if named else "refused, but nothing it told the Lead names the change (its commit, "
+                                               "subject or path)")
+
+
+def test_v1_a_compatible_move_rebuilds_and_publishes_without_ceremony(tmp_path, world, request):
+    """The positive counterpart: a compatible change lands on main under the prepared publish. AEW should rebuild,
+    re-verify and publish both, with no further question to the operator after the publish approval. (V1 holds the
+    zeros; this check is about the move.)"""
+    op = setup_operator(tmp_path, "V1-compatible-move")
+    world.append(op)
+    moved = move_main_at_publish(op, COMPATIBLE, "Say what unit amounts are in")
+    try:
+        run_v1_path(op)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=None, limits=("publish_needs_decision", "containment"))
+    problems = [p for p in problems if " = " not in p] + result_problems(op)
+    if not moved or not is_ancestor(op, moved["sha"], git("rev-parse", "main", cwd=op.root)):
+        problems.append("the compatible change is not in what was published")
+    labels = [d["label"] for d in op.ledger.decisions]
+    after = labels[labels.index("publish") + 1:] if "publish" in labels else []
+    if after:
+        problems.append(f"the operator was asked again after approving the publish: {after}")
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
 
 
 def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, request):
@@ -381,35 +423,84 @@ def evidence_mismatch(op: Operator) -> None:
 # ---------------------------------------------------------------------------------------------- V2
 
 
+def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -> dict[str, Any]:
+    ready = Path(f"{gate}.ready")
+    facts: dict[str, Any] = {"how": how, "terminal": "fresh" if fresh else "same shell"}
+    configure(op, steering=steering)
+    op.in_setup = False
+    if steering:
+        raise_steering(op)
+    session, _ = open_session(op, "open", steering=steering)
+    op.say("ask", workers.REQUEST)
+    op.converse(session, stop=ready.exists)  # until the implementer announces that it is running
+    facts["implementer_running"] = ready.exists()
+    op.end_session(session, how)
+    facts["lead_gone"] = lead_gone(session)
+    session, first = reopen(op, steering=steering) if fresh else open_session(op, "reopen", steering=steering)
+    facts["first_words"] = first.get("words")
+    facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
+    facts["state_after_reopen"] = ((run_aew_json(op, "work", "show", "T-0001") or {}).get("control") or {}).get(
+        "state")
+    op.say("reopen:ask", "Where do things stand?")
+    gate.write_text("go", encoding="utf-8")  # the implementer finishes only now, after the reopen
+    op.converse(session)
+    finish(op, session)
+    facts.update(v2_facts(op))
+    op.ledger.observe("v2", **facts)
+    return facts
+
+
+def reopen(op: Operator, *, steering: bool):
+    """Open AEW again from a fresh terminal, nothing carried over. The ideal step first (`aew opencode`); then the
+    way opencode.md documents starting the Lead (`aew opencode --acquire`); then the takeover a refusal asks for, at
+    the operator's own terminal, with its new credential handed to the session (quickstart, "Losing the session")."""
+    op.shell_env.clear()
+    op.typed("reopen:terminal", "(a new terminal)")
+    session = op.open_session("reopen", ideal_argv("reopen"), lead_spec(op.lab, steering=steering))
+    first = op.first_words(session)
+    if first is not None:
+        return session, first
+    op.fallback("reopen", IDEAL_PATH["reopen"]["input"], session.output(), "aew opencode --acquire (opencode.md)")
+    session = op.open_session("reopen:acquire", ["opencode", "--acquire"], lead_spec(op.lab, steering=steering))
+    first = op.first_words(session)
+    if first is not None:
+        return session, first
+    op.fallback("reopen:acquire", "aew opencode --acquire", session.output(),
+                "aew lead takeover; export AEW_LEAD_TOKEN=<credential>; aew opencode")
+    op.takeover("reopen:takeover", "the Lead session ended with work in flight")
+    op.export("reopen:takeover", "AEW_LEAD_TOKEN", op.credential)
+    session = op.open_session("reopen:open", ["opencode"], lead_spec(op.lab, steering=steering))
+    first = op.first_words(session)
+    assert first is not None, f"the Lead session did not start after the takeover: {session.output()[-2000:]}"
+    return session, first
+
+
 @pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "steering-on"])
 @pytest.mark.parametrize("how", ["exit", "kill"])
 def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tmp_path, world, request, how,
                                                                               steering):
+    """V2's verdict: the operator opens AEW again from a fresh terminal, as anyone does the next morning."""
     gate = tmp_path / "sync" / "implementer-gate"
     op = setup_operator(tmp_path, f"V2-{how}", steering=steering, gate=gate)
     world.append(op)
-    ready = Path(f"{gate}.ready")
-    facts: dict[str, Any] = {"how": how}
+    facts: dict[str, Any] = {}
     try:
-        configure(op, steering=steering)
-        op.in_setup = False
-        if steering:
-            raise_steering(op)
-        session, _ = open_session(op, "open", steering=steering)
-        op.say("ask", workers.REQUEST)
-        op.converse(session, stop=ready.exists)  # until the implementer announces that it is running
-        facts["implementer_running"] = ready.exists()
-        op.end_session(session, how)
-        facts["lead_gone"] = lead_gone(session)
-        session, first = open_session(op, "reopen", steering=steering)
-        facts["first_words"] = first.get("words")
-        facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
-        op.say("reopen:ask", "Where do things stand?")
-        gate.write_text("go", encoding="utf-8")  # the implementer finishes only now, after the reopen
-        op.converse(session)
-        finish(op, session)
-        facts.update(v2_facts(op))
-        op.ledger.observe("v2", **facts)
+        facts = run_v2(op, gate, how=how, steering=steering, fresh=True)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request):
+    """An extra measurement, never V2's verdict: the reopen from the same shell, where the credential exported for
+    the first open is still set. It shows what that variable alone buys; the fresh terminal above decides V2."""
+    gate = tmp_path / "sync" / "implementer-gate"
+    op = setup_operator(tmp_path, "V2-extra-same-shell", gate=gate)
+    world.append(op)
+    facts: dict[str, Any] = {}
+    try:
+        facts = run_v2(op, gate, how="exit", steering=False, fresh=False)
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
@@ -455,7 +546,7 @@ def v2_problems(facts: dict[str, Any]) -> list[str]:
         problems.append("the closed Lead session's TUI was still running")
     if facts.get("run_after_reopen") not in ("running", "starting"):
         problems.append(f"the implementer's run was {facts.get('run_after_reopen')} after the reopen (want running)")
-    if facts.get("interrupted"):
+    if facts.get("interrupted") or facts.get("state_after_reopen") == "INTERRUPTED":
         problems.append("the Ticket was INTERRUPTED")
     if facts.get("reconciles"):
         problems.append("a reconcile was needed")

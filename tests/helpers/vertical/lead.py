@@ -22,7 +22,8 @@ finishes; they are the only place AEW knowledge appears here:
   a tool the projection did not offer (``guessed_commands``), with its own proposition and plan (its judgement);
 - ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
   then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
-- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell;
+- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell; for
+  ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
 - ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
   - ``hint_command``: the command a projection hint names, run from the shell with the subject and the revision filled
     in, and ``--launch`` added once a refusal asks for it (each a counted shell call);
@@ -78,6 +79,7 @@ class Lead:
         self.reports: dict[str, str] = {}
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
+        self.last_out: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ accounting
 
@@ -230,6 +232,7 @@ class Lead:
 
     def tick(self) -> bool:
         out = self.read()
+        self.last_out = out
         proj = out.get("projection") or {}
         if self.subject is None:
             ticket = _open_ticket(self.call("resume", {}).get("result"))
@@ -257,6 +260,10 @@ class Lead:
         return self.gap(out, proj)
 
     def decide(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
+        asked = ("decision", d["decision"], tuple(d.get("evidence") or []), proj.get("revision"))
+        if self.seen.get(asked):  # the same decision again at the same revision: answering it changed nothing
+            return self.stuck(f"decision {d['decision']} is still required after it was answered")
+        self.seen[asked] = 1
         label = "publish" if d["decision"] == "PUBLISH" else d["decision"].lower()
         question = (f"{d['decision'].replace('_', ' ').lower()} for {d.get('subject')}"
                     + (f" (evidence {', '.join(d.get('evidence') or [])})" if d.get("evidence") else "") + "?")
@@ -269,6 +276,13 @@ class Lead:
             self.call(d["tool"], d["arguments"], offered=True)
             return True
         cli = list(d.get("cli_fallback") or [])
+        if d["decision"] == "RECONCILE" and "<phase>" in cli:
+            # The known gap: an INTERRUPTED Ticket is reconciled to the phase it was interrupted from, with a reason,
+            # as the quickstart's "Losing the session" says (the Lead's AEW knowledge, counted with the shell call).
+            phase = _unit((self.last_out or {}).get("result")).get("interrupted_from")
+            self.event("gap", gap="reconcile", why="an INTERRUPTED Ticket: its decision has no typed tool")
+            cli = [str(phase) if x == "<phase>" else x for x in cli]
+            cli += ["--reason", "workspace inspected after the session was taken over"]
         if not cli or any(x.startswith("<") or "{" in x for x in cli):
             return self.stuck(f"decision {d['decision']} has no typed tool and its fallback needs a choice: {cli}")
         self.event("gap", gap="decision_without_tool", decision=d["decision"])

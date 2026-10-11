@@ -53,7 +53,7 @@ def test_v1s_decisions_and_the_hard_limits_equal_the_documents():
     assert listed is not None
     assert tuple(re.findall(r"`([a-z_]+)`", listed.group(1))) == L.V1_DECISIONS
     assert names(table_after(ledger_section, "**Hard limits")) == L.HARD_LIMITS
-    assert f"`{L.NOT_REFUSED}`" in ledger_section and f"`{L.UNNAMED}`" in ledger_section
+    assert all(f"`{outcome}`" in ledger_section for outcome in L.OUTCOMES)
     minimum = re.search(r"\*\*Today's minimum containment label:\*\* `([a-z_]+)` on Windows, `([a-z_]+)` on Linux",
                         ledger_section)
     assert minimum is not None

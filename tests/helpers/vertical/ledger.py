@@ -39,8 +39,12 @@ V1_DECISIONS = ("plan", "publish")
 HARD_LIMITS = ("semantic_conflict", "evidence_mismatch", "publish_needs_decision", "containment")
 # Each harness run's containment label, unchanged from today's minimum per platform (the test never weakens it).
 CONTAINMENT_MINIMUM = {"win32": "workdir_separation_only", "linux": "os_readonly_roots"}
-# Hard-limit outcomes. Both failures fail the test; the ledger keeps them apart.
+# Hard-limit outcomes. Every one but `held` fails the test; the ledger keeps them apart: `did_not_refuse` is a safety
+# regression, `refused_without_naming` an explanation gap, `rebuilt_not_published` a conflicting change AEW carried on
+# with (rebuilt and re-verifying) instead of refusing, and `not_observed` a sub-scenario that never reached its step.
 HELD, NOT_REFUSED, UNNAMED = "held", "did_not_refuse", "refused_without_naming"
+REBUILT, NOT_OBSERVED = "rebuilt_not_published", "not_observed"
+OUTCOMES = (HELD, NOT_REFUSED, UNNAMED, REBUILT, NOT_OBSERVED)
 
 CREDENTIAL = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")
 INVOCATION_ID = re.compile(r"\bINV-\d{4,}\b")
@@ -104,7 +108,7 @@ class Ledger:
                                "detail": json.loads(redact(json.dumps(detail)))})
 
     def hard_limit(self, name: str, outcome: str, **evidence: Any) -> None:
-        if name not in HARD_LIMITS or outcome not in (HELD, NOT_REFUSED, UNNAMED):
+        if name not in HARD_LIMITS or outcome not in OUTCOMES:
             raise ValueError(f"hard limit {name}: {outcome}")
         self.hard_limits[name] = {"outcome": outcome, **json.loads(redact(json.dumps(evidence)))}
 

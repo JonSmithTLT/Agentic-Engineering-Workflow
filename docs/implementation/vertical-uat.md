@@ -59,7 +59,7 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 |---|---|
 | An empty project offers no action for the operator's request | `ticket_draft`, a tool the projection did not offer, with the Lead's own proposition and plan |
 | No decision asks for the proposed plan's approval | the Lead asks the operator anyway, then accepts the plan from its shell |
-| A decision has no typed tool | its `cli_fallback`, from the shell |
+| A decision has no typed tool | its `cli_fallback`, from the shell; for `RECONCILE` (an INTERRUPTED Ticket), with the phase it was interrupted from and a reason |
 | Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and `--launch` filled in as refusals ask) |
 | A prepared candidate whose post-integration verification reported, with no decision offered | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
 | Anything else | the Lead tells the operator it is stuck; the run ends there, and the ledger says where |
@@ -77,7 +77,7 @@ installed tool: its variables are not the operator's.
 | Id | Scenario | Must hold |
 |---|---|---|
 | **V1** | **The fresh path.** A new project (a sample the test creates) goes from setup to a published one-line fix, and the operator gets the result: diff, evidence summary, commit. | The ledger zeros in §4, with **two** operator decisions: approving the plan, and approving the publish. Publish stays a judgement unless a grant covers it. |
-| **V2** | **Close and reopen with work active.** As V1, but the operator ends the Lead session while the implementer runs, then starts AEW again. Parametrized: a clean `/exit` (the primary case) and a killed session. | No takeover, no credential, no INTERRUPTED Ticket and no reconcile. The implementer's run is untouched (still running after the reopen, its evidence accepted, no relaunch). The operator is told where things stand in words. The same zeros. |
+| **V2** | **Close and reopen with work active.** As V1, but the operator ends the Lead session while the implementer runs, then opens AEW again **from a fresh terminal**, nothing carried over. Parametrized: a clean `/exit` (the primary case) and a killed session. | No takeover, no credential, no INTERRUPTED Ticket and no reconcile. The implementer's run is untouched (still running after the reopen, its evidence accepted, no relaunch). The operator is told where things stand in words. The same zeros. |
 | **V3** | **Preflight catches it first.** One case per cause: a `provider_env` variable unset; a configured model the harness does not list; a check that changes the snapshot; stale state the engine could recover (a Lead session that died holding the seat); a model id carrying the provider prefix. | Before any Ticket exists, readiness (the preflight, not doctor) fails, **naming the cause and the fix**. Doctor may pass (the ledger records whether it did). Nothing is launched. |
 | **V4** | **Change a setting.** Switch the implementer's model, then V1's path. | One operator action that validates and saves; saving is the adoption. No raw YAML, no separate adopt, no credential, no restart. The implementer runs on the new model. |
 
@@ -85,6 +85,12 @@ installed tool: its variables are not the operator's.
   into the profile's `model`, and AEW passes the provider and the id apart, so the reference it uses is doubled
   (`<provider>/<provider>/<model>`). The ideal outcome is that AEW accepts the id as typed (no error at all);
   otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic.
+- **V2's reopen.** The ideal step is `aew opencode` with nothing carried over. When it fails, the operator opens the
+  Lead the way `docs/guides/opencode.md` documents (`aew opencode --acquire`), and when that is refused, takes the
+  seat over at their own terminal and hands the new credential to the session (quickstart, "Losing the session"):
+  every step counted, and an INTERRUPTED Ticket or a reconcile recorded as evidence. A reopen from the same shell,
+  where the first open's exported credential is still set, is an extra measurement (its own test), never V2's
+  verdict.
 - **Steering on.** V1 and V2 also run with steering on, in the mode that lets the loop push the stages (Run), so "the
   Lead does no stage-pushing" can be measured. Whether that mode completes a Ticket on today's `main` with the fake
   harness is recorded, not assumed: the ledger lists the stages the loop ran and where it stopped. **Raising the mode
@@ -131,15 +137,21 @@ a real product, policy or safety judgement?
 | `refusals` | any refusal, by code and message |
 | `mechanical_calls` | calls that only push a stage or wait, with steering on (a steering-off run records them as its measurement, and only a steering-on run is held to 0) |
 
-**Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps two kinds of failure
-apart: `did_not_refuse` (a safety regression) and `refused_without_naming` (an explanation gap). Both fail the test.
+**Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:
+`did_not_refuse` (a safety regression), `refused_without_naming` (an explanation gap), `rebuilt_not_published` (a
+conflicting change carried on with, rebuilt and re-verifying, instead of refused) and `not_observed` (the
+sub-scenario never reached its step). Every one of them fails the test; only `held` passes.
 
 | Hard limit | Sub-scenario | Holds when |
 |---|---|---|
-| `semantic_conflict` | V1, with main moved under the prepared publish (another change to the same file) | the step refuses, with a message that names the change (its commit, subject or path); "last writer wins" fails |
+| `semantic_conflict` | V1, with main moved under the prepared publish by a change to the very line the Ticket fixes | the step refuses, with a message that names the change (its commit, subject or path); "last writer wins" fails, and so does a rebuild that carries on |
 | `evidence_mismatch` | V1, with the check's cache files kept in the snapshot (no `.gitignore`) | the gate refuses (or AEW flags the check), naming the changed paths; an auto-waived mismatch fails |
 | `publish_needs_decision` | every scenario | main moves only after the operator's publish decision (or a grant) |
 | `containment` | every scenario | every run record carries the platform's containment label, unchanged from today's minimum |
+
+A positive counterpart runs beside the semantic conflict: a **compatible** change (another file) lands on main under
+the prepared publish, and AEW should rebuild, re-verify and publish both, with no further question to the operator
+after the publish approval.
 
 **Today's minimum containment label:** `workdir_separation_only` on Windows, `os_readonly_roots` on Linux. The test
 never weakens it.

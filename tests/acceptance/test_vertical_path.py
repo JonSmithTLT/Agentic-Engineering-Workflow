@@ -117,16 +117,18 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
 
 
 def open_session(op: Operator, step: str, *, steering: bool = False):
-    """``aew opencode``, the ideal way first; today's fallback is the credential in AEW_LEAD_TOKEN (quickstart)."""
+    """``aew opencode`` (the ``open`` or ``reopen`` row), the ideal way first; today's fallback is the credential in
+    AEW_LEAD_TOKEN (quickstart). The operator's terminal is one shell: a variable exported earlier is still set."""
+    row = "reopen" if step == "reopen" else "open"
     spec = lead_spec(op.lab, steering=steering)
-    session = op.open_session(step, ideal_argv("open"), spec)
+    session = op.open_session(step, ideal_argv(row), spec)
     first = op.first_words(session)
     if first is not None:
         return session, first
-    op.fallback(step, IDEAL_PATH["open"]["input"], session.output(), "export AEW_LEAD_TOKEN=<credential>; aew opencode")
+    op.fallback(step, IDEAL_PATH[row]["input"], session.output(), "export AEW_LEAD_TOKEN=<credential>; aew opencode")
     if op.shell_env.get("AEW_LEAD_TOKEN") != op.credential:
         op.export(step, "AEW_LEAD_TOKEN", op.credential)
-    session = op.open_session(step, ideal_argv("open"), lead_spec(op.lab, steering=steering))
+    session = op.open_session(step, ideal_argv(row), lead_spec(op.lab, steering=steering))
     first = op.first_words(session)
     assert first is not None, f"the Lead session did not start: {session.output()[-2000:]}"
     return session, first

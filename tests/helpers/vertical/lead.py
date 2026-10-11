@@ -205,7 +205,9 @@ class Lead:
 
     # ------------------------------------------------------------------ the policy
 
-    def run(self) -> int:
+    def run(self) -> None:
+        """The session: it ends only when the operator types ``/exit`` (the listener ends the process) or the chat
+        goes silent past its bound."""
         Path(self.spec["pidfile"]).write_text(str(os.getpid()), encoding="utf-8")
         self.tools = self.start_mcp()
         threading.Thread(target=self._listen, daemon=True, name="vertical-chat").start()
@@ -457,4 +459,5 @@ def _words(result: Any) -> str | None:
 
 def main(spec_path: Path) -> int:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    return Lead(spec).run()
+    Lead(spec).run()
+    return 0

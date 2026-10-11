@@ -319,6 +319,3 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
                       note="" if labels else "no harness run recorded a label")
     return weaker
 
-
-def environment_names() -> list[str]:
-    return sorted(k for k in os.environ if k.startswith("AEW_"))

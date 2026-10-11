@@ -17,6 +17,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### F15.5
+
+**Due by:** M4-E · **Owner:** designer · **Needs:** decision
+
+**What:** Whether outbox events a Lead-transaction finalizer derives (such as the queue sync's `credential.revoked` when it ends a custodian whose custody worker is gone) carry their origin (ADR-0012 D2), so the steering loop's runtime declaration check (SAE-07) can attribute a step commit's effects to the step alone; until then a sweep first seen by a step's own commit stops the loop, failing closed, with `SIDE_EFFECT_UNDECLARED` (M4-E E7b)
+
+**Blocks:** -
+
 ### F41.1
 
 **Due by:** M4-E · **Owner:** designer · **Needs:** design

@@ -1089,7 +1089,12 @@ class EvidenceCommands:
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
                 self.gates.require_current_binding(unit)
-                self.queue.require_live_lease(state, work_id, "ingesting post-integration verification")
+                # A VALIDATED entry's report is accepted under a fresh lease, granted in the ingest's own commit (M4-E
+                # E6a): asked here, on a copy, as that grant would decide it.
+                scratch = copy.deepcopy(state)
+                self.queue.sync(scratch)
+                self.queue.regrant_view(scratch, work_id)
+                self.queue.require_live_lease(scratch, work_id, "ingesting post-integration verification")
                 current = self.invocations.snapshot_of(integ["workspace"],
                                                        integ["workspace_id"])["relevant_inputs_fingerprint"]
             if ev["evaluated_snapshot"]["relevant_inputs_fingerprint"] != current:
@@ -1140,10 +1145,20 @@ class EvidenceCommands:
 
     def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     scope: str | None = None) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "verify.ingest") as ctx:
+        # The integration-scoped primitive enters its transaction as itself, so a stage's journal can tell it from the
+        # Ticket's (M4-E E6a); the transition log records `verify.ingest` for both, as before.
+        txn = (self.k.lead_txn(token, expect_rev, "verify.ingest.integration") if scope == "integration"
+               else self.k.lead_txn(token, expect_rev, "verify.ingest"))
+        with txn as ctx:
+            ctx.op = "verify.ingest"
             ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
                                "ids": [evidence_id]})
             state = ctx.state
+            # A VALIDATED entry's report is accepted under a fresh lease (M4-E E6a; plan v3 §2.3): the
+            # `integrate.prepare` decision recomputed and recorded for the custodian it admits, in this commit. A
+            # refusal below rolls it back with everything else.
+            self.queue.regrant(ctx, work_id, lambda st, entrypoint, wid, **kw: self.dispatch.decide_in(
+                ctx, entrypoint, wid, **kw))
             args: dict[str, Any] = {"evidence": evidence_id}
             # The guard, as `explain` and a stage ask it: the scoped primitive's, or the report's own scope's.
             query = self.verify_ingest_query if scope is None else self.scoped_verify_query(scope)

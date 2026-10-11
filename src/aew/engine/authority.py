@@ -214,6 +214,77 @@ def require_invocation(
     return invocation_id, invocation, actor
 
 
+# ---------------------------------------------------------------------------------------------- the custody credential
+# M4-E E6a (plan v3 §2.3, S1; ADR-0004 amendment 2026-10-10): the integration custodian holds no Lead, role, model or
+# harness credential. It holds one engine-issued custody credential, restricted to the closed integration-custody
+# transaction family below. Minted in the commit that grants the lease (only its verifier is stored), handed to the
+# custody worker over a pipe, and revoked when the lease ends, its custodian dies, the generation changes or the lease
+# is reconciled (``queue_ops``). Same-uid, it is a protocol guard (``guarantee: dev``), like every credential here.
+
+CUSTODY = "custody"
+# The closed family (§2.3): the validation pin and commit and their infrastructure outcomes, routing a result (never
+# accepting a report), the custodian's own lease release, the worker's registration (S2), and the PIC publish, which
+# also needs the operator's envelope and the §17 predicate in the same transaction (E6b: until then it is refused).
+CUSTODY_OPS = ("custody.register", "integrate.validate", "integrate.validated", "integrate.validation_abandoned",
+               "integrate.validation_unavailable", "integrate.validation_released", "integrate.route",
+               "integrate.release", "integrate.publishing")
+CUSTODY_PUBLISH = "integrate.publishing"
+
+
+def mint_custody(state: dict[str, Any], *, custodian: str, entry: str, attempt: int, lease_at: str) -> str:
+    """The custody credential of a lease just granted, bound to its custodian, queue entry, queue attempt, lease and
+    Lead generation, and to the closed operation family. Returned once; control state keeps its verifier."""
+    generation = state["lead"]["generation"]
+    # `invocation_id` is the custodian's too: archival bundles the credential with its unit, as every credential
+    # issued to one of the unit's invocations (ADR-0011 R7).
+    return mint(state["tokens"], CUSTODY, {"custodian": custodian, "invocation_id": custodian, "entry": entry,
+                                           "attempt": attempt, "lease": lease_at, "generation": generation,
+                                           "ops": list(CUSTODY_OPS)},
+                generation=generation)
+
+
+def require_custodian(state: dict[str, Any], credential: str, op: str) -> dict[str, Any]:
+    """The actor of a custody transaction ``op`` presented with ``credential``, or a refusal. Every binding is checked
+    independently on this state (§2.3: on every commit): the credential is a live custody credential; its custodian is
+    the active ``integration_attempt`` invocation of the current Lead generation that holds the lease, unmarked for
+    reconciliation, of the same entry, grant and attempt; and ``op`` is in the closed family the credential carries.
+    A Lead, invocation or handoff credential is refused here, and a custody credential everywhere else."""
+    token_id, record = _lookup(state, credential)
+    if record["kind"] != CUSTODY:
+        raise PermissionDenied("a custody transaction needs the custodian's custody credential",
+                               presented=record["kind"])
+    scope = record["scope"]
+    if record["revoked_at"] is not None:
+        raise StaleAuthority(f"the custody credential of {scope.get('custodian')} was revoked: "
+                             f"{record.get('revoke_reason')}", revoke_reason=record.get("revoke_reason"))
+    if op not in CUSTODY_OPS or op not in (scope.get("ops") or []):
+        raise PermissionDenied(f"{op} is outside the integration-custody family: a custody credential commits only "
+                               "validation, routing, its own lease release and registration", op=op)
+    generation = state["lead"]["generation"]
+    if scope.get("generation") != generation:
+        raise StaleAuthority("the custody credential was issued under a superseded Lead generation",
+                             token_generation=scope.get("generation"), current_generation=generation)
+    custodian = scope.get("custodian")
+    inv = state["invocations"].get(custodian or "") or {}
+    if inv.get("kind") != "integration_attempt" or inv.get("status") != "active" or inv.get("generation") != generation:
+        raise StaleAuthority(f"custodian {custodian} is {inv.get('status') or 'unknown'}: its custody ended",
+                             custodian=custodian)
+    lease = (state.get("queue") or {}).get("lease") or {}
+    held = ((state.get("queue") or {}).get("entries") or {}).get(lease.get("entry") or "") or {}
+    attempts = held.get("attempts") or []
+    if (lease.get("custodian") != custodian or lease.get("entry") != scope.get("entry")
+            or lease.get("granted_at") != scope.get("lease") or lease.get("generation") != generation
+            or (lease.get("custody") or {}).get("token_id") != token_id or len(attempts) != scope.get("attempt")
+            or attempts[-1].get("custodian") != custodian):
+        raise StaleAuthority(f"custodian {custodian} no longer holds the lease it was granted", custodian=custodian)
+    if lease.get("reconcile") is not None:
+        raise StaleAuthority(f"{custodian}'s lease is marked for reconciliation ({lease['reconcile']['reason']})",
+                             custodian=custodian)
+    return {"kind": "custodian", "invocation": custodian, "work_unit": inv.get("work_unit"),
+            "lease": {"entry": lease["entry"], "granted_at": lease["granted_at"]}, "generation": generation,
+            "requested_by": (lease.get("custody") or {}).get("requested_by"), "token_id": token_id}
+
+
 def verify_offer(state: dict[str, Any], offer: str) -> str:
     token_id, record = _lookup(state, offer)
     handoff = state["lead"].get("handoff") or {}

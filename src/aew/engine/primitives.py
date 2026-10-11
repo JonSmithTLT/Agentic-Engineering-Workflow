@@ -88,17 +88,30 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("work.dispose", JUDGMENT_BEARING, ("disposition",), ("gates",), (), "control_state",
                   "expected_revision", None),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
-    # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease.
+    # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease. The
+    # grant mints the custodian's custody credential (M4-E E6a: `credential`), whose worker the granting process then
+    # starts (an engine process, never a harness).
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
-                  "control_state+workspace", "expected_revision", "integrate.prepare"),
+                  "control_state+workspace+credential", "expected_revision", "integrate.prepare"),
     # Checks-mode validation (M4-D5): the mode and the exact check set are resolved from recorded policy, so the
     # command is policy-resolved; its substeps (pin, execute contained, fingerprint, write evidence) are mechanical.
     PrimitiveSpec("integrate.validate", POLICY_RESOLVED, (), ("gates", "checks", "guardrails", "execution"),
                   ("prepared_candidate",), "control_state", "candidate", None),
+    # The Lead's acceptance of the integration verifier's report (M4-E E6a: completed with `integration_publish`, the
+    # first stage to run it). It completes the verifier's invocation, revoking its credential (`credential`; a run still
+    # live under it is ended by its supervisor, `harness_process`), and on a VALIDATED entry it is granted the fresh
+    # lease it runs under, minting its custodian's credential. Its guard is its own query (`verify.ingest.integration`).
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
-                  ("integration_verification",), "control_state", "expected_revision", None),
+                  ("integration_verification",), "control_state+credential+harness_process", "expected_revision",
+                  "verify.ingest.integration"),
+    # The Lead's publication decision (M4-E E6a: completed with `integration_publish`). Its step is the intent
+    # commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE follow it as its
+    # effect: the authoritative ref, the integration worktree and a removable Ticket workspace (`workspace`), and DONE's
+    # revocations (the lease's custody credential, `credential`; a live run's supervisor ends its harness,
+    # `harness_process`). A moved head commits the one rebuild instead. Its guard is its own query.
     PrimitiveSpec("integrate.publish", JUDGMENT_BEARING, ("publish_decision",), ("gates",),
-                  ("integration_validation",), "authoritative_ref+control_state", "candidate", None),
+                  ("integration_validation",), "authoritative_ref+control_state+workspace+credential+harness_process",
+                  "candidate", "integrate.publish"),
     PrimitiveSpec("integrate.reconcile", MECHANICAL, (), (), (), "authoritative_ref+control_state", "candidate", None),
     # The Lead's queue commands (M4-D4): scheduling, never eligibility; each is the Lead's disposition of an entry.
     PrimitiveSpec("integrate.defer", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state+workspace",
@@ -138,16 +151,23 @@ COMMIT_OPS: dict[str, frozenset[str]] = {
     "invoke.create.parent": frozenset({"invoke.create"}),
     "steering": frozenset({"steering.lower", "steering.request"}),
     "stage.resolve": frozenset({"stage.continue", "stage.abandon"}),
+    # M4-E E6a: a publish's step is its intent commit; what follows it is its effect, committed unarmed (the finish,
+    # or `integrate reconcile` after a crash). The integration-scoped ingest enters its transaction as itself.
+    "integrate.publish": frozenset({"integrate.publishing"}),
+}
+# The ops a step's commit records instead of its primitive's completion: its disposition (M4-E E6a; plan v3 §2.3 and
+# the E4b disposition rule). The journal records it on the step, and the stage stops there unless it planned for it.
+DISPOSITION_OPS: dict[str, frozenset[str]] = {
+    "integrate.publish": frozenset({"integrate.superseded", "integrate.stale", "integrate.rebuild"}),
 }
 # Declared primitives that cannot run as one stage step, each with the reason: a step is one primitive in one Lead
 # transaction whose op says which primitive committed (#140 re-reviews). They are refused at a stage's opening, never
-# left to fail at their first commit. Their stages arrive with E6, which decides how a stage spans them.
+# left to fail at their first commit. E6a stages a publish as its intent commit (`COMMIT_OPS`) and the integration
+# ingest under its own transaction op; validation is the custodian's, never a stage step (plan v3 §2.3).
 NOT_STEPS: dict[str, str] = {
-    "integrate.publish": "it commits twice (integrate.publishing, then integrate.publish)",
-    "integrate.validate": "it commits twice (integrate.validate, then integrate.validated)",
+    "integrate.validate": "it commits twice (integrate.validate, then integrate.validated), and it is the lease's "
+                          "custodian's, never the Lead's stage step (plan v3 §2.3)",
     "integrate.reconcile": "it can finish a publication, committing under integrate.publish",
-    "verify.ingest.integration": "it commits under verify.ingest, which Ticket verification shares, so the op cannot "
-                                 "say which of the two committed",
     # F9-A plan v4 D-17 (v1 review F6): `message_send` has no stage planner and is never journaled.
     "message.send": "it commits nothing (a coordination message is recorded on its thread, not in a transition)",
     "stage.resolve": "it resolves another stage's journal; a stage never runs inside one",

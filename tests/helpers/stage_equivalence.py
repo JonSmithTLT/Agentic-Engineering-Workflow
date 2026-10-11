@@ -43,15 +43,24 @@ from aew.engine import stage_intents as SI
 
 # Control-state paths the comparison removes (module docstring); "*" is any one key.
 DROPPED = frozenset({("revision",), ("last_transition",), ("outbox",), ("stage_intents",),
-                     ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents")})
+                     ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents"),
+                     # M4-E E6a: the intent whose step granted the lease, recorded on it for attribution (§2.3)
+                     ("queue", "lease", "custody", "requested_by")})
 # The revision a dispatch was decided at (M4-E E5a): the stage's intent commit comes first, so its assignment is
 # decided one revision later than the same assignment made directly. Normalised to "<revision-bound>", never dropped.
 REVISION_BOUND = frozenset({("invocations", "*", "dispatch", "revision"),
-                            ("invocations", "*", "runs", "dispatch", "revision")})
+                            ("invocations", "*", "runs", "dispatch", "revision"),
+                            # M4-E E6a: a rebuild's own `integrate.prepare` decision, on the candidate and its attempt
+                            ("work", "*", "integration", "admission", "revision"),
+                            ("queue", "entries", "*", "attempts", "rebuild_admission", "revision")})
 # A dispatch decision's digest, recomputed over the recorded decision with its revision substituted (module docstring).
 DECISION_DIGEST = frozenset({("invocations", "*", "dispatch", "decision"),
-                             ("invocations", "*", "runs", "dispatch", "decision")})
+                             ("invocations", "*", "runs", "dispatch", "decision"),
+                             ("work", "*", "integration", "admission", "decision"),
+                             ("queue", "entries", "*", "attempts", "rebuild_admission", "decision")})
 TIME_KEY = re.compile(r"^(at|.+_at)$")
+# Times kept under another name: a custody credential binds its lease's grant time (M4-E E6a).
+TIME_PATHS = frozenset({("tokens", "*", "scope", "lease")})
 TOKEN_ID = re.compile(r"tk_[0-9a-f]{8,}")
 SHA256 = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
 # The transition log, its redo records, the control file (compared as data above) and its generated view (which
@@ -101,7 +110,7 @@ class _Normaliser:
                     body = json.dumps({**self.decisions[v], "revision": "<revision-bound>"}, sort_keys=True,
                                       separators=(",", ":"), default=str)
                     out[key] = "<decision sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest() + ">"
-                elif TIME_KEY.match(str(k)) and v is not None:
+                elif (TIME_KEY.match(str(k)) or _matches(here, TIME_PATHS)) and v is not None:
                     out[key] = "<time>"
                 elif k == "verifier" and v is not None:
                     out[key] = "<verifier>"

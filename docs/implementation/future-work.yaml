@@ -488,7 +488,9 @@ sections:
       and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum
       changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as
       with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until
-      then the verification half marks nothing yet
+      then the verification half marks nothing yet. **E6a (2026-10-10)** builds `ticket_prepare`, `integration_publish`
+      (with `verification_evidence`), VALIDATE_ONLY's `VALIDATED` entry and the lease custodian's custody worker and credential
+      ([ADR-0004](adr/0004-controlled-integration.md), amendment 2026-10-10)
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,

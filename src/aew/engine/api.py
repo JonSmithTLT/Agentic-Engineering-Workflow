@@ -23,6 +23,7 @@ from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
 from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
+from aew.engine.custody_ops import Custody, spawn_worker
 from aew.engine.dispatch import Dispatch
 from aew.engine.disposition_ops import Dispositions
 from aew.engine.evidence_ops import EvidenceCommands, Gates
@@ -408,7 +409,17 @@ class Engine:
         self._integration = integration = Integration(k, units=units, invocations=invocations, gates=gates,
                                                       dispatch=dispatch, queue=queue)
         queue.legal = integration.require_legal
+        # M4-E E6a: a VALIDATED entry's fresh lease is the `integrate.prepare` decision's, and each grant's custody
+        # worker is started by the granting process right after its commit.
+        queue.decide = dispatch.decide
+
+        def spawn(custodian: str, credential: str) -> None:
+            spawn_worker(k.repo_root, k.aew_root, custodian, credential)
+
+        queue.spawn = spawn
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
+        self._custody = Custody(k, units=units, gates=gates, queue=queue, validation=self._validation,
+                                mode=integration.validation_mode)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
                                           dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
@@ -634,6 +645,12 @@ class Engine:
         stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
         return self._integration.candidate_overlay(state, work_id)
 
+    def validation_overlay(self, state: dict[str, Any], work_id: str, evidence_id: str) -> dict[str, Any] | None:
+        """A copy of ``state`` with ``work_id``'s integration verification ``evidence_id`` accepted under a live
+        lease, as `integration_publish`'s publish step takes it produced (M4-E E6a): None when no lease could be
+        granted."""
+        return self._integration.validation_overlay(state, work_id, evidence_id)
+
     def stage_cards(self, work_id: str | None, slot: str, *, state: dict[str, Any] | None = None) -> dict[str, Any]:
         """The cards a request stage launches for ``work_id``'s ``slot`` now (M4-E E5b; ``Roles.planned_cards``)."""
         state = self._k.store.read() if state is None else state
@@ -738,8 +755,10 @@ class Engine:
     def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_prepare(token=token, expect_rev=expect_rev, work_id=work_id)
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        return self._integration.integrate_publish(token=token, expect_rev=expect_rev, work_id=work_id)
+    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str,
+                          candidate: str | None = None) -> dict[str, Any]:
+        return self._integration.integrate_publish(token=token, expect_rev=expect_rev, work_id=work_id,
+                                                   candidate=candidate)
 
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
         return self._integration.integrate_reconcile(token=token, expect_rev=expect_rev, work_id=work_id)
@@ -748,6 +767,22 @@ class Engine:
                            diagnostic: bool = False) -> dict[str, Any]:
         return self._validation.integrate_validate(token=token, expect_rev=expect_rev, work_id=work_id, wait=wait,
                                                    diagnostic=diagnostic)
+
+    def custody_run(self, custodian: str, credential: str, *, poll_s: float | None = None,
+                    timeout_s: float | None = None) -> dict[str, Any]:
+        """The custody worker of ``custodian`` (M4-E E6a; ``aew integrate custody``): register, then validate or route
+        under the custody credential until the custody ends."""
+        from aew.engine.custody_ops import POLL_S
+
+        return self._custody.run(custodian, credential, poll_s=POLL_S if poll_s is None else poll_s,
+                                 timeout_s=timeout_s)
+
+    def custody_register(self, credential: str) -> dict[str, Any]:
+        return self._custody.register(credential)
+
+    def custody_step(self, custodian: str, credential: str) -> tuple[str, dict[str, Any] | None]:
+        """One pass of the custody worker's work (tests drive a worker this way, in process)."""
+        return self._custody.step(custodian, credential)
 
     def integrate_breaker_status(self) -> dict[str, Any]:
         return self._validation.breaker_status()

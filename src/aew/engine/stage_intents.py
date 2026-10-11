@@ -136,6 +136,26 @@ def step(intent: str, n: int, *, retried: bool = False, final: bool = False,
         _STEP.reset(token)
 
 
+def armed_intent() -> str | None:
+    """The intent whose step is armed in this context, if any: what a lease granted by a stage step records as the
+    request that granted it (M4-E E6a; plan v3 §2.3, attribution)."""
+    binding = _STEP.get()
+    return binding.intent if binding is not None else None
+
+
+@contextmanager
+def unarmed() -> Iterator[None]:
+    """A block whose commits are not the armed step's: a primitive's effect after its step committed (M4-E E6a). A
+    publish's step is its intent commit (``integrate.publishing``); the CAS, the sync and DONE that follow it are the
+    publish's effect, committed by its finish (or by ``integrate reconcile`` after a crash), as a launch's run is a
+    dispatch's effect after its commit."""
+    token = _STEP.set(None)
+    try:
+        yield
+    finally:
+        _STEP.reset(token)
+
+
 def unit_state(unit: dict[str, Any] | None) -> dict[str, Any] | None:
     if not unit or not unit.get("record_sha256"):
         return None
@@ -494,6 +514,8 @@ class StageIntents:
                   "subject_after": unit_state(state["work"].get(subject["id"])) if subject["id"] else None,
                   "legality_digest": d["legality_digest"], "operational_digest": d["operational_digest"],
                   "at": utc_now()}
+        if ctx.op in P.DISPOSITION_OPS.get(planned["primitive"], ()):  # its disposition, not its completion (E6a)
+            record["disposition"] = ctx.op
         if binding.retried:
             record["retried_after_stale_revision"] = True
             si["retried_after_stale_revision"] = True

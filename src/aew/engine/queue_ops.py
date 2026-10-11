@@ -16,6 +16,18 @@ that did not carry it, an explicit cancel), the lease is marked ``reconcile`` in
 children are cancelled. No timeout releases a lease: ``aew integrate reconcile <T>`` does, after proving what was
 published (an interrupted publish finishes through ADR-0004's reconcile first).
 
+**Its custody worker and credential (M4-E E6a; plan v3 §2.3; ADR-0004 amendment 2026-10-10).** The grant mints the
+custodian's custody credential (only its hash is stored, on the lease) and, right after its commit, the granting
+process spawns the custodian's custody worker and hands it the credential over a pipe (``spawn``). The worker
+registers itself in its own first commit. ``sync`` ends a custodian whose registered worker is gone, or that has none
+``custody_register_s`` after its grant (S2): that marks the lease ``reconcile``, as any other death does; nothing is
+released by time alone. The credential is revoked whenever the lease ends, its custodian dies, the Lead generation
+changes or the lease is reconciled.
+
+**VALIDATE_ONLY (E6a).** A candidate that validated clean with no publication to make is kept, and its entry released
+to ``VALIDATED``: no lease, the candidate and its validation's identity recorded. The Lead publishes it later under a
+fresh lease (``regrant``: the ``integrate.prepare`` decision recomputed, FIFO among runnable entries).
+
 **Retirement.** An entry whose Ticket is no longer COMMIT_READY (DONE, CANCELLED, back to RUNNING, VERIFICATION_FAILED,
 INTERRUPTED, ...) is retired in the same transaction: it leaves the hot queue for its unit's ``queue_history``, so
 archival (ADR-0011) moves it with the unit. A lease it held is released; nothing can have been published unless the
@@ -28,22 +40,27 @@ Ticket's state (the Lead's own commits included, which call it directly) enqueue
 from __future__ import annotations
 
 import os
+import socket
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from aew.engine.authority import mint_custody, revoke, token_id_of
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.errors import IllegalTransition, IntegrityError, LeaseHeld, LeaseNotHeld, LeaseReconcileRequired, QueueOrder
 from aew.knowledge.records import format_id
+from aew.policy import validation as V
 from aew.util import dump_yaml, load_yaml, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
     from aew.engine.ports import InvocationsPort
 
-LIVE = ("QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION")
+LIVE = ("QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION", "VALIDATED")
 CHECKOUT_SYNC_LOCK = "local/checkout-sync.lock"  # AEW-INV-ISO-004
 CUSTODIAN = "integration_attempt"
 
@@ -77,6 +94,19 @@ def lease_of(state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
     return lease if lease and qid and lease["entry"] == qid else None
 
 
+def validated_record(integ: dict[str, Any], *, mode: str, custodian: str, run: str | None = None,
+                     report: str | None = None, check_set: str | None = None,
+                     obligation_binding: str | None = None) -> dict[str, Any]:
+    """What a VALIDATED entry keeps (M4-E E6a; plan v3 §2.3): its candidate and snapshot, the head H it was built on,
+    its acceptance binding, and the validation's identity: the checks run, or the verifier report routed (never
+    accepted), by the custodian that ran or routed it."""
+    return {"mode": mode, "candidate": integ["candidate"],
+            "snapshot": integ["candidate_snapshot"]["relevant_inputs_fingerprint"], "base": integ["base"],
+            "binding": dict(integ.get("binding") or {}), "check_set": check_set,
+            "obligation_binding": obligation_binding, **({"run": run} if run else {}),
+            **({"report": report} if report else {}), "at": utc_now(), "custodian": custodian}
+
+
 def _queued_ticket(unit: dict[str, Any]) -> bool:
     return unit.get("kind") == "ticket" and bool(unit.get("mutating")) and unit.get("state") == "COMMIT_READY"
 
@@ -90,6 +120,12 @@ class Queue:
         # Whether a Ticket's integration is legal now (raises when not): ``Integration.require_legal``, set by the
         # composition root. The order guard asks it of every earlier entry.
         self.legal: Callable[[dict[str, Any], str], None] | None = None
+        # The ``integrate.prepare`` decision (``Dispatch.decide``), set by the composition root: a VALIDATED entry's
+        # fresh lease is asked of it (M4-E E6a).
+        self.decide: Callable[..., Any] | None = None
+        # Starts a granted lease's custody worker after the granting commit, with the credential it holds (M4-E E6a,
+        # ``custody_ops.spawn_worker``); set by the composition root. None: no worker (S2 then ends the custodian).
+        self.spawn: Callable[[str, str], None] | None = None
 
     # ------------------------------------------------------------------ consistency (a transaction finalizer)
 
@@ -117,10 +153,57 @@ class Queue:
         lease = queue["lease"]
         if lease and lease["reconcile"] is None:
             custodian = state["invocations"].get(lease["custodian"]) or {}
+            lost = self._lost_worker(lease, custodian) if custodian.get("status") == "active" else None
+            if lost is not None:  # S2: a custodian whose worker is gone, or never came, is ended (M4-E E6a)
+                custodian["status"] = "interrupted"
             if custodian.get("status") != "active":
-                lease["reconcile"] = {"reason": f"custodian {lease['custodian']} is {custodian.get('status')}",
+                lease["reconcile"] = {"reason": lost or f"custodian {lease['custodian']} is {custodian.get('status')}",
                                       "at": utc_now()}
                 self._end_children(state, lease["custodian"], "cancelled")
+        self._revoke_custody(state)
+
+    def _lost_worker(self, lease: dict[str, Any], custodian: dict[str, Any]) -> str | None:
+        """Why the lease's active custodian has lost its custody worker (S2), or None: its registered worker is gone
+        (its pid with its start time, on this host; a worker on another host is not observable here), or no worker
+        registered within ``custody_register_s`` of the grant. Liveness data only: it ends the custodian, which marks
+        the lease for reconciliation, and never releases anything (plan v3 §2.3)."""
+        from aew.harness import procs
+
+        worker = custodian.get("worker")
+        if worker is not None:
+            if worker.get("host") == socket.gethostname() and not procs.same_process(
+                    worker.get("host_pid"), float(worker.get("started_at") or 0)):
+                return f"custodian {lease['custodian']}'s custody worker (pid {worker.get('host_pid')}) is gone"
+            return None
+        granted = datetime.strptime(lease["granted_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        age = (datetime.now(UTC) - granted).total_seconds()
+        if age <= 1:  # the bound is at least a second: no policy read for a grant this fresh
+            return None
+        try:  # an unreadable policy decides nothing here: the transaction that commits reads it under its pins
+            bound = V.custody_register_s(self.k.policy("gates").get("post_integration") or {})
+        except Exception:  # noqa: BLE001 (a policy edit awaiting adoption, a missing file: no ending is inferred)
+            return None
+        if age <= bound:
+            return None
+        return f"no custody worker registered for custodian {lease['custodian']} within {bound} s of its grant"
+
+    @staticmethod
+    def _revoke_custody(state: dict[str, Any]) -> None:
+        """Revoke every custody credential that no longer belongs to a live custody (§2.3, revocation): the live
+        lease's, while its custodian is active, of the current generation and unmarked, is the only one that stands.
+        Each trigger (the custodian's death, a generation change, a cancel or reconcile, the lease's end) is covered,
+        in the transaction that causes it."""
+        if "tokens" not in state or "lead" not in state:  # a guard's probe of the queue alone (``view``)
+            return
+        lease = (state.get("queue") or {}).get("lease") or {}
+        custodian = state["invocations"].get(lease.get("custodian") or "") or {}
+        live = ((lease.get("custody") or {}).get("token_id")
+                if lease and lease.get("reconcile") is None and custodian.get("status") == "active"
+                and lease.get("generation") == state["lead"]["generation"] else None)
+        for token_id, record in (state.get("tokens") or {}).items():
+            if record.get("kind") == "custody" and record.get("revoked_at") is None and token_id != live:
+                revoke(state, token_id, "custody ended (the lease ended, its custodian died, the Lead generation "
+                                        "changed or the lease was reconciled)")
 
     def _enqueue(self, state: dict[str, Any], wid: str) -> None:
         queue = state["queue"]
@@ -180,6 +263,12 @@ class Queue:
                 state=entry["state"]))
         if entry["state"] == "LEASED":
             return None
+        if entry["state"] == "VALIDATED" and not facts.get("regrant"):
+            # Its kept candidate is published under a fresh lease, never replaced by a prepare (M4-E E6a, §2.3).
+            return blocker_from(IllegalTransition(
+                f"{work_id}'s queue entry {qid} is VALIDATED: its candidate validated clean and is kept. Publish it "
+                "with `integration_publish` (a fresh lease; a moved head is rebuilt and revalidated), or requeue it "
+                f"to build a new candidate (`aew integrate requeue {work_id}`)", entry=qid, state=entry["state"]))
         for other_id, other in sorted(queue["entries"].items(), key=lambda kv: kv[1]["seq"]):
             if other["seq"] >= entry["seq"]:
                 break
@@ -241,8 +330,47 @@ class Queue:
         entry["rebuilds_used"] = 0  # M4-D4: one automatic rebuild per lease
         entry["attempts"].append({"custodian": custodian, "granted_at": now, "integration_attempt": None,
                                   "base": None, "candidate": None, "result": None, "ended_at": None})
+        # The custody credential, minted in this granting commit (M4-E E6a; §2.3 V1): only its hash is committed. The
+        # plaintext stays in this process's memory until the spawn after the commit writes it to the worker's pipe,
+        # which drops it; an aborted transaction drops it with the record.
+        from aew.engine.stage_intents import armed_intent
+
+        credential = [mint_custody(state, custodian=custodian, entry=qid, attempt=len(entry["attempts"]),
+                                   lease_at=now)]
+        state["queue"]["lease"]["custody"] = {"token_id": token_id_of(credential[0]), "requested_by": armed_intent()}
+        after = getattr(ctx, "after_commit", None)  # None: a scratch grant (a query's overlay), never committed
+        if after is not None and self.spawn is not None:
+            spawn = self.spawn
+            after.append(lambda: spawn(custodian, credential.pop()))
         ctx.refs.append(f"invocation:{custodian}")
         return custodian
+
+    def regrant(self, ctx: Any, work_id: str, decide: Callable[..., Any]) -> str | None:
+        """A fresh lease for ``work_id``'s VALIDATED entry (M4-E E6a; plan v3 §2.3, "publishing later"), or None when
+        the entry is not VALIDATED. ``decide`` is the ``integrate.prepare`` decision recomputed with ``regrant`` (FIFO
+        among runnable entries; another entry's lease refuses, naming its holder), and its refusal is raised: the
+        execute path's ``decide_in``, which records it for the custodian it admits, or a query's ``decide`` on a
+        scratch state. The kept candidate is not rebuilt: it stays the entry's, and what it validated moves to the new
+        attempt (``from_validated``)."""
+        state = ctx.state
+        if not queued(state):
+            return None
+        self.sync(state)
+        qid, entry = entry_of(state, work_id)
+        if entry is None or entry["state"] != "VALIDATED":
+            return None
+        decide(state, "integrate.prepare", work_id, regrant=True).require()
+        validated = entry.pop("validated", None)
+        custodian = self.grant(ctx, work_id)
+        if validated is not None:
+            entry["attempts"][-1]["from_validated"] = validated
+        return custodian
+
+    def regrant_view(self, state: dict[str, Any], work_id: str) -> None:
+        """``regrant`` on ``state``, a query's scratch copy: the lease a VALIDATED entry's publication would be granted
+        (nothing committed, no worker), or the decision's refusal raised."""
+        assert self.decide is not None
+        self.regrant(SimpleNamespace(state=state, refs=[]), work_id, self.decide)
 
     def record_attempt(self, state: dict[str, Any], work_id: str, integration: dict[str, Any]) -> None:
         """What the lease's current attempt built (``prepare``)."""
@@ -254,15 +382,23 @@ class Queue:
                        candidate=integration.get("candidate"), result=integration.get("status"))
 
     def release(self, state: dict[str, Any], work_id: str, *, to: str, result: str,
-                detail: dict[str, Any] | None = None, custodian_status: str = "completed") -> None:
-        """End the lease of ``work_id``'s entry: back to QUEUED (same ``seq``) or to AWAITING_DISPOSITION."""
+                detail: dict[str, Any] | None = None, custodian_status: str = "completed",
+                validated: dict[str, Any] | None = None) -> None:
+        """End the lease of ``work_id``'s entry: back to QUEUED (same ``seq``), to AWAITING_DISPOSITION, or to VALIDATED
+        with what its kept candidate validated (M4-E E6a: ``validated``)."""
         qid, entry = entry_of(state, work_id)
         if entry is None or (state["queue"]["lease"] or {}).get("entry") != qid:
             return
+        if (to == "VALIDATED") != (validated is not None):
+            raise IntegrityError("engine defect: an entry is VALIDATED exactly when its validation is recorded", to=to)
         self._end_lease(state, entry, result=result, custodian_status=custodian_status)
         entry["state"] = to
         entry["disposition"] = {"reason": result, "at": utc_now(), **({"detail": detail} if detail else {})} \
             if to == "AWAITING_DISPOSITION" else None
+        if validated is not None:
+            entry["validated"] = validated
+        else:
+            entry.pop("validated", None)
 
     # ------------------------------------------------------------------ the Lead's queue commands (M4-D4)
 
@@ -281,6 +417,7 @@ class Queue:
         was = entry["state"]
         if was == "DEFERRED":
             raise IllegalTransition(f"{work_id}'s queue entry {qid} is already DEFERRED")
+        entry.pop("validated", None)  # a VALIDATED entry's kept candidate is retired by the caller (M4-E E6a)
         if was == "LEASED":
             lease = state["queue"]["lease"]
             if lease["reconcile"] is not None:
@@ -295,10 +432,11 @@ class Queue:
         """Return a DEFERRED or AWAITING_DISPOSITION entry to QUEUED in its own place (its ``seq`` is kept)."""
         qid, entry = self._live_entry(state, work_id)
         was = entry["state"]
-        if was not in ("DEFERRED", "AWAITING_DISPOSITION"):
-            raise IllegalTransition(f"{work_id}'s queue entry {qid} is {was}; only a DEFERRED or AWAITING_DISPOSITION "
-                                    "entry is requeued")
+        if was not in ("DEFERRED", "AWAITING_DISPOSITION", "VALIDATED"):
+            raise IllegalTransition(f"{work_id}'s queue entry {qid} is {was}; only a DEFERRED, AWAITING_DISPOSITION or "
+                                    "VALIDATED entry is requeued")
         entry["state"] = "QUEUED"
+        entry.pop("validated", None)  # its candidate is no longer kept: the next prepare replaces it (M4-E E6a)
         entry["disposition"] = None  # the reason is the transaction's (``lead_txn`` records it)
         return {"entry": qid, "from": was, "to": "QUEUED", "reason": reason}
 
@@ -332,6 +470,7 @@ class Queue:
         if inv and inv["status"] == "active":
             inv["status"] = custodian_status
         self._end_children(state, custodian, "cancelled")
+        revoke(state, (lease.get("custody") or {}).get("token_id"), f"the lease ended ({result})")
         state["queue"]["lease"] = None
 
     def _end_children(self, state: dict[str, Any], custodian: str, status: str) -> None:

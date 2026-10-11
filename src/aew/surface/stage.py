@@ -36,6 +36,16 @@ commit (``covers``) and never runs on its own (M4-E E5a). The Ticket stages' pla
 ``ticket_start``; E5b: the two request stages, whose dispatch and launch repeat once per card, ``plan_for``) take each
 step's guard arguments from ``availability.STAGES``, so ``resume``'s recheck and R5-1 ask
 each guard what ``explain`` and the projection ask (PR #170 review, finding 3).
+
+E6a builds the integration stages (plan v3 §2.3, E6a): ``ticket_prepare`` (accept the verification, COMMIT_READY,
+prepare under a lease, and in verifier mode launch the integration verifier as the custodian's child) and
+``integration_publish`` (accept the integration verifier's report when named, then publish; on a VALIDATED entry the
+first commit is granted a fresh lease; on a moved head it commits the one rebuild instead and, in verifier mode,
+launches the rebuilt candidate's verifier). Which of their steps are planned depends on the state (``SA.APPLIES``), so
+an intent records its plan's shape and a continue re-resolves that same shape (``_shape_of``). Validation is never a
+stage step: the lease's custodian runs it (``aew.engine.custody_ops``). A step whose commit can be followed by an
+outcome that stops the stage (a prepare's conflict or admission refusal; a publish's CAS, sync and DONE, or its
+rebuild) never completes the intent in its own commit (``AFTER_COMMIT``).
 """
 
 from __future__ import annotations
@@ -109,6 +119,49 @@ def _review_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     return c.engine.review_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"])
 
 
+def _verify_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """The Ticket-scope verification, accepted (M4-E E6a: `ticket_prepare`'s first step)."""
+    return c.engine.verify_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"],
+                                  scope="ticket")
+
+
+def _integration_ingest(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """The integration verifier's report, accepted (M4-E E6a: `integration_publish`'s first step in verifier mode); on a
+    VALIDATED entry its commit is granted the fresh lease it runs under."""
+    return c.engine.verify_ingest(token=c.token(), expect_rev=rev, work_id=a["work_id"], evidence_id=a["evidence"],
+                                  scope="integration")
+
+
+def _prepare(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """The candidate, prepared under a lease whose custodian's worker the engine starts right after the commit (M4-E
+    E6a). A conflict is committed (the lease released to AWAITING_DISPOSITION) and stops the stage here, as an
+    admission refusal does (raised by the prepare after its commit)."""
+    out = c.engine.integrate_prepare(token=c.token(), expect_rev=rev, work_id=a["work_id"])
+    if not out.get("ok"):
+        raise errors.IllegalTransition(
+            f"{a['work_id']}'s candidate conflicts with the authoritative head: the entry waits for your disposition "
+            "(return the Ticket to RUNNING to rebase, or REPLAN_REQUIRED)", reason="integration_conflict",
+            revision=out.get("revision"), paths=((out.get("integration") or {}).get("conflict_paths") or [])[:50])
+    return out
+
+
+def _publish(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
+    """The Lead's publication (M4-E E6a): the step is its intent commit, and the CAS, sync and DONE follow it. On a
+    moved head it commits the one rebuild instead, and nothing is published: in checks mode the custodian revalidates
+    the rebuilt candidate and the entry returns to VALIDATED, so the stage is done; in verifier mode the stage goes on
+    to launch the rebuilt candidate's verifier when it planned for the rebuild (``rebuild``), and otherwise stops there,
+    for the Lead to call it again (it then plans that launch)."""
+    out = c.engine.integrate_publish(token=c.token(), expect_rev=rev, work_id=a["work_id"],
+                                     candidate=a.get("candidate"))
+    if out.get("rebuilt") and not a.get("rebuild") and c.engine.validation_mode(a["work_id"]) != "checks":
+        raise errors.StaleCandidate(
+            f"the authoritative head moved: {a['work_id']}'s candidate was rebuilt on it under the lease (the one "
+            "automatic rebuild) and nothing was published. It is verified again before it can be published: call "
+            "integration_publish again to launch its verifier", reason="rebuilt", rebuilt=True,
+            revision=out.get("revision"))
+    return out
+
+
 def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     """A launch never runs as a step of its own: its dispatch's commit records it (``covers``), and its dispatch's step
     runner hands its run to the supervisor. Reaching this is a plan the journal would refuse at its opening."""
@@ -119,7 +172,12 @@ def _covered(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign": _assign, "work.create": _create,
                                        "plan.propose": _propose, "work.transition": _transition,
                                        "dispatch.launch": _covered, "invoke.create.mutating": _invoke,
-                                       "review.ingest": _review_ingest}
+                                       "review.ingest": _review_ingest, "verify.ingest": _verify_ingest,
+                                       "integrate.prepare": _prepare, "verify.ingest.integration": _integration_ingest,
+                                       "integrate.publish": _publish}
+# Steps whose commit can be followed, in the same call, by an outcome that stops the stage: their commit never
+# completes the intent (M4-E E6a), as a launch's never does.
+AFTER_COMMIT = frozenset({"integrate.prepare", "integrate.publish"})
 
 
 # ---------------------------------------------------------------------------------------------- the Ticket stages
@@ -176,11 +234,47 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
             *_per_card(a, dispatch, launch, cards)]
 
 
-# The built stage tools and their planners (E5a builds the first two, E5b the request stages; tests register probe
-# stages here too). A request stage's planner also takes the cards it launches (``plan_for``).
+def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
+    """``ticket_prepare`` (M4-E E6a; plan v3 §2.3): accept the named Ticket-scope verification, VERIFIED ->
+    COMMIT_READY, prepare the candidate under a lease (its custodian's worker validates in checks mode), and in verifier
+    mode (``shape``) the integration verifier, made with ``launch``, as the custodian's child."""
+    ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
+    plan: list[dict[str, Any]] = [{"primitive": "verify.ingest", "args": ingest},
+                                  {"primitive": "work.transition", "args": transition},
+                                  {"primitive": "integrate.prepare", "args": prepare}]
+    if (shape or {}).get(4):
+        execution = {"execution": a["execution"]} if "execution" in a else {}
+        plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True, **execution}},
+                 {"primitive": "dispatch.launch", "args": launch}]
+    return plan
+
+
+def _plan_publish(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
+    """``integration_publish`` (M4-E E6a; plan v3 §2.3, B2.5): accept the named integration verification (verifier
+    mode), then publish the named candidate. On a moved head (``shape``) the publish commits the one rebuild instead,
+    and in verifier mode the rebuilt candidate's verifier is launched; when a lease's rebuilt candidate has no
+    verifier, only that launch is planned."""
+    shape = shape or {}
+    ingest, publish, dispatch, launch = (build(a) for build in SA.STAGES["integration_publish"])
+    plan: list[dict[str, Any]] = []
+    if ingest is not None and shape.get(1):
+        plan.append({"primitive": "verify.ingest.integration", "args": ingest})
+    if shape.get(2):
+        plan.append({"primitive": "integrate.publish", "args": {**(publish or {}), "candidate": a.get(
+            "prepared_candidate"), **({"rebuild": True} if shape.get(3) else {})}})
+    if shape.get(3):
+        plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True}},
+                 {"primitive": "dispatch.launch", "args": launch}]
+    return plan
+
+
+# The built stage tools and their planners (E5a builds the first two, E5b the request stages, E6a the integration
+# stages; tests register probe stages here too). A request stage's planner also takes the cards it launches, and an
+# integration stage's the shape of its state-dependent steps (``plan_for``).
 STAGES: dict[str, Planner] = {"ticket_draft": _plan_draft, "ticket_start": _plan_start,
                               "ticket_request_review": _plan_request_review,
-                              "ticket_request_verification": _plan_request_verification}
+                              "ticket_request_verification": _plan_request_verification,
+                              "ticket_prepare": _plan_prepare, "integration_publish": _plan_publish}
 
 
 def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
@@ -189,12 +283,30 @@ def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
     single card satisfies refuses the call before anything commits: choosing among cards is the Lead's (`aew work
     staff`), never the stage's."""
     planner = STAGES[name]
+    if name in SA.APPLIES:  # the state-dependent steps, as availability asks them now (M4-E E6a)
+        shape = SA.planned_shape(engine, name, a)
+        if not any(shape.values()) and not _always(name):
+            raise errors.IllegalTransition(f"{name} has nothing to do for {a.get('work_id')} now: read its "
+                                           "projection (`explain` with this stage)", reason="nothing_planned")
+        return planner(a, shape=shape)
     if name not in SA.CARDS:
         return planner(a)
     found = SA.stage_cards(engine, name, a)
     if found["unresolved"]:
         raise SA.card_choice_refusal(name, found["unresolved"])
     return planner(a, found["cards"])
+
+
+def _always(name: str) -> bool:
+    """Whether stage ``name`` plans a step whatever its state-dependent steps' shape (``ticket_prepare`` does)."""
+    t = contract.tool(name)
+    return t is not None and len(SA.APPLIES.get(name, {})) < len(t.expands_to)
+
+
+def _shape_of(t: contract.Tool, primitives: list[str]) -> dict[int, bool]:
+    """The shape a recorded plan was made with: whether each state-dependent step of ``t`` is in it (their primitives
+    are distinct within the stage)."""
+    return {n: t.expands_to[n - 1] in primitives for n in SA.APPLIES.get(t.name, {})}
 
 
 def recorded_cards(si: dict[str, Any]) -> list[str | None] | None:
@@ -225,7 +337,7 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     opens, they stop the stage and are reported on ``c.stopped``."""
     planned = [p["primitive"] for p in plan]
     expected = _contract_steps(t, c.a, sum(p["primitive"] == "invoke.create.mutating" for p in plan)
-                               if t.name in SA.CARDS else 1)
+                               if t.name in SA.CARDS else 1, _shape_of(t, planned))
     if planned != expected:
         raise errors.UsageError(f"stage {t.name} planned {planned}, but its contract expands to {expected} for this "
                                 "call")
@@ -235,6 +347,10 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     a = c.a
     c.subject = a.get("work_id")
     judgments = [*t.required_judgments, *(name for name in t.promotes if name in a)]
+    # A planned step that accepts a report carries that acceptance (M4-E E6a: `integration_publish` accepts the
+    # integration verification only in verifier mode), so the intent binds the obligations it is judged against.
+    judgments += sorted({j for p in planned for j in spec_for(p).required_judgments
+                         if j in SI.ACCEPTANCES and j not in judgments})
     opened = c.engine.stage_open(
         token=c.token(), expect_rev=a["expect_rev"], tool=t.name, contract_digest=contract_digest(t), arguments=a,
         judgment_inputs=judgments, base_class=t.base_class, effective_class=effective_class(t, a),
@@ -245,15 +361,18 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
     return _run_steps(c, intent, plan, 1, rev)
 
 
-def _contract_steps(t: contract.Tool, a: dict[str, Any], cards: int = 1) -> list[str]:
+def _contract_steps(t: contract.Tool, a: dict[str, Any], cards: int = 1,
+                    shape: dict[int, bool] | None = None) -> list[str]:
     """The primitives stage ``t`` expands to for the call ``a``: its contract's, less a step the call does not ask for,
-    exactly as availability leaves it unplanned (its guard arguments are None: `ticket_draft` without a plan). Never
-    reordered, and never a step the contract does not name (M4-E E5a). A request stage's dispatch and its launch
-    repeat once per card it launches (``cards``, at least one; M4-E E5b), in place."""
+    exactly as availability leaves it unplanned (its guard arguments are None: `ticket_draft` without a plan; or a
+    state-dependent step left out of ``shape``, M4-E E6a). Never reordered, and never a step the contract does not name
+    (M4-E E5a). A request stage's dispatch and its launch repeat once per card it launches (``cards``, at least one;
+    M4-E E5b), in place."""
     builders = SA.STAGES.get(t.name)
     if builders is None:
         return list(t.expands_to)
-    steps = [p for p, build in zip(t.expands_to, builders, strict=True) if build(a) is not None]
+    steps = [p for n, (p, build) in enumerate(zip(t.expands_to, builders, strict=True), start=1)
+             if build(a) is not None and (shape or {}).get(n, True)]
     if t.name not in SA.CARDS:
         return steps
     n = SA.CARDS[t.name][0]  # the dispatch step; its launch is the next
@@ -280,7 +399,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
         except errors.AEWError as refusal:
             return _stop(c, intent, n, step["primitive"], refusal, outputs)
         covers = _covers(plan, n, args)
-        final = n == len(plan) and not launches(args)
+        final = n == len(plan) and not launches(args) and step["primitive"] not in AFTER_COMMIT
         retried = False
         while True:
             try:
@@ -478,8 +597,12 @@ def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] 
         return None, None, []
     # A request stage re-resolves with the cards it planned: they were the policy's when it opened, bound by the intent
     # (each card's own commit is decided by its dispatch decision when it runs).
-    planned = (planner(dict(si["arguments"])) if si["tool"] not in SA.CARDS
-               else planner(dict(si["arguments"]), recorded_cards(si)))
+    if si["tool"] in SA.APPLIES:  # the shape it was planned with (M4-E E6a): a continue never re-plans its steps
+        planned = planner(dict(si["arguments"]), shape=_shape_of(t, [p["primitive"] for p in si["plan"]]))
+    elif si["tool"] not in SA.CARDS:
+        planned = planner(dict(si["arguments"]))
+    else:
+        planned = planner(dict(si["arguments"]), recorded_cards(si))
     plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planned]
     missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
     return contract_digest(t), plan, missing

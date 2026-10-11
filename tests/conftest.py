@@ -12,6 +12,11 @@ import pytest
 
 IS_WINDOWS = sys.platform == "win32"
 sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
+# M4-E E6a: a lease's grant starts its custodian's custody worker, a detached process that validates or routes under
+# the lease. The suite drives custodians itself (in process, `Engine.custody_step` or `custody_run`, or a worker it
+# starts), so no grant starts one behind a test's back; the CLI processes tests start inherit this. Withholding the
+# worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
+os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)

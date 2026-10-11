@@ -5,3 +5,6 @@ bounds (AIR-37). F37 establishes one canonical redaction-pattern source and an e
 surface keeps its own allowlist and serialization responsibilities (AIR-59). Telemetry stores are linked through
 correlation ids, not consolidated, and F37 owns that correlation and redaction boundary (AIR-57). F42.1's persistence and
 F42.2 wait for the boundary.
+
+Precondition: F37's canonical redaction source is adopted only after each existing surface's redaction layer has been
+verified against it.

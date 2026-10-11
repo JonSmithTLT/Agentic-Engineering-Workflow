@@ -17,6 +17,22 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### F41.1
+
+**Due by:** M4-E · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
+
+**Blocks:** F14.1, F41, F41.2
+
+### F41.5
+
+**Due by:** M4-E · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
+
+**Blocks:** F41, F41.6
+
 ### F25
 
 **Due by:** M4-G · **Owner:** designer · **Needs:** decision
@@ -113,22 +129,6 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
-### F41.1
-
-**Due by:** Unscheduled · **Owner:** designer · **Needs:** design
-
-**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
-
-**Blocks:** F14.1, F41, F41.2
-
-### F41.5
-
-**Due by:** Unscheduled · **Owner:** designer · **Needs:** design
-
-**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
-
-**Blocks:** F41, F41.6
-
 ### F42
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** design
@@ -141,7 +141,7 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** design
 
-**What:** The security design for the first write-capable dashboard flow, which gates the Operator Settings Surface (decision record `decisions-2026-10-11-architecture-integration.md` §3.16, AIR-68): how a proposed setting travels from the site to the operator endpoint and `adopt` without the dashboard writing control state or becoming a model-visible channel. The lead developer drafts it for the designer
+**What:** The security design for the first write-capable dashboard flow, which gates the Operator Settings Surface (decision record `decisions-2026-10-11-architecture-integration.md` §3.16, AIR-68): how a proposed setting travels from the site to the operator endpoint and `adopt` without the dashboard writing control state or becoming a model-visible channel
 
 **Blocks:** -
 
@@ -193,17 +193,17 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
 
-- **F14.1** waits for F41.1 (design, designer, by Unscheduled)
+- **F14.1** waits for F41.1 (design, designer, by M4-E)
 
 - **F39** waits for F38 (adoption, operator, by M6)
 
 - **F40** waits for F38 (adoption, operator, by M6)
 
-- **F41** waits for F41.1 (design, designer, by Unscheduled); F41.5 (design, designer, by Unscheduled)
+- **F41** waits for F41.1 (design, designer, by M4-E); F41.5 (design, designer, by M4-E)
 
-- **F41.2** waits for F41.1 (design, designer, by Unscheduled)
+- **F41.2** waits for F41.1 (design, designer, by M4-E)
 
-- **F41.6** waits for F41.5 (design, designer, by Unscheduled)
+- **F41.6** waits for F41.5 (design, designer, by M4-E)
 
 - **F42.1** waits for F42 (design, designer, by Unscheduled)
 

@@ -4,3 +4,6 @@ project must have `base_drift_overlap` adopted and on, which the activation gate
 spine (F43) comes first as mainline work F41 depends on (AIR-16). Q6a: the two activation amendments (F41.1, F41.5) are
 written now, reviewed together, and v0.5 activates only after both exist (AIR-07). The order: F44, F43 S1 to S3, F45
 after E6a, then activation (AIR-75).
+
+Q15, the nit-rule divergence this row's Notes cell names (§21), is closed: PR #193 (2026-10-10) aligned AGENTS.md
+with the product's rule, and the row moved to §9.

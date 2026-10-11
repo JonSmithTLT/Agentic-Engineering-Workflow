@@ -13,6 +13,30 @@ intro: |
   material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
   show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
+- row: F41.1
+  needs: design
+  owner: designer
+  due: M4-E
+  what: 'Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`):
+    the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]`
+    (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single
+    `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)'
+  blocks:
+  - F14.1
+  - F41
+  - F41.2
+
+- row: F41.5
+  needs: design
+  owner: designer
+  due: M4-E
+  what: 'Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking
+    `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5''s `revision_impact_hold` trigger to accepted
+    interface revisions on such edges (§7, §19; CFI-34, CFI-35)'
+  blocks:
+  - F41
+  - F41.6
+
 - row: F25
   needs: decision
   owner: designer
@@ -115,30 +139,6 @@ items:
   due: Unscheduled
   what: Who owns the broader dashboard review beyond the web developer's density passes ("ownership pending")
 
-- row: F41.1
-  needs: design
-  owner: designer
-  due: Unscheduled
-  what: 'Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`):
-    the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]`
-    (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single
-    `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)'
-  blocks:
-  - F14.1
-  - F41
-  - F41.2
-
-- row: F41.5
-  needs: design
-  owner: designer
-  due: Unscheduled
-  what: 'Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking
-    `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5''s `revision_impact_hold` trigger to accepted
-    interface revisions on such edges (§7, §19; CFI-34, CFI-35)'
-  blocks:
-  - F41
-  - F41.6
-
 - row: F42
   needs: design
   owner: designer
@@ -157,8 +157,7 @@ items:
   due: Unscheduled
   what: 'The security design for the first write-capable dashboard flow, which gates the Operator Settings Surface (decision
     record `decisions-2026-10-11-architecture-integration.md` §3.16, AIR-68): how a proposed setting travels from the site
-    to the operator endpoint and `adopt` without the dashboard writing control state or becoming a model-visible channel.
-    The lead developer drafts it for the designer'
+    to the operator endpoint and `adopt` without the dashboard writing control state or becoming a model-visible channel'
 
 - row: Q4
   needs: decision

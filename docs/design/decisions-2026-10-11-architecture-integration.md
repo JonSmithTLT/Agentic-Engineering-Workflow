@@ -149,12 +149,12 @@ repository has no project yet, so the common ids need a project id and a mapping
 These are mainline integration work. They are not F41 rows merely because F41 depends on them; F41 depends on them. In
 order (register F43, slices S1 to S3):
 
-1. **S1 (AX-05):** the next-action derivations converge on the canonical `ActionProjection`. The acceptance makes it
-   absorb every duplicate the lead developer's consolidation pass found: `resume`'s next actions, `ActionProjection`
-   itself, the dashboard's attention and health derivation, the operator notifier's condition derivation, the steering
-   loop's consumption of decisions, and the wake interpretation of invocation status. The notifier stays the operator's
-   delivery channel but keeps no semantic implementation of "what changed". Channels may differ; the derivation does
-   not:
+1. **S1 (AX-05):** the next-action derivations converge on the canonical `ActionProjection`. The acceptance makes S1
+   and S2 together absorb, as consumers or producers where appropriate, every duplicate the lead developer's
+   consolidation pass found. S1 converges the derivations themselves: `resume`'s next actions, `ActionProjection`
+   itself, and the dashboard's attention and health derivation. The consumers of the typed consequences are S2's (below).
+   The notifier stays the operator's delivery channel but keeps no semantic implementation of "what changed". Channels
+   may differ; the derivation does not:
 
    ```text
    authoritative/control facts
@@ -166,7 +166,9 @@ order (register F43, slices S1 to S3):
    wait / notifier / loop / dashboard
    ```
 
-2. **S2 (AX-04):** every consequential control fact has a typed outbox kind.
+2. **S2 (AX-04):** every consequential control fact has a typed outbox kind, and the consumers read those kinds instead
+   of re-deriving them: the operator notifier's condition derivation, the steering loop's consumption of decisions, and
+   the wake interpretation of invocation status.
 3. **S3 (AX-03):** Lead-actionable facts reach the existing `wait --any` control lane, which needs a **run-less** form:
    today the lane wakes only when an invocation leaves `active`, so a Lead with no live run has nothing to wait on. It is
    **one decision-keyed Lead-attention lane**: v0.5 §11.1's "D5/F9 coordination lane" and the F9 coordination lane of
@@ -296,9 +298,10 @@ Each entry records the audit finding, its existing owners, the current evidence,
 disposition, **pending / local-owner review**. The audit's priority order stands unless a local owner's review finds a
 contradiction. AX-14 already belongs to F41.10 and AX-13 to F9's worker-reply slice; their entries point at those owners.
 
-The audit's other findings land on rows that already exist or are added by this record: AX-01 on F45; AX-02 on F9.2;
-AX-03 to AX-05 on F43; AX-09 on F18.15; AX-10, the Lead's usage, on F25's Lead part; AX-11, the live step meter and the
-supervisor's stop, on E54; AX-16, run health, on U1.
+**Lead filing, not a designer ruling.** The lead developer files the audit's other findings on these rows; this is a
+register placement that a later owner review may change without going back to the designer. AX-01, AX-02, AX-03 to
+AX-05 and AX-09 follow the decisions above (F45, F9.2, F43, F18.15). AX-10, the Lead's usage, goes to F25's Lead part;
+AX-11, the live step meter and the supervisor's stop, to E54; AX-16, run health, to U1.
 
 ### 3.10 F9 extensibility: the tolerant read and structured data
 
@@ -392,7 +395,10 @@ generation or revision owns the result, what wakes whom, and whether recovery ca
 prefers dynamic fault scenarios to static inspection where practical: a generation replaced with notifications queued;
 a delayed or duplicate stale result; custody lost during validation; a broker or steering-loop interruption; a provider
 gateway restart; a plan or policy change during active work; a concurrent interface change; the queue with more than one
-lane on the Rocky host. It is not another complete architecture review.
+lane on the Rocky host. The response's explicit scenarios stay in scope alongside them: a stage crash or takeover while
+the steering loop is active; a custody worker lost during VALIDATE_ONLY; a notifier spool surviving a generation change;
+provider, broker and bridge credentials crossing actors; recovery after authority or revision changes; and a stale result
+or evidence arriving after replacement. It is not another complete architecture review.
 
 ### 3.15 Areas kept out of Observability's ownership
 
@@ -501,7 +507,7 @@ the gates schema and the context packs, and an overlap only escalates the valida
 
 ## 5. Filing (lead developer)
 
-- **Ledger:** AIR-01 to AIR-76, prefix AIR; this record is their source.
+- **Ledger:** AIR-01 to AIR-77, prefix AIR; this record is their source.
 - **New register rows:** F42 (Observability and Feedback), F42.1 (the canonical process-event model), F42.2 (the
   repository-process adapter), F43 (the attention spine, slices S1 to S3), F44 (the consequential-fact owner registry),
   F45 (base-drift integration validation), F46 (the operator settings surface, with models per role), F14.1 (parent
@@ -514,7 +520,11 @@ the gates schema and the context packs, and an overlap only escalates the valida
   F45 and for the two Q6a amendments (F41.1, F41.5).
 - **Q6b:** MIC-07, MIC-08 and MIC-16 are marked `superseded-by:` AIR-08, and F15.2's decisions-due item for MIC-16's
   definition is removed: nothing is owed for it any more.
-- **Q6a:** F41.1's and F41.5's decisions-due items stay open (owed now); F14.1 is added to what F41.1's item blocks.
+- **Q6a:** F41.1's and F41.5's decisions-due items stay open, now due by M4-E (owed now); F14.1 is added to what F41.1's
+  item blocks.
+- **The lead developer's own filing** (not designer rulings): the placement of AX-10, AX-11 and AX-16 (§3.9); and, from
+  the check in §4, that v0.5 §9's claim holds only with F45, an activation precondition on a text the freeze ruling
+  already gates.
 - **Owed by this record:** F42's design (the first cross-cutting integration note) and F46's security design, each a
   decisions-due item.
 - **Notes** on F9, F14, F15.2, F15.3, F15.4, F18.6, F18.8, F19, F20, F25, F28, F36, F37, F41, F41.1, F41.5, F41.7,

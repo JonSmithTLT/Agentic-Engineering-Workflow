@@ -184,7 +184,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **S13, the A arm:** not built (after M4-E's E7c).
 
-**S14, the F25 binding:** not built (after F25 L4).
+**S14, the F25 binding:** not built (after F25 L4). It must pin that a source is `final` only from the evaluator's own `final()` call on its meter, never from a status the arm can write (S8a exempts `final` sources from the projection and the staleness ceiling).
 
 **S15, scoring, audit and the report:** not built.
 

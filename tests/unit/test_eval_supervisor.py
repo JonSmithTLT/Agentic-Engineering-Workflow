@@ -572,7 +572,7 @@ def test_every_counted_run_end_follows_the_shutdown_order_and_settles_within_the
     assert steps == ["residual", "interrupt", "supersede", "final_samples", "workers_final", "last_reads", "kill",
                      "settle", "proxy_closed"]
     assert result.shutdown[-1]["at"] - result.shutdown[0]["at"] <= terms().settle_deadline_s + terms().poll_s
-    assert result.kill == {"ended": 1, "remaining": []}
+    assert result.kill == {"ended": 1, "remaining": [], "proven": True}
 
 
 def test_residual_sessions_in_flight_is_read_before_the_first_interrupt(tmp_path):
@@ -685,7 +685,7 @@ FAILURE_ENDS = {
     "PREPARE_FAILED": (_prepare_fails, False),
     "FIRST_PROMPT_FAILED": (_prompt_fails, False),
     "EVALUATOR_FAILURE": (_feed_fails, False),
-    "ARM_FACING_FAILURE": (_observe_fails, True),
+    "ARM_FACING_FAILURE": (_observe_fails, False),
 }
 
 
@@ -798,9 +798,11 @@ def test_a_missing_kill_proof_makes_the_cost_unknown_and_charges_the_cap(tmp_pat
     driver = FakeDriver(clock, log, lambda t: quiet(t, final=True), meter=meter)
     sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, helpers=helpers)
     result = sup.run(TASK)
-    assert result.kill == {"ended": 0, "remaining": None}
+    assert result.kill == {"ended": 0, "remaining": None, "proven": False}
     assert result.settled["completeness"] == "unknown" and result.settled["reasons"]["kill_unproven"] == 1
-    assert {"kind": "ARM_KILL_UNPROVEN"} in result.cf_evidence and result.cost["charged_usd"] == 10.0
+    assert result.cost["charged_usd"] == 10.0
+    # the helper failed: an infrastructure fact, never evidence against the arm (layer (b)'s lower-bound note aside)
+    assert [e for e in result.cf_evidence if e["kind"] != "COUNTED_COST_LOWER_BOUND"] == []
 
 
 def test_a_counted_run_takes_only_a_responder_built_through_the_sealed_path(tmp_path):
@@ -875,3 +877,39 @@ def test_the_supervisor_modules_read_no_file_but_their_own_state_checks():
                 f = node.func
                 calls.add(f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", ""))
         assert not calls & forbidden, (module, calls & forbidden)
+
+
+def test_an_abort_still_takes_the_shutdown_order_and_is_re_raised(tmp_path):
+    clock, log = Clock(), Log()
+
+    def interrupted(tick: int) -> Observation:
+        raise KeyboardInterrupt
+
+    driver = FakeDriver(clock, log, interrupted)
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, proxy=FakeProxy(log, usd=0.2), layer="c")
+    with pytest.raises(KeyboardInterrupt):
+        sup.run(TASK)
+    result = sup.result
+    assert result.end == "EVALUATOR_ABORTED" and not result.arm_failure
+    assert [s["step"] for s in result.shutdown] == SHUTDOWN_STEPS
+    assert ("kill",) in log and ("proxy_close",) in log
+
+
+def test_an_unclassified_request_is_an_instrument_defect_never_an_arm_failure(tmp_path):
+    clock, log = Clock(), Log()
+    driver = FakeDriver(clock, log, lambda t: Observation(requests=(Request("req_1", "unclassified"),)))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver)
+    result = sup.run(TASK)
+    assert result.end == "INSTRUMENT_DEFECT" and not result.arm_failure
+    assert result.errors[0]["component"] == "classifier" and driver.delivered == []
+
+
+def test_an_unbuildable_worker_meter_is_a_diagnostic_never_cf_evidence(tmp_path):
+    clock, log = Clock(), Log()
+    driver = FakeDriver(clock, log, lambda t: quiet(1, final=t >= 2))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, helpers=FakeHelpers(log, [[server(1)]]),
+                         factory=_raise(RuntimeError("the evaluator's factory has a defect")))
+    result = sup.run(TASK)
+    assert [e for e in result.cf_evidence if e["kind"] != "COUNTED_COST_LOWER_BOUND"] == []
+    assert any(e["at"] == "worker_meter" for e in result.errors)
+    assert result.settled["completeness"] == "unknown"  # the seen server never answered: never never_launched

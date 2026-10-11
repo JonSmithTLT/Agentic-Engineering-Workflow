@@ -21,9 +21,12 @@ an analysis, and quiescence is decided from the arm's control state, never from 
 **Who caused a failure** (plan v5 §2.5: a supervisor fault consumes no arm-controlled input). The evaluator's own
 paths (``arm-tap``'s helper itself, the spend feed and rule, the state checks) end a run as ``EVALUATOR_FAILURE``. An
 exception from the arm-facing driver calls (``observe``, ``deliver``, ``send_continuation``) ends it as
-``ARM_FACING_FAILURE``, attributed to the arm. Arm-written data never raises at all: a live file that is malformed,
-lower than the evaluator's REST high-water, lower than before, or gone is CF evidence; a worker server whose meter
-cannot be built or polled is a source that never answered.
+``ARM_FACING_FAILURE``, which is not attributed to either side here: S7 decides from the recorded facts. A request
+the driver did not classify is an instrument defect (``INSTRUMENT_DEFECT``), never the arm's. Arm-written data never
+raises at all: a live file that is malformed, lower than the evaluator's REST high-water, lower than before, or gone
+is CF evidence; a worker server whose meter cannot be built or polled is a source that never answered, recorded as a
+diagnostic (the cause may be the evaluator's). Nothing the evaluator's own components fail at (an unbuildable meter,
+an unproven kill) is ever CF evidence against the arm.
 
 **Per-worker meters** (§2.6.1, R3-M1). ``arm-tap`` reports each OpenCode server ``arm`` runs, with its password from
 the server's environment and its loopback port. The supervisor meters every worker server with its own meter and its
@@ -68,9 +71,10 @@ from aew_eval.schemas import Invalid
 
 TOKEN_KEYS = ("input", "output", "reasoning", "cache_read", "cache_write")
 # Ends attributed to the arm. ``arm_failure`` is that attribution only: Q7 §2.4.5's exception (a second quiescence
-# whose already-produced deliverable passes the full hidden acceptance) is decided by scoring, never here.
-ARM_FAILURES = frozenset({"SECOND_QUIESCENCE", "OPERATOR_ONLY_HALT", "REFUSAL", "GOVERNED_FAILURE",
-                          "ARM_FACING_FAILURE"})
+# whose already-produced deliverable passes the full hidden acceptance) is decided by scoring, never here. Neither an
+# arm-facing driver exception (``ARM_FACING_FAILURE``: the arm's server or a driver defect, which S7 tells apart from
+# the recorded facts) nor an instrument defect (``INSTRUMENT_DEFECT``) is attributed to the arm here.
+ARM_FAILURES = frozenset({"SECOND_QUIESCENCE", "OPERATOR_ONLY_HALT", "REFUSAL", "GOVERNED_FAILURE"})
 
 
 # ---------------------------------------------------------------------------------------------- what the driver gives
@@ -214,9 +218,8 @@ class WorkerMeters:
         try:
             meter: Meter | None = self.factory(server, state_dir / "meter-state.json", server.root_session)
         except Exception as exc:  # noqa: BLE001 (arm-influenced input: recorded, the source never answers)
-            meter = None
-            self.cf_evidence.append({"kind": "WORKER_METER_UNBUILDABLE", "worker": server.key,
-                                     "error": f"{type(exc).__name__}"})
+            meter = None  # a diagnostic, never CF evidence: the cause may be the evaluator's own factory
+            self.errors.append({"at": "worker_meter", "worker": server.key, "error": type(exc).__name__})
         self.workers[server.key] = _Worker(server, meter, self.clock())
 
     def _cross_check(self, event: TapLiveFile) -> None:
@@ -410,24 +413,31 @@ class RunSupervisor:
         if hashlib.sha256(task).hexdigest() != self.terms.task_input_sha256:
             raise Invalid("the task bytes are not the run manifest's (task_input_sha256): nothing is sent")
         result = Supervision(end="", arm_failure=False, wall_s=None, first_prompt_at=None)
+        self.result = result  # also reachable when an abort is re-raised
         end: str | None = None
+        started = self.clock()
+        aborted: BaseException | None = None
         try:
-            self.driver.prepare()
-        except Exception as exc:  # noqa: BLE001 (before any model runs: an environment failure, then the shutdown)
-            end = "PREPARE_FAILED"
-            result.errors.append({"at": "prepare", "error": f"{type(exc).__name__}: {exc}"[-600:]})
-        started = self.clock()  # before the prompt: a prompt call that blocks is already supervised and capped
-        if end is None:
-            result.first_prompt_at = started
             try:
-                self.driver.send_first_prompt(task)
-            except Exception as exc:  # noqa: BLE001 (it may have been admitted: the shutdown order runs)
-                end = "FIRST_PROMPT_FAILED"
-                result.errors.append({"at": "first_prompt", "error": f"{type(exc).__name__}: {exc}"[-600:]})
-        while end is None:
-            end = self._tick(result, started)
+                self.driver.prepare()
+            except Exception as exc:  # noqa: BLE001 (before any model runs: an environment failure, then shutdown)
+                end = "PREPARE_FAILED"
+                result.errors.append({"at": "prepare", "error": f"{type(exc).__name__}: {exc}"[-600:]})
+            started = self.clock()  # before the prompt: a prompt call that blocks is already supervised and capped
             if end is None:
-                self.sleep(self.spend_terms.poll_s)
+                result.first_prompt_at = started
+                try:
+                    self.driver.send_first_prompt(task)
+                except Exception as exc:  # noqa: BLE001 (it may have been admitted: the shutdown order runs)
+                    end = "FIRST_PROMPT_FAILED"
+                    result.errors.append({"at": "first_prompt", "error": f"{type(exc).__name__}: {exc}"[-600:]})
+            while end is None:
+                end = self._tick(result, started)
+                if end is None:
+                    self.sleep(self.spend_terms.poll_s)
+        except BaseException as exc:  # noqa: BLE001 (an abort, SIGINT say: shut down first, then re-raise it)
+            end, aborted = "EVALUATOR_ABORTED", exc
+            result.errors.append({"at": "run", "error": f"{type(exc).__name__}: {exc}"[-600:]})
         result.end = end
         result.arm_failure = end in ARM_FAILURES
         result.wall_s = round(self.clock() - started, 3)
@@ -436,6 +446,8 @@ class RunSupervisor:
         except Exception as exc:  # noqa: BLE001 (the record survives a defect in the shutdown itself)
             result.errors.append({"at": "shutdown", "error": f"{type(exc).__name__}: {exc}"[-600:]})
             self._unresolved(result, "shutdown_failed")
+        if aborted is not None:
+            raise aborted
         return result
 
     def _tick(self, result: Supervision, started: float) -> str | None:
@@ -468,7 +480,11 @@ class RunSupervisor:
     def _observe(self, result: Supervision) -> str | None:
         seen = self.driver.observe()
         for request in seen.requests:
-            response = self.responder.answer(request.request_class)
+            try:
+                response = self.responder.answer(request.request_class)
+            except Invalid as exc:  # the driver or its classifier failed: an instrument defect, never the arm's
+                result.errors.append({"at": "responder", "component": "classifier", "error": str(exc)[-600:]})
+                return "INSTRUMENT_DEFECT"
             result.responses.append({"request": request.id, "class": request.request_class, "halt": response.halt})
             if response.halt:
                 return "OPERATOR_ONLY_HALT"
@@ -546,10 +562,11 @@ class RunSupervisor:
         # 6. arm-kill, with its proof.
         proof = self._attempt(result, "kill", self.helpers.kill)
         if proof is None:
-            result.kill = {"ended": 0, "remaining": None}  # no proof: the run's processes may still be spending
-            result.cf_evidence.append({"kind": "ARM_KILL_UNPROVEN"})
+            # No proof: the run's processes may still be spending, so its cost cannot be complete. An infrastructure
+            # fact (the helper failed), never CF evidence against the arm.
+            result.kill = {"ended": 0, "remaining": None, "proven": False}
         else:
-            result.kill = {"ended": len(proof.ended), "remaining": list(proof.remaining)}
+            result.kill = {"ended": len(proof.ended), "remaining": list(proof.remaining), "proven": True}
             if proof.remaining:
                 result.cf_evidence.append({"kind": "ARM_PROCESSES_SURVIVED", "pids": list(proof.remaining)})
         self._step(result, "kill", remaining=None if proof is None else len(proof.remaining))

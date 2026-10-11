@@ -95,6 +95,31 @@ def _exclusive(path: Path) -> Iterator[None]:
         os.close(fd)
 
 
+def complete_lines(path: Path) -> bytes:
+    """A JSONL file's complete lines: bytes after the last newline are an append that never returned success."""
+    if not path.exists():
+        return b""
+    raw = path.read_bytes()
+    return raw[:raw.rfind(b"\n") + 1]
+
+
+def append_line(path: Path, data: bytes, what: str) -> None:
+    """Append one newline-terminated line to ``path`` and sync it, truncating first a torn tail an append that failed
+    left. The caller holds the file's lock. The attempt ledger and the release ledger (:mod:`aew_eval.release`) share
+    it, so both have the same durability."""
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | O_BINARY, 0o644)
+    try:
+        raw = path.read_bytes()
+        complete = raw.rfind(b"\n") + 1
+        if complete != len(raw):
+            os.ftruncate(fd, complete)
+        os.lseek(fd, complete, os.SEEK_SET)
+        _write_all(fd, data, what)
+        os.fsync(fd)  # durable before the caller takes any provider action
+    finally:
+        os.close(fd)
+
+
 def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
@@ -194,26 +219,21 @@ class AttemptLedger:
         """Append one line, under the lock: a torn tail left by an append that failed is truncated first."""
         validate(ATTEMPT, line, what="the attempt line")
         data = (json.dumps(line, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
-        fd = os.open(self.path, os.O_RDWR | os.O_CREAT | O_BINARY, 0o644)
-        try:
-            raw = self.path.read_bytes()
-            complete = raw.rfind(b"\n") + 1
-            if complete != len(raw):
-                os.ftruncate(fd, complete)
-            os.lseek(fd, complete, os.SEEK_SET)
-            _write_all(fd, data, f"{self.path.name}'s {line['event']} line for {line['run_id']}")
-            os.fsync(fd)  # durable before the caller takes any provider action
-        finally:
-            os.close(fd)
+        append_line(self.path, data, f"{self.path.name}'s {line['event']} line for {line['run_id']}")
 
     def register(self, *, run_id: str, cell: str, requested_profile: dict[str, Any],
-                 retry_of: str | None = None) -> dict[str, Any]:
-        """Register an attempt of one preregistered cell. Call before the first provider or model action."""
+                 retry_of: str | None = None, release: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Register an attempt of one preregistered cell. Call before the first provider or model action.
+
+        ``release`` is the evaluator/arm-host split's binding (ADR-0018 D3): the arm host, its snapshot, and the
+        hashes of the preflight it passed and of the bundle about to be released. A released cell is registered with
+        it before its bundle leaves the evaluator; the single-host runner registers without it."""
         with self._locked():
-            return self._register(run_id=run_id, cell=cell, requested_profile=requested_profile, retry_of=retry_of)
+            return self._register(run_id=run_id, cell=cell, requested_profile=requested_profile, retry_of=retry_of,
+                                  release=release)
 
     def _register(self, *, run_id: str, cell: str, requested_profile: dict[str, Any],
-                  retry_of: str | None) -> dict[str, Any]:
+                  retry_of: str | None, release: dict[str, Any] | None = None) -> dict[str, Any]:
         experiment = self.frozen["experiment"]
         if not RUN_ID.match(run_id) or not run_id.startswith(f"{experiment}/"):
             raise Invalid(f"run id {run_id!r} must be {experiment}/<name>")
@@ -235,6 +255,8 @@ class AttemptLedger:
                 "case": order[cell]["case"], "arm": order[cell]["arm"],
                 "assignment": {"cell": cell, "order_index": order[cell]["order_index"]},
                 "requested_profile": requested_profile, "retry_of": retry_of}
+        if release is not None:
+            line["release"] = release
         self._append(line)
         return line
 

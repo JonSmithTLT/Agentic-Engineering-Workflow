@@ -41,7 +41,13 @@ from aew.errors import HarnessError, HarnessIncompatible
 from aew.harness import agentenv
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
-from aew.harness.contract import CREDENTIAL_RE, PROVIDER_AUTH_FAILED, LaunchContract
+from aew.harness.contract import (
+    AGENT_LOAD_TIMEOUT,
+    CATALOG_TIMEOUT,
+    CREDENTIAL_RE,
+    PROVIDER_AUTH_FAILED,
+    LaunchContract,
+)
 from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
@@ -321,7 +327,10 @@ class OpenCodeAdapter(HarnessAdapter):
                 raise HarnessIncompatible(
                     f"model {ref['providerID']}/{ref['id']} is not offered by this OpenCode "
                     f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s); check the "
-                    "execution policy and the provider variables it names", model=ref)
+                    "execution policy and the provider variables it names", model=ref,
+                    # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
+                    # (M4-E E8a; PR #185 review, F1).
+                    launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
 
     def _await_projection(self, config: dict[str, Any]) -> dict[str, Any]:
@@ -356,7 +365,10 @@ class OpenCodeAdapter(HarnessAdapter):
             if now - t0 > CATALOG_WAIT_S or (first_seen is not None and now - first_seen > CATALOG_SETTLE_S):
                 raise HarnessIncompatible("OpenCode did not load AEW's agent: its configuration "
                                           "(OPENCODE_CONFIG_CONTENT) was not applied",
-                                          agents=sorted(str(a.get("id")) for a in agents))
+                                          agents=sorted(str(a.get("id")) for a in agents),
+                                          # A wait that ran out, like the catalog's: a slow server and one that ignored
+                                          # the configuration look the same here (M4-E E8a; PR #185 review, F3).
+                                          launch_cause=AGENT_LOAD_TIMEOUT)
             time.sleep(0.25)
 
     # ------------------------------------------------------------------ prompts

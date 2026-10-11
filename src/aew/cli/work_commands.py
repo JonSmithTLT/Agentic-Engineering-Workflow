@@ -35,6 +35,23 @@ def _submit(a: argparse.Namespace) -> Any:
                           lambda token: _engine(a).submit(invocation_token=token, kind=a.kind, text=text))
 
 
+def _dispose(a: argparse.Namespace) -> Any:
+    """``aew work dispose``: the typed ``resolve`` tool's disposition, through the same runner and result (M4-E E5b;
+    typed surface §5: one semantic implementation)."""
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext
+    from aew.surface.errors import AdapterInputError
+
+    arguments = {"expect_rev": a.expect_rev, "subject": a.subject, "choice": a.choice, "rationale": a.rationale,
+                 **({"follow_up": a.follow_up} if a.follow_up else {})}
+    try:
+        return run.run_tool(_engine(a), SurfaceContext.outside_session(), "resolve", arguments, token=_lead_token(a))
+    except AdapterInputError as exc:
+        err = UsageError(exc.message, **exc.details)
+        err.code = exc.code  # the adapter's own code: an input error, never an engine refusal
+        raise err from None
+
+
 def _add_launch(q: argparse.ArgumentParser) -> None:
     q.add_argument("--launch", action="store_true",
                    help="start a harness run for the new invocation (ADR-0009); its credential goes to the run's "
@@ -251,6 +268,16 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_reconcile(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
+
+    q = wsub.add_parser("dispose", help="dispose of a finding or claim policy marks requires_disposition, or of an "
+                                        "anomaly (Lead; the typed `resolve` tool's CLI form)")
+    q.add_argument("subject",
+                   help="a finding <evidence>#<finding>, a claim <evidence>#claim-<n>, or an anomaly ANM-<n>")
+    q.add_argument("--choice", required=True, choices=["accept_risk", "follow_up", "not_applicable"])
+    q.add_argument("--follow-up", dest="follow_up", help="with --choice follow_up: the Ticket that follows it up")
+    q.add_argument("--rationale", required=True, help="why (recorded with the disposition)")
+    _add_lead(q)
+    q.set_defaults(handler=_dispose)
 
     p = sub.add_parser("dispatch", help="the dispatch predicate (M4-A): what a dispatch would be decided now")
     dsub = p.add_subparsers(dest="dispatch_cmd", required=True)

@@ -89,6 +89,25 @@
         }
       }
     },
+    "requires_disposition": {
+      "description": "M4-E E5b (plan v3 §2.4; the designer, 2026-10-01): what the Lead must dispose of before an ingest advances a Ticket past it. `review_severities` marks a non-required review finding of a listed severity; `unrequired_verification_results` marks a verification claim whose result is listed and is not already a gate failure. Empty by default, so nothing changes until a project lists something; required findings are resolved, never disposed of.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "review_severities": {
+          "x-aew-class": "legality_affecting",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["blocker", "major", "minor", "observation"]}
+        },
+        "unrequired_verification_results": {
+          "x-aew-class": "legality_affecting",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["fail", "inconclusive", "blocked"]}
+        }
+      }
+    },
     "waivable_gates": {
       "x-aew-class": "legality_affecting",
       "type": "array",

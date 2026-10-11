@@ -382,3 +382,6 @@ considered:
   - path: docs/implementation/adr/0017-coordination-messages.md
     reason: ADR (accepted 2026-10-10); Lead-worker coordination messages under F9-A1 v0.1 (F9, F9-A); a record kind beside
       control state that moves knowledge, never state; no WC/KC text replaced
+  - path: docs/implementation/adr/0018-evaluator-arm-host-split.md
+    reason: ADR (accepted 2026-10-10); the evaluation instrument's evaluator/arm-host split for M4-H (F19), under the
+      held-out corpus isolation decision of 2026-10-06; evaluation tooling, never workflow authority; no WC/KC text replaced

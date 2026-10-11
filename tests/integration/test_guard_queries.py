@@ -153,7 +153,7 @@ def test_guard_query_matches_execute_ready_for_review(ready):
     implement(impl)
     projection.clear_cache()
     review = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]["actions"][0]
-    assert review["availability"] == AVAILABLE and not review["auto_runnable"]  # not built until E5b
+    assert review["availability"] == AVAILABLE and review["auto_runnable"]  # built (E5b) and policy-resolved
     equivalent(engine, "work.transition", wid, {"to": "REVIEW_PENDING"}, _transition(engine, p, wid, "REVIEW_PENDING"))
     control = p.ok("work", "show", wid)["control"]
     assert control["state"] == "REVIEW_PENDING" and control["evidence"]  # the effect ran after the query passed
@@ -195,6 +195,27 @@ def test_guard_query_matches_execute_review_ingest(implemented):
     answer = equivalent(engine, "review.ingest", wid, {"evidence": second}, _ingest(engine, p, wid, second))
     assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "not REVIEW_PENDING" in (
         answer["blocking_conditions"][0]["message"])
+
+
+def test_guard_query_matches_execute_disposition_required(implemented):
+    """M4-E E5b (plan v3 §2.4): `review.ingest`'s gate input `DISPOSITION_REQUIRED`, asked and executed alike: refused
+    while a finding policy marks is not disposed of, then accepted once the Lead disposed of it."""
+    from aewflow import review
+
+    p, wid, engine, _impl = implemented
+    gates = p.root / ".aew/policy/gates.yaml"
+    gates.write_text(gates.read_text(encoding="utf-8") + "requires_disposition:\n  review_severities: [minor]\n",
+                     encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    evidence = review(p, wid, findings=[{"id": "F1", "severity": "minor", "summary": "a nit", "required": False}])
+    answer = equivalent(engine, "review.ingest", wid, {"evidence": evidence}, _ingest(engine, p, wid, evidence))
+    assert answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
+    engine.work_dispose(token=p.token, expect_rev=p.rev(), subject=f"{evidence}#F1", choice="accept_risk",
+                        rationale="a nit")
+    assert equivalent(engine, "review.ingest", wid, {"evidence": evidence},
+                      _ingest(engine, p, wid, evidence))["availability"] == AVAILABLE
+    assert engine.store.read()["work"][wid]["state"] == "REVIEW_PASSED"
 
 
 def test_a_review_that_is_not_one_is_refused_alike(implemented):

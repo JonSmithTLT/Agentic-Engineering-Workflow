@@ -1,0 +1,14 @@
+case: pending_disposition
+slice: E5b
+description: >-
+  policy marks a minor finding requires_disposition and the Lead has not disposed of it: the review's acceptance is
+  BLOCKED (DISPOSITION_REQUIRED, plan v3 §2.4), and neither the stage nor its ingest advances past it
+seed: disposition_pending
+stage: ticket_request_verification
+arguments: {work_id: $work_id, review_evidence: $evidence}
+expect:
+  availability: BLOCKED
+  reason_codes: [DISPOSITION_REQUIRED, INPUT_NOT_PRODUCED]
+  boundary: refused
+  steps: []
+  unit_state: REVIEW_PENDING

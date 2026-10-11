@@ -174,6 +174,8 @@ proposal's own content; it governs the project only once the proposal is adopted
 
 - [0017](implementation/adr/0017-coordination-messages.md) coordination messages: first-class Lead-worker messaging (accepted 2026-10-10 with the F9-A plan v4; D8's transport is `steer`, decided by the MS0 probe; F9)
 
+- [0018](implementation/adr/0018-evaluator-arm-host-split.md) the evaluator/arm-host split: one task released to a corpus-free arm host (accepted 2026-10-10 with the F19 M4-H instrument plan v5; F19)
+
 **ADR-0017 D8's evidence** (the F9-A MS0 live-delivery probe of OpenCode 2.0.18, 2026-10-10; summaries only, sanitized): [what is there](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/README.md), [the results](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md), and the per-run tables for [Windows](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-windows.md) and [Rocky 8](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-rocky8.md).
 
 Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).

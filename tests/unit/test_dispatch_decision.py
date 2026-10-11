@@ -35,6 +35,7 @@ NOT_DISPATCHING = {
     # remaining step is a registered primitive whose own commit takes its dispatch decision (the M4-A choke point),
     # and the journal refuses a step whose commit lacks its allowed decision (BY_DECISION, step_primitive_mismatch).
     "stage abandon", "stage continue",
+    "work dispose",  # the `resolve` tool's disposition (M4-E E5b): one record, never a dispatch
     "lead takeover", "manifest adopt",
     "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
     "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
@@ -89,8 +90,10 @@ def test_entrypoints_are_declared_with_an_owner_for_every_guard(tmp_path):
 def test_the_dispatch_finalizer_runs_before_archival(tmp_path):
     engine = Engine(tmp_path, tmp_path / ".aew")
     steps = [f"{type(s.__self__).__name__}.{s.__func__.__name__}" for s in engine._k.finalizers.steps]
+    # M4-E E5b's anomaly record ends nothing and runs after the dispatch check, before the seal and archival.
     assert steps == ["StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize",
-                     "UsageCopy.finalize", "Coordination.finalize", "Archive.finalize"]
+                     "UsageCopy.finalize", "Dispositions.finalize", "Coordination.finalize", "Archive.finalize"]
+    assert steps.index("Dispatch.finalize") < steps.index("Archive.finalize")
 
 
 # ---------------------------------------------------------------- the decision

@@ -34,7 +34,8 @@ finishes; they are the only place AEW knowledge appears here:
   the implementer's invocation from its shell, so its check runs again;
 - ``decision_refused``: a decision still required after its answer was acted on is never re-asked: one
   ``explain``, its concrete ``cli_fallback`` if it has one (for ``RESOLVE_STAGE``, ``stage continue`` with the Lead's
-  own rationale), then stuck;
+  own rationale; when that is refused and the refusal names ``abandon``, ``stage abandon`` with the Lead's rationale),
+  then stuck;
 - ``stuck``: anything else: the Lead tells the operator it is stuck and waits; whatever the operator says next (for
   example after a workaround of their own), it goes on.
 
@@ -204,10 +205,20 @@ class Lead:
                               errors="replace", creationflags=NO_WINDOW,
                               **({} if stdin is not None else {"stdin": subprocess.DEVNULL}))
         error = None
-        try:
-            error = json.loads(proc.stderr)["error"] if proc.returncode else None
-        except (ValueError, KeyError, TypeError):
-            error = {"code": None, "message": proc.stderr.strip()[-400:]} if proc.returncode else None
+        if proc.returncode:
+            try:
+                error = json.loads(proc.stderr)["error"]
+            except (ValueError, KeyError, TypeError):
+                error = None
+            if not error:  # an `ok: false` answer carries its stop in the stdout JSON, with nothing on stderr
+                try:
+                    body = json.loads(proc.stdout)
+                    error = ((body.get("stopped") or {}).get("error") or body.get("error")) if isinstance(
+                        body, dict) else None
+                except ValueError:
+                    error = None
+            if not error:
+                error = {"code": None, "message": (proc.stderr.strip() or proc.stdout.strip())[-400:]}
         self.event("call", via="shell", tool="aew", arguments=argv, why=why, ok=proc.returncode == 0,
                    stopped={"error": error} if error else None)
         if error and error.get("code") == "STALE_REVISION":
@@ -349,9 +360,24 @@ class Lead:
             cli = [("continue" if x == "<continue|abandon>" else
                     "the stage's work is still wanted; continue it" if x == "<why>" else x) for x in cli]
         if step == 1 and cli and not any(x.startswith("<") or "{" in x for x in cli):
-            self.shell(cli, why=f"decision {d['decision']} still required: its cli_fallback")
+            out = self.shell(cli, why=f"decision {d['decision']} still required: its cli_fallback")
+            if not out["ok"]:
+                self.follow_refusal(cli, out.get("error") or {})
             return True
         return self.stuck(f"decision {d['decision']} is still required after it was answered and acted on")
+
+    def follow_refusal(self, argv: list[str], error: dict[str, Any]) -> None:
+        """A shell fallback was refused and the refusal names the step to take instead: the Lead takes it, counted.
+        Today's known case: continuing a stage whose subject moved (after a takeover) is refused with "Abandon it
+        (committed steps stand) and decide anew from the projection", so the Lead abandons the stage with its own
+        rationale and goes on from the projection (which then offers what the moved subject needs, e.g. RECONCILE)."""
+        message = str(error.get("message") or "")
+        if argv[:2] == ["stage", "continue"] and "abandon" in message.lower():
+            self.event("gap", gap="refusal_names_a_step", why=message[:300], code=error.get("code"))
+            rev = self.call("status", {"work_id": self.subject}).get("revision")
+            self.shell(["stage", "abandon", argv[2], "--rationale",
+                        "the refusal says the stage's subject moved: abandon it and decide anew from the projection",
+                        "--expect-rev", str(rev)], why="the refusal names abandon as the step to take")
 
     # ------------------------------------------------------------------ the counted fallbacks
 

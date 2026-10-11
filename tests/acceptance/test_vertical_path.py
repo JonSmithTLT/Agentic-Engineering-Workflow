@@ -358,7 +358,9 @@ def test_v1_a_compatible_move_rebuilds_and_publishes_without_ceremony(tmp_path, 
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=None, limits=("publish_needs_decision", "containment"))
-    problems = [p for p in problems if " = " not in p] + result_problems(op)
+    # This check is about the move: V1 holds the zeros and the fallbacks.
+    problems = [p for p in problems if " = " not in p and not p.startswith("the operator fell back")]
+    problems += result_problems(op)
     if not moved or not is_ancestor(op, moved["sha"], git("rev-parse", "main", cwd=op.root)):
         problems.append("the compatible change is not in what was published")
     labels = [d["label"] for d in op.ledger.decisions]

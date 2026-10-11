@@ -116,6 +116,12 @@ skipped:
     tests/integration/test_containment.py::test_the_role_can_still_write_its_own_roots: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_agent_cannot_write_its_live_usage: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/unit/test_usage_live_run.py::test_a_linked_or_fifo_live_file_is_no_sample: >-
+      needs POSIX symlinks and FIFOs; the run directory's guards (no link followed, a regular file only) are
+      the same code on every platform. Covered on Linux.
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

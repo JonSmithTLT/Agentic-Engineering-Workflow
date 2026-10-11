@@ -4,7 +4,7 @@
 
 **Authority:** none. This is an index, like `docs/design/invariant-index.md` (`AEW-INV-TRACE-001`). The governing texts are the design documents, contracts and ADRs it points to. When one of them changes, update this register in the same change. Never reinterpret a design from its entry here.
 
-**Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. When an entry waits for a decision or a design, give it an item in [`decisions-due.yaml`](decisions-due.yaml) (what is owed, by whom, by which gate or milestone, and what it blocks); the rendered [`decisions-due.md`](decisions-due.md) is the list of what is due. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30). Append a closed row anywhere in §9: `render` sorts §9 into id order, so two changes that close different entries land in different places and merge without conflict.
+**Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. When an entry waits for a decision or a design, give it an item in [`decisions-due.yaml`](decisions-due.yaml) (what is owed, by whom, by which gate or milestone, and what it blocks); the rendered [`decisions-due.md`](decisions-due.md) is the list of what is due. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30). Append a closed row anywhere in §9: `render` sorts §9 into id order, so two changes that close different entries land in different places and merge without conflict. **Add a note, never edit a Notes cell:** what a change has to say about an existing row (a slice built, a decision, a review's outcome, a pointer to new evidence) goes in a file of its own, `notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`, which `python tools/register.py note <id>` creates for you to write; branches whose slugs differ never write the same file, so notes never conflict; every row with an id ends with a pointer to its directory, and `python tools/register.py show <id>` prints the row with its notes oldest first ([`notes.d/README.md`](notes.d/README.md)). Edit a row's cells only when what they state changes (its work, its source, its target, its closing), and never append to them. The notes already in the cells stay there.
 
 **At each milestone start** (operator, 2026-10-01): the milestone's ambiguity report goes through this register. It covers every entry whose *When* names that milestone or a gate before it, and any other open entry that fits the milestone's scope. It marks each one as **in scope**, **deferred** (with the reason) or **closed** (naming what closed it). Items with no fixed milestone may be pulled in where they fit. The operator and designer approve that scope at plan review, with the rest of the plan.
 
@@ -66,6 +66,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Isolation is a property, not a worktree. M4-B built the Linux sandbox per role (F2); still here for M4-C: the workspace strategy abstraction, concurrency and the benchmarks. Benchmarks gate the choice of a project default. Mutable-serial locks are bound to an invocation (`AEW-INV-ISO-004`). Sparse or overlay workspaces wait until a repository needs them (ARV-01, operator 2026-10-05).
 
+*Later notes: `notes.d/F3/`, oldest first (`python tools/register.py show F3`).*
+
 ### F4
 
 **Work:** Ticket supersession lineage, and a first-class goal-revision path
@@ -74,7 +76,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **Hierarchy revision.** Before Leads routinely replace Tickets
 
-**Notes:** Needed Workflow Contract and Knowledge Contract amendments, adopted 2026-10-06 (below). Observed in the M3 dogfood (T1: a recreated Ticket with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`; review, and the designer's decisions D1 to D7, in `ticket-revision-amendment-review-2026-09-30.md`). A material change becomes a new immutable revision of the same Ticket, not a replacement. Evidence binds to digests of the fields it depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse findings carry forward until resolved. A replacement stays for a change of kind, a move to another parent, or a goal that no longer overlaps. Evidence: twice a scope mistake cost a Ticket and its correct implementation (M3-D9; `m3-dogfood-report.md` §6.6). **The contract amendment is adopted (operator, 2026-10-06, [E19-B v0.4](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):** it extends WC §7, §8 and invariant 7 and KC §12, and F4 is implementation-ready. Building it is of the size of M4-D and needs its own plan: the field-group registry and digests; revision records and the `aew migrate` step to r1; the evidence binding and computed admissibility (evidence today binds the snapshot and plan revision only, and the snapshot excludes `.aew/`, so nothing binds Ticket inputs yet); the quiesce, commit and abort lifecycle with `revision_pending`; independent confirmation and the operator's checkpoint; the amendment's own impact hold and parent coverage. StageIntent binding (the amendment's §7.4) waits for F15.2. **Lead developer's build note (the amendment's §2.3):** the engine cannot prove a free-text title carries no acceptance meaning, so the schema declares the title presentation-only and the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment's fail-closed rule applies: the title is treated as acceptance-bearing from that revision on, for as long as the content remains in it (so a change to it, its later removal included, is material and bound like acceptance), and the misuse is `UNBOUND_FIELD_ESCAPE`. The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it. **Designer ruling on parent changes (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md) §15; ledger AEA-41 to AEA-43):** an ordinary revision may not move a committed Ticket from one parent to another, even before work starts; arbitrary re-parenting needs a replacement Ticket with explicit lineage; an uncommitted or draft Ticket may correct its parent before its identity becomes governing. KC §9.4 promotion is a distinct hierarchy-expansion operation: allowed after work starts, it preserves the original Ticket identity, evidence and history, the effective risk or class floor and the inherited non-waivable gates and guardrails. Until the implementation text is updated, ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19's re-freeze. **Plan:** [the F4 plan v8](f4-ticket-revisions-plan.md) (review CLEAR), slices S1 to S12, recorded in [ADR-0016](adr/0016-ticket-revisions.md). **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50). No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals). **F9-A couplings ([ADR-0017](adr/0017-coordination-messages.md), MS2 built 2026-10-10):** S2a's format raise sits in `Session.commit` beside F9's seal check (disjoint data; S2a's one full `AEW_RL8` run rule applied to MS2 too), each slice adds its own top-level control-state key with its own downgrade test, and whichever of S2a and the slice creating the shared diff helper is second adds F9's named exclusion (the unit's `coordination`, `coordination_unseen`, the seal records). A step that ends invocations in a Lead transaction (S4b's generation change, a cancellation aborting an attempt) is a finalizer placed before the seal finalizer; on takeover and handoff acceptance, which run no finalizer, S4b's step runs before `seal_ending`
+**Notes:** Needed Workflow Contract and Knowledge Contract amendments, adopted 2026-10-06 (below). Observed in the M3 dogfood (T1: a recreated Ticket with no lineage). **Adopted in design, 2026-09-30: Ticket revisions** (`docs/design/ticket-revision-amendment-2026-09-30.md`; review, and the designer's decisions D1 to D7, in `ticket-revision-amendment-review-2026-09-30.md`). A material change becomes a new immutable revision of the same Ticket, not a replacement. Evidence binds to digests of the fields it depends on, and admissibility across a revision is computed. The workspace may carry forward as input only, and adverse findings carry forward until resolved. A replacement stays for a change of kind, a move to another parent, or a goal that no longer overlaps. Evidence: twice a scope mistake cost a Ticket and its correct implementation (M3-D9; `m3-dogfood-report.md` §6.6). **The contract amendment is adopted (operator, 2026-10-06, [E19-B v0.4](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):** it extends WC §7, §8 and invariant 7 and KC §12, and F4 is implementation-ready. Building it is of the size of M4-D and needs its own plan: the field-group registry and digests; revision records and the `aew migrate` step to r1; the evidence binding and computed admissibility (evidence today binds the snapshot and plan revision only, and the snapshot excludes `.aew/`, so nothing binds Ticket inputs yet); the quiesce, commit and abort lifecycle with `revision_pending`; independent confirmation and the operator's checkpoint; the amendment's own impact hold and parent coverage. StageIntent binding (the amendment's §7.4) waits for F15.2. **Lead developer's build note (the amendment's §2.3):** the engine cannot prove a free-text title carries no acceptance meaning, so the schema declares the title presentation-only and the engine never reads acceptance from it; if acceptance content is placed in a title anyway, the amendment's fail-closed rule applies: the title is treated as acceptance-bearing from that revision on, for as long as the content remains in it (so a change to it, its later removal included, is material and bound like acceptance), and the misuse is `UNBOUND_FIELD_ESCAPE`. The engine cannot detect such content mechanically, so it is review or independent confirmation that finds it. **Designer ruling on parent changes (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md) §15; ledger AEA-41 to AEA-43):** an ordinary revision may not move a committed Ticket from one parent to another, even before work starts; arbitrary re-parenting needs a replacement Ticket with explicit lineage; an uncommitted or draft Ticket may correct its parent before its identity becomes governing. KC §9.4 promotion is a distinct hierarchy-expansion operation: allowed after work starts, it preserves the original Ticket identity, evidence and history, the effective risk or class floor and the inherited non-waivable gates and guardrails. Until the implementation text is updated, ambiguous re-parenting fails closed. The F4 plan builds it; the editorial line is E19's re-freeze. **Plan:** [the F4 plan v8](f4-ticket-revisions-plan.md) (review CLEAR), slices S1 to S12, recorded in [ADR-0016](adr/0016-ticket-revisions.md). **Built so far (S1, 2026-10-09):** the field-group registry (`schemas/ticket-field-registry.v1.json`), canonicalization and live digests (`engine/ticket_fields.py`; ADR-0016 §1), not yet called by the engine, so nothing changes. Every slice that adds a work-unit key classifies it in the registry (test_every_ticket_field_is_classified, invariant 50). No interim refusal stands yet. Next: S2a (enablement, the format raise, the interim hierarchy refusals). **F9-A couplings ([ADR-0017](adr/0017-coordination-messages.md), MS2 built 2026-10-10):** S2a's format raise sits in `Session.commit` beside F9's seal check (disjoint data; S2a's one full `AEW_RL8` run rule applied to MS2 too), each slice adds its own top-level control-state key with its own downgrade test, and whichever of S2a and the slice creating the shared diff helper is second adds F9's named exclusion (the unit's `coordination`, `coordination_unseen`, the seal records). A step that ends invocations in a Lead transaction (S4b's generation change, a cancellation aborting an attempt) is a finalizer placed before the seal finalizer; on takeover and handoff acceptance, which run no finalizer, S4b's step runs before `seal_ending`. **M4-E plan v3 amendment 1 (2026-10-10; [the amendment](m4-e-plan-v3-amendment-1.md) §4):** the F4 plan's E7 and E8 references map to the split slices (the F4 plan is not edited, per its header): the S11 notifier event (the F4 plan's lines 147, 1814, 1973 and 1993) is M4-E E7a's; the SAE-07 exclusion and R6's assertion (1342, 1995) are M4-E E7b's; the confirmation records (1993) M4-E E7c's; the confirmer's relaunch (1996) M4-E E8b's; and the broker's operator lists (1997) M4-E E6b's, E7c's and E8b's
+
+*Later notes: `notes.d/F4/`, oldest first (`python tools/register.py show F4`).*
 
 ### F5
 
@@ -86,6 +90,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** "Parents preserve purpose. Tickets preserve proof." Open questions in §21. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §6.1; ledger CFI-29):** once F5 governs change classes, `EDITORIAL` may preserve a section binding only where the consumed digest is unchanged and F5 policy permits (F41.4)
 
+*Later notes: `notes.d/F5/`, oldest first (`python tools/register.py show F5`).*
+
 ### F6
 
 **Work:** Fail-closed classification applied to existing classifiers: the downgrade rule for `verify classify`, and risk-class choice
@@ -95,6 +101,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Designer** (Q4), with a Workflow Contract amendment
 
 **Notes:** Changes M1 semantics. The M3 dogfood records how model Leads classify.
+
+*Later notes: `notes.d/F6/`, oldest first (`python tools/register.py show F6`).*
 
 ### F7
 
@@ -106,6 +114,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Workers already have no dispatch capability (M3). Includes the standing deep-review orchestration regression and its skill-instructed variant.
 
+*Later notes: `notes.d/F7/`, oldest first (`python tools/register.py show F7`).*
+
 ### F8
 
 **Work:** Lead and operator interaction: reconnaissance, elicitation, project maps and freshness, durable stakeholder decisions, checkpoints
@@ -116,6 +126,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Open questions in §23. ARV-04 (operator, 2026-10-05): the operator inbox this design describes is, with F15's typed surface, the mechanism named to keep the operator and designer's serial path short.
 
+*Later notes: `notes.d/F8/`, oldest first (`python tools/register.py show F8`).*
+
 ### F9
 
 **Work:** Live coordination and assumption propagation
@@ -124,7 +136,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **Unscheduled.** F9-A1 adopted (operator and designer, 2026-10-09; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA): build F9-A first, behind a switch; F9-B may proceed after F9-A technical qualification; F9-C is evidence-gated; F9-D remains empirical tuning. Sequencing (lead developer, record §1): the F9-A plan now, through independent review; its build after M4-E's E4 merges, with its catalog rows switch-registered. Until the adoption the target was **On measured need** (ARV-01, operator 2026-10-05: not before M4-D and a multi-agent dogfood show the need), with F9 v0.1's staging (its §24), which F9-A1 §25 refines
 
-**Notes:** M3 kept the extension points (runs, `send`, continuations). **F9-A1 adopted and governing (operator and designer, 2026-10-09; [amendment v0.1](../design/f9-a1-lead-worker-messaging-and-adaptive-supervision-amendment-v0.1.md), ledger LWM; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA):** first-class durable Lead-worker messaging (identity, reply chains, idempotency, harness delivery as transport only, Ticket, revision and invocation bindings) and adaptive Lead supervision (an advisory supervision-candidate projection, spot checks that never satisfy a gate, design target C), staged F9-A to F9-D; it asks for a qualified supervision path before heterogeneous lower-tier worker fanout becomes a normal production mode (§22). F9 v0.1's invariants are unchanged (§26). **Staging (the decision, Q1):** F9-A first, built behind a switch with disabled-state identity tests; F9-B may proceed after F9-A technical qualification; F9-C is evidence-gated; F9-D remains empirical tuning. **M4-H (Q2):** F9 messaging stays off in frozen M4-H and the treatment is not amended; messaging is evaluated separately in F19 using the F9 A/B/C/D supervision arms. **Implementation choices (the ask's §4, accepted; LWA-12 to LWA-19):** live delivery through OpenCode 2.0.18's `POST /api/session/{sessionID}/prompt` on the worker's own session, at the next turn boundary and never a forced interrupt; the transport is provisional on the planned OpenCode live-delivery probe. Ending a worker stays on `invoke cancel` and relaunch. The worker replies through a new `aew-run` bridge operation (no new worker credential surface); the Lead sends with the typed `message.send`, non-dispatching, authority-free and bound to the current Lead generation. Messages are append-only, bounded coordination records beside control state, with references rather than payloads. The Lead learns of replies through the attention and resume projections (and the broker's notifier once M4-E's E7 lands); no polling means no model-driven polling, and event and wait mechanics stay implementation-local. Worker replies are untrusted model-authored data. Dashboard read projections come after F9-A through a contract bump; the UI is the web developer's. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker findings (WCR-12, WCR-30); a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)):** F9-A1 was ingested (PR #145), which meets the record's §11 ingestion item (AEA-35), and is now adopted. With the adoption, the recitation (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B's, F9-C's supervision candidates ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D's harness; no peer-worker inspection outside existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09) and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits for M4-E's E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies, bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing is written. **MS2 built (2026-10-10):** every commit that ends a messaged invocation seals its thread (a finalizer before archival, explicit calls on acquire, handoff acceptance and takeover, a fail-closed check in `Session.commit` that seals a missed ending by fallback and records `coordination.seal_fallback`); archival pins the seal and the seal its thread; worker replies no Lead saw are held in the capped `coordination_unseen`; the adoption that enables messaging registers the project (`coordination_store`), which an older engine refuses and recording now needs; evidence records the Lead messages its invocation had (`coordination_inputs`); `work show`, `history show` and the operator's `aew message thread|list|unseen` read threads, only while messaging is on or a thread exists; oracle rules 52 to 58. The shared diff helper's exclusion waits for the slice that creates the helper (E5a, E7 or F4 S2a). **MS0 done (2026-10-10):** the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):** two delivery timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation arm (F19's arm B, F9-D) only after U1 S11 and F9-A's MS5b have merged. **F9-B note (G3, amendment 2, decided):** F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message withdraw` is F9-B's. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging: enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8's P cell for worker replies (MCD-06; F38); D5, on a Codex adapter, steer's cancel-and-restart of an in-flight model call satisfies `--when next-step`, and held-session staging without message identity is refused (MCD-11, MCD-12; F24). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D5, F9 owns the Lead's wake for worker replies, as a coordination lane in the existing `aew harness wait --any`, with no second notifier: M4-E E7's notifier stays the operator's (MIC-09, MIC-10). It resolves the wording of LWA-17 and the F9-A1 adoption ("the broker's notifier", now `superseded-by:` MIC-09); until the lane lands in a later F9 slice, the Lead learns of replies through the attention and resume projections. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §8.1, §11; ledger CFI-41, CFI-48 to CFI-51):** interface and publish-overlap wakes are outbox events delivered through the D5/F9 coordination lane in `wait --any` whether or not messaging is on, so M4-H may keep messaging off without losing them; the wake is a nudge and never authority, keyed `(dependent, subject)` and coalesced to the latest committed fact; interface holds resolve through F9's `RECONTEXTUALIZE` or `TICKET_REPLAN` (F41.6); acceptance checks 14 and 15 (CFI-84, CFI-85). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-105):** field-log #16, the CI external check, is an external-check / `wait --any` integration candidate (F41.14)
+**Notes:** M3 kept the extension points (runs, `send`, continuations). **F9-A1 adopted and governing (operator and designer, 2026-10-09; [amendment v0.1](../design/f9-a1-lead-worker-messaging-and-adaptive-supervision-amendment-v0.1.md), ledger LWM; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA):** first-class durable Lead-worker messaging (identity, reply chains, idempotency, harness delivery as transport only, Ticket, revision and invocation bindings) and adaptive Lead supervision (an advisory supervision-candidate projection, spot checks that never satisfy a gate, design target C), staged F9-A to F9-D; it asks for a qualified supervision path before heterogeneous lower-tier worker fanout becomes a normal production mode (§22). F9 v0.1's invariants are unchanged (§26). **Staging (the decision, Q1):** F9-A first, built behind a switch with disabled-state identity tests; F9-B may proceed after F9-A technical qualification; F9-C is evidence-gated; F9-D remains empirical tuning. **M4-H (Q2):** F9 messaging stays off in frozen M4-H and the treatment is not amended; messaging is evaluated separately in F19 using the F9 A/B/C/D supervision arms. **Implementation choices (the ask's §4, accepted; LWA-12 to LWA-19):** live delivery through OpenCode 2.0.18's `POST /api/session/{sessionID}/prompt` on the worker's own session, at the next turn boundary and never a forced interrupt; the transport is provisional on the planned OpenCode live-delivery probe. Ending a worker stays on `invoke cancel` and relaunch. The worker replies through a new `aew-run` bridge operation (no new worker credential surface); the Lead sends with the typed `message.send`, non-dispatching, authority-free and bound to the current Lead generation. Messages are append-only, bounded coordination records beside control state, with references rather than payloads. The Lead learns of replies through the attention and resume projections; no polling means no model-driven polling, and event and wait mechanics stay implementation-local. (LWA-17 and the F9-A1 decision §6 also name "the broker's notifier once M4-E's E7 lands": no M4-E slice builds a notifier to the Lead. M4-E's notifier, built in M4-E E7a, is the operator endpoint's and delivers to the operator ([plan v3 amendment 1](m4-e-plan-v3-amendment-1.md) §6); the designer's D5 below settles the clause (MIC-09).) Worker replies are untrusted model-authored data. Dashboard read projections come after F9-A through a contract bump; the UI is the web developer's. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker findings (WCR-12, WCR-30); a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)):** F9-A1 was ingested (PR #145), which meets the record's §11 ingestion item (AEA-35), and is now adopted. With the adoption, the recitation (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B's, F9-C's supervision candidates ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D's harness; no peer-worker inspection outside existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09) and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits for M4-E's E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies, bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing is written. **MS2 built (2026-10-10):** every commit that ends a messaged invocation seals its thread (a finalizer before archival, explicit calls on acquire, handoff acceptance and takeover, a fail-closed check in `Session.commit` that seals a missed ending by fallback and records `coordination.seal_fallback`); archival pins the seal and the seal its thread; worker replies no Lead saw are held in the capped `coordination_unseen`; the adoption that enables messaging registers the project (`coordination_store`), which an older engine refuses and recording now needs; evidence records the Lead messages its invocation had (`coordination_inputs`); `work show`, `history show` and the operator's `aew message thread|list|unseen` read threads, only while messaging is on or a thread exists; oracle rules 52 to 58. The shared diff helper's exclusion waits for the slice that creates the helper (E5a, M4-E E7b or F4 S2a). **MS0 done (2026-10-10):** the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):** two delivery timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation arm (F19's arm B, F9-D) only after U1 S11 and F9-A's MS5b have merged. **F9-B note (G3, amendment 2, decided):** F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message withdraw` is F9-B's. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging: enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8's P cell for worker replies (MCD-06; F38); D5, on a Codex adapter, steer's cancel-and-restart of an in-flight model call satisfies `--when next-step`, and held-session staging without message identity is refused (MCD-11, MCD-12; F24). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D5, F9 owns the Lead's wake for worker replies, as a coordination lane in the existing `aew harness wait --any`, with no second notifier: M4-E E7's notifier stays the operator's (MIC-09, MIC-10). It resolves the wording of LWA-17 and the F9-A1 adoption ("the broker's notifier", now `superseded-by:` MIC-09); until the lane lands in a later F9 slice, the Lead learns of replies through the attention and resume projections. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §8.1, §11; ledger CFI-41, CFI-48 to CFI-51):** interface and publish-overlap wakes are outbox events delivered through the D5/F9 coordination lane in `wait --any` whether or not messaging is on, so M4-H may keep messaging off without losing them; the wake is a nudge and never authority, keyed `(dependent, subject)` and coalesced to the latest committed fact; interface holds resolve through F9's `RECONTEXTUALIZE` or `TICKET_REPLAN` (F41.6); acceptance checks 14 and 15 (CFI-84, CFI-85). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-105):** field-log #16, the CI external check, is an external-check / `wait --any` integration candidate (F41.14)
+
+*Later notes: `notes.d/F9/`, oldest first (`python tools/register.py show F9`).*
 
 ### F10
 
@@ -136,6 +150,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Interacts with F3. Research (not governing): [`m4-integration-queue-research-2026-10-01.md`](../research/m4-integration-queue-research-2026-10-01.md), which compares serial, speculative and batched queues and recommends a serial integration tail over parallel implementation first. **Designer's disposition (2026-10-01, research §7):** parallel Ticket execution with a single serial integration lease; runnable COMMIT_READY entries FIFO by default, dependency legality owned by the work graph, the Lead may reorder or defer; no batching or shared post-integration evidence in M4; a merge conflict releases the lease and returns to the Lead, never resolved automatically or sent straight to an Implementer; no head-of-line blocking; every integration attempt recomputes the dispatch predicate and binds to the current head. D4's path is in M4. **Follow-ups (research §7.1):** the lease is owned by the queue entry (not the replaceable candidate or attempt) with a live invocation as custodian, a dead custodian is reconciled before release, and no timeout alone releases it; one automatic rebuild on a moved head while holding the lease, after proving no publication; DEFERRED and AWAITING_DISPOSITION are queue states that never grant eligibility; a conflict resolution is a new implementation attempt whose gates rerun; a plain head move does not by itself invalidate unchanged Ticket-scope evidence, which stays subject to the normal admissibility and binding rules; batching is out of scope for M4, not forbidden. **M4-D3 built (2026-10-05):** the queue entries, the lease and its `integration_attempt` custodian, FIFO among runnable entries, the dead-custodian reconcile, retirement with the unit, the ISO-004 checkout-sync lock and oracle rules 34 to 38 ([ADR-0004 amendment 2026-10-05](adr/0004-controlled-integration.md); ADR-0003 amendment of the same date for the custody invocation). **M4-D4 built (2026-10-05):** the one automatic rebuild under the same lease, custodian and place; a second move, changed legality, a conflicting or refused rebuild and an inconclusive validation release the lease to AWAITING_DISPOSITION; the Lead's `aew integrate defer`, `requeue` and `reorder`; oracle rule 39 (ADR-0004 second amendment of 2026-10-05). Still open in M4-D: the `checks` validation path (D5, register D4).
 
+*Later notes: `notes.d/F10/`, oldest first (`python tools/register.py show F10`).*
+
 ### F11
 
 **Work:** Dynamic scheduler
@@ -145,6 +161,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M5**
 
 **Notes:** **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** with F15, the primary owner of removing workflow choreography and mechanically advancing legal work (WCR-11, WCR-29); a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09):** the delta-first Lead query (F15.9) is targeted here with F9; scheduler recommendations join it only once F11 exists; a cross-reference, not new scope.
+
+*Later notes: `notes.d/F11/`, oldest first (`python tools/register.py show F11`).*
 
 ### F12
 
@@ -156,6 +174,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Extended by F13. Provider selection, packaging and evaluation research (not governing): [`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md); its fit with AEW's custody and evidence rules is Q11, and Q12 settled hosting (2026-10-06). **M6a authorization model ([v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md) and its [v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md) Gate A encoding overlay; designer candidates, not yet governing; concept frozen at v0.9; ledger CEA, GAE):** a provider projection carries the attribution metadata, typed argument grammar, effect mapping, credential scope and projection hash the model needs (CEA-09, CEA-12, CEA-45, CEA-53), and the resolver's output becomes the AEW-owned resolved plan whose hash the enforcement owner checks, re-planned when a fallback or provider-health change alters it (CEA-48, CEA-49); Gate A over this catalog is F38, Gate B F39.
 
+*Later notes: `notes.d/F12/`, oldest first (`python tools/register.py show F12`).*
+
 ### F13
 
 **Work:** Capability discovery and progressive disclosure: an Effective Capability Manifest per invocation that keeps available, authorized and active apart; lazy expansion from L0 awareness to L3 exact schema; adapters advertising harness-native capabilities (sandbox, compaction, native review or orchestration, resume); skills that name abstract capability classes; manifests and schemas recorded by reference and hash; a context-economy acceptance test (a large, unrelated MCP server must not inflate baseline context)
@@ -165,6 +185,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M6**, with or after F12. Sequence in §18: the registry and contract, then the manifest, then lazy expansion, then harness-native capabilities, then a Codex adapter on the same contract, then evaluation.
 
 **Notes:** Does not expand M3. Today M3 gives runs no skills (reported unavailable) and denies OpenCode's `subagent` outright. The design would allow bounded harness-native orchestration under a capability grant, with no AEW identity, credential or authority for the helpers (§8). M3's custody bridge is the boundary that makes that safe. Candidate failure classes and invariants: Q8. Provider research: [`aew-phase6-airgap-capability-research-2026-10-01.md`](../research/aew-phase6-airgap-capability-research-2026-10-01.md) (Q11). Comprehensive native-feature integration stays here, not in F18. Harness-native research v0.3 (ledger HNI): capability state is keyed by adapter, pinned version and schema/probe identity, and what a harness advertises is kept apart from what reaches the model. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** the capability registry (F12, F13) is the primary owner of resolving intent to the cheapest adequate authorized capability without the model understanding the plumbing (WCR-14, WCR-32); a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, AEA-29):** the `aew-run` read half (F15.8) lands ahead of the M6a registry on the existing bridge; when the registry is built, its operations become registry entries, never a second registry (record §13), and provider choice stays below the operation, here. **M6a authorization model ([v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md) and its [v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md) Gate A encoding overlay; designer candidates, not yet governing; concept frozen at v0.9; ledger CEA, GAE):** semantic labels and operations stay planning and presentation only, authority coming from the resolved projection's effects (CEA-07); grants are canonical families over effect tuples with C, P, N or X role cells, P only through operator-pinned named profiles the Lead may select or narrow but never author (CEA-34, CEA-35, GAE-19, GAE-20); this row's separation of available, authorized and active is where those families meet discovery. Gate A is F38.
+
+*Later notes: `notes.d/F13/`, oldest first (`python tools/register.py show F13`).*
 
 ### F14
 
@@ -176,6 +198,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Motivated by the M3 dogfood's T4 failure (O3). Already in the code to build on: `guardrails.yaml` `protected_paths`; review and verification of planner proposals by policy alone (`non_mutating_paths`); fail-closed ancestor plan bindings (ADR-0007); source-bound freshness of plan proposals (ADR-0008); `min_descendant_class` floors. What is new: the acceptance-first role, baselines, the challenge, the assurance predicate and evaluator protection. Relates to F5 (hierarchy revision: accepted baselines, admissibility), F6 (fail-closed classification), F8 (reconnaissance and stakeholder decisions). Architecture review 2026-10-04 (accepted 2026-10-05, Q13): I5, pin repository-local acceptance inputs by digest at plan acceptance and re-verify, as the deterministic half now. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md); ledger CFI):** F14 co-owns the mandatory reviewed Story/Epic plan, Class 0 included, through a WC/F14 amendment that must exist before activation (F41.1, built by F41.2), whose parent-plan guard is an input to the single `DispatchDecision`; it owns the underspecification signals (F41.12) and `design_decision_required` as an attention reason (CFI-24)
 
+*Later notes: `notes.d/F14/`, oldest first (`python tools/register.py show F14`).*
+
 ### F15
 
 **Work:** Lead workflow efficiency: stage commands named for the Lead's judgment (`draft`, `start`, `request-review`, `request-verification`, `prepare`), each a guarded sequence of existing operations with its own durable records, returning completed steps, revision, runs and a typed next action; publish stays a separate decision; exit-code instrumentation of the command log; a paired replay against the M3 dogfood baseline
@@ -186,6 +210,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Stage commands become the normal Lead interface; the primitives stay the conformance and recovery surface. Before the stage phase, the audit's X1 and X2 (next commands in refusals and next actions) and T3 (exit codes in the dogfood log) land as its prerequisites. Ceiling: the Lead is about 40% of cost, so halving it saves about 20% overall. **Decided (designer, 2026-10-01):** F15 depends only on a generic policy-level `requires_disposition` property for findings and observations; it does not adopt F17's proposed consequential-observation obligation. Current policy determines which existing findings require disposition; if F17 is adopted, its policy may mark more observations without changing the stage machinery. **Also decided (designer, 2026-10-01), on the implementer's review of v0.4:** an advance `PUBLISH_IF_CLEAN` authorization survives the one automatic rebuild caused only by the authoritative head moving. Without advance authorization, integration runs in an explicit `VALIDATE_ONLY` mode: it finishes validation, releases the lease and waits for the Lead's publication decision. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): a typed action surface with MCP, CLI and dashboard as transports (D-AR2). **The design is [typed Lead surface v0.2](../design/typed-lead-surface-design-v0.2.md)** (governing since 2026-10-05; ledger TLS): a catalog of typed actions below transport, one runner, `StageResult` and a tri-state `ActionProjection`, MCP (`aew-lead`, broker-side, no credential in the MCP process) as the first normal transport and the CLI as parity and recovery, with nine frozen decisions. The lead developer's review ([developer review](../archive/reviews/architecture-review-2026-10-04/developer-review.md)) asked for the CLI relay with JSON in and `ActionProjection` out as the first transport and MCP once spiked. **Resolved (designer, 2026-10-05, Q13):** MCP first, as the frozen design says, because v0.2's broker-side custody answers the review's second-credential-holder concern; the review's recommendation is historical input. The work is F15.1 to F15.3 below. ARV-04 (operator, 2026-10-05): the typed surface is one of the two mechanisms named to keep the operator and designer's serial path short; the other is F8's operator inbox. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F15 and the M5 scheduler (F11) are the primary owners of removing workflow ceremony (WCR-11, WCR-29); a cross-reference, not new scope.
 
+*Later notes: `notes.d/F15/`, oldest first (`python tools/register.py show F15`).*
+
 ### F15.2
 
 **Work:** Governed mutating stages: the `StageIntent` journal (hot while active, cold when terminal), the policy/dependency digest and `STALE_POLICY`, effective-class promotion, queryable transition and ingest guards, policy-resolved review and verification card sets, `ticket_draft`/`ticket_start`/`ticket_request_review`/`ticket_request_verification`/`ticket_prepare` as governed stages, the typed `integration_publish` decision tool, stage/primitive equivalence tests and a live OpenCode 2.0.18 MCP spawn check
@@ -194,7 +220,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **M4-E**, after the before-M4-E gate (§1) and M4-D's lease
 
-**Notes:** Hard gates and reported metrics in the design's §10, measured by the preregistered M4-H dogfood (F19) against the M3 baseline. **Gated by the pre-F15.2 amendment set (approved 2026-10-05):** F15.4 (digest separation) and F15.5's operator capability before it ships; F15.6 before automatic relaunch is enabled. **Built so far (M4-E E3a, 2026-10-09)** the StageIntent journal in the engine (`engine/stage_intents.py`, schema `aew/stage-intent/v1`, invariants 47-49 and 51), covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift, the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`, immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after every pinned route. **E3b (2026-10-09)** adds the surface's executor (`surface/stage.py`), running §3.4 rules 1 to 7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. **E3c (2026-10-10)** adds `resume`'s list of unfinished intents (`safe_to_continue`, each recheck, the next step and boundary, the owning generation), the typed `resolve` tool (continue or abandon, with a rationale) and `aew stage continue|abandon`, and invariant 51. A continue rechecks the legality digest, the stage contract and plan, the subject and the next step's guard, rebinds the intent to the current generation and runs the remaining steps. It discharges the first obligation from the review of pull request 142. A launching step whose supervisor never started or has ended stops the intent as `launch_failed`, never completing the stage over a run that did not start, and the continue never relaunches (a relaunch is `harness.launch`, which rotates the credential). The other, reconciling the `dispatch.launch` step catalogued for `ticket_start` with the launch inside the assignment step, E5a discharges (below). **F9-A (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):** the coordination seal is a Lead-transaction finalizer placed immediately before archival, so a finalizer an E-slice adds that can end an invocation goes before it; a new commit path that ends invocations is added to the seal walk (`test_no_known_ending_path_needs_the_seal_fallback`), where a missed `seal_ending` call shows as a `coordination.seal_fallback` event. **E4a (2026-10-10)** makes the guards of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition` with `implementer_active`, `ready_for_review` and `review_current`, `review.ingest`, `work.create` and `plan.propose`, each a pure query its execute path calls first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`); `explain` answers a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`. **E5a obligation (PR 170 review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked with by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck and R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks` binds it from the first planner on. **E4b (2026-10-10)** migrates the integration stages' guards, namely `verify.ingest` (Ticket scope), `all_gates_current`, `integrate.prepare` (the queue synced and the decision required, on a copy), `verify.ingest.integration` and `integrate.publish` (lease, binding, head, obligations, validation), and composes `ticket_prepare` (with the integration verifier in verifier mode, asked on the candidate `integrate.prepare` produces) and `integration_publish`; `GUARD_READS` is checked against the keys each query reads. **The disposition rule (PR 171 review, finding 1):** BLOCKED commits nothing, except a blocker carrying a `disposition` (`integrate.publish`'s `requeue` and `rebuild`), whose call commits only that disposition and never the guarded effect. **E6a obligation:** the StageIntent journal records such a call's commit (`integrate.superseded`, or the moved head's `integrate.stale` or `integrate.rebuild`) as the step's disposition, not its completion (extending `COMMIT_OPS` and the `step_primitive_mismatch` rule for `integrate.publish`), and stops the stage at that boundary. **E5a (2026-10-10)** builds `ticket_draft` and `ticket_start` over the executor (their planners in `surface/stage.py`, each step's guard arguments taken from `availability.STAGES`, so the PR 170 obligation's agreement test now binds), and declares `work.create`, `plan.propose`, `work.transition` and `dispatch.launch` with full `PrimitiveSpec`s (`test_every_staged_primitive_is_declared`; observed side effects within each declaration, `test_declared_effects_cover_observed_effects`). **The PR 142 obligation, discharged.** `dispatch.launch` has no transaction of its own (run 1 of a dispatch made with `launch`, covered by its decision), so a stage plans it right after that dispatch (`primitives.COVERED_BY_PREVIOUS`; opening refuses it anywhere else, `not_covered`) and the dispatch's commit records both steps (the launch with the run, `covered_by`); a launch that then fails stops the stage at the next step as `launch_failed`, so `ticket_start` never moves a Ticket to RUNNING over a run that never started. A stage leaves out a step only where availability leaves it unplanned (`ticket_draft` without a plan). The broker appends one line per typed-tool call to `.aew/local/lead/tool-calls.jsonl` (`harness/tool_calls.py`; tool, arguments digest, effective class, outcome, boundary and error code, revisions before and after, stage intent, duration; bounded and rotated, never control state), which M4-H reads for TLS-27 and VGX-21. Stage/primitive equivalence holds for both stages on two copies of one project (`test_stage_matches_primitives`), and the seeded false-advance corpus begins (`tests/corpus/false_advance/`, `test_no_false_advance`). A stage whose subject an unfinished stage holds is BLOCKED with `RESOLVE_STAGE` (never auto-runnable), and `work.transition` declares the workspace and harness process a cancellation ends (PR 177 review). The normal advertised surface is 7,996 bytes, 11 tools; with every M4-E tool built it stays at 11,805 of 11,900. **E5b (2026-10-10)** builds `ticket_request_review` and `ticket_request_verification`, each launching one invocation per card the effective gates require (the dispatch and its launch repeat per card; a requirement several cards satisfy refuses the call, `CARD_CHOICE_REQUIRED`, for the Lead to staff), declares `review.ingest`, `verify.ingest` and `work.dispose`, and binds the obligations digest on a stage that accepts evidence. **Dispositions (plan v3 §2.4):** `gates.requires_disposition` (legality-affecting, empty by default) marks non-required review findings by severity and verification claims by result; both ingests refuse to advance past an undisposed marked item (`DISPOSITION_REQUIRED`, in the guard query both paths share). Under the current outcome rules a listed claim result is always a gate failure already, so the verification half marks nothing yet; designer decision D4 (below) is decided but pending its definition (MIC-16, this row's design item in decisions due). The Lead disposes of it through `resolve` (`accept_risk`, `follow_up`, `not_applicable`) or `aew work dispose`, recorded immutably beside the Ticket with a hot pointer that archival pins. **Anomalies:** open ones are hot (`anomalies`, ids `ANM-n`), from `WORKSPACE_MUTATED` and `OBSERVATION_MUTATED` refusals (a Lead transaction's by a follow-up commit, a worker's by a signal file the next Lead commit validates) and contradictions live both before and after a Lead commit; a disposal moves one cold. A high anomaly adds no guard and makes its subject's projected actions not auto-runnable. The dashboard's `requires_disposition` is the real value. The corpus gains the unmigrated guard, stale evidence, pending disposition and high anomaly cases. The normal advertised surface is 9,991 bytes, 13 tools (`resolve` exactly the 771 bytes §2.6 measured); the projection with every M4-E tool built is unchanged at 11,805 of 11,900. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D4 decided. It revises [M4-E plan v3](m4-e-plan-v3.md) §2.4's `gates.requires_disposition.unrequired_verification_results` (this row carries the revision; the plan's text is not edited), keeping it only for unrequired claims whose verification result is `inconclusive` or `not_run`, which, when the key lists them, become non-gating, failing neither the report's outcome nor a gate and needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It needs the claim-model definition first, which neither the code nor the documents have (a way to mark a claim unrequired and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until then the verification half marks nothing yet. **E6a (2026-10-10)** builds `ticket_prepare`, `integration_publish` (with `verification_evidence`), VALIDATE_ONLY's `VALIDATED` entry and the lease custodian's custody worker and credential ([ADR-0004](adr/0004-controlled-integration.md), amendment 2026-10-10)
+**Notes:** Hard gates and reported metrics in the design's §10, measured by the preregistered M4-H dogfood (F19) against the M3 baseline. **Gated by the pre-F15.2 amendment set (approved 2026-10-05):** F15.4 (digest separation) and F15.5's operator capability before it ships; F15.6 before automatic relaunch is enabled. **Built so far (M4-E E3a, 2026-10-09)** the StageIntent journal in the engine (`engine/stage_intents.py`, schema `aew/stage-intent/v1`, invariants 47-49 and 51), covering opening by CAS, one step per primitive commit under its idempotency key, `STALE_POLICY` on legality drift, the owning generation, and the cold home of an ended intent. An ended intent with no unit lives in `records/stage-intents/`, immutable but pinned by no hash (one under a unit is pinned by its pointer, bundle or annotation); it is read after every pinned route. **E3b (2026-10-09)** adds the surface's executor (`surface/stage.py`), running §3.4 rules 1 to 7 and R5-1 over the journal, proven with probe stages; the Ticket stages are E4 and E5. **E3c (2026-10-10)** adds `resume`'s list of unfinished intents (`safe_to_continue`, each recheck, the next step and boundary, the owning generation), the typed `resolve` tool (continue or abandon, with a rationale) and `aew stage continue|abandon`, and invariant 51. A continue rechecks the legality digest, the stage contract and plan, the subject and the next step's guard, rebinds the intent to the current generation and runs the remaining steps. It discharges the first obligation from the review of pull request 142. A launching step whose supervisor never started or has ended stops the intent as `launch_failed`, never completing the stage over a run that did not start, and the continue never relaunches (a relaunch is `harness.launch`, which rotates the credential). The other, reconciling the `dispatch.launch` step catalogued for `ticket_start` with the launch inside the assignment step, E5a discharges (below). **F9-A (MS2, 2026-10-10; [ADR-0017](adr/0017-coordination-messages.md)):** the coordination seal is a Lead-transaction finalizer placed immediately before archival, so a finalizer an E-slice adds that can end an invocation goes before it; a new commit path that ends invocations is added to the seal walk (`test_no_known_ending_path_needs_the_seal_fallback`), where a missed `seal_ending` call shows as a `coordination.seal_fallback` event. **E4a (2026-10-10)** makes the guards of the four Ticket stages queryable (`engine/guards.py`), namely `work.transition` with `implementer_active`, `ready_for_review` and `review_current`, `review.ingest`, `work.create` and `plan.propose`, each a pure query its execute path calls first, and composes a stage's availability per step with `produced_by` (`surface/availability.py`); `explain` answers a stage per step. E4b migrates the guards of `ticket_prepare` and `integration_publish`. **E5a obligation (PR 170 review, finding 3):** each Ticket stage planner E5 registers gives every step the arguments its guard is asked with by `availability.STAGES` (or an earlier step's output where `produced_by` declares it), so `resume`'s recheck and R5-1 ask what `explain` and the projection ask; `test_the_stage_planners_ask_the_guards_what_availability_asks` binds it from the first planner on. **E4b (2026-10-10)** migrates the integration stages' guards, namely `verify.ingest` (Ticket scope), `all_gates_current`, `integrate.prepare` (the queue synced and the decision required, on a copy), `verify.ingest.integration` and `integrate.publish` (lease, binding, head, obligations, validation), and composes `ticket_prepare` (with the integration verifier in verifier mode, asked on the candidate `integrate.prepare` produces) and `integration_publish`; `GUARD_READS` is checked against the keys each query reads. **The disposition rule (PR 171 review, finding 1):** BLOCKED commits nothing, except a blocker carrying a `disposition` (`integrate.publish`'s `requeue` and `rebuild`), whose call commits only that disposition and never the guarded effect. **E6a obligation:** the StageIntent journal records such a call's commit (`integrate.superseded`, or the moved head's `integrate.stale` or `integrate.rebuild`) as the step's disposition, not its completion (extending `COMMIT_OPS` and the `step_primitive_mismatch` rule for `integrate.publish`), and stops the stage at that boundary. **E5a (2026-10-10)** builds `ticket_draft` and `ticket_start` over the executor (their planners in `surface/stage.py`, each step's guard arguments taken from `availability.STAGES`, so the PR 170 obligation's agreement test now binds), and declares `work.create`, `plan.propose`, `work.transition` and `dispatch.launch` with full `PrimitiveSpec`s (`test_every_staged_primitive_is_declared`; observed side effects within each declaration, `test_declared_effects_cover_observed_effects`). **The PR 142 obligation, discharged.** `dispatch.launch` has no transaction of its own (run 1 of a dispatch made with `launch`, covered by its decision), so a stage plans it right after that dispatch (`primitives.COVERED_BY_PREVIOUS`; opening refuses it anywhere else, `not_covered`) and the dispatch's commit records both steps (the launch with the run, `covered_by`); a launch that then fails stops the stage at the next step as `launch_failed`, so `ticket_start` never moves a Ticket to RUNNING over a run that never started. A stage leaves out a step only where availability leaves it unplanned (`ticket_draft` without a plan). The broker appends one line per typed-tool call to `.aew/local/lead/tool-calls.jsonl` (`harness/tool_calls.py`; tool, arguments digest, effective class, outcome, boundary and error code, revisions before and after, stage intent, duration; bounded and rotated, never control state), which M4-H reads for TLS-27 and VGX-21. Stage/primitive equivalence holds for both stages on two copies of one project (`test_stage_matches_primitives`), and the seeded false-advance corpus begins (`tests/corpus/false_advance/`, `test_no_false_advance`). A stage whose subject an unfinished stage holds is BLOCKED with `RESOLVE_STAGE` (never auto-runnable), and `work.transition` declares the workspace and harness process a cancellation ends (PR 177 review). The normal advertised surface is 7,996 bytes, 11 tools; with every M4-E tool built it stays at 11,805 of 11,900. **E5b (2026-10-10)** builds `ticket_request_review` and `ticket_request_verification`, each launching one invocation per card the effective gates require (the dispatch and its launch repeat per card; a requirement several cards satisfy refuses the call, `CARD_CHOICE_REQUIRED`, for the Lead to staff), declares `review.ingest`, `verify.ingest` and `work.dispose`, and binds the obligations digest on a stage that accepts evidence. **Dispositions (plan v3 §2.4):** `gates.requires_disposition` (legality-affecting, empty by default) marks non-required review findings by severity and verification claims by result; both ingests refuse to advance past an undisposed marked item (`DISPOSITION_REQUIRED`, in the guard query both paths share). Under the current outcome rules a listed claim result is always a gate failure already, so the verification half marks nothing yet; designer decision D4 (below) is decided but pending its definition (MIC-16, this row's design item in decisions due). The Lead disposes of it through `resolve` (`accept_risk`, `follow_up`, `not_applicable`) or `aew work dispose`, recorded immutably beside the Ticket with a hot pointer that archival pins. **Anomalies:** open ones are hot (`anomalies`, ids `ANM-n`), from `WORKSPACE_MUTATED` and `OBSERVATION_MUTATED` refusals (a Lead transaction's by a follow-up commit, a worker's by a signal file the next Lead commit validates) and contradictions live both before and after a Lead commit; a disposal moves one cold. A high anomaly adds no guard and makes its subject's projected actions not auto-runnable. The dashboard's `requires_disposition` is the real value. The corpus gains the unmigrated guard, stale evidence, pending disposition and high anomaly cases. The normal advertised surface is 9,991 bytes, 13 tools (`resolve` exactly the 771 bytes §2.6 measured); the projection with every M4-E tool built is unchanged at 11,805 of 11,900. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D4 decided. It revises [M4-E plan v3](m4-e-plan-v3.md) §2.4's `gates.requires_disposition.unrequired_verification_results` (this row carries the revision; the plan's text is not edited), keeping it only for unrequired claims whose verification result is `inconclusive` or `not_run`, which, when the key lists them, become non-gating, failing neither the report's outcome nor a gate and needing the Lead's disposition instead; required claims are unchanged (MIC-07, MIC-08). It needs the claim-model definition first, which neither the code nor the documents have (a way to mark a claim unrequired and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until then the verification half marks nothing yet
+
+*Later notes: `notes.d/F15.2/`, oldest first (`python tools/register.py show F15.2`).*
 
 ### F15.3
 
@@ -206,6 +234,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Designed only, not prototyped; ends the YAML-frontmatter failure class for role reports. **Designer ruling (2026-10-09, [decision record](../design/decisions-2026-10-09-knowledge-tool-delivery-and-reviewer-independence.md), KDR-01, KDR-02):** worker tool delivery is this role server: typed tools in the sandbox, requests through the supervisor bridge, credentials supervisor-side; knowledge, map and helper operations (the `aew-knowledge` namespace among them) should extend it rather than create another worker credential surface. **Split (operator, 2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md) §10.1; AEA-29):** the read half (the `aew-run` server, `whoami`, `check.run` and the typed read operations) is pulled ahead of M6a as F15.8; this row keeps typed `submit` and the `aew-knowledge` namespace rules (M6a), and F13 still decides what each role sees
 
+*Later notes: `notes.d/F15.3/`, oldest first (`python tools/register.py show F15.3`).*
+
 ### F15.4
 
 **Work:** Policy digest separation: every execution-policy field classified `legality_affecting` or `operational` (an unclassified field fails schema validation); each staged action records `legality_digest`, `operational_digest`, the revision, the authority generation and any action-specific authorization digest; only a legality mismatch is `STALE_POLICY`, an operational change takes effect at the next safe boundary, and a recovery action snapshots the operational settings it depends on
@@ -216,6 +246,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Narrows the typed surface's one policy digest (TIS-13, TLS-14) to `legality_digest` for `STALE_POLICY`, so tuning health, steering or recovery never invalidates in-flight legal work. It amends the digest rules of the [Crawl/Walk/Run steering design v0.1](../design/crawl-walk-run-steering-design-v0.1.md) §6, the [bounded recovery policy design v0.1](../design/bounded-recovery-policy-design-v0.1.md) §5 and the [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §5. **Built for dispatch (M4-E slice E1, 2026-10-07; ADR-0010 amendment):** every field of the gates, guardrails, checks and execution policy schemas is classified in the schema, a test and the digest computation refuse an unclassified one, a key the schema does not name counts as legality, a check''s definition (its timeout and the guardrails policy included) is legality, the two digests are computed from the pinned bytes, and a dispatch decision is stale only on a legality change. Open until M4-E E3 binds staged actions to both digests
 
+*Later notes: `notes.d/F15.4/`, oldest first (`python tools/register.py show F15.4`).*
+
 ### F15.5
 
 **Work:** Crawl / Walk / Run steering over `ActionProjection`, with its operator authority boundary: `aew confirm`, autonomy increases and `PUBLISH_IF_CLEAN` grants only through an operator capability structurally absent from agent shells and model tools (the Lead may request, lower and continue); attributable mode-change records; Walk auto-runs only actions whose declared side effects are all in the allow-list `{control_state}`, with catalog conformance (observed effects within declared); the auto-run envelope (budget, admission, repetition N = 2, the loop deadline) and the invocation hard deadline as an authority-reducing safety action; an out-of-band operator notifier for unattended Run
@@ -224,7 +256,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **M4-E**, with F15.2. **Gate: before F15.2 ships** any mode-changing or confirmation surface: the operator capability must be out of an agent shell's reach
 
-**Notes:** Steering changes who confirms an already-legal action and when, never legality, gates or transitions (PBD-07). The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default while M4-H measures, and the product default is not frozen (CWR-12). **The operator's sign-off** (operator, 2026-10-06, "if my name is attached to it, I should have actually approved"). Built now through the terminal channel. `work staff --by operator`, `authority accept --decided-by operator` and (since PR #118) `manifest adopt` prompt the operator at their own terminal and are refused without it, and a Lead session refuses all three (ADR-0006, amendment 2026-10-06); `authority accept|reject`, `manifest adopt` and `migrate` are refused in a Lead session (`lead_broker.OPERATOR_DECIDED`). What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §2.2, §2.4.1; operator, 2026-10-07):** the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted in the sealed run manifest, before M4-H executes. **Operator decisions (2026-10-07, with the M4-E plan's approval, subject to its independent CLEAR review):** the unattended-Run notifier is a generic operator-configured argv, run supervisor-side without a shell, a JSON event on stdin, a sanitized environment with no credential inheritance, bounded time and output; it must be configured and executable before unattended Run is enabled, and a delivery failure is recorded and surfaced in status and the dashboard's attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea note's §17 governs the predicate and bindings, A1 the grant (the Lead may request, only the operator capability grants), the one-head-move automatic rebuild rule applies, otherwise the governed non-publication/disposition path; no further design text is needed before E6. Steering has no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H's sealed manifest selects its mode. **Built so far (M4-E E2, 2026-10-09):** the operator endpoint (`aew operator serve --dev`: an AF_UNIX socket in a 0700 directory with a `SO_PEERCRED` peer check on Linux, a named pipe on Windows, the challenge on the endpoint's console, a non-dumpable process, one endpoint per project), the `OperatorPrincipal` only it constructs, `aew lead mode raise` through it (bound to the Lead generation and the legality digest shown, ending with that generation), the policy default `execution.steering.mode` (an adopted raise waits for the endpoint), the Lead's `aew lead mode lower` and the normal `steering` tool (lower, request a raise or a confirmation; requests grant nothing), the notifier's configuration and the executable check Run needs, and the A1 §1.3 records in `records/steering/`. Control state keeps the mode as `steering.standing` and `steering.override` rather than the plan's `effective` (the effective mode is derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7), the publication grants (E6b), delivery and the loop (E7). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D2, M4-H's per-run ceremony through the constrained evaluator relay is an acceptable human-intent channel for this row's endpoint challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H's request and attention disposition table, drafted from E7's event vocabulary, is exhaustive and sealed before calibration; a confirmation is never pre-granted (MIC-04 to MIC-06; F19). D5, E7's notifier stays the operator's; the Lead's wake for worker replies is F9's lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)
+**Notes:** Steering changes who confirms an already-legal action and when, never legality, gates or transitions (PBD-07). The project default is in execution policy (absent means the legacy manual runner); Walk is the personal-dogfood default while M4-H measures, and the product default is not frozen (CWR-12). **The operator's sign-off** (operator, 2026-10-06, "if my name is attached to it, I should have actually approved"). Built now through the terminal channel. `work staff --by operator`, `authority accept --decided-by operator` and (since PR #118) `manifest adopt` prompt the operator at their own terminal and are refused without it, and a Lead session refuses all three (ADR-0006, amendment 2026-10-06); `authority accept|reject`, `manifest adopt` and `migrate` are refused in a Lead session (`lead_broker.OPERATOR_DECIDED`). What stays here is the same confirmation without a terminal, for an operator who is away, through the operator capability. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §2.2, §2.4.1; operator, 2026-10-07):** the AEW arm needs the unattended `PUBLISH_IF_CLEAN` authority, pre-granted in the sealed run manifest, before M4-H executes. **Operator decisions (2026-10-07, with the M4-E plan's approval, subject to its independent CLEAR review):** the unattended-Run notifier is a generic operator-configured argv, run supervisor-side without a shell, a JSON event on stdin, a sanitized environment with no credential inheritance, bounded time and output; it must be configured and executable before unattended Run is enabled, and a delivery failure is recorded and surfaced in status and the dashboard's attention with no workflow effect. `PUBLISH_IF_CLEAN`: the idea note's §17 governs the predicate and bindings, A1 the grant (the Lead may request, only the operator capability grants), the one-head-move automatic rebuild rule applies, otherwise the governed non-publication/disposition path; no further design text is needed before E6. Steering has no default: a missing `steering.mode` keeps legacy/manual behaviour, and M4-H's sealed manifest selects its mode. **Built so far (M4-E E2, 2026-10-09):** the operator endpoint (`aew operator serve --dev`: an AF_UNIX socket in a 0700 directory with a `SO_PEERCRED` peer check on Linux, a named pipe on Windows, the challenge on the endpoint's console, a non-dumpable process, one endpoint per project), the `OperatorPrincipal` only it constructs, `aew lead mode raise` through it (bound to the Lead generation and the legality digest shown, ending with that generation), the policy default `execution.steering.mode` (an adopted raise waits for the endpoint), the Lead's `aew lead mode lower` and the normal `steering` tool (lower, request a raise or a confirmation; requests grant nothing), the notifier's configuration and the executable check Run needs, and the A1 §1.3 records in `records/steering/`. Control state keeps the mode as `steering.standing` and `steering.override` rather than the plan's `effective` (the effective mode is derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. **Plan v3 amendment 1 (v5, review CLEAR, 2026-10-10; [the amendment](m4-e-plan-v3-amendment-1.md)):** E7 is split into M4-E E7a (the notifier, the event spool and broker liveness), M4-E E7b (the loop), M4-E E7c (confirmation) and M4-E E7d (the E6 events), and E8 into M4-E E8a (launch-failure reason codes) and M4-E E8b (relaunch); the independent slices run in parallel. Its deviations from plan v3, whose text is not edited: §2.8's premise of an existing broker heartbeat was false, so M4-E E7a adds the broker liveness record `.aew/local/lead/broker.json`; `aew/notify-event/v1` gains `source`, `authenticated` and an optional `reason_code`; three of E7's confirmation tests are E2's, built as `test_the_endpoint_starts_only_with_dev_and_never_in_a_lead_session`, `test_one_endpoint_per_project_and_a_stale_locator_is_replaced_only_when_its_process_is_gone` and `test_a_raise_lasts_only_for_the_generation_it_was_granted_to`; plan v3 §8's count is now 15 PRs by its own counting (E7 becomes four, E8 two; the E3 and E4 splits made while building are not counted). **LWA-17** (`tracked_by: [F9, F15.5]`): M4-E does not carry the clause about the broker's notifier to the Lead; M4-E's notifier is the operator endpoint's and delivers to the operator (F9's row; the amendment's §6). **Built (M4-E E7a, 2026-10-10):** the operator endpoint (`aew operator serve`) runs a watcher that reads control state lock-free, the event spool and the broker liveness record, commits nothing, and delivers through the adopted `notify.command`: an argv with no shell, the event (`aew/notify-event/v1`) on stdin, the sanitized environment, no console window, a new session on POSIX, `close_fds`, the process tree killed past `timeout_s`, output past `max_output_bytes` discarded and counted, on one delivery thread that never holds the endpoint's locks and serves control-state and liveness events before spool events; each source is read on its own, so one that fails never stops the others, and an event leaves the outstanding set only once the delivery log records it. Events: `generation_ended` (takeover, handoff, release; crash and stale from the liveness record, for the current generation only), `broker_gone` while Run is effective (crash, stale, or closed), `raise_requested`, `confirmation_requested`, `breaker_tripped` (the validation breaker), `custodian_lost` (the lease's reconcile mark), `hard_deadline` and `launch_failed` (the supervisor's spool appends at its deadline stop and its three launch-failure records). Each is delivered once per occurrence (`.aew/local/notify/deliveries.jsonl`). Spool lines are untrusted: capped, validated per writer (`schemas/spool-event.schema.json`), rate-bounded and labelled `authenticated: false`. The broker's beat thread writes the liveness record every `POLL_S`, with its watchdog's last iteration and the wedge threshold `store.lock_timeout + 2 × POLL_S`, and `closed_at` on a clean close or a supersession. A delivery failure shows in `status` and the dashboard's attention and has no workflow effect. Open: `confirm` (M4-E E7c), the publication grants (M4-E E6b), the loop (M4-E E7b), the E6 events (M4-E E7d). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D2, M4-H's per-run ceremony through the constrained evaluator relay is an acceptable human-intent channel for this row's endpoint challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H's request and attention disposition table, drafted from E7's event vocabulary, is exhaustive and sealed before calibration; a confirmation is never pre-granted (MIC-04 to MIC-06; F19). D5, E7's notifier stays the operator's; the Lead's wake for worker replies is F9's lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)
+
+*Later notes: `notes.d/F15.5/`, oldest first (`python tools/register.py show F15.5`).*
 
 ### F15.6
 
@@ -236,6 +270,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** R5-1 is built in the stage executor (M4-E E3b, 2026-10-09; `surface/stage.py`), all five conditions; a guard that is not yet a queryable decision is UNKNOWN and never retried, so only dispatch steps retry until E4. R5-3 is not built. M4-E E8a put the closed launch-failure codes (plan v3 n8, written lowercase, `spawn_race` to `unknown`, in `harness/contract.py`) on the run record's existing `reason_code`, only on `launch_failed` records, and on the supervisor's acknowledgement and `HarnessLaunchFailed`'s details, beside the unchanged free-text `reason`; a failure is mapped by its error code at its site, only where tests reproduce it (so far `credential_denied`, `incompatible_config`), everything else is `unknown`. Run statuses are unchanged, so this is no new failure taxonomy in BRP's sense. Relaunch eligibility (M4-E E8b) will read only the acknowledged code, or the launcher's own, never the run directory's. Every failed run stays visible and recovery never launders adverse evidence (BRP-06); the failures the slice never recovers are listed in BRP-07. Rows 4, 6 and 8 are F15.7. **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md); operator, 2026-10-07):** with F15.5, the unattended `PUBLISH_IF_CLEAN` authority the AEW arm needs before M4-H executes
 
+*Later notes: `notes.d/F15.6/`, oldest first (`python tools/register.py show F15.6`).*
+
 ### F15.7
 
 **Work:** The deferred recovery rows: row 4 `REDISPATCH_IF_LOST` (a pre-authorized re-dispatch of a lost clean run, a sibling of `PUBLISH_IF_CLEAN`), row 6 a policy-resolved Investigator after a blocked report, row 8 `max_fix_attempts` (the fix-loop cap)
@@ -245,6 +281,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Evaluation**: after M4-H's base rates, with F19; each row needs its own adoption, and rows 1 and 3 never promote them
 
 **Notes:** Non-governing until adopted: production policy refuses their keys in the `recovery:` namespace as active authority
+
+*Later notes: `notes.d/F15.7/`, oldest first (`python tools/register.py show F15.7`).*
 
 ### F15.8
 
@@ -256,6 +294,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Split from F15.3, which keeps typed `submit` and the `aew-knowledge` namespace rules. F15.8 owns the transport (the server and the bridge rows); the typed `map.*` query semantics stay F22.2's (T5-B): the `map.*` rows answer from the structural record only, under project maps v0.5 §7.2's answer contract, through one map query module that T5-B owns and later extends, never a second implementation. Behind an execution-policy switch, off by default: switched off, the run's harness projection is byte-identical, so M4-H's treatment is unchanged; putting it into M4-H would need an explicit amendment and re-freeze of the preregistration (Revision B), which nobody has proposed. Operation names are implementation-local except where frozen: the adoption's `map.find` takes T5 §7's frozen name `map.search`, and a search hit stays a candidate (T5 §7.4). A worker never has to construct a repository root to search its own workspace (Revision A, WCR-08), and a path outside the authorized workspace is refused. Rejected (synthesis §10, AES-20, subject to Revision A, AEA-10): a broad public free-text semantic facade, a free-text `repo.related`, a `repo.search` operation and a worker-side `work.inspect`. Not rejected: ordinary bounded lexical search beneath the intent layer stays required, as the workspace-rooted fallback (`rg` or an equivalent qualified provider) under `map.find` (here `map.search`) when the maps and indexes cannot resolve a request, and authorized raw `rg` and the other raw tools stay available. Evaluation: `r9-intent-surface` after M4-H; presentation defaults are earned by measurement. `knowledge.search` and `knowledge.get` join after M6b Arm B (F21). F13 later decides which roles see which operation; they become registry entries then, never a second registry. Delta item D7 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
 
+*Later notes: `notes.d/F15.8/`, oldest first (`python tools/register.py show F15.8`).*
+
 ### F15.9
 
 **Work:** Delta-first Lead attention (E2): one typed read query on the Lead surface, changes since a cursor (`changes {since_revision, since_observed?}`), over the outbox's committed transitions and the projection's derived deltas, with the decisions required, blockers and supervision candidates always present, one line per item with an expansion reference, and a size cap; `status` and `resume` stay the full view; no second event or state store
@@ -265,6 +305,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M5**, with F11 and F9; may be built after M4-E's E3 and E4 (the journal and the guards), registered in the catalog only while an execution-policy switch is on, so while off it is absent from `aew lead tool --list` and from both profiles' `tools/list` and a call is refused as an unknown tool (tested); never listable, callable or advertised in M4-H's treatment, and not in the normal advertised Lead surface until its probe reports
 
 **Notes:** The cursor is the revision the Lead already holds; the second cursor is U1/H1's telemetry watermark (`observed_through`). A crash-surviving attention cursor waits until takeover semantics need it (AES-19). No second event log or state store for attention, and no stored past projections (AES-20). One outbox reader and one cursor with F20.7's `/events` and `harness wait`. The catalog addition is the adoption record's §8 direction (designer and operator, 2026-10-09). Measured as `e2-delta-first` (full, delta available, delta-first) inside F9-D's harness; default-on only after measurement, which must show it saves frontier Lead turns and tokens without hiding material developments. F9-C's supervision candidates ride it when they exist; impact anomalies and scheduler recommendations wait for the anomaly record (M4-E) and F11. Delta item D9, done-when including that byte-identity test ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
+
+*Later notes: `notes.d/F15.9/`, oldest first (`python tools/register.py show F15.9`).*
 
 ### F16
 
@@ -276,6 +318,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Complements D3: skills teach judgement, the guide states AEW's own rules. Measure it in the next dogfood with the instrumented command log.
 
+*Later notes: `notes.d/F16/`, oldest first (`python tools/register.py show F16`).*
+
 ### F17
 
 **Work:** Consequence tracing and evidence depth ("shallow finding termination"): a role finds a consequential fact, capability or boundary condition but closes before establishing what it leads to. Candidate design: a finding tagged with a consequential surface carries an `established` level (observation, traced, demonstrated), a cited trace and a disposition (bounded, known limit inside its documented scope, follow-up, accepted open); an untraced one may become an obligation needing a recorded disposition at closeout. Reviewers go one hop past the author and fill an ask-level coverage matrix; verifiers sample outside the traced set; a parent joins what its children left open; follow-ups are depth 1 and budgeted.
@@ -285,6 +329,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Evaluation** first. **Phase 1 (designer):** an eight-case evaluation corpus from the R1 and SPT misses, with controls, and a baseline of AEW today and a plain LLM, before implementing anything. Then skill-only and schema-only experiments, measured separately. The closeout obligation, and its Workflow Contract amendment, only if those show it is needed.
 
 **Notes:** **Absorbs U2; links F14 and U3** (designer: a distinct item, because F14 is plan and premise assurance and this is evidence depth and closeout). Designer decisions 2026-10-01: reviewer *k* = 1, 2, 3 for Classes 1 to 3 is a tunable evaluation parameter, not a contract constant; operator-stated premises enter as observations only when they materially constrain the plan or investigation. Second reviewer, 2026-10-01: the operator owns or approves the surface list; `accepted_open` on authority, credential and trust-boundary surfaces at Class 2+ needs concurrence, with a tripwire on its share; split requests need a parent Story, backed by a project-level join over accepted-open observations; tag recall and tag rate are measured; policy path tagging moves to phase 2; the coverage matrix can ship independently. F15 uses a generic `requires_disposition` policy property (designer, 2026-10-01); if adopted, F17's policy marks its consequential observations with it.
+
+*Later notes: `notes.d/F17/`, oldest first (`python tools/register.py show F17`).*
 
 ### F18
 
@@ -296,6 +342,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Relates to D2 (installer, deeper harness integration) and U6 (Lead state isolation). Thirteen frozen principles and thirteen frozen decisions in the design; no designer-level question blocks the bootstrap and doctor shape. The hosting design's §21 development-mode rule: until F18.10 exits, only labelled development attachments on disposable projects, their outputs `guarantee: dev`.
 
+*Later notes: `notes.d/F18/`, oldest first (`python tools/register.py show F18`).*
+
 ### F18.1
 
 **Work:** `aew init` proposes, the operator applies: the proposal file (`.aew/local/init-proposal.yaml`, with `proposal_id` and `inputs_sha256`), `init --apply` as one atomic attributable apply that refuses stale or expanded proposals, `--accept-proposal` for non-interactive use, static-before-trust repository inspection through the T5 generator, and the configuration ownership model (AEW edits no user or project harness file; supported Lead sessions use isolated generated configuration)
@@ -305,6 +353,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled** (candidate for M4-G with E21, which it subsumes: the test-command proposal is one of its proposals)
 
 **Notes:** Absorbs E21 when built. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level stands between this row and its build
+
+*Later notes: `notes.d/F18.1/`, oldest first (`python tools/register.py show F18.1`).*
 
 ### F18.2
 
@@ -316,6 +366,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Launch refusals point at the finding id. **Unblocked (2026-10-05):** the design is adopted, so nothing designer-level stands between this row and its build. **The designer's amendment of 2026-10-06 ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md) §1, ledger HRC-01 to HRC-05):** v0.3's no-daemon rule and its operator terminal as the Lead session are superseded (attachment-scoped or socket-activated supervisor-side services are allowed; the terminal is the operator's control surface, not the Lead session); the permissions row stops treating a `.aew/` owned by another user as an error and instead validates an ownership and permission matrix (protected state's ownership or ACL, the Lead-host identity unable to write it, the operator's lifecycle operations, ordinary source access, derived projections unable to pass for canonical state), and doctor runs the F18-B0 negative checks (F18.6) or a bounded equivalent against the actual Lead-host identity; the same matrix judges the Filesystem row's `.aew/` not writable per principal, never by widening the Lead host's write access (lead developer's reading, record §3). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-104):** field-log #15, the disk budget, is dispositioned to the doctor / workspace-retirement owner (F41.14)
 
+*Later notes: `notes.d/F18.2/`, oldest first (`python tools/register.py show F18.2`).*
+
 ### F18.3
 
 **Work:** The air-gap bundle, three side-by-side artifacts: `aew-bundle-<version>-rl8-py311.tar` with the wheelhouse and qualified harness pins, its canonical manifest `aew-bundle-<version>-rl8-py311.json` (committing to the archive's name, size and SHA-256 and to every member), and `aew-bundle-<version>-rl8-py311.json.sig`, a detached signature over the manifest from a release identity with an independently provisioned trust root; a verifier that rejects traversal, duplicates and mismatches before anything is consumed; `aew doctor --bundle --json` as the host acceptance record; tool upgrade separate from project migration with a declared restore point
@@ -325,6 +377,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled** (packaging and release work; before any air-gapped deployment; ADR-0014 adopted 2026-10-07, so the build is unblocked)
 
 **Notes:** Key custody, rotation and the verifier: [ADR-0014](adr/0014-release-signing-air-gap-bundle.md), **adopted / design frozen by the operator 2026-10-07** (ledger BSG), after the designer's one narrow change of 2026-10-05 (`release_epoch`, a deterministic signed release input, replacing a wall-clock `built_at`) and the operator's hardening change of 2026-10-07 (the manifest and its signature beside the archive, never inside it, and the signed manifest authenticating the archive blob before any tar parser runs).
+
+*Later notes: `notes.d/F18.3/`, oldest first (`python tools/register.py show F18.3`).*
 
 ### F18.4
 
@@ -336,6 +390,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Depends on F28's relay for the provider path (composed with the v0.6 gateway into one AEW Provider Gateway, designer 2026-10-06, F18.8) and on E35's qualification seams. The hosting design v0.6 §3 and §16 add the qualified support tuple and executable content identity that F18.11 and F18.12 qualify against.
 
+*Later notes: `notes.d/F18.4/`, oldest first (`python tools/register.py show F18.4`).*
+
 ### F18.5
 
 **Work:** F18-A, contract and state: attachment states (NO_ATTACHMENT, PREPARING, FAILED, ACTIVE, SUSPENDED, DETACHED) and reason codes; the protected-set registry; the support manifest and executable content identity; hot and cold generation records (ADR-0011); guarantee labels (`guarantee: dev`); the operator-only lifecycle contract
@@ -345,6 +401,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: authority and state tests pass; the protected set and the unsupported deployment modes are explicit
+
+*Later notes: `notes.d/F18.5/`, oldest first (`python tools/register.py show F18.5`).*
 
 ### F18.6
 
@@ -356,6 +414,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Exit: **the first hard gate:** on real Rocky 8, the actual Lead-host identity cannot mutate the protected set or invoke lifecycle controls, while the ordinary source workflow stays usable. **M4-E E2 (2026-10-09)** built the operator-only socket with its peer-credential check as F15.5's operator endpoint, labelled `guarantee: dev` because the principals collapse; A1 production authority (PFS-04 release gate 1, SAE-01 to SAE-03) requires this row. **F23 (operator, 2026-10-07, [decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** the whole model harness need not run as a separate human-created OS account; v0.6 §2.1 to §2.3 stand unamended, so this row meets the boundary with a dedicated harness OS identity (§2.1) or an SELinux-confined domain, never a collapsed principal, the two-account profile staying an optional stronger deployment (lead developer's reading, record §2)
 
+*Later notes: `notes.d/F18.6/`, oldest first (`python tools/register.py show F18.6`).*
+
 ### F18.7
 
 **Work:** F18-B1, bootstrap: a bootstrap-only broker; explicit managed or registered-host selection; managed launch by default; PREPARING cleanup; the conversation-taint record and the reattach delta
@@ -365,6 +425,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: no real project attachment yet unless F18.8 and F18.9 are also satisfied
+
+*Later notes: `notes.d/F18.7/`, oldest first (`python tools/register.py show F18.7`).*
 
 ### F18.8
 
@@ -376,6 +438,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Exit: a direct provider attempt fails; a model switch or tool injection is denied; altered, replayed or unbound tool calls fail; an outage fails closed. **One AEW Provider Gateway (designer, 2026-10-06, [decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md) §2, ledger HRC-06 to HRC-10):** this row composes F28's fixed-upstream credentialing relay with the attestation and broker binding into one logical provider path, the only custodian of the provider credential; F28 keeps the network-containment and credential-routing requirements and the separate credentialless generic egress; an internal split may not open a gap between the request attested and the request credentialed and forwarded
 
+*Later notes: `notes.d/F18.8/`, oldest first (`python tools/register.py show F18.8`).*
+
 ### F18.9
 
 **Work:** F18-D, detached child handling: close acknowledgement; detached-run attention; bounded credentials; the hard-deadline order; drain semantics, with the drain deadline as a stop condition; StageIntent stale-owner handling
@@ -385,6 +449,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: a live child survives close safely; credential and process lifecycles are bounded; a completion cannot mutate control state
+
+*Later notes: `notes.d/F18.9/`, oldest first (`python tools/register.py show F18.9`).*
 
 ### F18.10
 
@@ -396,6 +462,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Exit: the first non-development attachment may become ACTIVE
 
+*Later notes: `notes.d/F18.10/`, oldest first (`python tools/register.py show F18.10`).*
+
 ### F18.11
 
 **Work:** F18-F, OpenCode qualification: T9's remaining broker-only, configuration-isolation and model-visible conformance, plus the normalized-surface false-drift test
@@ -405,6 +473,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: the pin passes the full F18 suite or stays unsupported
+
+*Later notes: `notes.d/F18.11/`, oldest first (`python tools/register.py show F18.11`).*
 
 ### F18.12
 
@@ -416,6 +486,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Exit: the pin passes without an architecture exception or stays unsupported
 
+*Later notes: `notes.d/F18.12/`, oldest first (`python tools/register.py show F18.12`).*
+
 ### F18.13
 
 **Work:** F18-H, reference topology smoke: the Astra Lead with the Laguna default worker, and GPT-5.4 and open-source overrides where available
@@ -425,6 +497,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: open, work, close and reattach end to end with correct provenance and authority. **Laguna S2.1 is not currently available** in the operator's environment ([agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md) §9, 2026-10-09): it remains the reference default-worker target, and this smoke, as written, needs it; R8, R9 and R2-B work is not gated on it
+
+*Later notes: `notes.d/F18.13/`, oldest first (`python tools/register.py show F18.13`).*
 
 ### F18.14
 
@@ -436,6 +510,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Exit: issues feed deployment UX improvements without weakening authority
 
+*Later notes: `notes.d/F18.14/`, oldest first (`python tools/register.py show F18.14`).*
+
 ### F19
 
 **Work:** One evaluation program: Q7 (the next dogfood), F14 phases 1–4, the F17 corpus and Class 0 sampling share one fixture format, runner, run-record schema, hidden-evaluator mechanism, model and profile configuration, and metrics collector; each experiment is preregistered separately, and one run stays one run however many metrics it informs
@@ -444,7 +520,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **Evaluation.** Hidden material lives in the private repository (`aew-private/eval/`); execution profiles and budget are pinned at preregistration (§3.4). Q7's scratch rule (F2) applies to every F19 run
 
-**Notes:** Builds on the M3 dogfood harness (`eval/m3/dogfood/`). Q11 adds the provider research's evaluation plan to it. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): F19 becomes a code component (D-AR1); deterministic state/context reconstruction for fixtures; model-diverse review as a probe; the knowledge corpus K01 to K28 (ledger KRB-14). The component design is [evaluation component v0.2](../design/evaluation-component-design-v0.2.md) (adopted by the operator and the designer 2026-10-05; ledger EVC; the review's [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md) it grew from is archived): `eval/aew_eval/` public, hidden material private, every paid attempt registered before launch, immutable runs with separate analyses. Its first slice (schemas, preregistration and the attempt ledger, proved against the M3 corpus) comes before M4-H's preregistration. ARV-05 (operator, 2026-10-05): the probes the architecture review could not run (gateway features such as tool search, structured output and caching; recall performance on the target hardware) are evaluation items here. **Slice 1 built (2026-10-05):** `eval/aew_eval/` with the four schemas (`aew/eval-case/v1`, `aew/eval-prereg/v1`, `aew/eval-attempt/v1`, `aew/eval-run/v1`), `prereg.py` (freeze: consistency, the seeded schedule, the canonical hash; refusal of a run whose material inputs changed), the append-only attempt ledger (registered and synced before any provider action, a result finalized once, a killed runner visible as `runner_lost`, retries only under the frozen policy; each transaction under a per-experiment lock, every byte written, a torn tail repaired, every pinned field of a result checked) and the deterministic mapping of all 68 M3 records (`compat.py`), proved in `tests/unit/test_eval_instrument.py`. **Slice 2 built (2026-10-06):** `fixture.py` (a case manifest's fixture trees read once into a snapshot that is both hashed and built from, with LF line ends; paths that would build differently on Windows and Linux, `.git` components, links and junctions, and trees outside or nested in each other refused; git run with a scrubbed environment and no configuration, hooks or signing), `arms.py` (the `scripted` arm: exact edits, no model, its configuration checked against the case before registering) and `runner.py` (one preregistered cell: a changed input, an arm kind not built yet, a bad configuration or a scratch root inside a git work tree is refused before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`; after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`. **Slice 3 built (2026-10-06), the hidden-evaluator channel (design §5, §8 step 3):** `hidden.py` takes the private root from `AEW_EVAL_HIDDEN_ROOT` and removes it from the environment before any arm runs; an oracle (`cases/<id>/oracle/checks.py`) is hashed like a fixture and refused before registration when it is missing, no longer matches its preregistered commitment, or belongs to a held-out case that `exposure.yaml` records as exposed; it is read once, and those bytes score: after the arm has returned, sent to an isolated scoring process (`score_child.py`, `python -I -B`) on its standard input, never to the disk, in an AEW process tree. The model's code never runs in that process: the checks reach the model's program only through `run`, which gives each program its own process tree (a job object on Windows; on Linux a bubblewrap sandbox in its own pid namespace with the hidden root's whole private repository (for a worktree or submodule also its object store and every checkout), the ledger and the user's secrets masked; another copy of the corpus elsewhere on the host is not masked, so it lives in one place on a scoring host) and an allow-listed environment. The runner accepts only a clean exit with exactly one well-formed result, computes `passed` itself, and records no result or a timeout as a failed score, never a retryable `invalid_measurement`. Linux without bubblewrap refuses oracle-scored cells; Windows refuses held-out cases, and every other score there records `contained: false` (a same-user program could search the disk, so it is not tamper-evident). Proved in `tests/unit/test_eval_hidden.py`. **Held-out corpus isolation (designer, 2026-10-06, [decision record](../design/decisions-2026-10-06-f19-held-out-corpus-isolation.md)):** an M4-H experiment-protocol requirement, not an AEW architecture surface. Held-out material not yet assigned to a trial is never readable by a model-controlled process in either arm; for M4-H the private corpus stays off the arm hosts entirely, and the evaluator side releases only the selected task's material at the trial's start. Masking, F23 and F28 are not prerequisites. The runner as built scores and runs the arm on one host, so the next slice, with the `aew` and `raw` arms, splits it: the evaluator side keeps the corpus, ledger and oracle and releases one task; a corpus-free arm host runs the arm (designer's arm-host rule, record §3: no copy, no parent directory, no mounted, shared or synced path and no obvious host-integration path to unreleased material; a WSL instance on a Windows host holding the corpus is ineligible by default; a preflight that cannot establish isolation releases nothing) and returns the final tree for scoring, with the facts only it can observe (whether the AEW checkout was touched, its environment), so the run record describes the arm host, not the evaluator. Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them). **Q7 adopted ([v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), operator, 2026-10-07; ledger VGX):** M4-H's experiment design is frozen. **Prerequisite before M4-H executes:** the evaluator/arm-host split and the held-out task-release runner (decision record of 2026-10-06 on held-out corpus isolation), the cold-start attestation (§5) and the preregistration values of §14. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md), ledger AES):** raised: an evaluator-side reader of a completed run's retained harness session database, approved by the operator with bounds (Revision C): the hidden evaluator opens it read-only after the run, extracts only preregistered measurement fields, computes named, versioned metric functions and records the result; the raw database is kept only for the operator-configured retention window, which has no default and is enforced: past the expiry the reader refuses to open it and the evaluator's retention step purges it and records the purge, both tested; AEW's runtime never consumes it, it is never a Knowledge or supervision source, and arbitrary conversational content is not ingested. Research profiles are capability classes (frontier, mid, lower-bound), each run recording provider, model, harness, effective profile and qualification state at preregistration; results per class, raw against assisted, never a cross-class leaderboard, with cost per correctly accepted outcome across classes. The lower-bound qualification lane may run before M4-H on an independent non-held-out fixture (preferably a sanitized public or synthetic repository of several hundred files); its runs are marked `purpose: qualification`, are qualification and instrumentation evidence only, never M4-H or treatment-effect claims, and Q7's sealed tasks stay unexposed. After the gate: `r8-pack-arms`, `r9-intent-surface`, `r2b-coherence`, `e1-completeness-nudge` and `e2-delta-first`; their aggressive modes become defaults only after measurement. Nothing here changes M4-H's frozen treatment (Revision B). Delta items D2, D3 and D14. **F9-A1 adoption (operator and designer, 2026-10-09; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA):** F9 messaging stays off in M4-H's frozen treatment, which is not amended; messaging is evaluated separately here using the F9 A/B/C/D supervision arms (F9-A1 §16 and §20: A no proactive supervision, B messaging available only, C AEW-recommended adaptive supervision, D mandatory periodic supervision), with F9-A built behind a switch with disabled-state identity tests. **F21's Arm B prototype and M4-H (2026-10-09):** the sealed M4-H configuration has `recall.raw_history_search: "off"`, so `aew history search` is absent from both arms whether or not the prototype has merged; the M4-H cold-start attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit, never `main`'s head implicitly. When F21's A/B evaluation runs (after the knowledge adoption record's §8 readiness package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **D3's lane prepared (2026-10-10, PR #153), the run is the operator's:** the `raw` arm (`raw.py`: OpenCode's own agent through the M3 headless session, the case's new `task` its only message; the harness binary, the model and effort, and the profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden paths probed before OpenCode starts; its session database kept under the preregistered retention window and structured field allowlist; a run on another model or harness, a provider value in retained state (deleted at once), a provider error instead of a model step or ending the turn, or a failure after the session started is counted and not valid, its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge recorded); the preregistration's `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/` holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. Three experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash` (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage and a second model family). `lbq-v1-deepseek-v4-1-flash` ran on 2026-10-10: its floor passed, but every ceiling attempt was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the runs beside each run inside the runs directory's own tmpfs; fixed, and a run refused before launch is now charged nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash` (the same preregistration, a new id), and kept v1's lane as the record. **Run 2026-10-10 (at ed98424; frozen records and results committed in the lane):** `lbq-v1-gpt-5-nano` passed the floor and showed behaviour 5 (requirement loss on longer tasks), so `opencode/gpt-5-nano#high` is qualified as the lower bound ($0.066 in all); `lbq-v2-deepseek-v4-1-flash` passed the floor and solved all 6 ceiling runs with no tree-observable behaviour ($0.22), so its ceiling waits for the session-observable half. The session-observable metrics wait for D2's reader; the aew arm and the evaluator/arm-host split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm (arm B, F9-D) only after U1 S11 and F9-A's MS5b have merged: before MS5b, every `aew harness send` is refused while messaging is on (HS1, register E55), so such an arm would silently lose the Lead's nudge. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25's G1 is approved, so M4-H's counted cost is F25's settled figure under its boundary, which F19 hashes into the run record (MIC-01). D2 (F19's G1), each counted AEW-arm run gets its own operator ceremony (the mode raise and the publication grant) through the constrained evaluator relay, an acceptable human-intent channel under M4-E's `guarantee: dev`, for v1; a campaign-scoped grant (new authority) is revisited only if the ceremony proves impractical in calibration (MIC-02). The relay's conditions are binding: it shows the bound action verbatim, strips terminal control sequences, and cannot answer a challenge itself, which a static test proves (MIC-03). D3 (F19's G2), the request and attention disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the lead developer from M4-E E7's event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the Lead's session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **M4-H's analysis bundle built (F19 plan v5, slice S11):** `eval/aew_eval/analysis.py` implements Q7 §13's fixed-cell Jeffreys rule (10^6 joint draws from numpy's `PCG64` under the sealed seed; the verdicts, with no selectable pooled or weighted estimator), its exact cross-check (a regularized incomplete beta by Lentz's continued fraction, posteriors discretized by CDF differences so all-pass and all-fail cells keep their mass, convolved in pure Python), the operating-characteristic simulation as a tool (`python -m aew_eval.analysis simulate`), the §6.3 cost axis (ratio of totals, undefined at zero successes, cell-stratified bootstrap), §13.7's safety axis, §12's U3 flag and the versioned §6.3 secondary outcomes; the `aew/m4h-analysis-plan/v1`, `aew/eval-analysis/v1` and `aew/m4h-simulation/v1` schemas, and a minimal `aew/m4h-reconciliation/v1` (per run, bound to the analysed runs and to the plan's sealed spend layer; `COST_UNRESOLVED` comes only from it, the sealed mismatch fraction and, under layer (c), the sealed `usage_estimated` share; S15 produces it and extends it with both figures per run, then the analysis recomputes each run's mismatch from them and refuses a disagreeing flag, and `campaign verify` checks the analysis's `reconciliation_sha256`; S18 produces the `usage_estimated` flag; the deciding rates are over the primary runs, F4's reported beside them); a draft plan and frozen test vectors, exact and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime, is an evaluator / process metric candidate (F41.14)
+**Notes:** Builds on the M3 dogfood harness (`eval/m3/dogfood/`). Q11 adds the provider research's evaluation plan to it. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): F19 becomes a code component (D-AR1); deterministic state/context reconstruction for fixtures; model-diverse review as a probe; the knowledge corpus K01 to K28 (ledger KRB-14). The component design is [evaluation component v0.2](../design/evaluation-component-design-v0.2.md) (adopted by the operator and the designer 2026-10-05; ledger EVC; the review's [T2 plan](../archive/reviews/architecture-review-2026-10-04/t2-evaluation-component-plan.md) it grew from is archived): `eval/aew_eval/` public, hidden material private, every paid attempt registered before launch, immutable runs with separate analyses. Its first slice (schemas, preregistration and the attempt ledger, proved against the M3 corpus) comes before M4-H's preregistration. ARV-05 (operator, 2026-10-05): the probes the architecture review could not run (gateway features such as tool search, structured output and caching; recall performance on the target hardware) are evaluation items here. **Slice 1 built (2026-10-05):** `eval/aew_eval/` with the four schemas (`aew/eval-case/v1`, `aew/eval-prereg/v1`, `aew/eval-attempt/v1`, `aew/eval-run/v1`), `prereg.py` (freeze: consistency, the seeded schedule, the canonical hash; refusal of a run whose material inputs changed), the append-only attempt ledger (registered and synced before any provider action, a result finalized once, a killed runner visible as `runner_lost`, retries only under the frozen policy; each transaction under a per-experiment lock, every byte written, a torn tail repaired, every pinned field of a result checked) and the deterministic mapping of all 68 M3 records (`compat.py`), proved in `tests/unit/test_eval_instrument.py`. **Slice 2 built (2026-10-06):** `fixture.py` (a case manifest's fixture trees read once into a snapshot that is both hashed and built from, with LF line ends; paths that would build differently on Windows and Linux, `.git` components, links and junctions, and trees outside or nested in each other refused; git run with a scrubbed environment and no configuration, hooks or signing), `arms.py` (the `scripted` arm: exact edits, no model, its configuration checked against the case before registering) and `runner.py` (one preregistered cell: a changed input, an arm kind not built yet, a bad configuration or a scratch root inside a git work tree is refused before anything is registered; the attempt is registered before the arm runs; an arm failure is a counted `invalid_measurement`; after the arm the work tree is read as plain files, never through git, for the changed paths and an export outside it for the optional scorer; the result is finalized once, with whether the AEW checkout was touched), proved in `tests/unit/test_eval_runner.py`. **Slice 3 built (2026-10-06), the hidden-evaluator channel (design §5, §8 step 3):** `hidden.py` takes the private root from `AEW_EVAL_HIDDEN_ROOT` and removes it from the environment before any arm runs; an oracle (`cases/<id>/oracle/checks.py`) is hashed like a fixture and refused before registration when it is missing, no longer matches its preregistered commitment, or belongs to a held-out case that `exposure.yaml` records as exposed; it is read once, and those bytes score: after the arm has returned, sent to an isolated scoring process (`score_child.py`, `python -I -B`) on its standard input, never to the disk, in an AEW process tree. The model's code never runs in that process: the checks reach the model's program only through `run`, which gives each program its own process tree (a job object on Windows; on Linux a bubblewrap sandbox in its own pid namespace with the hidden root's whole private repository (for a worktree or submodule also its object store and every checkout), the ledger and the user's secrets masked; another copy of the corpus elsewhere on the host is not masked, so it lives in one place on a scoring host) and an allow-listed environment. The runner accepts only a clean exit with exactly one well-formed result, computes `passed` itself, and records no result or a timeout as a failed score, never a retryable `invalid_measurement`. Linux without bubblewrap refuses oracle-scored cells; Windows refuses held-out cases, and every other score there records `contained: false` (a same-user program could search the disk, so it is not tamper-evident). Proved in `tests/unit/test_eval_hidden.py`. **Held-out corpus isolation (designer, 2026-10-06, [decision record](../design/decisions-2026-10-06-f19-held-out-corpus-isolation.md)):** an M4-H experiment-protocol requirement, not an AEW architecture surface. Held-out material not yet assigned to a trial is never readable by a model-controlled process in either arm; for M4-H the private corpus stays off the arm hosts entirely, and the evaluator side releases only the selected task's material at the trial's start. Masking, F23 and F28 are not prerequisites. The runner as built scores and runs the arm on one host, so the next slice, with the `aew` and `raw` arms, splits it: the evaluator side keeps the corpus, ledger and oracle and releases one task; a corpus-free arm host runs the arm (designer's arm-host rule, record §3: no copy, no parent directory, no mounted, shared or synced path and no obvious host-integration path to unreleased material; a WSL instance on a Windows host holding the corpus is ineligible by default; a preflight that cannot establish isolation releases nothing) and returns the final tree for scoring, with the facts only it can observe (whether the AEW checkout was touched, its environment), so the run record describes the arm host, not the evaluator. Next: the `aew` and `raw` arms by generalizing `dogfood.py` (the M3 driver still runs them). **Q7 adopted ([v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), operator, 2026-10-07; ledger VGX):** M4-H's experiment design is frozen. **Prerequisite before M4-H executes:** the evaluator/arm-host split and the held-out task-release runner (decision record of 2026-10-06 on held-out corpus isolation), the cold-start attestation (§5) and the preregistration values of §14. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md), ledger AES):** raised: an evaluator-side reader of a completed run's retained harness session database, approved by the operator with bounds (Revision C): the hidden evaluator opens it read-only after the run, extracts only preregistered measurement fields, computes named, versioned metric functions and records the result; the raw database is kept only for the operator-configured retention window, which has no default and is enforced: past the expiry the reader refuses to open it and the evaluator's retention step purges it and records the purge, both tested; AEW's runtime never consumes it, it is never a Knowledge or supervision source, and arbitrary conversational content is not ingested. Research profiles are capability classes (frontier, mid, lower-bound), each run recording provider, model, harness, effective profile and qualification state at preregistration; results per class, raw against assisted, never a cross-class leaderboard, with cost per correctly accepted outcome across classes. The lower-bound qualification lane may run before M4-H on an independent non-held-out fixture (preferably a sanitized public or synthetic repository of several hundred files); its runs are marked `purpose: qualification`, are qualification and instrumentation evidence only, never M4-H or treatment-effect claims, and Q7's sealed tasks stay unexposed. After the gate: `r8-pack-arms`, `r9-intent-surface`, `r2b-coherence`, `e1-completeness-nudge` and `e2-delta-first`; their aggressive modes become defaults only after measurement. Nothing here changes M4-H's frozen treatment (Revision B). Delta items D2, D3 and D14. **F9-A1 adoption (operator and designer, 2026-10-09; [decision record](../design/decisions-2026-10-09-f9-a1-adoption.md), ledger LWA):** F9 messaging stays off in M4-H's frozen treatment, which is not amended; messaging is evaluated separately here using the F9 A/B/C/D supervision arms (F9-A1 §16 and §20: A no proactive supervision, B messaging available only, C AEW-recommended adaptive supervision, D mandatory periodic supervision), with F9-A built behind a switch with disabled-state identity tests. **F21's Arm B prototype and M4-H (2026-10-09):** the sealed M4-H configuration has `recall.raw_history_search: "off"`, so `aew history search` is absent from both arms whether or not the prototype has merged; the M4-H cold-start attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory, and a treatment freeze names its commit, never `main`'s head implicitly. When F21's A/B evaluation runs (after the knowledge adoption record's §8 readiness package), each run starts from the history snapshot its preregistration names, and the HOC arm-host preflight applies to that snapshot (the search index is project-scoped: a search reaches only the project it runs in). **D3's lane prepared (2026-10-10, PR #153), the run is the operator's:** the `raw` arm (`raw.py`: OpenCode's own agent through the M3 headless session, the case's new `task` its only message; the harness binary, the model and effort, and the profile pinned in its frozen configuration; on Linux contained by bubblewrap, its layout self-tested and its hidden paths probed before OpenCode starts; its session database kept under the preregistered retention window and structured field allowlist; a run on another model or harness, a provider value in retained state (deleted at once), a provider error instead of a model step or ending the turn, or a failure after the session started is counted and not valid, its cost charged at the cap when unknown); the runner refuses a held-out case for any model arm until the evaluator/arm-host split exists, and defers scoring so that the arm host holds no oracle while a model runs (`score_run` scores the hashed export afterwards, once); `retention.py` enforces the window (a database past it is refused and purged, the purge recorded); the preregistration's `purpose`; the `aew/eval-profile/v1` record (`profiles.py`). `eval/experiments/lower-bound-qualification/` holds the preregistration, the profiles, three seeded cases on Python-Markdown 3.11.0 (BSD-3-Clause, 480 files) with their oracles validated against the real fixture, the rubric and the driver; the runs happen on the Rocky 8 VM. Three experiments share the cases, oracles, rubric and budget rules, each with its own preregistration, frozen record and lane directory: `lbq-v1-deepseek-v4-flash` (its profile became unavailable on OpenCode Zen on 2026-10-10), `lbq-v1-deepseek-v4-1-flash` (the replacement primary the operator chose) and `lbq-v1-gpt-5-nano` (the next-cheaper profile, run after it for coverage and a second model family). `lbq-v1-deepseek-v4-1-flash` ran on 2026-10-10: its floor passed, but every ceiling attempt was refused before any model ran by a containment defect in the raw arm (a lane under the home directory masked the runs beside each run inside the runs directory's own tmpfs; fixed, and a run refused before launch is now charged nothing and stops the ceiling at once). Under the amendment policy the operator chose a new experiment, `lbq-v2-deepseek-v4-1-flash` (the same preregistration, a new id), and kept v1's lane as the record. **Run 2026-10-10 (at ed98424; frozen records and results committed in the lane):** `lbq-v1-gpt-5-nano` passed the floor and showed behaviour 5 (requirement loss on longer tasks), so `opencode/gpt-5-nano#high` is qualified as the lower bound ($0.066 in all); `lbq-v2-deepseek-v4-1-flash` passed the floor and solved all 6 ceiling runs with no tree-observable behaviour ($0.22), so its ceiling waits for the session-observable half. The session-observable metrics wait for D2's reader; the aew arm and the evaluator/arm-host split are still next. **F9-A messaging arms (F9-A plan amendment 2, §11):** messaging may be on in an evaluation arm (arm B, F9-D) only after U1 S11 and F9-A's MS5b have merged: before MS5b, every `aew harness send` is refused while messaging is on (HS1, register E55), so such an arm would silently lose the Lead's nudge. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25's G1 is approved, so M4-H's counted cost is F25's settled figure under its boundary, which F19 hashes into the run record (MIC-01). D2 (F19's G1), each counted AEW-arm run gets its own operator ceremony (the mode raise and the publication grant) through the constrained evaluator relay, an acceptable human-intent channel under M4-E's `guarantee: dev`, for v1; a campaign-scoped grant (new authority) is revisited only if the ceremony proves impractical in calibration (MIC-02). The relay's conditions are binding: it shows the bound action verbatim, strips terminal control sequences, and cannot answer a challenge itself, which a static test proves (MIC-03). D3 (F19's G2), the request and attention disposition table is exhaustive and sealed before calibration: every AEW request or attention kind, drafted by the lead developer from M4-E E7's event vocabulary, is sorted into pre-granted, denied or an operator-only halt; a confirmation is never pre-granted; a high anomaly that needs a disposition is an operator-only halt; the fixed texts go to the Lead's session as a user message; the designer confirms the table before the seal (MIC-04 to MIC-06). **M4-H's analysis bundle built (F19 plan v5, slice S11):** `eval/aew_eval/analysis.py` implements Q7 §13's fixed-cell Jeffreys rule (10^6 joint draws from numpy's `PCG64` under the sealed seed; the verdicts, with no selectable pooled or weighted estimator), its exact cross-check (a regularized incomplete beta by Lentz's continued fraction, posteriors discretized by CDF differences so all-pass and all-fail cells keep their mass, convolved in pure Python), the operating-characteristic simulation as a tool (`python -m aew_eval.analysis simulate`), the §6.3 cost axis (ratio of totals, undefined at zero successes, cell-stratified bootstrap), §13.7's safety axis, §12's U3 flag and the versioned §6.3 secondary outcomes; the `aew/m4h-analysis-plan/v1`, `aew/eval-analysis/v1` and `aew/m4h-simulation/v1` schemas, and a minimal `aew/m4h-reconciliation/v1` (per run, bound to the analysed runs and to the plan's sealed spend layer; `COST_UNRESOLVED` comes only from it, the sealed mismatch fraction and, under layer (c), the sealed `usage_estimated` share; S15 produces it and extends it with both figures per run, then the analysis recomputes each run's mismatch from them and refuses a disagreeing flag, and `campaign verify` checks the analysis's `reconciliation_sha256`; S18 produces the `usage_estimated` flag; the deciding rates are over the primary runs, F4's reported beside them); a draft plan and frozen test vectors, exact and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime, is an evaluator / process metric candidate (F41.14). **The M4-H instrument (the F19 M4-H instrument plan v5, slices S0 to S18; note layout from 2026-10-10):** each slice's progress is its own paragraph of [implementation-status.md](implementation-status.md)'s section "The evaluation instrument (register F19)", so slices landing in parallel never edit this cell; this row keeps the decisions and gates. **S4 built (2026-10-10):** the evaluator/arm-host split's core ([ADR-0018](adr/0018-evaluator-arm-host-split.md), ledger EAS): a cell released to an arm host through a transport, registered before its bundle leaves, collected under hostile receive and finalized for deferred scoring on the evaluator, with a hash-chained release ledger and the run manifest `aew/m4h-run-manifest/v1`; scripted arm only until the run supervisor (S8), and no model arm or held-out case released until S5's preflight can establish isolation. **For F25's live usage (P1, sst/opencode tag v2.0.18):** session generation (called by `POST /api/session/{id}/generate`, the first-party `/btw`, the plugin host and the `warming` plugin) and the stateless generation (`POST /api/experimental/generate`, the plugin host) make model calls that record no usage, so the live figure cannot see them. A counted server sets no `warming` (L3's preflight refuses one), loads no plugin beyond OpenCode's own and has no TUI or app attached that could send `/btw`; otherwise the provider reconciliation (Q7 v0.3.1 §9.1) is the only backstop for that usage. **S8a built (2026-10-10):** the run supervisor's core; its status is in implementation-status.md's F19 section.
+
+*Later notes: `notes.d/F19/`, oldest first (`python tools/register.py show F19`).*
 
 ### F20
 
@@ -456,6 +534,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Contract changes renew its review (C0). Out of scope until then: Queue (no reviewed wire model) and Graph (optional, after the freeze; the core contract is not expanded for it). Write actions wait until the typed surface exists, so that the dashboard calls the same tools (ARV-01, operator 2026-10-05). Small frontend follow-up, not blocking: an `audit_finding` link target offers only the History lookup. **Nice to have: a lifecycle timeline per unit** (operator, 2026-10-02). The engine already records every transition (`history`: `from`, `to`, `at`, `reason`, sometimes `event`), and an archived unit's record keeps it; contract 0.1.2 does not publish it. A later contract version can project it (renewed C0 review), and the dashboard then draws an honest timeline. Until then the dashboard does not assemble one from other timestamps (run times, completion). **Lead developer (2026-10-05, PR #57):** when F28 is built the run label's `network` becomes an object (`mode`, `provider_relay`, `egress_allow`), so the dashboard contract needs a note for the web developer; a contract change renews C0. **Main line (2026-10-05, F20.5 browser check):** the engine's terminal integration status `integrated` is not among `Integration.status`'s `x-known-values` (prepared, publishing, conflict, superseded), so the Work page shows it as an unknown value with a warning, as the contract says it must; adding it is a contract change (renewed C0), for the web developer to schedule. **Contract 0.1.3 (F20.8, 2026-10-10):** a minor version is additive: it adds paths and never changes what an existing path returns, and each envelope keeps the version that defined its response, so the 0.1.2 routes keep emitting 0.1.2; 0.2.0 is kept for breaking changes (F28's `network` object, a projected queue, a new field on an existing response). Folding `integrated` into 0.1.3 is the web developer's call (an `x-known-values` annotation, which the compatibility check ignores). **Cross-feature integration v0.5 ([cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-103):** field-log #12, the operator waiting queue, is dispositioned to the operator-attention / dashboard owner; this row owns the dashboard half, F15.5 the operator-attention half (F41.14)
 
+*Later notes: `notes.d/F20/`, oldest first (`python tools/register.py show F20`).*
+
 ### F20.6
 
 **Work:** Integrated acceptance: the browser and security checks against authenticated live state, recorded separately from the frontend's acceptance
@@ -465,6 +545,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4** (operator, 2026-10-03), after F20.1 to F20.5
 
 **Notes:** **Design note (approved with modifications, designer and operator, 2026-10-05):** [`dashboard-main-line-api-design-v0.1.md`](../design/proposals/dashboard-main-line-api-design-v0.1.md) §5.5: the acceptance record, separate from the frontend's. **Server half done (2026-10-05):** the end-to-end acceptance suite (`tests/integration/test_dashboard_acceptance.py`: the packaged frontend and every page's projection through one session, conditional replays, expiry, server stop, per-project scope, hostile content as data, the real CLI at a pseudo-terminal on POSIX), the browser handoff tools (`tools/dashboard/acceptance_project.py`, `tools/dashboard/session_file.py`) and the record [`dashboard-main-line-acceptance-2026-10-05.md`](../archive/reviews/dashboard-main-line-acceptance-2026-10-05.md). **Open: the browser gate** (operator, 2026-10-05): the web side's `web/scripts/browser-live.mjs` run against the packaged authenticated server and recorded there; until then F20.6 stays open
+
+*Later notes: `notes.d/F20.6/`, oldest first (`python tools/register.py show F20.6`).*
 
 ### F20.7
 
@@ -476,6 +558,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** A contract addition (0.1.2 has no such route), so a new contract version with a renewed C0 review, and a frontend change; deferred from F20.2 by the M4-D triage and by the design note (2026-10-05). SSE is a later transport over the same cursor, not required by the ADR. One outbox reader and one cursor with the Lead's `changes` query (F15.9) and `harness wait` (agent-effectiveness adoption, 2026-10-09). **Contract 0.1.3 (F20.8, 2026-10-10):** map selections are not outbox events (they commit to the map registry, never to control state), so this endpoint would not signal them; the maps pages poll `/maps` instead (change note §7)
 
+*Later notes: `notes.d/F20.7/`, oldest first (`python tools/register.py show F20.7`).*
+
 ### F20.8
 
 **Work:** Dashboard maps and raw-history search: contract 0.1.3. Five maps routes (`/maps`, `/maps/structural`, `/maps/structural/{root}`, `/maps/structural/{root}/inputs`, `/maps/diff`) and the conditional `/history/search`, behind the same switch as the CLI, absent while it is off and never model-visible; the `maps` and `history_search` capability keys; contract 0.1.3, additive, with an element-wise compatibility check that keeps every 0.1.2 response, parameter and method equal. Slices: **S0** the change note and the main line's readiness (the accepted version is any `0.1.x` at or above 0.1.2, envelope versions per route, pending routes derived, the packaged build accepted by rule) → **W1** the web developer adopts the contract → **S1** the maps routes and **S2** the search route, never stacked → **S3** the build re-import and acceptance
@@ -485,6 +569,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4 candidate** (the operator, 2026-10-09). S1 after W1; S2 after W1 (PR #148, Arm B, has merged); S3 after the web developer's UI, with the operator's approval of the new frontend baseline
 
 **Notes:** S0 changes nothing served: every 0.1.2 route answers byte for byte, and the six routes stay pending (answered exactly as without them) until S1 and S2 serve them. The web developer may amend the additions in W1; the main line stays green whatever they amend, and S1 records the amendments in the note and marks it adopted. If #148's merged result lacks something the search additions need, they are amended in 0.1.4 before S2 serves the route. **W1 adopted Appendix A unamended (#173). S2 built (2026-10-10):** `/history/search` is a conditional route, served while the adopted policy switches the search on and answered exactly as before while it is off; the note's adopted line names contract 0.1.3 and the routes served since adoption.
+
+*Later notes: `notes.d/F20.8/`, oldest first (`python tools/register.py show F20.8`).*
 
 ### F21
 
@@ -496,6 +582,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** **Adopted (operator, 2026-10-09):** the three designs moved from `design/proposals/` to `design/` and govern M6b, with ADR-0013; the adoption accepts their architecture and authority boundaries and authorizes no K1/K2 production machinery ahead of the stop/go gates (KAD-02). Lookup is a normal capability of every admitted role, ordinarily discoverable, with broad tool availability and a narrow default payload; roles differ in answer depth, and request modes stay query intent, never authority (record §2 to §4). **Next work, the implementation-readiness package (record §8; KAD-12 to KAD-14), without returning to the operator:** reconcile and freeze field names and the glossary across the set; qualify ADR-0013's assumptions against the current tree; define the exact Arm B indexed corpus; the concrete request-mode/role matrix (with the designer's reviewer-independence rule: by default hide the current implementer's reasoning and private working state, keep the canonical objective, plan, diff, check results, findings, failures and whatever the role actually requires; broader historical prose from that Ticket can require an explicit investigation mode, which the matrix settles; KDR-03 to KDR-05); compact and expanded result shapes; the F19-compatible A/B corpus and rubric; K1 template replay only after Arm B is measurable; ranking, vectors, rerankers, discovery thresholds and K2 policy left to evidence. **Arm B stays first** (record §7): its prototype is built separately (PR #148, below). Worker delivery of knowledge tools is F15.3's `aew-run` bridge (KDR-01, KDR-02). Every requirement, including the 70 invariants to merge into the invariant index, is tracked in the requirements ledger (`docs/design/requirements-ledger.yaml`) (KCA, KSS, KRR, KRB). Review: v1 visibility is the project (ARR-09); qualified `workflow_disposition`/`knowledge_disposition` names; source class authenticates provenance, not validity; runtime receipts stop at `DELIVERY_ACKNOWLEDGED`. **Arm B prototype (designer and operator, 2026-10-07):** pulled forward as a prototype in its own worktree, not model-visible and absent from the Q7/M4-H treatment; the operator approved the dated ADR-0013 D8 clarification that `local/recall/history-fts.sqlite` may hold its separate rebuildable FTS substrate instead of `local/history.sqlite`, a change of physical placement only (locator-only rows, authentication before use, the full audit, disposable and non-authoritative status and every D8 guarantee unchanged), and not a decision about final K1/K2 physical consolidation. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F21 is the primary owner of avoiding rediscovery of prior project experience (WCR-13, WCR-31); the adoption record §6 cites the requirement; a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, AEA-16, AEA-36):** Knowledge stays on-demand and tool-driven, never injected into worker context before Arm B's evaluation earns it; after Arm B, `knowledge.search` and `knowledge.get` are exposed through the same `aew-run` read surface (F15.8). The record's §14 repeats the reviewer-independence rule (AEA-40, consistent with KDR-03 to KDR-05) and places its enforcement in engine and context request binding; the pack half of the filter is F35. **Prototype built (2026-10-09, the lead developer's plan v6, independently reviewed CLEAR):** behind `recall.raw_history_search` in the execution policy (`"off"` by default, quoted since YAML reads a bare off as a boolean, which is refused with its cause and fix; read from the adopted bytes only; operational class), `aew history search` exists only when the switch is `explicit` and is otherwise absent from help, usage and the parser; it refuses inside an invocation's environment (a discoverability guard, not a security boundary). The substrate `local/recall/history-fts.sqlite` (`aew.engine.recall`) indexes each archived entry's record and the evidence it holds, never plans, unit or completion records, check logs or credential bundles; it is built only by a search (bounded: 2 s or 500 documents per call, then `coverage_incomplete`), `history reindex` and the full audit, and never on a commit path. Every hit is authenticated and re-matched against the authenticated text; a disagreeing row drops its candidate and marks the substrate stale. Not model-visible, not evaluated: no pack, resume, role guide, surface row, MCP tool or dashboard route, and absent from the Q7/M4-H treatment (the M4-H cold-start attestation must show `recall.raw_history_search: "off"` and no `local/recall/` directory; F19). The A/B evaluation is F19's, after the readiness package (adoption record §8). **Dashboard route (F20.8, operator 2026-10-09 and 2026-10-10):** an operator-facing `/history/search`, its own slice outside the prototype's scope fence, sits behind the same `recall.raw_history_search` switch, read from the request's snapshot and failing closed; it is absent while the switch is off, so it is absent in M4-H's sealed configuration, and it is never model-visible (operator session only). The dashboard's lock-free path never resets, discards or deletes the search substrate: a moved, stale, foreign or unusable substrate is a coverage reason, and the CLI's search or reindex repairs it. Its additive engine parameters are S2's, now that #148 has merged; #148 itself was not widened. **M6a authorization model ([v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md), overlaid by [v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md); designer candidates, not yet governing; ledger CEA, GAE):** knowledge and evidence reads become `G_KNOWLEDGE_READ` and `G_EVIDENCE_READ`, with reviewer and verifier independence as plan selectors (CEA-54); v0.8's role table puts `G_KNOWLEDGE_READ` at P* for the Reviewer and the Verifier (an operator-approved named profile with plan-visible independence selectors), where this adoption makes lookup a default capability of every admitted role, reviewer and verifier lookup filtered rather than excluded (KAD-03, KAD-06, AEA-40, KDR-03 to KDR-05); likewise `G_DERIVED_READ` (map and index reads) at P for the Verifier, where KAD-06 lists project and repository navigation among every worker invocation's normal capabilities; a cross-reference, not new scope. **Decided by the designer (D2, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), MCD-03 to MCD-05):** the adoption governs over v0.8's table: knowledge and safe navigation are C for every admitted role, and independence remains selector-controlled (the plan selectors of CEA-54; v0.8's * kept for the Reviewer and the Verifier). The ledger marks CEA-36 superseded by MCD-04 for its `G_KNOWLEDGE_READ` cells and, as far as safe navigation goes, its `G_DERIVED_READ` cells; which derived reads are safe navigation is F38's encoding to state, and until then the Verifier's P stands for the rest. **S2 built (2026-10-10):** `HistoryCommands.history_search_committed` searches from the request's committed snapshot with `may_reset=False`, one 1.25 s deadline, a catch-up budget and a candidate budget, after checking the snapshot's root and the tail together; the CLI's `history search` output is byte-identical to before (tested against the vendored pre-S2 module).
 
+*Later notes: `notes.d/F21/`, oldest first (`python tools/register.py show F21`).*
+
 ### F22
 
 **Work:** Project maps: the deterministic structural codebase map, language-specific semantic extensions (C/C++ first) that add qualified facts without redefining it, sibling derived indexes, and the attributable architecture map, composed into one navigation/context view that never becomes an authority source
@@ -505,6 +593,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4 candidate** for the structural core F22.1, as a parallel lane to M4-H that is included only if it passes its own gates first and never waited for (the designer, 2026-10-06; v0.5 §13.2: the value gate takes precedence over mapping infrastructure); the semantic substrate and the C/C++ extension F22.2 and the sibling indexes F22.3 after the gate, with M6
 
 **Notes:** A map is derived project context: never workflow authority, never K0 to K3 admission, never a dispatch gate (v0.5 §1, §3.3, §3.4, §14). `aew init` ships `null` maps and `UNKNOWN` fields today. **v0.5 adopted (2026-10-05)** after an independent hardening review: mechanically tracked structural inputs, the map registry with its own `map_revision`, the closed `map_service` writer, contained extraction from an exact source view, compile commands as data, compile-database provenance, negative-dependency freshness, root manifests over content-addressed chunks, untrusted map text, assurance monotonicity, configuration-qualified queries, and invariants T5-INV-01 to 12 with stable reason codes. The research cycle is closed (§18); implementation follows §16's slices T5-A to T5-E. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** project maps (T5) are the primary owner of deterministic repository orientation, locators, semantic relationships, test and constraint indexes and impact assistance, the requirement's flagship (WCR-05 to WCR-10, WCR-20, WCR-28); its success condition is that even a frontier model prefers the map's query surfaces to ad hoc search for supported questions; a cross-reference, not new scope. **Dashboard maps (F20.8, 2026-10-10):** the dashboard's projection keeps T5-INV-07 (map text is inert data: allowlisted fields, vocabulary-checked values, strings cut by bytes and rendered as plain text) and T5-INV-10 (STALE, PARTIAL and UNKNOWN stay visible with their reasons) through the API, and never generates a map from a request.
+
+*Later notes: `notes.d/F22/`, oldest first (`python tools/register.py show F22`).*
 
 ### F22.2
 
@@ -516,6 +606,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** The contract is frozen (v0.5 §15, thirty-nine decisions) and the research capped; the production C++ extractor's language is the implementer's (§18). Product inclusion of the semantic map is by ablation after the value gate (§13.2). **Agent-effectiveness adoption (2026-10-09):** the `aew-run` read half (F15.8) carries `map.*` rows to workers ahead of T5-B; it hosts the transport and structural-only answers under §7.2's contract, while the typed query semantics stay this row's; T5-B extends the same query module rather than a second one. The semantic public-surface projection of F22.3 waits for T5-B.
 
+*Later notes: `notes.d/F22.2/`, oldest first (`python tools/register.py show F22.2`).*
+
 ### F22.3
 
 **Work:** T5-D, sibling project-understanding indexes beside the maps, composed when their inputs exist and never fields of the structural record: the test relationship index (test to paths, symbols or components and the check lane, weaker path/name evidence without semantic facts, never making a test required), the constraint locator index (locators and terms for oracle rules, invariant-index ids, schema fields, guardrails, ADR sections, requirements-ledger ids and amendment-index entries, never rewritten prose), the semantic public-surface projection, and untrusted-string projection tests
@@ -525,6 +617,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4 candidate**, raised by the agent-effectiveness adoption (§11, 2026-10-09): a parallel lane like F22.1, never part of M4-H's treatment and never waited for; consumed by F30's impact surface, which declares which of them were available, by the `aew-run` read half's `map.tests_for` and `map.constraints` (F15.8) and by the pack's locator rows (F35, off by default)
 
 **Notes:** Each carries its own freshness; the test index degrades to its structural half without semantic data and says so. Raised because three of the adoption's mechanisms need it (R8's locator arm, R9's test and constraint questions, E1). Building the indexes changes no pack; serving their locators is F35's, behind its switch. The test relationship and constraint locator indexes need only F22.1; the semantic public-surface projection is derived from semantic facts (v0.5 §9.3) and waits for F22.2's T5-B, so this row closes only once that is built. Delta item D4 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)). **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §10; ledger CFI-46, CFI-47):** the advisory overlap projection is owned with T5 and the work graph (F41.7); a cross-reference, not new scope
+
+*Later notes: `notes.d/F22.3/`, oldest first (`python tools/register.py show F22.3`).*
 
 ### F24
 
@@ -536,6 +630,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Validates `HarnessAdapter` and de-risks the unversioned OpenCode pin (E17). [Harness-native integration research v0.3](../research/harness-native-integration-research-v0.3.md) (ledger HNI; its two live probes, [OpenCode](../archive/reviews/architecture-review-2026-10-04/t9-live-probe-1-opencode.md) and [Codex](../archive/reviews/architecture-review-2026-10-04/t9-live-probe-2-codex.md), are archived with their request captures in `eval/reviews/architecture-2026-10-04/t9/`): Codex CLI 0.160.0's app-server is a workable private transport but not a supportable pin (AEW's MCP tools stay deferred behind `exec`; ungranted sub-agent tools and a bundled skill reach every request). Next is a bounded qualification spike: direct typed tools (`DynamicToolSpec` or a later pin) and a supported way to suppress collaboration tools and system skills. **Designer decisions for the Codex adapter (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD), answering F24.1's probe of Codex 0.162.1:** D4 (approve with qualification), Codex's automatic compaction has no off switch, so C1's `compaction.auto=false` design has no Codex equivalent: prefer an AEW-owned proactive budget if Codex can be qualified for it; otherwise accept Codex-native compaction as a recorded adapter residual; never reject Codex solely for mandatory compaction (MCD-07 to MCD-10). D5, a steer during an in-flight model call cancels the call and re-sends it with the input, and that cancel-and-restart satisfies F9-A's next-step semantics; held-session staging without message identity is refused, so the adapter refuses held-session delivery it cannot confirm by message id (MCD-11, MCD-12). D1 (F40) keeps the worker's shell with read-only source, so a Codex worker's shell writes are stopped by AEW's read-only layout, not by a shell-less worker
 
+*Later notes: `notes.d/F24/`, oldest first (`python tools/register.py show F24`).*
+
 ### F24.1
 
 **Work:** Codex runtime-semantics probe, the first slice of any Codex adapter work: the pinned Codex app-server against a scripted loopback model, on Windows and AEW_RL8 under AEW's own containment, with no real provider or credential. It measures what the schema alone cannot show: when a `turn/steer` input reaches the model and which turns refuse it (`activeTurnNotSteerable`); when a queued input (`thread/queue/changed`) is admitted, whether it reopens the turn, and whether its pending state is observable when the worker submits (`PENDING_TURN_END_MESSAGE`); staging an input without waking an idle or interrupted thread (the held case); duplicate and conflict handling of a re-posted input, a read that confirms admission, and thread loss told apart from "not yet admitted"; whether a delivered input resets any step or turn budget; `turn/interrupt` effects on running tools and MCP calls (cancellation sent or not); tool-call start and end events and their ids, and step or turn boundary events (`message.wait` binding, `WAIT_OUTSIDE_A_STEP`, D-29's failed-turn selection); U1's stall signals (a call started with no progress); compaction (whether automatic compaction can be disabled, `thread/compact/start`, what survives of the launch contract) and how a thread is resumed; shell timeouts and over-long commands; child-process survival when a shell is killed; context-limit and authentication failure shapes
@@ -545,6 +641,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled**: a prerequisite of F24 (Codex), which may run before M5 to prepare it. It precedes F24's bounded qualification spike and informs it; it is research, so F18.12's "not before M4-H" (production qualification) does not bind it
 
 **Notes:** The architecture review's T9 probe of Codex 0.160.0 covered transport and tool exposure only (F24 notes). This row covers the runtime semantics that AEW contracts now depend on: F9-A's `--when next-step|turn-end` delivery and `PENDING_TURN_END_MESSAGE`, C1's controlled relaunch and compaction policy, and U1's tool events and stall signals. Each maps onto a Codex mechanism, or is declared unsupported by the adapter and refused, never silently weakened (the `reports_steps` and `WAIT_UNSUPPORTED` pattern). Pin the then-current Codex release, not 0.160.0. The probe's harness reuses the MS0/U1 recorder and fake model. The app-server method names here (`turn/steer`, `activeTurnNotSteerable`, `thread/queue/changed`, `thread/compact/start`) come from the protocol schema Codex 0.160.0 generates (`codex app-server generate-json-schema`), not from T9's write-up; the probe confirms them on its pin. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** the probe is where it is first observed whether Codex's native file-edit tools can be hidden or denied in a worker's model-visible schema; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new scope. **Designer decisions on its findings (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD; filed on F24):** D4, for C1's compaction policy: an AEW-owned proactive budget is preferred if Codex can be qualified for it, otherwise Codex-native compaction is a recorded adapter residual, and Codex is never rejected solely for mandatory compaction (MCD-07 to MCD-10); the brief's proposed lever for that qualification, untested, is a declared context window above the provider's real one, so that AEW's own path runs before Codex compacts. D5: steer's cancel-and-restart satisfies next-step semantics, and held-session staging without message identity is refused (MCD-11, MCD-12)
+
+*Later notes: `notes.d/F24.1/`, oldest first (`python tools/register.py show F24.1`).*
 
 ### F24.2
 
@@ -556,6 +654,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** F24 already names Claude Code headless as an alternative second adapter. This row records the operator's intent to support both, Codex first. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** its runtime probe is where it is first observed whether Claude Code's native edit and write tools can be hidden or denied in a worker's model-visible schema; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening, on this row's runtime probe of Claude Code 2.1.296 ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D6, the adapter runs Claude Code bare (`--bare`), and C1's pre-request gate is relay variant G, the budget as a pre-egress check in AEW's provider relay (F28), since hooks passed with `--settings` do not run under `--bare`; non-bare runs are not accepted (MIC-11, MIC-12). D7, a harness whose shell can write qualifies under M6a §7 with a read-only source and mediated authoritative mutation (MCD-01, MCD-02), the same rule for every harness (MIC-13; F40). D8, the adapter fails closed when the worker's tree has a project `.claude/settings*.json`, unless the project is explicitly qualified by a named, recorded policy exception (MIC-14, MIC-15)
 
+*Later notes: `notes.d/F24.2/`, oldest first (`python tools/register.py show F24.2`).*
+
 ### F25
 
 **Work:** An engine-owned cost and usage ledger: per run (model/profile, token categories, wall time, provider-reported and price-table cost), rolled up per invocation, Ticket and parent
@@ -564,7 +664,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Belongs to or gated by:** **M4** (the main lane: M4-G, then F25 with F19's evaluator/arm-host split and F15.5/F15.6's unattended PUBLISH_IF_CLEAN, the M4-H prerequisites of Q7 v0.3.1 §16, then M4-H). Budget enforcement in `DispatchDecision` stays with F7/M5 after calibration
 
-**Notes:** Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:** R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment; R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes. Implementation-ready except the Lead part, held for the designer's decision on the segment before F31 exists (decisions-due, F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):** live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general budget enforcement does not move into F25. **Slice 1 built** (the run-usage record, the OpenCode `usage_record`, the price table schema, the derivation and the projections; [implementation status](implementation-status.md)). The token semantics are qualified only for OpenCode 2.0.18 with `openai` (`disjoint`, from OpenCode's source); every other provider resolves to `unknown` and stays unpriced until it is qualified with a conformance fixture. **Slice 2a built** (the copy as a Lead-transaction finalizer, the control schema, invariant 46, `policy.pricing` as an operational policy file). The copy runs for every transaction that ends or relaunches an invocation rather than in each named handler (R5's paths are all such transactions), and copies only ended runs until archival, so a run is not fixed as absent while its invocation can still copy it. Archival copies every run (R5): one still live then, such as the run of a Ticket cancelled while its agent works, is recorded with its observed status and absent usage, and what it reports later stays in `local/`. Slice 2b's doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`). The snapshot check reads the hot state and the recently archived units only, never the whole archive, so a doctor run stays bounded; a snapshot named only by an older bundle is not checked there, and `aew usage show --all` (next) reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **M4-H live usage: slice L1 built** (2026-10-10): one sample shape, `aew/usage-live/v1`, and one meter for every OpenCode server, a run's or an evaluator-owned one (`harness/usage_live.py`), with probe P1's OpenCode 2.0.18 facts pinned and cited in a fixture; measurement only. L2 (a supervised run publishes it), L3 (the measured total and preflight) and L4 (the evaluator's reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25's settlement boundary (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts F25's live, settled, inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every OpenCode server started for the run id and all its sessions from server start, relaunches included), the close at every source final or 60 s after shutdown begins, late samples never changing the figure, and no experiment semantics in F25 (MIC-01). The plan's slice L7 records the ruling's content (ledger CMB), amending EVC-14's cost-block source for M4-H only; with G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this row's item in [decisions due](decisions-due.md)) is a different question and stays open.
+**Notes:** Needed by F19, routing comparisons and F15's efficiency claims. Absorbs U4 when built. **Adopted 2026-10-06:** R1 to R7, R9 and R10 approved; R8 revised to attachment and generation accounting (Q12), with Lead usage per attachment; R7 and R9 carry an explicit projection scope and completeness; PR numbers in the sequencing are implementation notes. Implementation-ready except the Lead part, held for the designer's decision on the segment before F31 exists (decisions-due, F25). **M4-H prerequisite ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §9.2; operator, 2026-10-07):** live run-usage telemetry sufficient for the M4-H evaluator to enforce the sealed experimental USD cap. F25 stays measurement and ledger authority: the evaluator consumes its telemetry and performs experiment-local cap termination; general budget enforcement does not move into F25. **Slice 1 built** (the run-usage record, the OpenCode `usage_record`, the price table schema, the derivation and the projections; [implementation status](implementation-status.md)). The token semantics are qualified only for OpenCode 2.0.18 with `openai` (`disjoint`, from OpenCode's source); every other provider resolves to `unknown` and stays unpriced until it is qualified with a conformance fixture. **Slice 2a built** (the copy as a Lead-transaction finalizer, the control schema, invariant 46, `policy.pricing` as an operational policy file). The copy runs for every transaction that ends or relaunches an invocation rather than in each named handler (R5's paths are all such transactions), and copies only ended runs until archival, so a run is not fixed as absent while its invocation can still copy it. Archival copies every run (R5): one still live then, such as the run of a Ticket cancelled while its agent works, is recorded with its observed status and absent usage, and what it reports later stays in `local/`. Slice 2b's doctor checks are built (2026-10-09: `policy:pricing`, `pricing-snapshots`, `usage-ledger`). The snapshot check reads the hot state and the recently archived units only, never the whole archive, so a doctor run stays bounded; a snapshot named only by an older bundle is not checked there, and `aew usage show --all` (next) reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **M4-H live usage: slice L1 built** (2026-10-10): one sample shape, `aew/usage-live/v1`, and one meter for every OpenCode server, a run's or an evaluator-owned one (`harness/usage_live.py`), with probe P1's OpenCode 2.0.18 facts pinned and cited in a fixture (verified afterwards in sst/opencode tag v2.0.18: the summary agent is never called by 2.0.18 itself, and counted when a client or a configured command selects it; session generation (called by its endpoint, the first-party `/btw`, the plugin host and the `warming` plugin) and the experimental generation (its endpoint and the plugin host) make model calls that record no usage, which no live figure sees, and L3's preflight refuses a configuration that sets `warming`); measurement only. L2 (a supervised run publishes it), L3 (the measured total and preflight) and L4 (the evaluator's reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model dependence actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25's settlement boundary (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts F25's live, settled, inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every OpenCode server started for the run id and all its sessions from server start, relaunches included), the close at every source final or 60 s after shutdown begins, late samples never changing the figure, and no experiment semantics in F25 (MIC-01). The plan's slice L7 records the ruling's content (ledger CMB), amending EVC-14's cost-block source for M4-H only; with G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this row's item in [decisions due](decisions-due.md)) is a different question and stays open.
+
+*Later notes: `notes.d/F25/`, oldest first (`python tools/register.py show F25`).*
 
 ### F26
 
@@ -576,6 +678,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Today every card's skills are `unavailable` (U9). Must not become a second capability-resolution system
 
+*Later notes: `notes.d/F26/`, oldest first (`python tools/register.py show F26`).*
+
 ### F27
 
 **Work:** Dogfood AEW on AEW: the register and AEW's own backlog as the real-repository dogfood
@@ -585,6 +689,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled** (strategic goal): once containment, real-repository and integration conditions are met and cost is tolerable
 
 **Notes:** |
+
+*Later notes: `notes.d/F27/`, oldest first (`python tools/register.py show F27`).*
 
 ### F28
 
@@ -596,6 +702,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** An ADR-0009 label and custody amendment. **The text to land is the frozen v0.2 design's §3 (designer, 2026-10-05)**, which separates CONNECT allowlisting from provider credential injection (its §1.1); the review's earlier draft ([T6 register entry and ADR-0009 amendment draft](../archive/reviews/architecture-review-2026-10-04/t6-register-entry-and-adr-0009-amendment-draft.md), a single credential-injecting proxy, direction accepted 2026-10-04) is superseded by it; the Rocky 8.10 probes are in [T6](../archive/reviews/architecture-review-2026-10-04/t6-network-containment.md); **Landed in ADR-0009 as the amendment of 2026-10-05 (designed, not built).** Until the implementation lands, Linux runs are labelled `network: shared` (truthful topology; PR #50, NET-08) and Windows runs `not_provided`. The Rocky 8.10 probes: the namespace works, the bridge's filesystem socket survives it, the server forwarder costs about 0.7 ms per request, OpenCode 2.0.18 starts offline, Bun honours the proxy variables. Still to probe: a real streamed turn through the relay, cancellation, IPv6 **Lead developer (2026-10-05, PR #57):** M4-D's deterministic integration checks (D5) inherit F28's default that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling. The F18 hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; the designer decided on 2026-10-06 that they are one logical AEW Provider Gateway ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md) §2): F28's relay is not deleted and keeps its containment and fixed-upstream credential-routing requirements, F18.8 composes it with attestation and broker binding, and generic egress stays separate and credentialless.
 
+*Later notes: `notes.d/F28/`, oldest first (`python tools/register.py show F28`).*
+
 ### F30
 
 **Work:** Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface from the requirement's seeds through the maps (symbols, files and units at radius 1 by default, radius 2 only when budgeted), the test index and the constraint locators, labelled by how each entry was found and with a coverage statement of what was unavailable; its judgement part fills plan assurance v0.4's first-pass artefact and premise list, never a record kind of its own; Epics run on structural directory roles with declared reduced coverage until `components[]` exist; Tickets inherit and narrow the Story's surface; the Project Profile is KC §8's maps plus WC §16.15 guardrails as evidence-bound records with per-claim freshness, not a new layer or document set
@@ -605,6 +713,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Evaluation** first: a 20 to 30 case stratified real-change corpus (localized and cross-cutting) decides the first promotion; impact-derived investigator triggers stay advisory during the evaluation while Plan Assurance's hard requirements stay hard; needs F22.1 and uses F22.2 and F22.3 where they exist
 
 **Notes:** A later Profile/Impact design (not T5) owns the record family, the generators, the slot filling, the triggers and the narrowing rule. The probe: recall 1.00 at radius 1 for localized changes, 0.54 for a cross-cutting one, about two seconds per requirement. **First slice (agent-effectiveness adoption §7, 2026-10-09; ledger AEA-25, AES-07; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md) item D8):** the completion-impact nudge (E1), `aew impact --changed`. Before `request_review` AEW may surface a bounded set (at most eight, with the omitted count) of high-confidence related-but-untouched surfaces (generated or vendored files, git co-change above a threshold, tests naming a changed symbol or path, schema and constraint locators, compiler-known callers where a semantic extension exists), uncertainty and coverage shown; the worker dispositions each in `self_review.related_surfaces` as addressed, unaffected or unsure; one computed surface (`surface_sha256`) serves the worker, the reviewer's pack and later supervision. Advisory, never a gate because something is related: no completeness gate and no relation-derived required test (AES-20). The command is absent while its switch is off (registered only when on, as `history search` is in the F21 Arm B prototype; a test shows help and usage unchanged); on demand and off by default until `e1-completeness-nudge` measures false positives and dismissals after M4-H; the request-stage hook waits for M4-E's E5b. The generated and co-change relations need only F22.1; tests and constraints need F22.3
+
+*Later notes: `notes.d/F30/`, oldest first (`python tools/register.py show F30`).*
 
 ### F31
 
@@ -616,6 +726,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Replaces today's coupling of the Lead broker to the wrapped harness process (`aew lead session`, `aew opencode`), the automatic interruption of every in-flight invocation by takeover and of every uncarried one by handoff (stop now keeps it as an operator choice), and `lead release`'s refusal while invocations are active (record §11, §13). Also replaces the M4-D3 rule that a takeover or uncarried handoff ends the integration custodian and cancels its verifier (ADR-0004 amendment). The Lead's per-invocation cancel and stop stay Lead commands. Native harness subagents only where the adapter keeps AEW's invocation identity, role, custody, profile, parent, limits, evidence and provenance (with F13). No automatic verifier rerun while the lease is held (record §14.5); a bounded retry under the same custody would need its own recovery design. Built through the F18 hosting slices, which design the same lifecycle in detail (F18.5 states, F18.7 attach, F18.9 detached children and drain, F18.10 enablement). F31 also decides the Tickets' state under release to manual, which now stops the children as stop now does (the Q12 record's §13 revision) and differs from it only in handing the work to the operator
 
+*Later notes: `notes.d/F31/`, oldest first (`python tools/register.py show F31`).*
+
 ### F32
 
 **Work:** The reference execution profiles: the Lead on GPT-6 Astra, Laguna S2.1 as the default worker, GPT-5.4 and approved open-source models as selectable workers, each qualified through the pinned harness (exact provider and model ids, effort variants, a live-lane run) before it is relied on; no workflow semantics keyed to a model's name
@@ -625,6 +737,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4** (M4-H's preregistration pins the execution profiles, and the raw arm uses the aew arm's model; F19)
 
 **Notes:** Needs the exact ids as the pinned OpenCode reports them and the operator's provider key for the live lane. Relates to D5 (routing policy). **Laguna S2.1 is not currently available** in the operator's environment ([agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md) §9, 2026-10-09): it remains the reference default-worker target, and R8, R9 and R2-B work is not gated on it. Research lanes use capability classes instead: frontier (Astra-class, the strongest available Lead model), mid (a qualified model through the operator's OpenAI API account) and lower-bound (a qualified free or inexpensive OpenCode model, a stress specimen, never reported as a Laguna substitute), each pinned at preregistration; if Laguna becomes available, the same profile-neutral suite runs on it. **Lower-bound availability (2026-10-10, OpenCode 2.0.18's served catalog):** the chosen free models (`opencode/deepseek-v4-flash-free`, the backup `opencode/minimax-m2.5-free`, and `opencode/laguna-s-2.1-free`) are deprecated in the catalog and not offered; their paid twins and `openai/gpt-6-luna` are. The lower-bound lane pins the paid twin `opencode/deepseek-v4-flash#high`, with `opencode/gpt-5-nano` as its next-cheaper fallback (`eval/experiments/lower-bound-qualification/profiles.yaml`). Later on 2026-10-10 the paid twin became unavailable on OpenCode Zen (an upstream 404, though the served catalog still lists it as active); the operator chose its successor `opencode/deepseek-v4.1-flash#high` as the replacement primary, and to run `opencode/gpt-5-nano#high` after it, each as its own experiment (V4.1's is now `lbq-v2-deepseek-v4-1-flash`, after a containment defect refused its first ceiling). Result (2026-10-10): `opencode/gpt-5-nano#high` is the qualified lower-bound profile; `opencode/deepseek-v4.1-flash#high` passed the floor, its ceiling pending the session-observable behaviours (D2)
+
+*Later notes: `notes.d/F32/`, oldest first (`python tools/register.py show F32`).*
 
 ### F33
 
@@ -636,6 +750,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** The bounded form of the remote integration target sketch's push leg; automated PR creation and provider merge handling stay deferred with Q14
 
+*Later notes: `notes.d/F33/`, oldest first (`python tools/register.py show F33`).*
+
 ### F34
 
 **Work:** Deterministic work conservation, the cross-cutting requirement's own obligations: the design review question (is the model being asked to do something AEW could safely and deterministically do itself?) asked of every significant feature or workflow, and the measurement that it works: navigation, workflow-ceremony and multi-agent metrics and the useful-reasoning ratio, on F25's usage substrate and F19's evaluation program
@@ -645,6 +761,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled**: the design review question applies from adoption to each new design; the metrics are measured where F25 and F19 make them available (dogfood, M4-H, M6b's A/B arms)
 
 **Notes:** No subsystem owns the requirement itself (§25); its applications live on their owner rows: F22 (T5 project maps), F15 and F11 (stage actions and the M5 scheduler), F9 (coordination), F21 (knowledge), F12 and F13 (the capability registry), F25 (measurement). Deterministic-first, not deterministic-only (§24): correctness and authority take precedence over cost (§15). Not a build item. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md), ledger AES):** accepted with three designer revisions and no new subsystem; its applications are F35 (packs), F15.8 (the worker read surface), F36 (weak-worker continuity), F30 (the completion-impact slice), F15.9 (the Lead delta), F22.3 and F19, ordered in the [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md); its rejections answer this row's design review question for it (record §13, AEA-39; synthesis §10, AES-20): no named context compiler or router component and no second capability registry; no automatic Knowledge injection before M6b Arm B; no broad free-text semantic facade, free-text `repo.related`, `repo.search` operation or worker-side `work.inspect`, while the workspace-bounded lexical fallback and the raw tools stay (Revision A, F15.8); no forced typed-tool-only operation for Astra-class models; no model-maintained working state, mandatory self-refresh, working-state store or record kind, or Lead access to raw scratch or harness sessions (F36); no completeness gate and no relation-derived required test (F30); no second event log or state store for attention and no stored past projections (F15.9); no peer-worker inspection outside existing coordination and supervision policy; no model-name semantics anywhere in policy (profiles are capability classes, AEA-27).
+
+*Later notes: `notes.d/F34/`, oldest first (`python tools/register.py show F34`).*
 
 ### F35
 
@@ -656,6 +774,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Knowledge stays a tool, never injected into packs before M6b Arm B is measured (F21). L1 symbol rows in packs wait until T5-B covers the repository's language (AES-19). Stale or partial derived sections are visibly qualified. Independence: reviewer and verifier packs keep the canonical same-Ticket material the role needs (objective and requirements, accepted plan, diff, check results, unresolved findings, verification failures and evidence, governing decisions) and exclude the current implementer's reasoning and private working state by default; the knowledge request-binding half of the filter is F21's role matrix (KDR-03 to KDR-05). A disclosed departure: the record calls `context.*` and `tools.presentation` operational knobs (§4, §5; AEA-15, AEA-21) and the synthesis classes them `operational`; the delta reads that as a non-semantic tuning knob, not the A3 class, and classes a field that changes what a dispatched role receives `legality_affecting`, because a pack is regenerated at launch under the `launch.pack` guard, so an operational change between dispatch and launch would refuse the launch, and because A3 never silently defaults a field to operational (PBD-09); F22.1 PR B classes `maps.pack_slices` the same way (lead developer, 2026-10-09; delta §4 item 3; reversible). Evaluation: `r8-pack-arms` after M4-H (A today, B the structural switch, C with locators, D with the Knowledge tool, E explicit orientation); no default changes before it reports. Delta item D5 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md))
 
+*Later notes: `notes.d/F35/`, oldest first (`python tools/register.py show F35`).*
+
 ### F36
 
 **Work:** Weak-worker continuity (R2-B), platform-owned: the bounded handoff note (R2: an optional, worker-authored note of at most 2 KiB in the role report, a claim with references, never authority, citing paths and evidence ids, delivered to a replacement invocation's pack as labelled reference data, never automatically Knowledge), then the recitation (a zero-model-cost restatement AEW assembles from canonical and derived state: the goal or active criterion, the remaining criteria, plan tasks, changed files against the planned scope, checks performed, open findings and blockers, the latest handoff note; delivered on sufficiently long or complex runs through the run's inbox on an operational trigger and recorded like `harness send`)
@@ -665,6 +785,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M4 candidate**, a parallel lane, off by default and outside M4-H's treatment (Revision B): the handoff note, then the recitation, which waits for neither U1/H1 nor M4-E's E3 and E4 (operator, 2026-10-10); only a trigger on H1's `repetition` field waits for U1/H1 (AES-19)
 
 **Notes:** No model-maintained working-state store, mandatory self-refresh, scratch-state record type, or Lead access to raw scratch or harness sessions (record §6, §13). The recitation thresholds (`recitation.calls`, `recitation.elapsed_s`, `recitation.every`) are operational (F15.4) and evaluated; trivial Tickets never cross the trigger. The run's supervisor already sees the tool calls and the elapsed time those thresholds count, delivers the recitation through the adapter's queue prompt (the path `harness send` takes) and records it in the run's log. Under F9-A the recitation becomes a durable instruction message; the worker-published `working_note` stays F9-B's. The note's conformance tests: no gate, transition or dispatch reads it, and a replacement invocation receives it bounded and labelled as its predecessor's claim. Evaluation: `r2b-coherence` after M4-H (none, note, recitation, recitation with the Lead's progress view). Delta items D6 and D11 ([implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)). **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §14; ledger CFI-57 to CFI-60):** the delta-review packet extends reviewer continuity (F41.10); a cross-reference, not new scope
+
+*Later notes: `notes.d/F36/`, oldest first (`python tools/register.py show F36`).*
 
 ### F37
 
@@ -676,6 +798,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** No design yet; the operator asked for the row now and the plan later. The need: when something fails at a site where AEW was deployed, there is no single way to reconstruct what happened or to get that information back to the maintainers. Related rows: `aew doctor` (F18.2) checks a host's setup, not a run's history; the cost and usage ledger (F25) records per-run timings the bundle can include. Constraints agreed with the operator (2026-10-09): the bundle is operator-only, because agents can read run directories; it never includes the Lead's reasoning or the rationale F4 withholds; diagnostics never change behaviour; and the scrubbing must never weaken credential custody, so a bundle carries no credential material in any mode
 
+*Later notes: `notes.d/F37/`, oldest first (`python tools/register.py show F37`).*
+
 ### F38
 
 **Work:** M6a Gate A, machine-policy closure: the M6a authorization model encoded as single-sourced machine data, and a checker that fails closed on any missing input (v0.9 §18's fifteen: the principal/status tuple table, the selector table, the implication table, the active grant-family mapping, the reserved-family registry, the active role-to-family table, the operator-approved named profile catalog, the shipped operation/projection catalog generated from the runtime definitions, the target and endpoint registries with canonical resource identities, the enforcement-path declaration table, the combination predicates, project policy overlays, pinned provider and harness projection hashes) and demonstrates every invariant over the actual shipped catalog: a total status with default `ILLEGAL`, deterministic attribution with its floors, implication closure, the active-family bijection with the reserved registry kept apart, selector coverage, profile safety and role liveness, operation catalog closure, one enforcement declaration per shipped tuple and delivery mechanism, registry consistency, and the Gate A fixtures
@@ -685,6 +809,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M6** (M6a), with F12 and F13, whose registry, operations and profiles are the checker's inputs; the model's adoption comes first ([decisions due](decisions-due.md))
 
 **Notes:** Passing permits only the policy claim (GAE-32), never the deployment claim, which is Gate B's (F39; CEA-01). The first encoding is expected to fail loudly on a missing row, implication or enforcement declaration, a dead profile grant, an unqualified projection, an unregistered resource or a reserved family in use; those are implementation or schema defects, and the design reopens only for an authority distinction the frozen model cannot represent (GAE-31). The checker reads the same generated operation and projection definitions the runtime uses, never a parallel copy, and the catalog holds qualified providers only (GAE-21). Its inputs are legality-affecting (CEA-58; the policy digests of F15.4). Scope: engineering and workbench effects only; Lead and operator workflow commands stay with the typed control plane (CEA-06). Where v0.9 changed a v0.8 requirement, the ledger marks the CEA id `superseded-by:` the GAE id (safety and liveness for "combination predicates are satisfiable", the Reviewer's network cells, the four reserved families, the form of the selector table (v0.8's selector rows stand, CEA-63), the fixture lists and the freeze claim). **Conflicts decided by the designer (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), ledger MCD):** D1, M6 supersedes ADR-0009/ADR-0006 native source mutation, with read-only source, writable scratch, mediated authoritative mutation and the shell kept (MCD-01, MCD-02; F40, whose ADR amendments are due with M6); D2, the knowledge adoption governs over v0.8's table, knowledge and safe navigation C for every admitted role and independence selector-controlled (MCD-03 to MCD-05; CEA-36 superseded by MCD-04 for its knowledge cells and, as far as safe navigation goes, its derived-read cells, the Verifier's P standing for the rest until this row's encoding says what is safe; F21); D3, the messaging-enabled operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE` (MCD-06; F9), which the named profile catalog models. These do not adopt the model; its adoption is still this row's item in [decisions due](decisions-due.md). **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §3.1; ledger CFI-11, CFI-12, CFI-15):** until dedicated Planner/Researcher rows exist, planning children resolve against the Investigator row plus the planning-child narrowing; dedicated rows, if wanted, are an input to this row (F41.2)
+
+*Later notes: `notes.d/F38/`, oldest first (`python tools/register.py show F38`).*
 
 ### F39
 
@@ -696,6 +822,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Gate A does not imply Gate B (CEA-01); this row is where the deployment claim is earned. It builds on the containment already built or planned: filesystem containment and process ownership (F2, built in M4-B) and the isolation strategies (F3), network containment (F28), the supervisor bridge (F15.3, F15.8), harness qualification (E35 for OpenCode, F18.12 for Codex). The AEW-owned plan store, the plan hash checked at the enforcement owner and re-planning on a provider change are runtime work under F12; their fixtures are here (CEA-48, CEA-49)
 
+*Later notes: `notes.d/F39/`, oldest first (`python tools/register.py show F39`).*
+
 ### F40
 
 **Work:** Worker source mutation only through an AEW source-mutation mediator (v0.9 §7, the designer's decision): harness-native authoritative source edit/write tools disabled in AEW worker profiles, the Implementer's included; a candidate delta or patch goes through the mediator, which checks the ticket revision, workspace and root before `write(source_tree)`; project-authored tools write only to the copy-on-write overlay or scratch and yield attributable candidate deltas; native `edit`, `write` and equivalents hidden or denied in the worker's model-visible schema, and provider and harness conformance proving them absent or unable to reach authoritative source; fixtures `native_source_edit_hidden`, `source_mutation_bypasses_mediator` and `source_tool_direct_write_blocked`
@@ -705,6 +833,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **M6** (M6a): a Gate B precondition for the qualified worker harness pin (F39)
 
 **Notes:** A future harness-native edit path qualifies only if it is bound to the same AEW mutation contract and becomes an explicitly modeled delivery mechanism (GAE-14). **Near-term coupling (a cross-reference, not new scope for those rows):** whether a harness's native edit and write tools can be hidden or denied in the worker's model-visible schema, not only refused when called, is first established by the OpenCode worker profile (E35) and the Codex and Claude Code runtime probes (F24.1, F24.2). **Differs from accepted ADRs (recorded when v0.8 and v0.9 were ingested):** ADR-0009 projects OpenCode's `edit` for implementers, and ADR-0006 maps the implementer's `source_mutation` capability to it. ADR-0009 also records an `edit` deny bypassed through the shell, so hiding the tool is not enough without containment (F2, F39). **Decided by the designer (D1, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md), MCD-01, MCD-02):** M6 supersedes ADR-0009/ADR-0006 native source mutation; the worker gets read-only source, writable scratch and mediated authoritative mutation, and keeps its shell (shell writes are stopped by the read-only source, not by a shell-less worker). The ADR-0009 and ADR-0006 amendments are due with this row when M6 lands; until then both ADRs govern the current build unchanged. The model's adoption itself is still F38's item in [decisions due](decisions-due.md). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D7 confirms that a harness whose shell can write qualifies under §7 with a read-only source and mediated authoritative mutation, the same rule for every harness (MIC-13; first applied to Claude Code, F24.2)
+
+*Later notes: `notes.d/F40/`, oldest first (`python tools/register.py show F40`).*
 
 ### F41
 
@@ -716,6 +846,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** The umbrella row: each §19 owner or amendment has its own row, F41.1 to F41.13; the §18 dispositions owned outside them are F41.14; and the nit-rule divergence (§21) is Q15. The designer's ruling (§19, last paragraph; CFI-70): the design may freeze before the WC/F14 and WC §8 amendments are merged, but the affected behaviour is not activatable until the amendment exists and the activation gate verifies it; this supersedes the v0.3 review's suggestion that the amendment exist before conceptual freeze. The Lead wake (§11) stays with its existing owner, F9. Acceptance checks 1 to 26 (CFI-71 to CFI-96) are tracked on the row that owns each
 
+*Later notes: `notes.d/F41/`, oldest first (`python tools/register.py show F41`).*
+
 ### F41.1
 
 **Work:** The Workflow Contract / F14 amendment for mandatory reviewed parent plans: every ancestor Epic and Story, Class 0 included, has a reviewed accepted plan, which changes `parent_paths["0"]` (the Class-0 parent path); the parent-plan guard as an input to F14 §17.1's single `DispatchDecision`, not a second dispatch engine; the reviewed-plan record contract (proposal, independent R1 review bound to the proposal's sha256, adoption by someone other than the proposer); the minimal Class-0 parent plan
@@ -725,6 +857,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Designer.** The amendment is to be written and adopted; **must exist before activation** (§19)
 
 **Notes:** **Activation-gating:** the design's behaviour that needs it is not activatable until it exists (§19, §20 check 26, CFI-70). Its build is F41.2. Mandatory Class-0 parent planning is deliberate (§2): AEW avoids planning ceremony at Ticket granularity, not by planless parent work. The plan proposal, review and adoption contract must be specified before activation (§19)
+
+*Later notes: `notes.d/F41.1/`, oldest first (`python tools/register.py show F41.1`).*
 
 ### F41.2
 
@@ -736,6 +870,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Until dedicated Planner/Researcher role rows exist, planning children resolve against the M6a Investigator row plus the planning-child narrowing; dedicated rows are an F38 input (CFI-12). `G_EXTERNAL_OBSERVE` stays reserved and outside the allowance (CFI-11). It builds on the plan bindings already in the code (ADR-0007, ADR-0008)
 
+*Later notes: `notes.d/F41.2/`, oldest first (`python tools/register.py show F41.2`).*
+
 ### F41.3
 
 **Work:** The `non_mutating_paths` migration: the planning-child exemption changes the existing `non_mutating_paths` default, so adoption migrates project policy in `policy/gates.yaml` and no existing project silently keeps the old rule
@@ -745,6 +881,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Activation-gating for the planning-child exemption (F41.2): with it or before it
 
 **Notes:** A migration of project policy data, not a new authority surface
+
+*Later notes: `notes.d/F41.3/`, oldest first (`python tools/register.py show F41.3`).*
 
 ### F41.4
 
@@ -756,6 +894,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Until F5 governs change classes and this binding exists, every accepted revision affecting the parent plan stales the applicable binding and needs explicit reconfirmation; after F5, `EDITORIAL` preserves a binding only where the consumed digest is unchanged and F5 policy permits (CFI-29). Admissibility of existing evidence is computed against the new binding under E19-B §5.2 (CFI-33)
 
+*Later notes: `notes.d/F41.4/`, oldest first (`python tools/register.py show F41.4`).*
+
 ### F41.5
 
 **Work:** The Workflow Contract §8 amendment for the `interface_dependency` edge (V-1(b)): a new non-blocking edge kind for a contract or assumption dependency between work that may run in parallel, blocking edges keeping their meaning; the same amendment extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on `interface_dependency` edges
@@ -765,6 +905,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Designer.** The amendment is to be written and adopted; **WC amendment required** before activation (§19)
 
 **Notes:** **Activation-gating:** the design's behaviour that needs it is not activatable until it exists (§19, §20 check 26, CFI-70). Its build is F41.6
+
+*Later notes: `notes.d/F41.5/`, oldest first (`python tools/register.py show F41.5`).*
 
 ### F41.6
 
@@ -776,6 +918,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** No second invalidation subsystem: E19-B stays the sole authority-bearing invalidation mechanism (CFI-40). `ADOPT_NEW_VERSION` is a UI description, not a new F9 category (CFI-41). Hard protection covers declared interfaces only; undeclared consumers rely on integration validation and parent verification (CFI-45). Rebinding is an E19-B revision of the consumer's dependency field group, under E19-B §7.2 quiescence when an attempt is active (CFI-44)
 
+*Later notes: `notes.d/F41.6/`, oldest first (`python tools/register.py show F41.6`).*
+
 ### F41.7
 
 **Work:** The overlap projection: read-only and advisory, coverage and unknowns first; signals from exact file overlap, declared blocking and interface dependencies, accepted interface digests, allocated identifiers and namespaces (from project policy data, not an AEW-global list), shared register, schema and config surfaces, build and test surfaces and qualified structural and symbol relationships; mechanically mergeable paths identified separately; unsupported Python import and symbol coverage reported as unknown; the advisory publish-overlap wake (§11 trigger 2)
@@ -785,6 +929,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Pending (§19); owners F22.3/T5 and the work graph
 
 **Notes:** Never authority: trigger 2 creates no hold. Builds on F22.3's indexes and the structural map (F22.1)
+
+*Later notes: `notes.d/F41.7/`, oldest first (`python tools/register.py show F41.7`).*
 
 ### F41.8
 
@@ -796,6 +942,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Health stays advisory, with no lifecycle authority (RHP, U1). Field-log entry #3
 
+*Later notes: `notes.d/F41.8/`, oldest first (`python tools/register.py show F41.8`).*
+
 ### F41.9
 
 **Work:** `operator_validation` evidence: a new evidence kind integrated with the operator queue, verification observation evidence (not review evidence, never a substitute for required independent verification); a model-proposed script runs only after the operator approves the target host (resolved through the operator-pinned host registry), the full rendered content, the intended action and the capture schema; secrets only through secret-input channels and never persisted; only capture-schema fields persisted; a requirement-to-step coverage check that never claims adequacy
@@ -805,6 +953,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Pending (§19); owners Evidence and the operator queue
 
 **Notes:** Approval of a digest alone is insufficient (CFI-54). Field-log entries #11, W5
+
+*Later notes: `notes.d/F41.9/`, oldest first (`python tools/register.py show F41.9`).*
 
 ### F41.10
 
@@ -816,6 +966,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** No engine-derived "assumptions touched" field unless assumptions are structured plan or interface records (CFI-59). Harness-native reviewer continuation stays optional and F24-qualified (CFI-60)
 
+*Later notes: `notes.d/F41.10/`, oldest first (`python tools/register.py show F41.10`).*
+
 ### F41.11
 
 **Work:** The nit/observation fast path: the canonical severity vocabulary, with project `nit` presentation-only and an operator-pinned mapping to canonical `observation` that never remaps blocker, major or minor downward; after a CLEAR, eligible observation corrections get one cheap delta review over the full engine-computed delta; any blocker, major or minor finding, an unexpected behavioural change or a further cycle returns the work to the normal review path
@@ -825,6 +977,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Pending (§19); owner the review protocol
 
 **Notes:** Bounded to one post-CLEAR correction cycle; no evidence carry-forward shortcut (CFI-63). The product rule is deliberately stricter than this repository's AGENTS.md process (PR #181, no re-review after nits); which way the repository goes when this ships is the operator's decision, Q15
+
+*Later notes: `notes.d/F41.11/`, oldest first (`python tools/register.py show F41.11`).*
 
 ### F41.12
 
@@ -836,6 +990,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Field-log entry #17
 
+*Later notes: `notes.d/F41.12/`, oldest first (`python tools/register.py show F41.12`).*
+
 ### F41.13
 
 **Work:** The engine-behavior citation rule: a claim about current engine behaviour used as a premise for a fix or a designer decision cites its code basis; AEW checks mechanically only that the cited path, symbol, test and revision resolve at the cited base commit; whether the code supports the claim stays a review judgment
@@ -846,6 +1002,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Notes:** Field-log entries #18, #19
 
+*Later notes: `notes.d/F41.13/`, oldest first (`python tools/register.py show F41.13`).*
+
 ### F41.14
 
 **Work:** The cross-feature integration design's field-log dispositions that hand work to owners outside F41's own rows, each to be taken up by its owner: #4 test scope (the launch-contract / test-policy owner); #10 public/private review (a review-artifact policy follow-up); #12 operator waiting queue (the existing operator-attention / dashboard owner: F15.5 for the operator-attention half, F20 for the dashboard half); #15 disk budget (the doctor / workspace-retirement owner, F18.2); #16 CI external check (an external-check / `wait --any` integration candidate, F9); #20 PR lifetime (an evaluator / process metric candidate, F19)
@@ -855,6 +1013,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Belongs to or gated by:** **Unscheduled.** Not activation-gated: each item is its owner's to schedule; the candidates (#16, #20) are taken up only if their owner adopts them
 
 **Notes:** So that no §18 entry is silently dropped (§18, §22 item 10). The entries dispositioned "no new work" (#2, #9, #13, #14, W1, W3, W4, W6) need no row; the rest are carried by F41.1 to F41.13 and F9
+
+*Later notes: `notes.d/F41.14/`, oldest first (`python tools/register.py show F41.14`).*
 
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
@@ -868,6 +1028,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Target and notes:** **Unscheduled.** Documented as possible, not built.
 
+*Later notes: `notes.d/D1/`, oldest first (`python tools/register.py show D1`).*
+
 ### D2
 
 **Work:** An installer, and deeper harness integration (installed commands, one control surface)
@@ -875,6 +1037,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Source:** M3 plan §8
 
 **Target and notes:** **Unscheduled.** Discussed with the operator during M3. F18 (bootstrap and hosting; Q12 decided) relates to it.
+
+*Later notes: `notes.d/D2/`, oldest first (`python tools/register.py show D2`).*
 
 ### D3
 
@@ -884,6 +1048,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Target and notes:** **M6** (with F12 and F13). The operator adds skills to `docs/skills/` periodically, and they are committed as the operator writes them. The goal: the capability registry (F12, M6) resolves them, so agents can reach them when a card calls for one. Skills should name abstract capability classes, not concrete providers, and are disclosed progressively (F13 §9, §11). Until then, M3 reports requested skills as unavailable (WC §16.10). The dogfood's Lead brief is a stand-in. Architecture review 2026-10-04 (accepted 2026-10-05, Q13): Lead skills (reconnaissance, protected goal inputs, classification) and role skills (verification evidence, report authoring) as F19-evaluated candidates; language manuals deferred; a minimal delivery path is F26.
 
+*Later notes: `notes.d/D3/`, oldest first (`python tools/register.py show D3`).*
+
 ### D5
 
 **Work:** Model optimization and routing policy
@@ -891,6 +1057,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Source:** M3 plan §8
 
 **Target and notes:** **Unscheduled.** The dogfood's model comparison is evidence for it.
+
+*Later notes: `notes.d/D5/`, oldest first (`python tools/register.py show D5`).*
 
 ## 4. Open questions awaiting a decision
 
@@ -904,6 +1072,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source:** F6
 
+*Later notes: `notes.d/Q4/`, oldest first (`python tools/register.py show Q4`).*
+
 ### Q5
 
 **Question:** The open questions each design lists
@@ -911,6 +1081,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Owner:** Designer
 
 **Source:** hierarchy §21; lead/operator §23; isolation §16
+
+*Later notes: `notes.d/Q5/`, oldest first (`python tools/register.py show Q5`).*
 
 ### Q8
 
@@ -920,6 +1092,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source:** capability design §15 and §16
 
+*Later notes: `notes.d/Q8/`, oldest first (`python tools/register.py show Q8`).*
+
 ### Q11
 
 **Question:** Reconcile the provider research (`../design/aew-phase6-airgap-capability-research-2026-10-01.md`) with M3's rules before F12 and F13 are designed further. **Provider use is AEW-governed** (designer, 2026-10-01): AEW authorizes, health-checks and ends a provider's use per invocation, and a provider's credentials stay out of every process the agent can reach (custody, ADR-0005 amendment). Q12 settled hosting (2026-10-06): AEW owns capability negotiation and the harness configuration inputs, the harness owns model execution. Also: index-backed results (language servers, code graphs, decompilers) carry the provider version and index fingerprint, stamped by the engine like `producer.execution`; installer side effects (generated skills, hooks, instructions) are refused, because only AEW's projection writes harness configuration; the research's evaluation plan (§8) shares one evaluation harness with F17's phase 1
@@ -927,6 +1101,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Owner:** Designer
 
 **Source:** the provider research §3–§8; ADR-0005; ADR-0009; F12; F13; F17
+
+*Later notes: `notes.d/Q11/`, oldest first (`python tools/register.py show Q11`).*
 
 ### Q14
 
@@ -936,6 +1112,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source:** [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) §5 and "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07, [F23 decision](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** not an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement
 
+*Later notes: `notes.d/Q14/`, oldest first (`python tools/register.py show Q14`).*
+
 ### Q15
 
 **Question:** The nit-rule divergence (cross-feature integration v0.5 §21): AEW's product rule (§15) needs one bounded delta review after nit corrections, while this repository's AGENTS.md process (PR #181) has the author fix nits and post "Nits fixed at <sha>" with no new review. Recorded as deliberate for now; when the product rule ships (F41.11), the repository either aligns AGENTS.md to the product rule or keeps the difference as an explicit, documented project-policy exception. It must not remain an accidental mismatch. AGENTS.md is unchanged by the ingestion
@@ -943,6 +1121,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Owner:** Operator
 
 **Source:** [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §21 (ledger CFI-97, CFI-98); [decision record](../design/decisions-2026-10-10-cross-feature-integration-freeze.md) §5
+
+*Later notes: `notes.d/Q15/`, oldest first (`python tools/register.py show Q15`).*
 
 ## 5. Dogfood findings left open (small)
 
@@ -956,6 +1136,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Target and notes:** **M4 candidate** (Lead UX). By design for the TUI, where the operator is asked. For headless use, consider a read-only allow-list that fits Lead investigation.
 
+*Later notes: `notes.d/O2/`, oldest first (`python tools/register.py show O2`).*
+
 ### O3
 
 **Finding:** A goal met by changing its own inputs: AEW integrated a wrong T4 change after the implementer edited the sample data the goal was stated against. Review and verification passed it.
@@ -964,6 +1146,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Target and notes:** **Designer** (F14, Q6). Options for the designer: goals that refer only to unchanged inputs (Lead guidance), protected paths for data that goals refer to, and a reviewer item that flags changed acceptance inputs. Registry: see Q6. **Addressed by the plan assurance design (F14)**; its Phase 1 makes this run a replayable fixture. Stays open until F14's fix is accepted.
 
+*Later notes: `notes.d/O3/`, oldest first (`python tools/register.py show O3`).*
+
 ### O4
 
 **Finding:** The Lead is about 40% of AEW's cost. The dogfood report blamed `aew harness wait` slices; the M3 audit (L1) found waiting is 12% of Lead steps and the cost is workflow choreography (a median 20 workflow-command steps per session)
@@ -971,6 +1155,8 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Source:** `m3-dogfood-report.md` §6.3; `m3-audit-findings.md` L1, L2
 
 **Target and notes:** **M4** (the wait-any part, with E1). Addressed by F15 (stage commands). A push-style or wait-any `harness wait` is M4 work (F9, audit L2). **The wait-any part is built (M4-D6, 2026-10-05; E1 closed):** the choreography part stays with F15.
+
+*Later notes: `notes.d/O4/`, oldest first (`python tools/register.py show O4`).*
 
 ## 6. Engineering follow-ups (the M3 audits)
 
@@ -988,6 +1174,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Operator authorized incremental improvements, 2026-10-04. First checkpoint implements PD-04 child-results navigation/out-of-page labeling and small PD-01/02 content-first/disclosed metadata/copy ownership improvements. Independent review requested two phone focus/scroll corrections (F1/F2); corrections and exact-source evidence are in `web/docs/reviews/work-density-checkpoint-1-correction.md`. Operator reported reviewer approval, 2026-10-04; all CI passed and PR #52 merged at `4f0a710`. Original reviewer reports are preserved without manufacturing a new review artifact. PD-03 results setup and further detail organization remain separately planned; broader dashboard review Unscheduled, ownership pending. Preserve all features/contracts. Deferred from W03; no Engine records.
 
+*Later notes: `notes.d/E16/`, oldest first (`python tools/register.py show E16`).*
+
 ### E3
 
 **Work:** Watch CI for load-sensitive timing
@@ -997,6 +1185,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled** (ongoing)
 
 **Notes:** The step-3 case was a real race (M3-D11, fixed), and so was a run reported `lost` while it ended, on `main` after PR #7 (fixed: ADR-0009 amendment 2026-10-01, the heartbeat continues while a run ends). The launch acknowledgement wait (`AEW_LAUNCH_ACK_S`, 90 s) has timed out once, under two concurrent suites. `test_a_run_that_takes_long_to_end_is_not_reported_lost` failed once under coverage on 16 workers (M4-A, 2026-10-03): its 2 s stale window left 1 s over the 1 s beat; widened to 4 s, with the wait at 8 s. A run reported `lost` while it started (Windows, PR #132, 2026-10-09) was a real race too: its first record came before its first heartbeat (fixed: ADR-0009 amendment 2026-10-09). A single-run `aew harness wait` that returned a run still `running` (four CI failures in three adversarial tests, 2026-10-06 to 10-08, Linux and Windows) was a regression from wait-any (M4-D6, PR #79): its control lane, meant for `--any`, ended a single-run wait before the supervisor had written the run's end (fixed 2026-10-09: the control lane is `--any`'s only). A supervisor wedged while starting kept its heartbeat fresh with no limit, so a single-run wait read `starting` until its own timeout (noted by the independent review of PR #147, not seen in CI). The start now has a deadline, by default the sandbox self-test's and the harness adapter's own launch bounds plus 60 s (620 s for OpenCode at its defaults; `AEW_RUN_START_S` overrides it), so a wedged start reads `lost` within the deadline plus 10 s and never becomes `running` (ADR-0009 amendment 2026-10-09, a run's start has a deadline). A failed harness test now reports and keeps its runs' record and logs (testing strategy §3, 2026-10-09), so the next such failure names a stall (`lost`) or a crash. `test_a_waiter_parses_no_control_state_between_commits` (OBX-38) failed on a loaded Windows host, alone at `main` and once under 8 workers in PR #149's review (2026-10-09): its 4 s wait closed before the Ticket's commits landed, so only the initial read was counted. Fixed test-side: the commits land after the waiter's initial read, the test waits until the waiter has parsed the last of them, then ends the wait through a run's record; it counts parses against the commits' revisions, with no time window. Raise or restructure test-side timing, never the product's.
+
+*Later notes: `notes.d/E3/`, oldest first (`python tools/register.py show E3`).*
 
 ### E17
 
@@ -1008,6 +1198,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Anything that could widen access (an `allow` or `ask` after AEW's rules, a changed system text, model or step limit) still refuses. 2.0.22 also adds `GET /api/credential`, which returns stored integration credentials with their values; AEW's runs use private state, and the PR must verify (and test) that a run's server holds no stored credential, since the server password is readable from the agent's shell (ADR-0009 residual). Part 1 (the meaning comparison and the stored-credential check) is in its own PR (2026-10-04); part 2 (2.0.22 on the live lane, `TESTED_VERSIONS`) needs the operator's binary and provider key.
 
+*Later notes: `notes.d/E17/`, oldest first (`python tools/register.py show E17`).*
+
 ### E4
 
 **Work:** A scheduled live smoke run against the pinned OpenCode
@@ -1017,6 +1209,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled** (the operator's choice)
 
 **Notes:** Launch-time capability probes already fail closed on drift within V2.
+
+*Later notes: `notes.d/E4/`, oldest first (`python tools/register.py show E4`).*
 
 ### E6
 
@@ -1028,6 +1222,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Serializing a run's requests is conservative and correct.
 
+*Later notes: `notes.d/E6/`, oldest first (`python tools/register.py show E6`).*
+
 ### E12
 
 **Work:** `aew evidence show <id>`, the canonical detailed Evidence read surface, through the existing projection layer with structured output for the typed Lead surface and bounded bodies; normal workflow surfaces keep the record's conclusion and Evidence ID
@@ -1037,6 +1233,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate** (M4-G; Lead UX). The designer's call on the form is made (2026-10-06)
 
 **Notes:** Decided 2026-10-06; not built. Today `aew evidence` has only `ingest`.
+
+*Later notes: `notes.d/E12/`, oldest first (`python tools/register.py show E12`).*
 
 ### E14
 
@@ -1048,6 +1246,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The bare CLI floor (`aew --version`) is 0.10 s on the M3 machine.
 
+*Later notes: `notes.d/E14/`, oldest first (`python tools/register.py show E14`).*
+
 ### E18
 
 **Work:** Transaction outbox: committed events atomic with the commit, durable consumer cursors, at-least-once idempotent consumers, bounded retention under ADR-0011; consumers wait-any (E1), the dashboard, knowledge capture, the scheduler
@@ -1057,6 +1257,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4** (M4-D)
 
 **Notes:** The transition log is the outbox: typed events derived in the store (so direct `Session.commit` sites are covered), `aew history log --since R` with the revision as the cursor, an advisory wake file, a 4,096-revision window sealed into 256-transition segments and never discarded, a hash chain. It meets the lead developer's review: an oversized transaction's full event list goes to an immutable staged sidecar that `last_transition` names and hashes. Ships with M4-D's schema decision (D10). **Status (2026-10-05):** partly built. Slice D1 (PR #53): typed events, the overflow sidecar, `aew history log` and its reader, the wake file, the hash chain. Slice D2 (PR #60): sealing into segments and `aew history compact`, doctor's window check, readers that resolve sealed segments, oracle rules 27 and 28, the git-cost measurement, and the fixes from the independent review of D1. The consumers (E1's wait-any, the dashboard endpoint, capture, the scheduler) and the `queue.*` kinds remain
+
+*Later notes: `notes.d/E18/`, oldest first (`python tools/register.py show E18`).*
 
 ### E19
 
@@ -1068,6 +1270,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The design (its [T7 index](../archive/reviews/architecture-review-2026-10-04/t7-amendment-index.md) and the [citation test run](../archive/reviews/architecture-review-2026-10-04/t7-citation-test-results.md) are archived: the index touches a third of all contract citations; the naive rule is noise, the refined topic rule found exactly one real defect, the acceptance guide's AT-9 row, closed as E38): `docs/spec-amendments.yaml` resolves the effective WC/KC section (frozen base plus adopted overlays; `design_frozen` never counts), unversioned citations mean the effective section, structural tests in `test_spec_amendments.py`. Its first slice also writes the missing Ticket-revision contract amendment (F4). **Designer (2026-10-05):** the re-freeze also consolidates WC §15.6 with the governing typed Lead surface v0.2 (MCP as the first normal transport; the CLI as parity, recovery and conformance). ARV-03, retiring the documents the ADRs absorbed at the re-freeze, is this row's (operator, 2026-10-05). **The index part is done (PR #73):** [`spec-amendments.yaml`](../spec-amendments.yaml) indexes three adopted overlays (the Class 0 amendment and its §9, replacing WC §7.4's Class 0 bullet and example, WC §7.5's Class 0 path and KC §26's parent-risk case; the typed Lead surface v0.2, extending WC §15.6), the effective sections and the Ticket-revision debt, and `test_spec_amendments.py` checks it structurally and that every citation names a real frozen section (SAI-14: no topic heuristic). **The Ticket-revision contract amendment is adopted (E19-B v0.4, operator, 2026-10-06, [amendment](../design/workflow-contract-amendment-ticket-revisions-2026-10-06.md)):** a fourth overlay extending WC §7, §8 and invariant 7 and KC §12, so the index's pending debt is empty. The row stays open for the re-freeze, which also replaces an external example project's name in the frozen texts with neutral wording (operator, 2026-10-06). **Editorial lines for the re-freeze ([agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), 2026-10-09; synthesis §7, AES-14; record §15, AEA-41 to AEA-43):** the KC §15.4 locations delivered as labelled locators; independent review excludes the implementer's working state; a role's handoff note is a bounded claim for its successor; and the designer's F4 ruling that moving a committed Ticket to another parent needs a replacement, while KC §9.4 promotion is a distinct operation
 
+*Later notes: `notes.d/E19/`, oldest first (`python tools/register.py show E19`).*
+
 ### E20
 
 **Work:** `--json` output on read commands, so the typed action surface wraps structured results, not prose
@@ -1077,6 +1281,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**, with F15/D-AR2
 
 **Notes:** E12 (`aew evidence show`) is the first case
+
+*Later notes: `notes.d/E20/`, oldest first (`python tools/register.py show E20`).*
 
 ### E21
 
@@ -1088,6 +1294,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The map part is F22; the proposal mechanism it belongs to is F18.1 ([install and bootstrap UX v0.3](../design/install-bootstrap-ux-design-v0.3.md) §3), which absorbs it when built
 
+*Later notes: `notes.d/E21/`, oldest first (`python tools/register.py show E21`).*
+
 ### E22
 
 **Work:** A `doctor` check that the supervisor heartbeat's staleness limit exceeds the measured re-parse on this host
@@ -1097,6 +1305,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **On measured need**: after large-host re-parse bounds are measured
 
 **Notes:** |
+
+*Later notes: `notes.d/E22/`, oldest first (`python tools/register.py show E22`).*
 
 ### E23
 
@@ -1108,6 +1318,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Job objects, console and file-replace retries are outside the number today. The merge gate would roughly double the Windows lanes and time out integration (measured on PR #69, closed); a shard has no room for it. A temporary placement for today's cost, revisited after P3 (E42)
 
+*Later notes: `notes.d/E23/`, oldest first (`python tools/register.py show E23`).*
+
 ### E24
 
 **Work:** Typed record models generated from the JSON schemas at build time, or checked `TypedDict`s
@@ -1117,6 +1329,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled**
 
 **Notes:** No runtime dependency
+
+*Later notes: `notes.d/E24/`, oldest first (`python tools/register.py show E24`).*
 
 ### E25
 
@@ -1128,6 +1342,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Run by hand on the operator's VM today
 
+*Later notes: `notes.d/E25/`, oldest first (`python tools/register.py show E25`).*
+
 ### E27
 
 **Work:** OpenTelemetry-shaped local spans for commands and runs
@@ -1137,6 +1353,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled** (probe): only with a concrete consumer and an air-gap-safe retention plan
 
 **Notes:** |
+
+*Later notes: `notes.d/E27/`, oldest first (`python tools/register.py show E27`).*
 
 ### E28
 
@@ -1148,6 +1366,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** |
 
+*Later notes: `notes.d/E28/`, oldest first (`python tools/register.py show E28`).*
+
 ### E30
 
 **Work:** Keep the register as structured data (YAML with a rendered view the dashboard can show), so milestone-start triage is mechanical
@@ -1157,6 +1377,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**: accepted as work by the operator (2026-10-05, ARV-02)
 
 **Notes:** The markdown stays the rendered view that the ledger's tests and readers use; a YAML source beside it, with a generator and a sync test, is the mechanism; since 2026-10-05 the register merges without colliding on merges (no per-change log in the preamble; §9 in id order, enforced by `check`; the markdown re-rendered, never hand-merged)
+
+*Later notes: `notes.d/E30/`, oldest first (`python tools/register.py show E30`).*
 
 ### E31
 
@@ -1168,6 +1390,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** One driver serves both; the dispatch set took 5 minutes and the integration set 7 on Windows. The CLI conformance tests stay as they are
 
+*Later notes: `notes.d/E31/`, oldest first (`python tools/register.py show E31`).*
+
 ### E32
 
 **Work:** Integration hardening: `_interrupt_invocations` changes state through `set_state` (the single state-change path ADR-0004 relies on; `dependencies.py` and `hierarchy.py` do the same for derived states), and `aew doctor` lists worktrees under the workspaces root that no hot record references (a crash between DONE and the worktree removals leaves them)
@@ -1177,6 +1401,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4-G** (proposed, M4-C triage)
 
 **Notes:** Harmless today: a `publishing` record is excluded from interruption
+
+*Later notes: `notes.d/E32/`, oldest first (`python tools/register.py show E32`).*
 
 ### E33
 
@@ -1188,6 +1414,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The streaming half is closed (§9, 2026-10-09); the scan matches the credential's ASCII bytes only
 
+*Later notes: `notes.d/E33/`, oldest first (`python tools/register.py show E33`).*
+
 ### E35
 
 **Work:** OpenCode support qualification and adapter seams: `codemode: false` on the Lead's AEW MCP server, with readiness checked through the broker (a missing server fails the Lead closed, never a session without AEW's control surface); `execute` and the desktop `browser` namespace denied explicitly in worker runs; a probe of whether `OPENCODE_DISABLE_PROJECT_CONFIG` also excludes `.opencode/` plugins and the remote `.well-known` layer; a "nothing else loaded" conformance scenario on the model-visible request; `tool_output` limits; `HarnessAdapter.capabilities()`, named `LaunchContract` fields (`skills`, `tools_allowed`, `native_sandbox`) and a native-sandbox label line
@@ -1197,6 +1425,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**: the worker-run parts; the Lead MCP parts land with F15's typed surface
 
 **Notes:** Codex qualification is F24; the capability registry is F13. ARV-05 (operator, 2026-10-05): whether the current OpenCode release still fits is this row's question. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** whether OpenCode's native `edit` and `write` can be hidden or denied in the worker's model-visible schema, not only refused when called, is first established in the worker profile here; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new scope
+
+*Later notes: `notes.d/E35/`, oldest first (`python tools/register.py show E35`).*
 
 ### E39
 
@@ -1208,6 +1438,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** The gate is `tests/unit/test_requirements_ledger.py`; the ledger's `section:` field is the heading text today
 
+*Later notes: `notes.d/E39/`, oldest first (`python tools/register.py show E39`).*
+
 ### E42
 
 **Work:** CI redesign P3, shared setup: an in-process CLI driver for setup steps (isolated per invocation: the guards that fail a test leaking `AEW_*` variables or a changed working directory apply to every invocation, and it saves and restores cwd, environment, standard streams, logging, parser and module globals, thread locals and context variables, non-project caches, proven by its own tests) and snapshotted starting states (an immutable per-worker template from a declared, checked quiescent and relocatable state; each test an independent copy, worktrees repaired and paths rebound), each helper switched only after one semantic-equivalence oracle shows the same state both ways; then the expensive families migrated one at a time
@@ -1217,6 +1449,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**: after E43 and E44 (design §5, steps 4 and 5, then P3 as step 6)
 
 **Notes:** The strategy rule it needs is amended in `testing-and-ci-strategy.md` §6 (2026-10-06). Expected 40 to 50% off the slow scenario files; it is what stops the suite's cost growing faster than the product. The integration lanes ran 21 to 26 of their 30 minutes, and `main`'s run for `389e32d` timed one out (30m45s, 2026-10-06)
+
+*Later notes: `notes.d/E42/`, oldest first (`python tools/register.py show E42`).*
 
 ### E44
 
@@ -1228,6 +1462,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Exactly-once assurance proves membership independently of the cache
 
+*Later notes: `notes.d/E44/`, oldest first (`python tools/register.py show E44`).*
+
 ### E46
 
 **Work:** Sweep the current fast-lane outliers (a 33.5 s randomized crash test, several 5 to 7 s surface-runner tests) and investigate the store crash slowdown (1 to 7 minutes before the outbox, over 60 after) as a performance regression, never by a bigger budget
@@ -1237,6 +1473,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**, after E43, from its record
 
 **Notes:** `CLAUDE.md`: a slower test is a regression to find, not a timeout to raise
+
+*Later notes: `notes.d/E46/`, oldest first (`python tools/register.py show E46`).*
 
 ### E52
 
@@ -1248,6 +1486,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** First part answered (investigated 2026-10-09, A/B collected 2026-10-10): host variation plus code growth, not a dependency. The 10-04 baseline ran on an unusually fast runner (`westus3`): roughly 1.32 (that host) × 1.26 (code growth, also in the PR lanes) × 1.12 (variation between nightly hosts) ≈ 1.87. Against the PR runs at the same commits the nightly moved only within host variation (median per-test nightly/PR ratio 0.62 to 0.66 before, 0.66 to 0.82 after: about 1.14 on average, up to 1.3 on one night), nowhere near 1.87. The suspected `rpds-py` upgrade (2026.6.3 to 2026.9.1) is cleared: a CI A/B ran both versions on each of 3 Windows runners (run 38017570085) and measured a same-host ratio of 1.06 (95% CI 0.99 to 1.14; 1.04 adjusted for run order), inside one host's run-to-run spread of up to 12 %, while the hosts differed by up to 1.29 times. No pin. **From now on, compare Windows `reference` timings against the PR run at the same commit, or against the median of several nightlies, never against a single nightly.** A follow-up is merged: #157 removed the runtime `check_schema` of AEW's own schemas (about 220 ms per CLI call). The second part stays open: a module-scoped fixture is still rebuilt in every shard (testing strategy §12)
 
+*Later notes: `notes.d/E52/`, oldest first (`python tools/register.py show E52`).*
+
 ### E53
 
 **Work:** PR test selection (operator, 2026-10-09): pull requests run less only fail-closed, `main`'s push run and the nightly stay full. Phase 1a, the `fast` tier (docs plus fast-lane test modules and `tests/durations.json`: `core`, `static`, `web`'s gate, `fastbase` and `assurance`, no heavy lane), is **built in shadow**: the tier, the runtime lane check and the same-run coverage premise are computed and reported on every eligible run, which stays full. Still to do: enforce it (PR 1b, `tier.MODE = "enforce"`)
@@ -1257,6 +1497,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **M4 candidate**: PR 1b once at least 5 eligible shadow runs decided correctly, the premise check ran in each with no unexplained loss, and the unit-isolation audit (`unit-isolation-audit.yml`, dispatched once) is clean
 
 **Notes:** Deferred behind their gates (plan v7 §9): Phase 1b, heavy-closure selection (Phase 1a enforced for four weeks with no confirmed miss, and PR runs whose only non-`fast` changes are heavy test modules or helpers saving at least 3 % of PR runner-minutes; then the v2 review's entry conditions V2-1, V2-2, V2-3, V2-5, V2-7 and V2-10), and Phase 2, the coverage map (the earlier phases in service with no miss, queue delay above 10 minutes, a refreshed marginal estimate of at least 8 %; entry condition V2-8). Expected saving of Phase 1a: about 12.5 % of PR runner-minutes on the 27-PR sample (#117, #119, #120 and #145)
+
+*Later notes: `notes.d/E53/`, oldest first (`python tools/register.py show E53`).*
 
 ### E54
 
@@ -1268,6 +1510,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Not an F9 question: F9-A adds no new capability (`harness send` has restarted the counter since M3), only volume, which its caps bound weakly; U1 is observation-only, so it cannot host enforcement. AEW already treats a changed step limit as access-widening (the adapter's projection check refuses one), so the gap belongs to ADR-0010 and the harness. F9-A did not wait for the answer
 
+*Later notes: `notes.d/E54/`, oldest first (`python tools/register.py show E54`).*
+
 ### E55
 
 **Work:** `--when next-step|turn-end` on `aew harness send` (the designer's decision of 2026-10-10). The default is `next-step` (OpenCode `steer`, at the agent's next step boundary, without interrupting it). `turn-end` (OpenCode `queue`, after the agent's turn) goes only through the coordination store, as an F9 message, and is refused while messaging is off (`TURN_END_NEEDS_MESSAGING`): M4-H has `next-step` only (G1, 2026-10-10). While messaging is on, every `harness send` is recorded through the store, fails closed and still wakes a held session (G4); until F9-A's MS5b builds that path, it is refused (`HARNESS_SEND_NEEDS_STORE`), and a run whose launch snapshot of the switch disagrees with the project's is refused `MESSAGING_SNAPSHOT_MISMATCH` (the Lead relaunches it; with the project switched on, only once MS4 records launch snapshots, and until then sending needs messaging switched off). The row also covers the help text and `harness_send`'s docstring
@@ -1277,6 +1521,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled** for the store path while messaging is on, with F9-A's MS5b. **HS1** (F9-A plan amendment 2's slice, not an F9 slice), the rest, built 2026-10-10: before M4-H's pre-calibration freeze, or with an M4-H manifest amendment
 
 **Notes:** Supersedes this row's earlier "move to `steer`" text. A treatment change: it is the Lead's nudge timing and help text, so it observes Q7 v0.3.1 §7's freeze rule. M4-H's frozen treatment, as G1 decided it: messaging off; worker delivery available to the Lead `next-step` only (OpenCode `steer`, through `aew harness send`); `turn-end` (queued) delivery unavailable, because it requires the F9 message store and messaging treatment, refused with `TURN_END_NEEDS_MESSAGING`; no hidden exception (the old `queue` default is removed, not kept for M4-H). The turn-end path, and every `harness send` while messaging is on, is enabled by F9-A's MS5b; the `off_on` mismatch case (a run launched with messaging on, the project since switched off) arrives with MS4, which writes the run's snapshot. **Built (HS1, 2026-10-10):** `aew harness send --when`, the help, the docstring, `OpenCodeAdapter.send(text, delivery)` replacing the hard-coded `queue`, the two-value branch (`send_route`) with the three refusals, and the harness-conformance §5 row. The finality rule this row carried until amendment 2 (`PENDING_TURN_END_MESSAGE`, atomic with the message state) is F9's, built in MS5b for both timings as `PENDING_LEAD_MESSAGE` (ledger CMG-34, MGR)
+
+*Later notes: `notes.d/E55/`, oldest first (`python tools/register.py show E55`).*
 
 ### E47
 
@@ -1288,6 +1534,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** `main`'s run for `389e32d` failed on an integration timeout on 2026-10-06 and was visible only as `failure` in the run list
 
+*Later notes: `notes.d/E47/`, oldest first (`python tools/register.py show E47`).*
+
 ### E51
 
 **Work:** Decide whether CI wall-clock ever becomes a hard gate (CRD-11's deferred question): today the cost record reports budgets and shard times as warnings and the job timeout is the only hard bound
@@ -1297,6 +1545,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **On measured need**: after runner variance is measured from the cost record's history
 
 **Notes:** Split from E43 when it closed (2026-10-07); a wall-clock gate must never fail a correct change for runner speed (operator, 2026-10-06)
+
+*Later notes: `notes.d/E51/`, oldest first (`python tools/register.py show E51`).*
 
 ### E48
 
@@ -1308,6 +1558,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Trades per-PR proof for throughput: a one-OS regression would be caught after merge
 
+*Later notes: `notes.d/E48/`, oldest first (`python tools/register.py show E48`).*
+
 ### E49
 
 **Work:** CI redesign P5.3: larger runners (8 vCPUs) for the scenario lanes, as an experiment
@@ -1317,6 +1569,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **On measured need**: deferred until P2 and P3 are measured (operator, 2026-10-06)
 
 **Notes:** Needs an organization or a Team plan; P3 first shows what stays CPU-bound
+
+*Later notes: `notes.d/E49/`, oldest first (`python tools/register.py show E49`).*
 
 ### E41
 
@@ -1328,6 +1582,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** **Partly built (PR #96, 2026-10-06):** the dashboard's server stack and the doctor are imported only when used, about 10% off every CLI call (`aew status` about 920 to 825 ms), pinned by `tests/unit/test_cli_imports.py`. The 200 ms import target is a measured objective, never a CI assertion
 
+*Later notes: `notes.d/E41/`, oldest first (`python tools/register.py show E41`).*
+
 ### E50
 
 **Work:** Lead inactivity expiry: after long inactivity a Lead attachment is staled or revoked and a fresh attachment and generation are required, under Q12's semantics; for abandonment cleanup (an attachment left over a long absence), not short-session policing; it never silently kills independently admitted child work
@@ -1337,6 +1593,8 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **When:** **Unscheduled**: a later bounded improvement, deferred hardening; not an internal-alpha prerequisite (operator, 2026-10-07)
 
 **Notes:** Builds on F31's attachment lifecycle (`aew open` and `aew close`, generations)
+
+*Later notes: `notes.d/E50/`, oldest first (`python tools/register.py show E50`).*
 
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
@@ -1356,6 +1614,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 **Notes:** `harness status` already shows "in a shell tool since …"; only the Lead's own polling found it. Also check whether the agent's shell can get end-of-file on stdin (OpenCode's choice or AEW's). H1 is required before STALLED/UNRESPONSIVE is a production operator signal; it blocks F15.2 only if F15.2 consumes health. The dashboard's run item and attention carry the same object (RHP-07), which is a dashboard contract change (F20). **Agent-effectiveness adoption (2026-10-09; [agent-effectiveness synthesis](../research/agent-effectiveness-and-model-leverage-synthesis-2026-10-09.md) §7, AES-08):** H1's implementation gains a `repetition` field (drift read from trajectory shape) and returns the telemetry watermark as `observed_through`, the second cursor of the Lead's `changes` query (F15.9); a recitation trigger on `repetition` (F36) waits for that field; the recitation's call and time triggers do not. Both fields ship off and absent by default behind one execution-policy switch, with a byte-identity test of `harness_status`, `resume` and `harness wait` while off, and are activated only after M4-H (Revision B; U1 itself is planned before the Q7 hard dogfood). Implementation-note additions, not new scope. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §12; ledger CFI-52):** two sanitized fields, `current_or_longest_child_process` and `age_of_last_durable_progress`, tracked as F41.8
 
+*Later notes: `notes.d/U1/`, oldest first (`python tools/register.py show U1`).*
+
 ### U3
 
 **Work:** F14 addendum: operator-provided factual premises can be decision-sensitive, not only explicit diagnoses
@@ -1365,6 +1625,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 **When:** **Evaluation**: after M4-H data (operator, 2026-10-07). Q7 v0.3.1 made U3 an F4 measurement, not a prerequisite feature: a strong F4 result may close or defer it, a weak one may justify later F14/U3 work (Q7 §12: F4's premise contrast)
 
 **Notes:** "I run it in Docker as the headless server" was background, not one of the nine diagnoses the prompt said to check, and no role questioned it. F14 §6 types stakeholder statements; this asks that observations stated as fact be candidates for premise validation too.
+
+*Later notes: `notes.d/U3/`, oldest first (`python tools/register.py show U3`).*
 
 ### U4
 
@@ -1376,6 +1638,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 **Notes:** The Lead TUI's usage lives only in OpenCode's own database (cost reported $0, likely a subscription login). Readable with `opencode session list --standalone --format json` or `stats --json` (never the background service); needs a probe of their fields, read during a running conversation as well as after an exit, since attachment accounting reads while the harness keeps running. Absorbed by F25 when the cost ledger is built. F25 v0.2 records Lead usage per AEW attachment, not per native TUI session (the designer, 2026-10-06).
 
+*Later notes: `notes.d/U4/`, oldest first (`python tools/register.py show U4`).*
+
 ### U5
 
 **Work:** Generated per-archetype command references in role briefings and the Lead's guide
@@ -1385,6 +1649,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 **When:** **M4 candidate** (Lead UX)
 
 **Notes:** Leads and roles chained `--help` for about twenty commands. Relates to E11 and F16.
+
+*Later notes: `notes.d/U5/`, oldest first (`python tools/register.py show U5`).*
 
 ### U6
 
@@ -1396,6 +1662,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 **Notes:** Role runs keep OpenCode state per run; the Lead TUI uses the operator's own data directory.
 
+*Later notes: `notes.d/U6/`, oldest first (`python tools/register.py show U6`).*
+
 ### U7
 
 **Work:** Automatic stall recovery (interrupt plus a standard nudge)
@@ -1405,6 +1673,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 **When:** **On measured need**, only after U1's deterministic detection has been observed in use
 
 **Notes:** The Lead's manual recovery worked once it saw the stall. Health never authorizes recovery; any automatic nudge stays this row's separate adoption ([H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md) §8, RHN-09). The approved design keeps it deferred ([run health projection design v0.1](../design/run-health-projection-design-v0.1.md) §2, §11).
+
+*Later notes: `notes.d/U7/`, oldest first (`python tools/register.py show U7`).*
 
 ### U9
 
@@ -1416,6 +1686,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 **Notes:** WC §16.10 requires showing it as unavailable, which happened; whether to ship the skill or drop the request is a capability decision.
 
+*Later notes: `notes.d/U9/`, oldest first (`python tools/register.py show U9`).*
+
 ### U10
 
 **Work:** A small correction to an accepted record needs a full replacement record
@@ -1425,6 +1697,8 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 **When:** **Designer**
 
 **Notes:** Replacement keeps an exact review subject but repeats 82 KB for one paragraph and invites drift. Relates to F5 (EDITORIAL revisions).
+
+*Later notes: `notes.d/U10/`, oldest first (`python tools/register.py show U10`).*
 
 ## 8. AEW-Lead review of the M3 tag (dogfood, 2026-10-01)
 
@@ -1442,6 +1716,8 @@ AEW ran the independent review's own prompt as AEW work, with the same model (GP
 
 **Notes:** The UAT-1 binding works; the Lead chose not to use it.
 
+*Later notes: `notes.d/V3/`, oldest first (`python tools/register.py show V3`).*
+
 ### V4
 
 **Work:** Long checks inside an agent shell: the full suite (about 15 minutes) cannot finish in one shell command, so the verifier ended inconclusive
@@ -1452,6 +1728,8 @@ AEW ran the independent review's own prompt as AEW work, with the same model (GP
 
 **Notes:** Inconclusive was the honest result. Running long checks through `aew check run` with the policy's timeout would avoid it.
 
+*Later notes: `notes.d/V4/`, oldest first (`python tools/register.py show V4`).*
+
 ### V5
 
 **Work:** A rotated provider key without restarting `aew opencode`: the Lead broker picks up a new value of the variables `provider_env` names when it launches a run
@@ -1461,6 +1739,8 @@ AEW ran the independent review's own prompt as AEW work, with the same model (GP
 **When:** **Unscheduled** (the operator's to schedule)
 
 **Notes:** A run launched from a Lead session is launched by the session's broker, inside the `aew opencode` process, whose environment is fixed when it starts; a relaunch from an operator shell already reads the key as it is then. Today the next action says to restart `aew opencode` with the new key. Any re-read must keep the key out of the Lead's model-visible environment and out of AEW's records.
+
+*Later notes: `notes.d/V5/`, oldest first (`python tools/register.py show V5`).*
 
 ## 9. Closed
 
@@ -1500,6 +1780,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** M4-D5: `aew integrate validate` runs the policy's post-integration checks on the candidate under the lease, contained, with no model, when `gates.post_integration.validation` resolves to `checks` (by the Ticket's local class; an inherited verifier obligation overrides); engine-produced `check_result` evidence bound to the run's exact identity; fail-closed without immutable-source containment; a hard deadline; bounded infrastructure handling with a circuit breaker (ADR-0004's and ADR-0003's amendments of 2026-10-05). `verifier` stays the default; switching it is an evaluation (F19)
 
+*Later notes: `notes.d/D4/`, oldest first (`python tools/register.py show D4`).*
+
 ### E1
 
 **Was:** `aew harness wait` on any of several runs, woken by the supervisor instead of polled
@@ -1507,6 +1789,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** M4-D6: `aew harness wait R1 R2 … --any` blocks on the wake file, checks the run records and the committed control state on each wake (ADR-0012 D5), parses no control state between commits, and returns the first run to end with its next action; median wake 42.2 ms on Windows (`tools/perf/wake_latency.py`), Rocky 8 owed
+
+*Later notes: `notes.d/E1/`, oldest first (`python tools/register.py show E1`).*
 
 ### E2
 
@@ -1516,6 +1800,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** M4-A: coverage.py measures `src/aew` and every subprocess the Linux lanes start, line and branch, with the other OS's code excluded by marker; `assurance` combines the shards and holds a ratchet against `tests/coverage-baseline.json` (`testing-and-ci-strategy.md` §3, "Coverage")
 
+*Later notes: `notes.d/E2/`, oldest first (`python tools/register.py show E2`).*
+
 ### E5
 
 **Was:** Explicit collaborators for the Engine's hook points, instead of 13 mixins
@@ -1523,6 +1809,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-03
 
 **By:** P1 of the ADR-0011 plan, PR #15 (`Kernel`, the collaborators, `engine/ports.py`, `engine/seams.py`), with its independent review fixed in the PR
+
+*Later notes: `notes.d/E5/`, oldest first (`python tools/register.py show E5`).*
 
 ### E7
 
@@ -1532,6 +1820,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** The tooling phase between M4-A and M4-B, replacing flake8 and pylint as decided: Ruff (lint, bugbear, Bandit security rules), Pyright (as Linux and as Windows) and pip-audit, each fixed to clean and required by `assurance` through the new `static` job; Pylint is a manual, advisory run (`testing-and-ci-strategy.md`, "Static checks")
 
+*Later notes: `notes.d/E7/`, oldest first (`python tools/register.py show E7`).*
+
 ### E8
 
 **Was:** Next actions that read the evidence (a failing report or check names `aew gate show`)
@@ -1539,6 +1829,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-09-30
 
 **By:** Done in M3; merged by PR #5
+
+*Later notes: `notes.d/E8/`, oldest first (`python tools/register.py show E8`).*
 
 ### E9
 
@@ -1548,6 +1840,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Done in M3; merged by PR #5
 
+*Later notes: `notes.d/E9/`, oldest first (`python tools/register.py show E9`).*
+
 ### E10
 
 **Was:** Scope feedback at `aew work create` (globs that match no file)
@@ -1555,6 +1849,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-09-30
 
 **By:** Done in M3; merged by PR #5
+
+*Later notes: `notes.d/E10/`, oldest first (`python tools/register.py show E10`).*
 
 ### E11
 
@@ -1564,6 +1860,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Done in M3; merged by PR #5
 
+*Later notes: `notes.d/E11/`, oldest first (`python tools/register.py show E11`).*
+
 ### E13
 
 **Was:** POSIX process ownership (`setsid` escaped the process group)
@@ -1571,6 +1869,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-03
 
 **By:** M4-B: contained runs live in a PID namespace; killing bubblewrap ends it, `setsid` included. Agent-reported pids are translated through `NSpid` (`procs.host_pid`)
+
+*Later notes: `notes.d/E13/`, oldest first (`python tools/register.py show E13`).*
 
 ### E15
 
@@ -1580,6 +1880,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** The post-M3 cleanup: checkout v7, setup-python v7, upload-artifact v7, download-artifact v8, codeql-action v4
 
+*Later notes: `notes.d/E15/`, oldest first (`python tools/register.py show E15`).*
+
 ### E26
 
 **Was:** The Windows serial nightly `reference` job, split instead of its timeout raised (it had grown to 150 minutes)
@@ -1588,6 +1890,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Sharded: Linux 3 and Windows 6 serial shards (`--shard k/N`), each under a 60 minute timeout, and a `reference-assurance` aggregate (`check_assurance.py`, now also failing on a missing shard) that `report` waits for (PR #70)
 
+*Later notes: `notes.d/E26/`, oldest first (`python tools/register.py show E26`).*
+
 ### E29
 
 **Was:** Context packs reserve context in a fixed order (constraints; work, authority and guardrails; source and evidence; then optional recall), written into the pack generator before any recall exists
@@ -1595,6 +1899,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** `knowledge/context.py`: every section of a pack has a tier and `assemble(pack_inputs, budget)` spends a character budget tier by tier (the first two tiers are never cut, a lower tier is cut first, and every cut is written into the pack's budget notice and `Pack.truncations`); without a budget the pack is byte-identical. The engine passes no budget yet: wiring one in waits for a measured budget, and recall fills the last tier when it exists (PR #68)
+
+*Later notes: `notes.d/E29/`, oldest first (`python tools/register.py show E29`).*
 
 ### E33 (part)
 
@@ -1612,6 +1918,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** M4-D3: the classifier accepts a path any commit between the candidate and the ref settled (up to 256); `gates.yaml` `max_publish_paths` (default 2,000) refuses a larger candidate at prepare. Measured with `tools/perf/publish_sync.py` on the Windows reference machine: about 4.5 to 5.5 ms a changed path after checking each path with one `lstat` instead of four, so 2,000 paths hold the lock about 10 s. Batched plumbing was not needed for that bound; the remaining cost is git's own hashing of the working copy
 
+*Later notes: `notes.d/E34/`, oldest first (`python tools/register.py show E34`).*
+
 ### E36
 
 **Was:** One definition of the v2-only control-state keys (the schema's v1 rule, `aew init` and the v1 test fixtures each spelled the set out)
@@ -1619,6 +1927,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-04
 
 **By:** PR #51: `engine.base.V2_ONLY_KEYS` and `as_v1`, with a test that the schema's v1 rule refuses exactly that set; source: the knowledge-manifest prototype lessons §3 (ledger KMP-02)
+
+*Later notes: `notes.d/E36/`, oldest first (`python tools/register.py show E36`).*
 
 ### E37
 
@@ -1628,6 +1938,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** The texts landed as amendments (designed, not built; the implementation is M6b's, F21); the closure rule the spike called 28 is ADR-0013's rule 29, its rule 30 is ADR-0013's 33
 
+*Later notes: `notes.d/E37/`, oldest first (`python tools/register.py show E37`).*
+
 ### E38
 
 **Was:** The acceptance guide's AT-9 row described the frozen KC §26 case (a locally Class 0 Ticket under a Class 3 Story keeps Class 0 and inherits the gate), which the Class 0 amendment §9.2 replaced and the row's own test refuses
@@ -1635,6 +1947,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** Found by the architecture review's citation test ([T7 results](../archive/reviews/architecture-review-2026-10-04/t7-citation-test-results.md) §3); the row now states the amended behaviour (refused with `CLASS0_INHERITED_ELEVATED_OBLIGATION`, reclassified to Class 1, the gate still required), in the documentation consolidation
+
+*Later notes: `notes.d/E38/`, oldest first (`python tools/register.py show E38`).*
 
 ### E40
 
@@ -1644,6 +1958,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** PR #99 (`tools/ci/tier.py`, `assurance` recomputing the tier; `testing-and-ci-strategy.md` §3), tracked retroactively when the [CI redesign v0.2](../design/ci-redesign-design-v0.2.md) was ingested
 
+*Later notes: `notes.d/E40/`, oldest first (`python tools/register.py show E40`).*
+
 ### E43
 
 **Was:** CI redesign P4, the cost record: `assurance` writes, from the lane reports it already downloads, queue delay and wall clock, runner-minutes and wall time per lane and shard against `testing-and-ci-strategy.md` §8's budgets, total pytest time, the slowest 20 tests, each test's share of its lane, CLI calls per test and the share of collected tests in `durations.json`, as a job summary and an artifact; each lane also prints `--durations=20`; a shard over 20 minutes warns, over 25 is a CI-health violation; the job timeout stays the only hard bound; a PR's summary shows its new tests' cost, and the reviewer brief asks about it
@@ -1651,6 +1967,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-07
 
 **By:** `tools/ci/cost_record.py`, run by `assurance` after the assurance check (`if: always()`, `continue-on-error`: reported, never gated) from the lane reports and the run's jobs (GitHub API, `actions: read`): queue delay and end-to-end wall clock, runner-minutes per OS, wall time per job, total pytest time and per lane and shard, the slowest 20 tests with each one's share of its lane and its `aew` calls through the test helper (counted by `conftest.run_aew`; direct `python -m aew` starts and fake agents' calls are not counted, carried in the lane report's new `cli_calls`), the share of collected tests in `tests/durations.json`; a job summary plus the `cost-record` artifact; every lane and both core steps print `--durations=20`; a test job over 20 minutes warns, over 25 is a CI-health violation, the 30-minute timeout stays the only hard bound; §8's budgets are compared as warnings, as §8 defines them (Linux `core` within 3 minutes, the Linux fast lane's test time within 3, the run from its first job's creation to its last job done within 15); the time a run waits as pending before its first job is reported as a fact, not judged; on a re-run only that attempt's jobs count (carried-over jobs are listed and count for nothing). A PR's summary shows its new tests (in the files it touches and unknown to `tests/durations.json`) and every test in those files. The lead developer's reviewer brief asks about a change's test cost from 2026-10-07 (CCI-06). Repeated violations opening an issue stay E47; whether wall-clock ever becomes a hard gate is E51
+
+*Later notes: `notes.d/E43/`, oldest first (`python tools/register.py show E43`).*
 
 ### E45
 
@@ -1660,6 +1978,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Built with E43: a test over 25% of its lane's test time (in a lane of at least a minute), or a fast-lane test over 30 s, is a CI-health violation in the cost record, warned and never failing the gate (operator, 2026-10-06)
 
+*Later notes: `notes.d/E45/`, oldest first (`python tools/register.py show E45`).*
+
 ### F1
 
 **Was:** Hot and cold control state (archival of terminal records)
@@ -1667,6 +1987,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-03
 
 **By:** ADR-0011 implemented: P1 #15, P2a #17 (cold-store core), P2b #18 (archival), P2c #20 (history surface and audit), P2d #21 (migration), P3 #24 (acceptance gate)
+
+*Later notes: `notes.d/F1/`, oldest first (`python tools/register.py show F1`).*
 
 ### F2
 
@@ -1676,6 +1998,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** M4-B: a bubblewrap sandbox per run, built from the role (exhaustive table, fail closed), applied by the run's process tree to every spawn and to its checks; run-private git state with the real metadata read-only; a launch self-test on the exact layout; truthful labels (filesystem integrity only; the host stays readable; network not provided). The designer's open questions settled as built: agents run no git write commands (the metadata is read-only), reviewers and verifiers get read-only source, network containment is not provided. ADR-0009, M4-B amendment; `m4-ambiguity-report.md`, "M4-B as built"
 
+*Later notes: `notes.d/F2/`, oldest first (`python tools/register.py show F2`).*
+
 ### F15.1
 
 **Was:** The typed Lead surface's read-only and transport slice (typed Lead surface v0.2 §3 to §5, §7, §8, §11's M4-D row): the catalog and runner, `lead.tool`, the `aew-lead` MCP transport, the query tools, `harness_wait`, `checkpoint`, `aew lead tool`, surface profiles, conformance and the `lead_mcp` channel
@@ -1683,6 +2007,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-06
 
 **By:** PRs #88, #93 and #95. #88 the contract: `aew.surface` (the v1 catalog with the stages designed and refused, the effective class, one runner, a tri-state `ActionProjection` with availability, callability and auto-run eligibility kept apart), `schemas/surface.schema.json` with A3's `policy_binding`. #93 the broker: `lead.tool` (cooperative, so a typed wait never holds the broker), the fail-closed Lead reachability classification, the recovery-only `cli` escape and `aew lead tool`. #95 the transport: `aew lead mcp` (no credential, no direct mode, never an engine), the Lead projection and probe against the pinned 2.0.18 (MCP timeouts in ms, default 12 h; tools named `<server>_<tool>`). Still open for F15.2: TLS-07, TLS-16 (`ticket_draft` equivalence), TLS-26, TLS-28; for E18: TLS-25's dashboard half
+
+*Later notes: `notes.d/F15.1/`, oldest first (`python tools/register.py show F15.1`).*
 
 ### F20.1
 
@@ -1692,6 +2018,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** PR #26
 
+*Later notes: `notes.d/F20.1/`, oldest first (`python tools/register.py show F20.1`).*
+
 ### F20.2
 
 **Was:** Read-only API and conformance: the GET/HEAD projections of contract 0.1.2 with bounded cursors and filters, every response validated against the contract in Python tests
@@ -1699,6 +2027,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** PR #67: `aew.dashboard` (server, lock-free reader, projections, cursors, contract, reasons), the additive engine reads (`read_committed`, `control_identity`, the History bounds, `over_policy_detail`); design note §4.5 to §4.11, §5.1
+
+*Later notes: `notes.d/F20.2/`, oldest first (`python tools/register.py show F20.2`).*
 
 ### F20.3
 
@@ -1708,6 +2038,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** PR #71: the `operator_session` credential kind (ADR-0005 amendment), the server-console challenge for `open`, one server per project under the endpoint lock, the security acceptance with its negative controls; design note §4.1 to §4.4, §5.2
 
+*Later notes: `notes.d/F20.3/`, oldest first (`python tools/register.py show F20.3`).*
+
 ### F20.4
 
 **Was:** Conditional requests and caching: ETags cover the whole envelope, `control_revision` and the session's scope included; 200 and 304 behaviour checked against live projections
@@ -1715,6 +2047,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** PR #87: `aew.dashboard.etag`, a strong validator over the representation less the snapshot's time, in the request scope (path, project, normalized query); `If-None-Match` as a list, `W/` and `*` never matching; a `304` with the validator sent, no body, after authentication; tested against live projections (a commit, a revision-only commit, telemetry alone); design note §4.12, §5.3
+
+*Later notes: `notes.d/F20.4/`, oldest first (`python tools/register.py show F20.4`).*
 
 ### F20.5
 
@@ -1724,6 +2058,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** PR #90: the frontend built from `4f0a710` (agreed with the web developer and the operator) by the pinned offline builder and committed under `src/aew/dashboard/static/` with `BUILD.json` (`tools/dashboard/import_build.py`); `aew.dashboard.frontend` (the SPA fallback, traversal refused); R21's header set on every response; the exact Host (`421`) and Origin and `Sec-Fetch-Site` (`403`) rules; methods (`405`) and request bounds (`400`, `414`, `431`, `503`); the redacted request log; `serve --static DIR`; design note §4.13, §4.14, §5.4
 
+*Later notes: `notes.d/F20.5/`, oldest first (`python tools/register.py show F20.5`).*
+
 ### F22.1
 
 **Was:** T5-A, the structural core (project maps v0.5 §2, §3, §10, §11, §16 T5-A): the structural codebase map from Git objects with mechanically tracked inputs, its registry with its own `map_revision`, `aew map generate/show/diff`, architecture-reference selection and the bounded pack slices, as a parallel lane to M4-H (SMQ-01)
@@ -1731,6 +2067,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-09
 
 **By:** Two pull requests of the lead developer's plan (v4, independently reviewed CLEAR). PR #126 built the structural core and [ADR-0015](adr/0015-project-map-storage-and-registry.md) (ledger MSR). The second built `aew map select-architecture`, the execution policy's `maps.pack_slices` switch (`"off"` by default, written quoted because YAML reads a bare off as a boolean: packs and the resume view are then byte-identical to a project without maps, so the Q7/M4-H treatment is unchanged), the bounded slice in the packs of roles whose context names `codebase_map` (only the investigator: the operator decided on 2026-10-07 that role packs are not broadened for M4-H, implementer and reviewer packs keep their role-specific source and evidence inputs, and wider map serving must earn itself through later evaluation), pack provenance with pinned regeneration (a map removed or damaged after dispatch never changes the pack, so it never refuses a launch, relaunch or rotation), the resume row, the no-authority walk and `tools/perf/structural_map.py` (measured on Windows: 0.67 s at 10,000 paths and 3.0 s at 100,000, four git processes each; no very-large-repository support is claimed beyond 100,000 paths), with ADR-0015's amendment of 2026-10-07. Turning the switch on for M4-H is the operator's decision (SMQ-01). Ledger notes: PMP-17 and PMP-18 are carried by this slicing (T5-A only); PMP-73 is T5-E, evaluated with F19; PUI-20 is absorbed by PMP-07. The Q7 cold-start attestation checks `.aew/local/maps/`
+
+*Later notes: `notes.d/F22.1/`, oldest first (`python tools/register.py show F22.1`).*
 
 ### F23
 
@@ -1740,6 +2078,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** The operator's internal-alpha threat-model decision ([decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md); ledger IAT): F18/F28 canonical-state and credential boundaries and the Linux/Rocky target REQUIRED; trusted-engineer use and Windows/WSL development with truthful weaker labels ALLOWED; local OS and session operator attribution SUFFICIENT; a separate full model OS account NOT REQUIRED; Lead inactivity expiry DEFERRED (E50); an operator-approved exact-commit push ALLOWED as a delivery capability (F33); automated PR and merge-provider integration DEFERRED, and Q14 no longer an internal-alpha gate
 
+*Later notes: `notes.d/F23/`, oldest first (`python tools/register.py show F23`).*
+
 ### O1
 
 **Was:** A file named `nul` failed the fingerprint with git's raw error
@@ -1747,6 +2087,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-01
 
 **By:** The post-M3 cleanup: the snapshot refuses it by name, with the cause and the remedy (`snapshot/fingerprint.py`; `tests/integration/test_fingerprint.py`)
+
+*Later notes: `notes.d/O1/`, oldest first (`python tools/register.py show O1`).*
 
 ### O5
 
@@ -1756,6 +2098,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Brief corrected (rubric A7); merged by PR #5
 
+*Later notes: `notes.d/O5/`, oldest first (`python tools/register.py show O5`).*
+
 ### Q1
 
 **Was:** The completion thresholds for ADR-0011 (H1 to H4, A1)
@@ -1763,6 +2107,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-01
 
 **By:** Approved by the operator and designer: H1, H3 and A1 kept; H2 measured at fixed output cardinality; H4 replaced by a history-independent `resume` (ADR-0011)
+
+*Later notes: `notes.d/Q1/`, oldest first (`python tools/register.py show Q1`).*
 
 ### Q2
 
@@ -1772,6 +2118,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** No: `resume` is an active-state operation; full cold-history verification is an explicit audit, and cold history stays first-class and discoverable (ADR-0011)
 
+*Later notes: `notes.d/Q2/`, oldest first (`python tools/register.py show Q2`).*
+
 ### Q3
 
 **Was:** Whether containment is required for personal real-project dogfood, or only for internal alpha
@@ -1779,6 +2127,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-01
 
 **By:** Required for both; unprivileged bubblewrap is enough for personal dogfood once its Rocky 8 probes pass, and internal alpha also needs isolation performance and operability acceptance (designer; see F2 and [`containment-and-process-ownership-rocky8-research-2026-10-01.md`](../research/containment-and-process-ownership-rocky8-research-2026-10-01.md) §8)
+
+*Later notes: `notes.d/Q3/`, oldest first (`python tools/register.py show Q3`).*
 
 ### Q6
 
@@ -1788,6 +2138,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Yes: `ACCEPTANCE_CONDITION_MUTATION` is canonical, with `PROTECTED_ACCEPTANCE_OVERLAP` ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md) §3.1). O3 stays open until F14's fix is accepted
 
+*Later notes: `notes.d/Q6/`, oldest first (`python tools/register.py show Q6`).*
+
 ### Q7
 
 **Was:** What the next dogfood should use: tasks where one model session fails or regresses, since this one's tasks hit a ceiling. The plan assurance design's §28 proposes task families (T4 replay, diagnosis contrast pairs, oracle weakening, vacuous red, …) and configurations A–F.
@@ -1795,6 +2147,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-07
 
 **By:** [Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md), adopted and design frozen by the operator (ledger VGX): M4-H is a real value gate in the B+ design, six fixed F1 to F3 cells x 12 runs per arm (144 primary R versus A runs), 30 descriptive R+ runs, 20 separately reported F4 premise runs; the equal-weight fixed-cell risk difference as the estimand, under a Jeffreys-binomial model with a 90% posterior credible interval (benefit needs mean at least +10 points and lower bound above 0); evaluator-side held-out isolation (F19's rule); cold-start attestation; two blinded mergeability reviewers. Prerequisites before execution: F15.5/F15.6 unattended PUBLISH_IF_CLEAN, F19's evaluator/arm-host split and release runner, F25 live run-usage telemetry for the evaluator's experiment-local USD cap
+
+*Later notes: `notes.d/Q7/`, oldest first (`python tools/register.py show Q7`).*
 
 ### Q9 (decisions)
 
@@ -1820,6 +2174,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** One Class 0–4 system; Class 0 is defined by an engine-enforced eligibility predicate (structural checks, recorded semantic assertions, no active hard trigger), and a failing Class 0 request is refused with reasons, never silently reclassified ([`plan-assurance-and-classification-decisions-2026-10-01.md`](../design/plan-assurance-and-classification-decisions-2026-10-01.md) §2, §3.2); the Workflow Contract amendment is adopted ([`workflow-contract-amendment-class0-2026-10-01.md`](../design/workflow-contract-amendment-class0-2026-10-01.md))
 
+*Later notes: `notes.d/Q10/`, oldest first (`python tools/register.py show Q10`).*
+
 ### Q12
 
 **Was:** Harness hosting, the operator session and native-feature integration: startup, the seat and session lifecycle, execution-profile resolution, wrapper ownership, hosting, and which native harness features are integrated (architecture review D-AR5)
@@ -1827,6 +2183,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-06
 
 **By:** The designer's decision, adopted with the operator ([decision record of 2026-10-06](../design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md)): AEW owns the project attachment, the Lead seat, generations, profile selection and provenance, and the harness owns model execution. An attachment opens and closes (`aew open`, `aew close`) independently of the harness; closing or losing it revokes AEW authority and stales its generation without ending the model, the harness, its context or admitted child work; every attachment is a fresh generation that re-hydrates from canonical state. Reference models: GPT-6 Astra for the Lead, Laguna S2.1 the default worker, GPT-5.4 and approved open-source models selectable. Amends ADR-0004, ADR-0005, ADR-0009 and ADR-0010; F31 builds the lifecycle, F32 the reference profiles; F18, Q11 and U6 are unblocked. Where the knowledge, capability and dashboard services run goes to the F18 hosting design (record §12)
+
+*Later notes: `notes.d/Q12/`, oldest first (`python tools/register.py show Q12`).*
 
 ### Q13
 
@@ -1836,6 +2194,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** Accepted by the operator after the designer reconciled the three differences (MCP first; I1 and I2 built; the outbox sequencing per ADR-0012 and the M4-D split). The response moves to `docs/design/` as a decision record. Its decisions already have homes: ADR-0012, ADR-0013, the typed Lead surface v0.2, F21 to F27, E18 to E30. ARV-01: the review's "do not build yet" list accepted (F9, F3's sparse workspaces, F20's write actions: on measured need); ARV-02: E30 accepted as work; ARV-03: E19's; ARV-04: F15 and F8; ARV-05: F19 and E35
 
+*Later notes: `notes.d/Q13/`, oldest first (`python tools/register.py show Q13`).*
+
 ### U2
 
 **Was:** An investigation-review coverage contract
@@ -1843,6 +2203,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-01
 
 **By:** Absorbed into F17 (designer; `8eac795`, PR #6)
+
+*Later notes: `notes.d/U2/`, oldest first (`python tools/register.py show U2`).*
 
 ### U8
 
@@ -1852,6 +2214,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** `aew harness wait` exits 20 (documented in its help; distinct from every error's 1 to 10) when the run it returns ended `ended_without_evidence`, and its result starts with a one-line `headline`; the result is printed as before, and a timed-out wait and every other ending still exit 0. The typed surface's `harness_wait` keeps its StageResult shape and description; its result carries the same headline (PR #165). `tests/regression/test_uat_2026_09_30.py`. Lands before the M4-H treatment freeze, so it is in the treatment: Lead guide +67 bytes; wait's headline and exit 20; reason_code on wait and status rows; new next-action wording. The typed surface is unchanged.
 
+*Later notes: `notes.d/U8/`, oldest first (`python tools/register.py show U8`).*
+
 ### V1
 
 **Was:** A provider key that expires mid-run: relaunch should re-read the key, or report the auth failure as its own status
@@ -1860,6 +2224,8 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **By:** The OpenCode adapter classifies a turn that failed with 2.0.18's `provider.auth` (401, no retry) as `reason_code: provider_auth_failed` on the run record, in the existing `crashed` status (no new status); `harness status`, `harness wait` (with a headline) and the next action name the provider_env variables, never a value. AEW's own records (the run record, the event log, the snapshot, and the status, wait and next-action output) drop a provider message that may concern a credential (an auth-like type, or 401, 403 or 407), which can quote part of the key, and redact key-shaped text from any other; the harness's private state under the run's `harness/` directory keeps what the harness itself stores. A relaunch starts a new server whose environment is built from the launcher's at launch, so it reads the key as it is then; inside a Lead session the launcher is the session's broker, whose environment is fixed when `aew opencode` starts, so the next action says to restart it with the new key first, and V5 tracks picking the key up without the restart (PR #165). `tests/integration/test_opencode_adapter.py`. Lands before the M4-H treatment freeze, so it is in the treatment: Lead guide +67 bytes; wait's headline and exit 20; reason_code on wait and status rows; new next-action wording. The typed surface is unchanged.
 
+*Later notes: `notes.d/V1/`, oldest first (`python tools/register.py show V1`).*
+
 ### V2
 
 **Was:** A clearer path when the Lead wrapper exits with an invocation active: the seat stays held, the credential is gone with the wrapper, and re-acquiring is refused
@@ -1867,3 +2233,5 @@ Entries leave the tables above when their work is accepted or another entry abso
 **Closed:** 2026-10-05
 
 **By:** `aew lead acquire`'s refusal names the holder (generation, session, acquired at), says that a gone session means `aew lead takeover` at an operator terminal, and derives what a takeover would do by running its interruption on a copy of the state: the active invocations it interrupts, the Tickets that become INTERRUPTED (recovered as `aew resume` lists), and only a lease that survives, for `aew integrate reconcile`; `next: aew lead takeover` in its details. Q12 keeps the wider seat lifecycle
+
+*Later notes: `notes.d/V2/`, oldest first (`python tools/register.py show V2`).*

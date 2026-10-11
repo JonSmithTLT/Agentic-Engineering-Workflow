@@ -11,6 +11,10 @@ phase is in [`docs/README.md`](../README.md). Needs is one of three things: a **
 closes, fails the check until it is removed or updated. A row has at most one item. Every open question (§4) has
 its own item, and every row targeted **Designer** has one or is blocked by one.
 
+An item's `what` says what is owed; change it only when that changes. Context, progress and pointers to new
+material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
+show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
+
 ## Owed, soonest first
 
 ### F25

@@ -4,6 +4,8 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
+Shared `src/styles.css` owns disclosure boundaries and table scroll frames. Native details/summary interaction, document scrolling and table semantics remain unchanged; expanded content stays visually enclosed. Map Fields owns supplied label/value grouping without reinterpreting values. Each Maps metadata disclosure names its response (overview, selected map, input page, stored maps or comparison). Borders do not imply authority, completeness or a new data scope.
+
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Table Selection | InvestigationWorkspace + entity links | W02/W03 plans | results/detail, journal Stream/Detail | W02/W03 component/browser tests |
@@ -16,6 +18,10 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 | Date | typed UTC fields | Maps/history integration plan | explicit seconds/Z text, no implicit local timezone | tests/history-search-page.test.tsx |
 
 ## Explicit raw-history search
+
+Maps uses the shared InvestigationTabs, Pager, SourceStrip, focusBelowHeader, reference-return and navigation allowlist. It bootstraps the project and gates reads on the separately supplied maps capability. The displayed summary follows the 30-second visible cadence and foreground coordinator. Stored maps, exact root detail, input pages and differences are navigation/manual-only, excluded from interval, foreground and revision reconciliation. Activity departure cancels/removes its query and validator; page bodies replace rather than accumulate. Root and A/B bindings are checked before caching. Ordinary refresh failures retain explicitly stale valid data; refusal clears inaccessible representations. Map revision remains separate from control revision.
+
+Map identities accept full SHA-256 roots and full commit object IDs only; unknown/repeated presentation values are refused before Maps reads. Identity forms own associated noValidate errors and first-invalid focus through focusBelowHeader. Both comparison roots remain explicit; draft edits do not relabel a supplied result. Loaded-page absence is distinct from unavailability. Supplied currentness, drops, omissions and beyond-cap changes remain visible; no browser map generation, test execution, inferred acceptance or global completeness. Provenance discloses metadata. Architecture follows only its supplied Evidence reference. Back restores the originating loaded root or architecture link through reference-return; copy/reload preserves activity, root, section, cursor, operands and explicit against commit.
 
 History exposes Raw history search only when its separately supplied capability is present. A direct link while absent explains that the route is not offered and issues no search read. Available search bootstraps the project first. Unavailable/unknown capability states remain supplied results. Losing the capability retires queries, validators, draft and result even when another page is displayed.
 

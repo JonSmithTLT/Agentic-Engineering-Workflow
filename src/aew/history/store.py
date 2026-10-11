@@ -15,6 +15,7 @@ not UTF-8, a file that cannot be read) is an ``IntegrityError`` too, so verifica
 from __future__ import annotations
 
 import copy
+import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -46,6 +47,11 @@ _PROVEN: dict[tuple[str, int, str], dict[int, str]] = {}
 # Tails (by the hash of their bytes) proven to lead to a root (count, head hash).
 _TAIL_PROVEN: set[tuple[str, int, str]] = set()
 
+
+# Whether an operating-system error reading a history file may be transient (review of #178, finding H): on Windows a
+# read during a writer's replace is a sharing violation; on POSIX a replace is an atomic rename, so EACCES, EIO and the
+# like are persistent, and damage.
+TRANSIENT_READ_ERRORS = os.name == "nt"
 
 # Where history records live (relative to the AEW root): a terminal unit's bundle and annotations beside its other
 # records (investigation §3.1), the Lead's generations and audit records under history/.
@@ -186,18 +192,24 @@ class History:
           holds the root's position it must prove the root's entries (``_tail_through``), so a tail that diverges from
           the root is damage, not a later history;
         - ``"moved"``, the tail ends before the root and is byte for byte the ``before`` of the root's own pending tail
-          write (``pending_tail``: the snapshot's ``last_transition.txn.writes`` entry for the tail): the commit's
-          apply has not reached it yet, or the committer died there and no locked reader has recovered it yet;
-        - ``"busy"``, the tail cannot be read for an operating-system reason other than its absence (on Windows, a
-          read during the writer's replace is a sharing violation).
+          write (``pending_tail``: the snapshot's ``last_transition.txn.writes`` entry for the tail, given only while
+          that revision's apply has not finished, ``ControlStore.applied``): the commit's apply has not reached it
+          yet, or the committer died there and no locked reader has recovered it yet. After the apply, the same bytes
+          are a rollback made outside AEW, which recovery would not repair either (finding G);
+        - ``"busy"``, on Windows only (``TRANSIENT_READ_ERRORS``), the tail cannot be read for an operating-system
+          reason other than its absence: a read during the writer's replace is a sharing violation (finding H).
 
-        Anything else (a missing or malformed tail, one that ends at the root or diverges from it) is None: damage."""
+        - ``"moved"``, the tail ends exactly at the root and the whole history walks to it now: it caught up with the
+          root after the read failed (the commit's apply finished in between, nit I of #192's review).
+
+        Anything else (a missing or malformed tail, one that diverges from the root, or a history that ends at the
+        root but does not walk to it) is None: damage."""
         try:
             raw = (self.root / M.TAIL_REL).read_bytes()
         except FileNotFoundError:
             return None
         except OSError:
-            return "busy"
+            return "busy" if TRANSIENT_READ_ERRORS else None
         try:
             doc, end, _ = self._parsed(raw, M.TAIL_REL, sealed=False)
         except (IntegrityError, ValidationFailed):
@@ -212,6 +224,16 @@ class History:
             return "moved"
         pending = pending_tail or {}
         if end["count"] < root["count"] and pending.get("before") == sha256_bytes(raw) != pending.get("after"):
+            return "moved"
+        if end == {"count": root["count"], "h": root["head_h"]}:
+            # The history has caught up with the root since the read failed (the commit's apply, marker included,
+            # finished in between: review of #192, nit I). The read was transient only if the same walk the index
+            # sync makes now passes, so damage elsewhere in the history (a sealed segment) stays damage.
+            try:
+                for _ in self.walk(root):
+                    pass
+            except (IntegrityError, ValidationFailed):
+                return None
             return "moved"
         return None
 

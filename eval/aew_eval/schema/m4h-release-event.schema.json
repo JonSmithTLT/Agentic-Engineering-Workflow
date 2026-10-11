@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-release-event/v1",
+  "title": "One line of an experiment's append-only release ledger, releases.jsonl (F19 plan v5 §2.3; ADR-0018 D6)",
+  "description": "Every step of the release protocol appends one event, flushed and synced like an attempt line. Each line names the SHA-256 of the line before it (the first names the genesis hash of this schema id), so an edited or removed line breaks the chain; a run record names the chain's hash after its collection.",
+  "type": "object",
+  "required": ["schema", "seq", "prev_sha256", "experiment", "run_id", "event", "at", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/m4h-release-event/v1"},
+    "seq": {"type": "integer", "minimum": 0},
+    "prev_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "experiment": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "event": {"enum": ["preflight", "preflight_refused", "registered", "released", "ran", "collected", "failed",
+                       "finalized"]},
+    "at": {"type": "string"},
+    "data": {"type": "object"}
+  }
+}

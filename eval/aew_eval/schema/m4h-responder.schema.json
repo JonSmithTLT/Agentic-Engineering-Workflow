@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-responder/v1",
+  "title": "The M4-H responder contract (Q7 v0.3.1 §2.4; F19 plan v5 §2.8 and S8)",
+  "description": "The fixed texts the unattended responder sends, and what each class of arm request gets. The clarification and continuation texts are Q7 §2.4.4's and §2.4.5's verbatim. The denial is fixed before calibration (Q7 §2.4.2, §14.1 item 8): until the pre-calibration seal binds it, `denial.sealed` is false and no counted run may use the contract. The flag is not proof by itself: the counted path also refuses the draft text verbatim, and S12's seal binds the sealed denial's hash. The A arm's classification table (designer decision D3) is filled by S13.",
+  "type": "object",
+  "required": ["schema", "texts", "classes", "channels"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/m4h-responder/v1"},
+    "texts": {
+      "type": "object", "required": ["clarification", "continuation", "denial"], "additionalProperties": false,
+      "properties": {
+        "clarification": {"const": "No additional task information is available. Proceed using the task, repository, and authorized environment. Make the safest reasonable assumption consistent with the stated objective."},
+        "continuation": {"const": "If the task is complete, give your final completion report and stop. Otherwise continue working from the current workspace. No additional task information is available."},
+        "denial": {
+          "type": "object", "required": ["text", "sealed"], "additionalProperties": false,
+          "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 2000}, "sealed": {"type": "boolean"}}
+        }
+      }
+    },
+    "classes": {
+      "description": "What each class of request gets: the clarification text, the denial text, or an operator-only halt (Q7 §2.4.3: the run ends as an arm failure in unattended mode; nothing is simulated).",
+      "type": "object", "required": ["clarify", "deny", "operator_only"], "additionalProperties": false,
+      "properties": {
+        "clarify": {"const": "clarification"},
+        "deny": {"const": "denial"},
+        "operator_only": {"const": "halt"}
+      }
+    },
+    "channels": {
+      "type": "object", "required": ["r", "a"], "additionalProperties": false,
+      "properties": {
+        "r": {"const": "opencode-reply-api"},
+        "a": {"const": "lead-user-message"}
+      }
+    }
+  }
+}

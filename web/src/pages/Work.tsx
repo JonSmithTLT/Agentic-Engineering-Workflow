@@ -263,7 +263,7 @@ export function WorkDetailPage({
       presentation="work-summary"
     >
       {(work) => (
-        <>
+        <div className="work-record">
           <div className="page-heading">
             <div>
               <SemanticValue
@@ -271,8 +271,10 @@ export function WorkDetailPage({
                 known={['epic', 'story', 'ticket']}
               />
               <h1 tabIndex={-1} data-work-heading={work.id}>{work.title}</h1>
-              <ComparisonEntry work={work.id} />
-              <CopyCli kind="work" id={work.id} />
+              <div className="work-record-actions">
+                <ComparisonEntry work={work.id} />
+                <CopyCli kind="work" id={work.id} />
+              </div>
             </div>
             <SemanticValue
               value={work.state}
@@ -293,10 +295,12 @@ export function WorkDetailPage({
               <div className="panel-heading">
                 <h2>Backend blockers and reasons</h2>
               </div>
-              <h3>blocked_by</h3>
-              <Reasons values={work.blocked_by} />
-              <h3>reasons (record-level)</h3>
-              <Reasons values={work.reasons} />
+              <div className="work-blockers">
+                <h3>Blocking reasons</h3>
+                <Reasons values={work.blocked_by} />
+                <h3>Record reasons</h3>
+                <Reasons values={work.reasons} />
+              </div>
               <div className="panel-heading">
                 <h2>Related records</h2>
               </div>
@@ -405,7 +409,7 @@ export function WorkDetailPage({
               </p>
             </aside>
           </div>
-        </>
+        </div>
       )}
     </DetailView>
   );

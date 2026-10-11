@@ -32,6 +32,7 @@ from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
 from aew.errors import HistoryMoved, IntegrityError, LockTimeout, ValidationFailed
 from aew.history import manifest as M
+from aew.history import store as history_store
 from aew.history.index import INDEX_REL, HistoryIndex
 from aew.history.store import History, annotation_rel, bundle_rel
 from aew.history.store import prewrite as prewrite_record
@@ -283,7 +284,10 @@ def _pending_tail(state: dict[str, Any]) -> dict[str, Any] | None:
 
 def _os_failure(exc: BaseException) -> bool:
     """Whether a history read failed because the operating system would not let a file be read just then (on Windows,
-    a sharing violation during a writer's replace), not because the file is missing or holds the wrong bytes."""
+    a sharing violation during a writer's replace), not because the file is missing or holds the wrong bytes. On POSIX
+    such an error is persistent, and damage (review of #178, finding H)."""
+    if not history_store.TRANSIENT_READ_ERRORS:
+        return False
     cause: BaseException | None = exc
     while cause is not None:
         if isinstance(cause, OSError) and not isinstance(cause, FileNotFoundError):
@@ -723,7 +727,9 @@ class Archive:
                     # the sync met is damage, raised as it is (review of #178, findings E and F).
                     if _os_failure(exc):
                         raise LockTimeout(f"the history could not be read just now: {exc}") from exc
-                    race = self.cold.race(root, _pending_tail(state))
+                    revision = (state.get("last_transition") or {}).get("revision")
+                    applied = isinstance(revision, int) and self.k.store.applied(revision)
+                    race = self.cold.race(root, None if applied else _pending_tail(state))
                     if race == "busy":
                         raise LockTimeout(f"the history could not be read just now: {exc}") from exc
                     if race == "moved":

@@ -1,6 +1,7 @@
 /** Demo server only. Cursor state and filtering never enter the production client. */
 import type { World } from './types';
 import { searchEcho } from '../search-echo';
+import { installMapFixtures, MapsFixtureProjector } from './maps-fixtures';
 type Item = Record<string, unknown>;
 type Envelope = {
   control_revision: string;
@@ -19,7 +20,8 @@ export class DemoProjector {
   private tokensByState = new Map<string, string>();
   private appends = 0;
   private revision?: string;
-  constructor(private world: World) {}
+  private maps = new MapsFixtureProjector();
+  constructor(private world: World) { this.world = installMapFixtures(world); }
   appendHistory(count = 1) {
     this.appends += count;
   }
@@ -74,6 +76,7 @@ export class DemoProjector {
       capabilities.data[projection]?.state !== 'AVAILABLE'
     )
       return { status: 403 };
+    if (projection === 'maps' && this.world.fixture === 'F1') return this.maps.read(path, url.searchParams);
     let original = this.world.responses[path];
     if (!original && path.startsWith('/work/')) {
       const wanted = path.slice('/work/'.length);

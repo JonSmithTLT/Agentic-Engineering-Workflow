@@ -5,7 +5,7 @@ preamble: |-
 
   **Authority:** none. This is an index, like `docs/design/invariant-index.md` (`AEW-INV-TRACE-001`). The governing texts are the design documents, contracts and ADRs it points to. When one of them changes, update this register in the same change. Never reinterpret a design from its entry here.
 
-  **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. When an entry waits for a decision or a design, give it an item in [`decisions-due.yaml`](decisions-due.yaml) (what is owed, by whom, by which gate or milestone, and what it blocks); the rendered [`decisions-due.md`](decisions-due.md) is the list of what is due. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30). Append a closed row anywhere in §9: `render` sorts §9 into id order, so two changes that close different entries land in different places and merge without conflict.
+  **Keeping it current:** add an entry whenever work is deferred, whether a design is accepted, a review defers a finding, or a dogfood finding is left open. Give it a target (below). When its work is accepted, or another entry absorbs it, move it to §9 *Closed* with the date and the commit, PR or document that closed it. Never drop an entry silently. When an entry waits for a decision or a design, give it an item in [`decisions-due.yaml`](decisions-due.yaml) (what is owed, by whom, by which gate or milestone, and what it blocks); the rendered [`decisions-due.md`](decisions-due.md) is the list of what is due. **Edit the data, not this page:** this file is rendered from `future-work.yaml` by `tools/register.py render`; `tests/unit/test_register.py` fails when the two differ (E30). Append a closed row anywhere in §9: `render` sorts §9 into id order, so two changes that close different entries land in different places and merge without conflict. **Add a note, never edit a Notes cell:** what a change has to say about an existing row (a slice built, a decision, a review's outcome, a pointer to new evidence) goes in a file of its own, `notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`, which `python tools/register.py note <id>` creates for you to write; branches whose slugs differ never write the same file, so notes never conflict; every row with an id ends with a pointer to its directory, and `python tools/register.py show <id>` prints the row with its notes oldest first ([`notes.d/README.md`](notes.d/README.md)). Edit a row's cells only when what they state changes (its work, its source, its target, its closing), and never append to them. The notes already in the cells stay there.
 
   **At each milestone start** (operator, 2026-10-01): the milestone's ambiguity report goes through this register. It covers every entry whose *When* names that milestone or a gate before it, and any other open entry that fits the milestone's scope. It marks each one as **in scope**, **deferred** (with the reason) or **closed** (naming what closed it). Items with no fixed milestone may be pulled in where they fit. The operator and designer approve that scope at plan review, with the rest of the plan.
 
@@ -128,7 +128,11 @@ sections:
       diff helper is second adds F9''s named exclusion (the unit''s `coordination`, `coordination_unseen`, the seal records).
       A step that ends invocations in a Lead transaction (S4b''s generation change, a cancellation aborting an attempt)
       is a finalizer placed before the seal finalizer; on takeover and handoff acceptance, which run no finalizer, S4b''s
-      step runs before `seal_ending`'
+      step runs before `seal_ending`. **M4-E plan v3 amendment 1 (2026-10-10; [the amendment](m4-e-plan-v3-amendment-1.md)
+      §4):** the F4 plan''s E7 and E8 references map to the split slices (the F4 plan is not edited, per its header): the
+      S11 notifier event (the F4 plan''s lines 147, 1814, 1973 and 1993) is M4-E E7a''s; the SAE-07 exclusion and R6''s
+      assertion (1342, 1995) are M4-E E7b''s; the confirmation records (1993) M4-E E7c''s; the confirmer''s relaunch (1996)
+      M4-E E8b''s; and the broker''s operator lists (1997) M4-E E6b''s, E7c''s and E8b''s'
 
   - '#': F5
     Work: 'Hierarchy revision semantics: EDITORIAL, CLARIFICATION and MATERIAL; Story and Epic revision; approved-baseline
@@ -190,38 +194,40 @@ sections:
       and relaunch. The worker replies through a new `aew-run` bridge operation (no new worker credential surface); the
       Lead sends with the typed `message.send`, non-dispatching, authority-free and bound to the current Lead generation.
       Messages are append-only, bounded coordination records beside control state, with references rather than payloads.
-      The Lead learns of replies through the attention and resume projections (and the broker''s notifier once M4-E''s E7
-      lands); no polling means no model-driven polling, and event and wait mechanics stay implementation-local. Worker replies
-      are untrusted model-authored data. Dashboard read projections come after F9-A through a contract bump; the UI is the
-      web developer''s. **Deterministic work conservation ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md),
-      adopted 2026-10-09; ledger WCR, row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker
-      findings (WCR-12, WCR-30); a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness
-      adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md), ledger AEA; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)):**
-      F9-A1 was ingested (PR #145), which meets the record''s §11 ingestion item (AEA-35), and is now adopted. With the
-      adoption, the recitation (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B''s,
-      F9-C''s supervision candidates ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D''s harness;
-      no peer-worker inspection outside existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09)
-      and [ADR-0017](adr/0017-coordination-messages.md):** eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits
-      for M4-E''s E4 and MS2. **MS1 built (2026-10-10):** the coordination store (records, identity, idempotency, replies,
-      bounded refs, the adopted-bytes switch `coordination.messaging`, the project marker), with no surface; off, nothing
-      is written. **MS2 built (2026-10-10):** every commit that ends a messaged invocation seals its thread (a finalizer
-      before archival, explicit calls on acquire, handoff acceptance and takeover, a fail-closed check in `Session.commit`
-      that seals a missed ending by fallback and records `coordination.seal_fallback`); archival pins the seal and the seal
-      its thread; worker replies no Lead saw are held in the capped `coordination_unseen`; the adoption that enables messaging
-      registers the project (`coordination_store`), which an older engine refuses and recording now needs; evidence records
-      the Lead messages its invocation had (`coordination_inputs`); `work show`, `history show` and the operator''s `aew
-      message thread|list|unseen` read threads, only while messaging is on or a thread exists; oracle rules 52 to 58. The
-      shared diff helper''s exclusion waits for the slice that creates the helper (E5a, E7 or F4 S2a). **MS0 done (2026-10-10):**
-      the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (queue waits for the end of
-      the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`), and the probe
-      is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each delivered
-      input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):** two delivery
-      timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew harness send
-      --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused, and with
-      messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in an evaluation
-      arm (F19''s arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged. **F9-B note (G3, amendment 2, decided):**
-      F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways out); a Lead `message
-      withdraw` is F9-B''s. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
+      The Lead learns of replies through the attention and resume projections; no polling means no model-driven polling,
+      and event and wait mechanics stay implementation-local. (LWA-17 and the F9-A1 decision §6 also name "the broker''s
+      notifier once M4-E''s E7 lands": no M4-E slice builds a notifier to the Lead. M4-E''s notifier, built in M4-E E7a,
+      is the operator endpoint''s and delivers to the operator ([plan v3 amendment 1](m4-e-plan-v3-amendment-1.md) §6);
+      the designer''s D5 below settles the clause (MIC-09).) Worker replies are untrusted model-authored data. Dashboard
+      read projections come after F9-A through a contract bump; the UI is the web developer''s. **Deterministic work conservation
+      ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR,
+      row F34):** F9 is the primary owner of avoiding duplicate discovery and reusing worker findings (WCR-12, WCR-30);
+      a cross-reference, not new scope. **Agent-effectiveness adoption (2026-10-09, [agent-effectiveness adoption](../design/decisions-2026-10-09-agent-effectiveness-adoption.md),
+      ledger AEA; [implementation delta](agent-effectiveness-implementation-delta-2026-10-09.md)):** F9-A1 was ingested
+      (PR #145), which meets the record''s §11 ingestion item (AEA-35), and is now adopted. With the adoption, the recitation
+      (F36) becomes a durable F9-A instruction, the worker-published `working_note` is F9-B''s, F9-C''s supervision candidates
+      ride the `changes` query (F15.9), and `e2-delta-first` runs inside F9-D''s harness; no peer-worker inspection outside
+      existing coordination and supervision policy. **F9-A plan v4 (CLEAR, 2026-10-09) and [ADR-0017](adr/0017-coordination-messages.md):**
+      eight slices, MS0 to MS7; MS0 and MS1 start at once, MS3 waits for M4-E''s E4 and MS2. **MS1 built (2026-10-10):**
+      the coordination store (records, identity, idempotency, replies, bounded refs, the adopted-bytes switch `coordination.messaging`,
+      the project marker), with no surface; off, nothing is written. **MS2 built (2026-10-10):** every commit that ends
+      a messaged invocation seals its thread (a finalizer before archival, explicit calls on acquire, handoff acceptance
+      and takeover, a fail-closed check in `Session.commit` that seals a missed ending by fallback and records `coordination.seal_fallback`);
+      archival pins the seal and the seal its thread; worker replies no Lead saw are held in the capped `coordination_unseen`;
+      the adoption that enables messaging registers the project (`coordination_store`), which an older engine refuses and
+      recording now needs; evidence records the Lead messages its invocation had (`coordination_inputs`); `work show`, `history
+      show` and the operator''s `aew message thread|list|unseen` read threads, only while messaging is on or a thread exists;
+      oracle rules 52 to 58. The shared diff helper''s exclusion waits for the slice that creates the helper (E5a, M4-E
+      E7b or F4 S2a). **MS0 done (2026-10-10):** the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport,
+      `steer` (queue waits for the end of the turn); ADR-0017 D8 states it with its evidence (`adr/evidence/f9a-delivery-probe-2026-10-10/`),
+      and the probe is `tests/live/f9a_delivery_probe/`. Its findings outside F9-A are E54 (the step limit restarts at each
+      delivered input) and E55 (`harness send` to `steer`). **Amendment 2 of the F9-A plan (CLEAR at v10, 2026-10-10):**
+      two delivery timings and report finality, `PENDING_LEAD_MESSAGE` (MS5b, HS1). **HS1 built (2026-10-10; E55):** `aew
+      harness send --when next-step|turn-end`, the default `next-step` (`steer`); with messaging off `turn-end` is refused,
+      and with messaging on every `harness send` is refused until MS5b records it in the store, so messaging may be on in
+      an evaluation arm (F19''s arm B, F9-D) only after U1 S11 and F9-A''s MS5b have merged. **F9-B note (G3, amendment
+      2, decided):** F9-A has no withdrawal of a sent message (a relaunch, a redispatch or `invoke cancel` are the ways
+      out); a Lead `message withdraw` is F9-B''s. **Designer decisions of 2026-10-10 ([decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
       ledger MCD):** D3, under the M6a authorization model the messaging-enabled operator switch (`coordination.messaging:
       enabled`) is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`, which settles v0.8''s P cell
       for worker replies (MCD-06; F38); D5, on a Codex adapter, steer''s cancel-and-restart of an in-flight model call satisfies
@@ -488,9 +494,7 @@ sections:
       and what makes it so, a `not_run` result, outcome and gate rules that do not fail on such a claim, the key's enum
       changed to `inconclusive` and `not_run`, and whether such a claim gates when the key does not list its result, as
       with the default, empty key; MIC-16), owed through this row's design item in [decisions due](decisions-due.md). Until
-      then the verification half marks nothing yet. **E6a (2026-10-10)** builds `ticket_prepare`, `integration_publish`
-      (with `verification_evidence`), VALIDATE_ONLY's `VALIDATED` entry and the lease custodian's custody worker and credential
-      ([ADR-0004](adr/0004-controlled-integration.md), amendment 2026-10-10)
+      then the verification half marks nothing yet
 
   - '#': F15.3
     Work: The `aew-run` role server (the run bridge's `whoami`, `check.run` and typed `submit` as tools inside the sandbox,
@@ -569,13 +573,39 @@ sections:
       configuration and the executable check Run needs, and the A1 §1.3 records in `records/steering/`. Control state keeps
       the mode as `steering.standing` and `steering.override` rather than the plan''s `effective` (the effective mode is
       derived, so it can never disagree with them). **Dev only:** every operator record is `guarantee: dev`; PFS-04 release
-      gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. Open: `confirm` (E7),
-      the publication grants (E6b), delivery and the loop (E7). **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
-      ledger MIC):** D2, M4-H''s per-run ceremony through the constrained evaluator relay is an acceptable human-intent
-      channel for this row''s endpoint challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention
-      disposition table, drafted from E7''s event vocabulary, is exhaustive and sealed before calibration; a confirmation
-      is never pre-granted (MIC-04 to MIC-06; F19). D5, E7''s notifier stays the operator''s; the Lead''s wake for worker
-      replies is F9''s lane in `wait --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
+      gate 1 and SAE-01 to SAE-03 are met only as dev and stay open: production authority needs F18.6. **Plan v3 amendment
+      1 (v5, review CLEAR, 2026-10-10; [the amendment](m4-e-plan-v3-amendment-1.md)):** E7 is split into M4-E E7a (the notifier,
+      the event spool and broker liveness), M4-E E7b (the loop), M4-E E7c (confirmation) and M4-E E7d (the E6 events), and
+      E8 into M4-E E8a (launch-failure reason codes) and M4-E E8b (relaunch); the independent slices run in parallel. Its
+      deviations from plan v3, whose text is not edited: §2.8''s premise of an existing broker heartbeat was false, so M4-E
+      E7a adds the broker liveness record `.aew/local/lead/broker.json`; `aew/notify-event/v1` gains `source`, `authenticated`
+      and an optional `reason_code`; three of E7''s confirmation tests are E2''s, built as `test_the_endpoint_starts_only_with_dev_and_never_in_a_lead_session`,
+      `test_one_endpoint_per_project_and_a_stale_locator_is_replaced_only_when_its_process_is_gone` and `test_a_raise_lasts_only_for_the_generation_it_was_granted_to`;
+      plan v3 §8''s count is now 15 PRs by its own counting (E7 becomes four, E8 two; the E3 and E4 splits made while building
+      are not counted). **LWA-17** (`tracked_by: [F9, F15.5]`): M4-E does not carry the clause about the broker''s notifier
+      to the Lead; M4-E''s notifier is the operator endpoint''s and delivers to the operator (F9''s row; the amendment''s
+      §6). **Built (M4-E E7a, 2026-10-10):** the operator endpoint (`aew operator serve`) runs a watcher that reads control
+      state lock-free, the event spool and the broker liveness record, commits nothing, and delivers through the adopted
+      `notify.command`: an argv with no shell, the event (`aew/notify-event/v1`) on stdin, the sanitized environment, no
+      console window, a new session on POSIX, `close_fds`, the process tree killed past `timeout_s`, output past `max_output_bytes`
+      discarded and counted, on one delivery thread that never holds the endpoint''s locks and serves control-state and
+      liveness events before spool events; each source is read on its own, so one that fails never stops the others, and
+      an event leaves the outstanding set only once the delivery log records it. Events: `generation_ended` (takeover, handoff,
+      release; crash and stale from the liveness record, for the current generation only), `broker_gone` while Run is effective
+      (crash, stale, or closed), `raise_requested`, `confirmation_requested`, `breaker_tripped` (the validation breaker),
+      `custodian_lost` (the lease''s reconcile mark), `hard_deadline` and `launch_failed` (the supervisor''s spool appends
+      at its deadline stop and its three launch-failure records). Each is delivered once per occurrence (`.aew/local/notify/deliveries.jsonl`).
+      Spool lines are untrusted: capped, validated per writer (`schemas/spool-event.schema.json`), rate-bounded and labelled
+      `authenticated: false`. The broker''s beat thread writes the liveness record every `POLL_S`, with its watchdog''s
+      last iteration and the wedge threshold `store.lock_timeout + 2 × POLL_S`, and `closed_at` on a clean close or a supersession.
+      A delivery failure shows in `status` and the dashboard''s attention and has no workflow effect. Open: `confirm` (M4-E
+      E7c), the publication grants (M4-E E6b), the loop (M4-E E7b), the E6 events (M4-E E7d). **Designer decisions of 2026-10-10,
+      evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D2, M4-H''s
+      per-run ceremony through the constrained evaluator relay is an acceptable human-intent channel for this row''s endpoint
+      challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention disposition table, drafted
+      from E7''s event vocabulary, is exhaustive and sealed before calibration; a confirmation is never pre-granted (MIC-04
+      to MIC-06; F19). D5, E7''s notifier stays the operator''s; the Lead''s wake for worker replies is F9''s lane in `wait
+      --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
 
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality
@@ -1029,7 +1059,20 @@ sections:
       and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
       module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration
       design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime,
-      is an evaluator / process metric candidate (F41.14)'
+      is an evaluator / process metric candidate (F41.14). **The M4-H instrument (the F19 M4-H instrument plan v5, slices
+      S0 to S18; note layout from 2026-10-10):** each slice''s progress is its own paragraph of [implementation-status.md](implementation-status.md)''s
+      section "The evaluation instrument (register F19)", so slices landing in parallel never edit this cell; this row keeps
+      the decisions and gates. **S4 built (2026-10-10):** the evaluator/arm-host split''s core ([ADR-0018](adr/0018-evaluator-arm-host-split.md),
+      ledger EAS): a cell released to an arm host through a transport, registered before its bundle leaves, collected under
+      hostile receive and finalized for deferred scoring on the evaluator, with a hash-chained release ledger and the run
+      manifest `aew/m4h-run-manifest/v1`; scripted arm only until the run supervisor (S8), and no model arm or held-out
+      case released until S5''s preflight can establish isolation. **For F25''s live usage (P1, sst/opencode tag v2.0.18):**
+      session generation (called by `POST /api/session/{id}/generate`, the first-party `/btw`, the plugin host and the `warming`
+      plugin) and the stateless generation (`POST /api/experimental/generate`, the plugin host) make model calls that record
+      no usage, so the live figure cannot see them. A counted server sets no `warming` (L3''s preflight refuses one), loads
+      no plugin beyond OpenCode''s own and has no TUI or app attached that could send `/btw`; otherwise the provider reconciliation
+      (Q7 v0.3.1 §9.1) is the only backstop for that usage. **S8a built (2026-10-10):** the run supervisor''s core; its
+      status is in implementation-status.md''s F19 section.'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,
@@ -1391,19 +1434,23 @@ sections:
       reports it unpriced when it is gone. `aew usage`, the `status` summary and the H2 re-measure are next. **M4-H live
       usage: slice L1 built** (2026-10-10): one sample shape, `aew/usage-live/v1`, and one meter for every OpenCode server,
       a run''s or an evaluator-owned one (`harness/usage_live.py`), with probe P1''s OpenCode 2.0.18 facts pinned and cited
-      in a fixture; measurement only. L2 (a supervised run publishes it), L3 (the measured total and preflight) and L4 (the
-      evaluator''s reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic work conservation ([requirement
-      v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR, row F34):**
-      F25 is the primary measurement substrate for whether model usage, time and expensive-model dependence actually fall
-      (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening ([decision
-      record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25''s settlement boundary
-      (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts F25''s live, settled,
-      inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every OpenCode server started
-      for the run id and all its sessions from server start, relaunches included), the close at every source final or 60
-      s after shutdown begins, late samples never changing the figure, and no experiment semantics in F25 (MIC-01). The
-      plan''s slice L7 records the ruling''s content (ledger CMB), amending EVC-14''s cost-block source for M4-H only; with
-      G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this row''s item in [decisions
-      due](decisions-due.md)) is a different question and stays open.'
+      in a fixture (verified afterwards in sst/opencode tag v2.0.18: the summary agent is never called by 2.0.18 itself,
+      and counted when a client or a configured command selects it; session generation (called by its endpoint, the first-party
+      `/btw`, the plugin host and the `warming` plugin) and the experimental generation (its endpoint and the plugin host)
+      make model calls that record no usage, which no live figure sees, and L3''s preflight refuses a configuration that
+      sets `warming`); measurement only. L2 (a supervised run publishes it), L3 (the measured total and preflight) and L4
+      (the evaluator''s reader) follow. G1 approved (D1, MIC-01; L7 records it as CMB). **Deterministic work conservation
+      ([requirement v0.1](../design/deterministic-work-conservation-requirement-v0.1.md), adopted 2026-10-09; ledger WCR,
+      row F34):** F25 is the primary measurement substrate for whether model usage, time and expensive-model dependence
+      actually fall (WCR-21 to WCR-24, WCR-33); a cross-reference, not new scope. **Designer decisions of 2026-10-10, evening
+      ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D1, F25''s settlement
+      boundary (its M4-H telemetry plan v4 §5) satisfies the M4-H cost requirement, so G1 is approved: M4-H counts F25''s
+      live, settled, inclusive figure for the AEW arm, the Lead included, with membership fixed at release (every OpenCode
+      server started for the run id and all its sessions from server start, relaunches included), the close at every source
+      final or 60 s after shutdown begins, late samples never changing the figure, and no experiment semantics in F25 (MIC-01).
+      The plan''s slice L7 records the ruling''s content (ledger CMB), amending EVC-14''s cost-block source for M4-H only;
+      with G1 approved, no decisions-due item is needed for it. The Lead part held for F31 (v0.2 §5.7, this row''s item
+      in [decisions due](decisions-due.md)) is a different question and stays open.'
 
   - '#': F26
     Work: 'A minimal skill delivery path before the full registry: a project catalog, hash-pinned on the invocation, copied

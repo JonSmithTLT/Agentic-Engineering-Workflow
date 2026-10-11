@@ -980,6 +980,9 @@ class Engine:
                 from aew.harness import operator_client
 
                 out["steering"] = view | {"operator_endpoint": operator_client.status(self._k.aew_root)}
+            notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
+            if notifier is not None:
+                out["notifier"] = notifier
         return out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)

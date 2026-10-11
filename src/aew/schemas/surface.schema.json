@@ -118,6 +118,7 @@
         "role": {"type": "string"},
         "status": {"type": "string"},
         "reason": {"type": ["string", "null"]},
+        "reason_code": {"description": "M4-E E8b: why the run ended, as its run record says (the launch-failure code on a launch_failed run, an adapter code otherwise). Display only: the record is model-writable, and relaunch eligibility never reads it.", "type": ["string", "null"]},
         "evidence": {"type": "array", "items": {"type": "string"}},
         "source": {"const": "local_telemetry"},
         "observed_at": {"type": "string"}

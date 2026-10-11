@@ -199,6 +199,43 @@ class ProcessTree:
             self.closed = True
             self._kill()
 
+    def termination(self, wait_s: float = 5.0) -> dict[str, Any]:
+        """What this process tree shows of its own end, after :meth:`kill` (M4-E E8b; plan v3 E8, A2 §2's termination
+        proof): ``tree_empty`` (Windows: the job object's process count; POSIX: the process group), ``pids_gone``
+        (every process it started, the harness server among them) and, on POSIX, ``sentinel_released``. Waits up to
+        ``wait_s`` for them to settle. A fact that cannot be read is ``None`` (unobservable), never ``True``."""
+        deadline = time.monotonic() + wait_s
+        while True:
+            if sys.platform != "win32":  # pragma: posix-only (a killed child stays in its group until reaped)
+                for pid in self.pids:
+                    try:
+                        os.waitpid(pid, os.WNOHANG)
+                    except (ChildProcessError, OSError):
+                        pass
+            empty = self._empty()
+            pids_gone = not any(pid_alive(p) for p in self.pids)
+            sentinel = None if sys.platform == "win32" else (self._sentinel is None
+                                                             or self._sentinel.poll() is not None)
+            if (empty and pids_gone and sentinel is not False) or time.monotonic() >= deadline:
+                break
+            time.sleep(0.05)
+        out: dict[str, Any] = {"spawned": len(self.pids), "tree_empty": empty, "pids_gone": pids_gone}
+        if sys.platform != "win32":  # pragma: posix-only
+            out["sentinel_released"] = sentinel
+        return out
+
+    def _empty(self) -> bool | None:
+        """Whether no process runs in the tree; ``None`` when that cannot be read (unlike :meth:`active`)."""
+        if sys.platform == "win32":  # pragma: windows-only
+            if not self._job:
+                return None
+            info = _BasicAccounting()
+            if not _k32.QueryInformationJobObject(self._job, _BASIC_ACCOUNTING_INFORMATION, ctypes.byref(info),
+                                                  ctypes.sizeof(info), None):
+                return None
+            return int(info.ActiveProcesses) == 0
+        return self.active() == 0  # pragma: posix-only
+
     def _kill(self) -> None:
         if sys.platform == "win32":  # pragma: windows-only
             if self._job:

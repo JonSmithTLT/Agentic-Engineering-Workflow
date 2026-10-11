@@ -9,14 +9,14 @@ operator (N3). Nothing here grants, moves or commits anything: a notification is
 
 - control state, read with the store's lock-free reader (``read_committed``; the watcher commits nothing): the Lead
   generation ending by ``takeover``, ``handoff`` or ``release`` (from the transition log after the watcher's cursor),
-  the Lead's open requests (``raise_requested``, ``confirmation_requested``), the validation circuit breaker opening
-  (``breaker_tripped``), an open high anomaly (``anomaly_high``, M4-E E7b) and a lease marked for reconciliation
-  (``custodian_lost``);
+  the Lead's open requests (``raise_requested``, ``confirmation_requested``), the validation circuit breaker and the
+  relaunch breaker opening (``breaker_tripped``, its ``subject`` naming the breaker; M4-E E8b), an open high anomaly
+  (``anomaly_high``, M4-E E7b) and a lease marked for reconciliation (``custodian_lost``);
 - the broker's liveness record (``harness.broker_liveness``): ``generation_ended`` with ``crash`` or ``stale``, judged
   only for the current generation, and ``broker_gone`` while Run is effective, whatever the cause (``crash``,
   ``stale``, or ``closed`` for a clean end with the seat still held; R3-m1);
-- the event spool (``harness.event_spool``): ``hard_deadline`` and ``launch_failed`` from each run's supervisor,
-  untrusted, at most :data:`RATE_PER_MINUTE` deliveries per writer per minute.
+- the event spool (``harness.event_spool``): ``hard_deadline`` and ``launch_failed`` (with its closed ``reason_code``,
+  M4-E E8b) from each run's supervisor, untrusted, at most :data:`RATE_PER_MINUTE` deliveries per writer per minute.
 
 **Once per occurrence.** Each event has a key naming its occurrence; the delivery log
 (``.aew/local/notify/deliveries.jsonl``) records it once, delivered, failed or dropped, and a key it holds is never
@@ -466,7 +466,8 @@ class Watcher:
         self._save()
 
     def _payload(self, state: dict[str, Any] | None, event: str, *, subject: Any, reason: Any, ref: Any,
-                 source: str, authenticated: bool, revision: int | None = None) -> dict[str, Any]:
+                 source: str, authenticated: bool, revision: int | None = None,
+                 reason_code: str | None = None) -> dict[str, Any]:
         def text(value: Any) -> str | None:
             return None if value is None else str(value)
 
@@ -474,7 +475,7 @@ class Watcher:
             revision = int(state["revision"])
         return payload(event=event, project_id=str(self.engine.project_id), subject=text(subject),
                        reason=text(reason), ref=text(ref), revision=revision, source=source,
-                       authenticated=authenticated)
+                       authenticated=authenticated, reason_code=reason_code)
 
     def _transition_source(self, state: dict[str, Any] | None) -> None:
         """``generation_ended`` by takeover, handoff or release, from the transition log after the cursor. The
@@ -530,6 +531,17 @@ class Watcher:
                 reason="infrastructure failures: " + ", ".join(map(str, opened.get("codes") or [])),
                 ref=", ".join(map(str, opened.get("runs") or [])), source="control_state", authenticated=True),
                 lane="urgent")
+        # The relaunch breaker (M4-E E8b; amendment 1, nit 4): the same event, with `subject` naming the breaker and
+        # `ref` its scope; one occurrence per opening.
+        for scope, breaker in sorted(((state.get("recovery") or {}).get("breakers") or {}).items()):
+            tripped = (breaker or {}).get("open")
+            if tripped:
+                codes = list(map(str, tripped.get("reason_codes") or []))
+                self._offer(f"breaker_tripped:relaunch:{scope}:{tripped.get('at')}", self._payload(
+                    state, "breaker_tripped", subject="relaunch_breaker",
+                    reason=f"eligible launch failures in {scope}: " + ", ".join(codes), ref=scope,
+                    source="control_state", authenticated=True, reason_code=codes[-1] if codes else None),
+                    lane="urgent")
         for an, anomaly in sorted((state.get("anomalies") or {}).items()):  # M4-E E7b: a high anomaly is opened
             if anomaly.get("severity") == "high":
                 self._offer(f"anomaly_high:{an}", self._payload(
@@ -580,7 +592,8 @@ class Watcher:
                 return
         self._offer(f"{line.event}:{line.key}", self._payload(
             state, line.event, subject=line.subject, reason=line.reason, ref=line.ref,
-            source=f"spool:{line.writer}", authenticated=False), writer=line.writer, lane="spool", line=line.raw)
+            source=f"spool:{line.writer}", authenticated=False, reason_code=line.reason_code), writer=line.writer,
+            lane="spool", line=line.raw)
 
     def _retire_spool(self) -> None:
         """Delete a run's spool file once the run is terminal and every line in it is delivered or dropped. The

@@ -85,13 +85,14 @@ def clean(value: Any, limit: int = MAX_STRING) -> str | None:
 
 
 def append(aew_root: Path, writer: str, event: str, *, subject: str, reason: str | None,
-           ref: str | None = None) -> None:
+           ref: str | None = None, reason_code: str | None = None) -> None:
     """Append one event line for ``writer``. Never raises: the spool feeds notification, and a supervisor ends its run
-    whatever it met; what is lost is logged."""
+    whatever it met; what is lost is logged. ``reason_code``: a launch failure's closed code (M4-E E8b), which the
+    notification carries; a spool line is never an eligibility input."""
     try:
         if not WRITER_RE.match(writer):
             raise ValueError(f"not a spool writer name: {writer!r}")
-        text = _encode(event, subject=subject, reason=reason, ref=ref)
+        text = _encode(event, subject=subject, reason=reason, ref=ref, reason_code=reason_code)
         target = file_of(aew_root, writer)
         with _lock:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -107,7 +108,8 @@ def append(aew_root: Path, writer: str, event: str, *, subject: str, reason: str
         log.warning("the event spool dropped %s for %s: %s: %s", event, writer, type(exc).__name__, exc)
 
 
-def _encode(event: str, *, subject: str, reason: str | None, ref: str | None) -> str:
+def _encode(event: str, *, subject: str, reason: str | None, ref: str | None,
+            reason_code: str | None = None) -> str:
     """The line, bounded by its encoded length: JSON escapes a character outside ASCII as ``\\uXXXX`` (twelve bytes
     for one outside the BMP), so a character cap alone does not bound it (review of PR #184). The reason, then the
     reference, is shortened until the line, newline excluded, is at most :data:`MAX_LINE` bytes, so the reader never
@@ -118,6 +120,8 @@ def _encode(event: str, *, subject: str, reason: str | None, ref: str | None) ->
     while True:
         line = {"schema": SCHEMA, "event": event, "at": at, "subject": str(subject)[:200], "reason": reason_text,
                 "ref": ref_text}
+        if reason_code is not None:  # a closed code is short (the schema caps it at 64): never shortened
+            line["reason_code"] = str(reason_code)[:64]
         text = json.dumps(line, sort_keys=True, separators=(",", ":"))
         if len(text.encode("utf-8")) <= MAX_LINE:
             return text + "\n"
@@ -166,6 +170,7 @@ class Line:
     at: str | None
     key: str
     raw: str  # the line as written (at most MAX_LINE bytes): what is saved while its event is outstanding
+    reason_code: str | None = None  # a launch failure's closed code (M4-E E8b), for the notification only
 
 
 @dataclass
@@ -319,7 +324,8 @@ def parse_line(writer: str, body: bytes) -> Line | None:
         return None  # a run's supervisor speaks only of its own run
     return Line(writer=writer, event=data["event"], subject=clean(data.get("subject")),
                 reason=clean(data.get("reason")), ref=clean(data.get("ref")), at=clean(data.get("at"), 40),
-                key=f"spool:{writer}:{sha256_bytes(body)[:32]}", raw=body.decode("utf-8"))
+                key=f"spool:{writer}:{sha256_bytes(body)[:32]}", raw=body.decode("utf-8"),
+                reason_code=clean(data.get("reason_code"), 64))
 
 
 def _open_read(path: Path) -> int:

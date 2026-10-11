@@ -77,6 +77,22 @@
         "max_output_bytes": {"x-aew-class": "operational", "type": "integer", "minimum": 1, "maximum": 65536}
       }
     },
+    "recovery": {
+      "type": "object",
+      "description": "Bounded recovery (BRP R5-3, amended by A2; M4-E E8b). relaunch_launch_failed: 0 (the default) keeps today's Lead-mediated behaviour; 1 lets the stage runner relaunch a stage's failed launch once, only when the failure's acknowledged reason is on the recovery module's allow-list and every A2 proof holds. breaker: the relaunch circuit breaker (default 3 eligible failures in 300 s per harness and provider endpoint, project-wide when the cause is shared); once tripped it disables relaunch for its scope until `aew recovery breaker reset` at the operator endpoint. Operational, snapshotted at each recovery decision: a change before the relaunch commits re-evaluates that pending recovery and never stales anything else. Every other key is refused (BRP-08, F15.7).",
+      "additionalProperties": false,
+      "properties": {
+        "relaunch_launch_failed": {"x-aew-class": "operational", "enum": [0, 1]},
+        "breaker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "threshold": {"x-aew-class": "operational", "type": "integer", "minimum": 1, "maximum": 100},
+            "window_s": {"x-aew-class": "operational", "type": "integer", "minimum": 1, "maximum": 86400}
+          }
+        }
+      }
+    },
     "recall": {
       "type": "object",
       "description": "Register F21's Arm B prototype (the lead developer's plan v6). raw_history_search \"off\" (the default, also when absent; quote it, since YAML reads a bare off as a boolean, which is refused with its cause and fix) leaves `aew history search` unregistered and creates no search index; explicit registers it for an operator terminal or a Lead shell, never inside an invocation. Read only from the adopted bytes of this file: an edit counts once the operator adopts it. Operational: it changes no dispatch, gate, transition, pack or resume.",

@@ -25,7 +25,8 @@ operator principal cannot be shown distinct from the Lead host's. What a same-ui
 
 The protocol is the dashboard control channel's (F20.3): one JSON request per connection, ``{op, args}``, never pickle,
 bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (M4-E E7c), the
-publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1).
+publication grants (E6b) and the relaunch breaker reset (``relaunch_breaker_reset``, M4-E E8b) join them (plan v3
+amendment 1).
 
 **Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
 whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
@@ -298,6 +299,8 @@ class OperatorEndpoint:
                     reply: dict[str, Any] = {"ok": True, "result": self.ping()}
                 elif op == "mode_raise":
                     reply = {"ok": True, "result": self._mode_raise(conn, args)}
+                elif op == "relaunch_breaker_reset":  # M4-E E8b
+                    reply = {"ok": True, "result": self._relaunch_breaker_reset(conn, args)}
                 else:
                     raise errors.PermissionDenied(f"the operator endpoint does not offer {op!r}",
                                                   offered=list(OPERATIONS))
@@ -350,9 +353,7 @@ class OperatorEndpoint:
             if not hmac.compare_digest(given, code):
                 self.console("\n(the `aew lead mode raise` request was refused: wrong code)\n")
                 raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
-            principal = OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX"
-                                          else "named_pipe", endpoint_pid=self.pid,
-                                          endpoint_started_at=self.started_at)
+            principal = self._principal()
             with self._engine_lock:
                 out = self.engine.steering_raise(principal, mode=mode, generation=bound["generation"],
                                                  legality_digest=bound["legality_digest"])
@@ -362,4 +363,52 @@ class OperatorEndpoint:
         finally:
             self._authorizing.release()
 
+    def _principal(self) -> OperatorPrincipal:
+        """The principal of a request whose peer check passed and whose challenge was answered: built here only."""
+        return OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX" else "named_pipe",
+                                 endpoint_pid=self.pid, endpoint_started_at=self.started_at)
 
+    def _relaunch_breaker_reset(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        """Close the relaunch circuit breaker (M4-E E8b; plan v3 E8, A2 §6): the scopes the operator was shown, and
+        nothing that opened since, after the peer check and the challenge, as a raise."""
+        scope = args.get("scope")
+        scope = None if scope is None else str(scope)[:200]
+        reason = str(args.get("reason") or "")[:400]
+        requester = str(args.get("requester") or "unknown")[:400]
+        if not reason.strip():
+            raise errors.UsageError("resetting the relaunch breaker needs a reason (--reason)")
+        if not self._authorizing.acquire(blocking=False):
+            raise errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
+                                          "after it is answered or times out")
+        try:
+            with self._engine_lock:
+                bound = self.engine.recovery_breaker_reset_preview(scope)  # refused here before the operator is asked
+            code = operator.new_code()
+            self.console(operator.challenge(
+                code,
+                f"Project '{bound['project']}': RESET the relaunch circuit breaker\n"
+                f"  scopes    : {', '.join(bound['scopes'])} (automatic relaunches resume there)\n"
+                f"  reason    : {reason}\n"
+                f"  guarantee : {GUARANTEE} (not production authority until F18.6)",
+                requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
+                destination="the relaunch breaker in control state (no credential is issued)",
+                instruction=f"Type the confirmation code {code} into the terminal that ran `aew recovery breaker "
+                            "reset` (not here); anything else there refuses."))
+            conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
+                                                               "bound": bound}}).encode("utf-8"))
+            if not conn.poll(self.timeout):
+                self.console("\n(the `aew recovery breaker reset` request timed out; the code is void)\n")
+                raise errors.PermissionDenied("operator authorization timed out")
+            op, answer = _request(conn.recv_bytes(MAX_MESSAGE))
+            given = str(answer.get("code", "")).strip().upper() if op == "answer" else ""
+            if not hmac.compare_digest(given, code):
+                self.console("\n(the `aew recovery breaker reset` request was refused: wrong code)\n")
+                raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
+            principal = self._principal()
+            with self._engine_lock:
+                out = self.engine.recovery_breaker_reset(principal, scope=scope, reason=reason,
+                                                         scopes=bound["scopes"])
+            self.console(f"\n(relaunch breaker reset: {', '.join(out['reset'])})\n")
+            return out
+        finally:
+            self._authorizing.release()

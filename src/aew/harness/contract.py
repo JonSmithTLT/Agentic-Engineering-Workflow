@@ -34,7 +34,10 @@ TERMINAL = frozenset({LAUNCH_FAILED, ENDED_WITH_EVIDENCE, ENDED_WITHOUT_EVIDENCE
 UNCONFIRMED = "unconfirmed"  # recorded in control state, but no supervisor ever took custody
 LOST = "lost"                # a supervisor took custody and stopped reporting (killed, crashed, machine lost)
 # Why a run ended, where an adapter can tell more than its status says: the record's `reason_code`, beside `status`
-# and `reason`. Telemetry like the rest of the record, so it never decides anything.
+# and `reason`. On the record it is telemetry like the rest of the record, so the record's copy never decides anything.
+# From M4-E E8b a launch failure's code decides one thing, a stage's relaunch (`aew.engine.recovery`), and only as the
+# launcher received it: from the supervisor's acknowledgement over its pipe, or the launcher's own value when custody
+# was never acknowledged. A code read from the run directory (model-writable) counts as `unknown` (amendment 1, R2-m2).
 PROVIDER_AUTH_FAILED = "provider_auth_failed"  # the model provider rejected the credential (register V1)
 ADAPTER_REASON_CODES = frozenset({PROVIDER_AUTH_FAILED})  # what an adapter reports; never on a `launch_failed` record
 

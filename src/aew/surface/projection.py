@@ -310,6 +310,9 @@ def _runs(engine: Any, subject: str) -> list[dict[str, Any]]:
         out.append({"run": str(r["run"]), "invocation": str(r["invocation"]), "work_unit": str(r["work_unit"]),
                     "role": str(r["role"]), "status": str(r["status"]),
                     "reason": None if r.get("reason") is None else str(r["reason"]),
+                    # Display only (M4-E E8b): the run record's code, which the run directory could have forged, so it
+                    # decides nothing; relaunch eligibility reads only the acknowledged code (amendment 1, R2-m2).
+                    "reason_code": None if r.get("reason_code") is None else str(r["reason_code"]),
                     "evidence": [str(e) for e in r.get("evidence") or []], "source": "local_telemetry",
                     "observed_at": observed_at})
     return out

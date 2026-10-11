@@ -6,7 +6,7 @@
   "oneOf": [{"$ref": "#/$defs/run"}, {"$ref": "#/$defs/broker"}],
   "$defs": {
     "run": {
-      "description": "A run's supervisor (writer `run-<run id>`): the supervisor's deadline stop, and a launch failure recorded at its three failure sites (custody refused, the start failed, and main's records made before any supervisor exists). `subject` is the run itself.",
+      "description": "A run's supervisor (writer `run-<run id>`): the supervisor's deadline stop, and a launch failure recorded at its three failure sites (custody refused, the start failed, and main's records made before any supervisor exists). `subject` is the run itself. A `launch_failed` line carries its closed `reason_code` (M4-E E8b).",
       "type": "object",
       "required": ["schema", "event", "at", "subject", "reason"],
       "additionalProperties": false,
@@ -16,7 +16,8 @@
         "at": {"type": "string", "maxLength": 40},
         "subject": {"type": "string", "minLength": 1, "maxLength": 200},
         "reason": {"type": ["string", "null"], "maxLength": 4096},
-        "ref": {"type": ["string", "null"], "maxLength": 512}
+        "ref": {"type": ["string", "null"], "maxLength": 512},
+        "reason_code": {"description": "M4-E E8b: a launch failure's closed code (`aew.harness.contract.LAUNCH_FAILURE_CODES`), carried to the notification. Telemetry: relaunch eligibility never reads a spool line.", "type": "string", "pattern": "^[a-z_]{1,64}$"}
       }
     },
     "broker": {

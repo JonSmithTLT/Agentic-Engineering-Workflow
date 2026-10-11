@@ -307,6 +307,19 @@
               "null"
             ]
           },
+          "relaunch": {
+            "description": "M4-E E8b (A2 §7; BRP R5-3): the one automatic relaunch of this invocation, committed by the stage runner at a stage's `launch_failed` stop. It binds the failed run, the termination proof, the revocation of the failed run's credential, the no-side-effect proof, the acknowledged reason code, the breaker's state, the recovery policy snapshot, the stage intent and the new run. Its presence makes the invocation ineligible for another.",
+            "type": "object",
+            "required": ["failed_run", "new_run", "reason_code", "termination_proof", "revocation", "no_side_effect_proof",
+                         "breaker", "policy", "intent", "at", "rev"],
+            "properties": {
+              "failed_run": {"type": "string"}, "new_run": {"type": "string"}, "reason_code": {"type": "string"},
+              "reason_code_source": {"type": "string"}, "termination_proof": {"type": "object"},
+              "revocation": {"type": "object"}, "no_side_effect_proof": {"type": "object"},
+              "breaker": {"type": "object"}, "policy": {"type": "object"}, "intent": {"type": "string"},
+              "at": {"type": "string"}, "rev": {"type": "integer"}
+            }
+          },
           "runs": {
             "description": "The invocation's harness runs, in launch order (ADR-0009). `usage` is the run's usage, copied once from its run record by the engine's next Lead transaction on the invocation that ends it, relaunches it or archives its unit (F25 R5); absent while the run is provisional (R6). A copy only adds `usage` to an existing entry, so it derives no event (ADR-0012 D2).",
             "type": "array",
@@ -540,6 +553,41 @@
       "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
       "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
     },
+    "recovery": {
+      "description": "M4-E E8b (plan v3 E8, §2.7; A2 §6): the relaunch circuit breaker's window, by scope (`<harness>:<provider>`, or `project` when a failure's cause is shared). `failures` holds the eligible launch failures inside the window (at most the threshold); `open` is set when the threshold is reached, which disables relaunch for that scope until the operator resets it at the operator endpoint (`reset` records who and when). Operational safety state, never workflow authority; fixed size. Each relaunch's record is on its invocation (`relaunch`).",
+      "type": "object",
+      "required": ["breakers"],
+      "additionalProperties": false,
+      "properties": {
+        "breakers": {
+          "type": "object",
+          "propertyNames": {"pattern": "^(project|[^:]+:[^:]+)$"},
+          "additionalProperties": {
+            "type": "object",
+            "required": ["failures", "open"],
+            "additionalProperties": false,
+            "properties": {
+              "failures": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object", "required": ["at", "run", "reason_code"], "additionalProperties": false,
+                  "properties": {"at": {"type": "string"}, "run": {"type": "string"}, "reason_code": {"type": "string"}}
+                }
+              },
+              "open": {
+                "type": ["object", "null"],
+                "required": ["at", "reason_codes", "runs"],
+                "additionalProperties": false,
+                "properties": {"at": {"type": "string"}, "reason_codes": {"type": "array", "items": {"type": "string"}},
+                               "runs": {"type": "array", "items": {"type": "string"}}}
+              },
+              "reset": {"type": "object"}
+            }
+          }
+        }
+      }
+    },
     "anomalies": {
       "description": "M4-E E5b (plan v3 §2.4, §2.7): the open anomalies, by id: recorded existing signals (WORKSPACE_MUTATED, OBSERVATION_MUTATED, a live contradiction). Only open ones are hot; the Lead's disposition moves one, with its disposition, to its cold record (`work/<T>/dispositions/<DP>.yaml`, or `records/dispositions/`) in the same commit. Bounded by what is open, and deduplicated by `key` while open.",
       "type": "object",
@@ -607,7 +655,7 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}
+            {"required": ["anomalies"]}, {"required": ["recovery"]}
           ]
         }
       }

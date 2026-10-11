@@ -1,4 +1,4 @@
-"""`aew operator` and `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1).
+"""`aew operator`, `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1) and `aew recovery breaker` (M4-E E8b).
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
 one-time codes. ``aew lead mode raise`` only sends a request to it and reads the code typed at this terminal: it has
@@ -33,6 +33,28 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
     q.set_defaults(handler=_ping)
+    register_recovery(sub)
+
+
+def register_recovery(sub: argparse._SubParsersAction) -> None:
+    """``aew recovery breaker status|reset`` (M4-E E8b; plan v3 E8): the relaunch circuit breaker. ``reset`` only sends
+    a request to the operator endpoint and reads the code typed here; the broker refuses it in a Lead session."""
+    p = sub.add_parser("recovery", help="bounded recovery: the relaunch circuit breaker (reset at the operator "
+                                        "endpoint)")
+    rsub = p.add_subparsers(dest="recovery_cmd", required=True)
+    b = rsub.add_parser("breaker", help="the relaunch circuit breaker: once tripped, automatic relaunches stop for its "
+                                        "scope until the operator resets it")
+    bsub = b.add_subparsers(dest="breaker_cmd", required=True)
+    q = bsub.add_parser("status", help="each scope's eligible failures in the window, and which are open")
+    _add_json(q)
+    q.set_defaults(handler=lambda a: _engine(a).recovery_breaker_status())
+    q = bsub.add_parser("reset", help="ask the operator endpoint to close the breaker (its console shows a code; type "
+                                      "it here)")
+    q.add_argument("--scope", default=None, help="one scope (`<harness>:<provider>` or `project`); default: every "
+                                                 "open scope")
+    q.add_argument("--reason", required=True, help="recorded with the reset")
+    _add_json(q)
+    q.set_defaults(handler=_breaker_reset)
 
 
 def register_lead_mode(lsub: argparse._SubParsersAction) -> None:
@@ -85,3 +107,16 @@ def _raise(a: argparse.Namespace) -> Any:
             "`aew lead mode raise` reads the confirmation code from your terminal, and this process has none (a "
             "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
     return operator_client.request_raise(engine.aew_root, a.mode)
+
+
+def _breaker_reset(a: argparse.Namespace) -> Any:
+    from aew import operator
+    from aew.harness import operator_client
+
+    engine = _engine(a)
+    if not operator.has_terminal():  # as `aew lead mode raise`: never a challenge nobody can answer
+        raise OperatorAuthorizationRequired(
+            "`aew recovery breaker reset` reads the confirmation code from your terminal, and this process has none (a "
+            "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
+    return operator_client.request_breaker_reset(engine.aew_root, a.scope, a.reason)
+

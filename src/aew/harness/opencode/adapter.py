@@ -232,6 +232,7 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         self.contract = contract
+        self.prompt_delivered = False  # M4-E E8b: nothing is sent before `deliver_contract`
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
@@ -266,7 +267,9 @@ class OpenCodeAdapter(HarnessAdapter):
         self._monitor = threading.Thread(target=self._watch, name="aew-opencode-monitor", daemon=True)
         self._monitor.start()
         self._set_prompt_state("posting", required=True)  # immediately before the prompt's POST (M6, R2-m3)
+        self.prompt_delivered = None  # from here a failure may follow a POST that arrived: never relaunched (E8b)
         self.deliver_contract(contract)
+        self.prompt_delivered = True
         self._set_prompt_state("posted")
         return {"harness": self.name, "version": self.health.get("version"), "session": self.session,
                 "state_dir": str(self.state_dir), "server_pid": self.server.proc.pid, "health": self.health,

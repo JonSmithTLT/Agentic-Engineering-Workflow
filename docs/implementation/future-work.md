@@ -140,6 +140,30 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F9/`, oldest first (`python tools/register.py show F9`).*
 
+### F9.1
+
+**Work:** Typed worker consultation and feedback messages. First the kind-agnostic prerequisite slice **F9-X0**: a versioned, tolerant read contract (an older engine reads a thread holding an unknown kind, keeps its ordering, hashes and ids, renders a generic unknown-kind line and refuses any action needing the kind's semantics; writing stays strict against the local kind table), and an optional structured `data` object whose schema the registered kind selects, included in the derived content and idempotency identity. Then the kinds `advice_request` (`question`, `proposed_answer`, `uncertainty_reason`, optional coarse `confidence` low|medium, `refs[]`) answered by `advice` (AGREE|DISAGREE|UNCERTAIN|ESCALATE), `scope_request` answered by `scope_answer` (IN_SCOPE|FOLLOW_UP|REPLAN), and `confusion_report` (feedback into F42's intake). Messages grant no authority; two advice requests per attempt by default, repetition by explicit references only, a repeated unresolved consultation becoming Lead attention; v1 is answered by the Lead; reviewer and verifier context sees that a consultation occurred, the question, refs and the advice, but not the worker's `proposed_answer` or `uncertainty_reason` by default
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.8 gap 12, §3.10 to §3.12 (ledger AIR-38, AIR-43 to AIR-53); the observability inventory of 2026-10-11, gap 12
+
+**Belongs to or gated by:** **Unscheduled.** F9-X0 first; the kinds after F9-A's worker surface and reply lane (MS4, MS6) and F9-B's worker-initiated direction; off by default and in M4-H, evaluated in F19's messaging arms
+
+**Notes:** The extensibility acceptance criterion (AIR-45): after F9-X0 a new kind needs only a kind-table entry, a data schema, sender and recipient legality, a routing and presentation rule, an optional budget, tests and role-card awareness, never broker, store, ordering or sealing changes. Per-kind routing needs an ADR-0017 D3 amendment (F9-A1 §9 already allows routing by kind). `question` stays; `design_decision_required` and `REPLAN_REQUIRED` are not messages. The `frontier_advisor` role is not repurposed for routine checks
+
+*Later notes: `notes.d/F9.1/`, oldest first (`python tools/register.py show F9.1`).*
+
+### F9.2
+
+**Work:** Admitted Lead instructions in review and verification context (audit AX-02): a bounded, engine-owned, immutable content record for each admitted Lead-to-worker send, one canonical content object referenced by both paths (`harness send` with messaging off, the F9 thread with messaging on), never two histories; a small durable body limit aligned with F9's message discipline (about 4,000 characters), larger material by referenced artifact; reviewer and verifier packs carry each admitted instruction that materially applies to the reviewed attempt, with its message id, kind, admission time, Ticket, revision and attempt binding, canonical sanitized content and provenance, and show explicitly when content is redacted
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.4 (ledger AIR-21 to AIR-23); the architecture audit of 2026-10-11, AX-02 (P1)
+
+**Belongs to or gated by:** **Unscheduled.** Audit priority P1; owners F9 (the content semantics), the context packs and the review protocol; not gated on F9 messaging being on
+
+**Notes:** Today, with messaging off, a send keeps only its digest after delivery, which the designer rules is not equivalent to the text. Reviewer independence hides the implementer's private reasoning, not admitted Lead steering (AIR-21); the advice-exchange rule is F9.1's (AIR-53)
+
+*Later notes: `notes.d/F9.2/`, oldest first (`python tools/register.py show F9.2`).*
+
 ### F10
 
 **Work:** Mutating concurrency above 1: integration queue, merge revalidation
@@ -199,6 +223,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Notes:** Motivated by the M3 dogfood's T4 failure (O3). Already in the code to build on: `guardrails.yaml` `protected_paths`; review and verification of planner proposals by policy alone (`non_mutating_paths`); fail-closed ancestor plan bindings (ADR-0007); source-bound freshness of plan proposals (ADR-0008); `min_descendant_class` floors. What is new: the acceptance-first role, baselines, the challenge, the assurance predicate and evaluator protection. Relates to F5 (hierarchy revision: accepted baselines, admissibility), F6 (fail-closed classification), F8 (reconnaissance and stakeholder decisions). Architecture review 2026-10-04 (accepted 2026-10-05, Q13): I5, pin repository-local acceptance inputs by digest at plan acceptance and re-verify, as the deterministic half now. **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md); ledger CFI):** F14 co-owns the mandatory reviewed Story/Epic plan, Class 0 included, through a WC/F14 amendment that must exist before activation (F41.1, built by F41.2), whose parent-plan guard is an input to the single `DispatchDecision`; it owns the underspecification signals (F41.12) and `design_decision_required` as an attention reason (CFI-24)
 
 *Later notes: `notes.d/F14/`, oldest first (`python tools/register.py show F14`).*
+
+### F14.1
+
+**Work:** Parent-plan `interactions[]` and the composition rule: a parent plan lists structured interactions between sibling work units wherever a material interaction exists (`between`, dependency and interface refs, shared surfaces, allocated identifiers, `parallelism` PARALLEL_ALLOWED|SERIAL_REQUIRED|CONDITIONAL, conditions, rationale refs), the reviewed parallelism verdict of Q4; `SERIAL_REQUIRED` compiles to the existing blocking dependency; `PARALLEL_ALLOWED` is permission only; `CONDITIONAL` governs only through closed, engine-evaluable predicates (an interface digest still current, an overlap set still empty, a named dependency state), free text explaining only; no model-generated coupling score: the engine supplies deterministic dependency, interface and overlap evidence and plan review judges; parent-plan lint at acceptance. A Story or Epic is not plan-complete until every material cross-feature interaction it introduces or changes is connected to an existing owner or explicitly dispositioned, enforced by parent-plan assurance, not on Tickets
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §1 Q4, §3.7, §3.18 (ledger AIR-05, AIR-29 to AIR-32, AIR-74); the architecture audit of 2026-10-11, §8(a)
+
+**Belongs to or gated by:** **Designer.** Written into F41.1's parent-plan contract (the WC/F14 amendment, owed now, Q6a), never a second plan contract; built with F41.2
+
+**Notes:** Plan acceptance runs no lint today. The first of the four composition-enforcement layers (AIR-74): plan, structural registry (F44), independent audit (E65), operational feedback (F42)
+
+*Later notes: `notes.d/F14.1/`, oldest first (`python tools/register.py show F14.1`).*
 
 ### F15
 
@@ -511,6 +547,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Notes:** Exit: issues feed deployment UX improvements without weakening authority
 
 *Later notes: `notes.d/F18.14/`, oldest first (`python tools/register.py show F18.14`).*
+
+### F18.15
+
+**Work:** Gateway usage convergence: one accounting hook in the AEW Provider Gateway emits the authoritative provider-usage event; F19's slice S18 is an evaluator client of it, never a second, permanent metering proxy; F25 projects and cross-checks it, with a gateway trust and source value in its usage vocabulary
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §1 Q5, §3.5, §3.13 (ledger AIR-06, AIR-24, AIR-60); the architecture audit of 2026-10-11, AX-09
+
+**Belongs to or gated by:** **Unscheduled.** Owner F18.8 with F28, in Q5's hardening milestone (F18.6 + F28); S18 is specified against this hook before it is built
+
+**Notes:** S18 is temporary unless factored into the common gateway; it is unbuilt, so nothing moves. If S18 holds a clean reusable mechanism, it moves under the gateway owner rather than being built twice. F18.6 stays in the milestone but is not the gateway's owner
+
+*Later notes: `notes.d/F18.15/`, oldest first (`python tools/register.py show F18.15`).*
 
 ### F19
 
@@ -1016,6 +1064,90 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F41.14/`, oldest first (`python tools/register.py show F41.14`).*
 
+### F42
+
+**Work:** Observability and Feedback, the first cross-cutting integration note (Q1, Q2): attribute, aggregate, detect, triage and verify over one process-event model; detectors and their candidates advisory; an accepted improvement verified on the same metric it was meant to move. It consumes the facts its owners produce and owns none of them
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §1 Q1, Q2, §3.2, §3.8, §3.18 (ledger AIR-01 to AIR-03, AIR-40, AIR-74); the observability inventory of 2026-10-11
+
+**Belongs to or gated by:** **Designer.** The design, which starts from the map of existing owners; its input is F42.1 and F42.2
+
+**Notes:** The inventory's gaps are routed (AIR-33 to AIR-39): gap 3 to E63, gap 4 to F14 and the review protocol, gap 5 to F25 with F20, gap 8 to E64, gap 11 to F37, gap 12 to F9.1, gap 13 to F42.1; gaps 9 and 10 (detectors, the intake, verification of an improvement) are this row's. Kept out of its ownership (AIR-63): platform asymmetry (E66), audit UNKNOWN areas (E67), evaluator correlation (F19), built-claim conformance (E68). It consumes F43's typed kinds and F9.1's `confusion_report`
+
+*Later notes: `notes.d/F42/`, oldest first (`python tools/register.py show F42`).*
+
+### F42.1
+
+**Work:** The canonical process-event model: one read-time schema and vocabulary with common ids (a pull request opened, ready or merged; a review round opened or settled; a fix round; CI queued, started or settled; a merge-main round; a conflict and its resolution; a lane blocked or unblocked; an integration wait); the native producer derives events from the transition log, as F25 derives its projections; check and validation durations are elapsed resource use, never F25 model usage
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.2, §3.8 gap 13 (ledger AIR-15, AIR-39)
+
+**Belongs to or gated by:** **Unscheduled.** After F42's design and F43 S2 (the kinds it derives from); F37's redaction boundary before any field is persisted
+
+**Notes:** Not an outbox extension: only the engine declares outbox events (ADR-0012). Block and queue-wait events come from E64; run-health transitions from U1
+
+*Later notes: `notes.d/F42.1/`, oldest first (`python tools/register.py show F42.1`).*
+
+### F42.2
+
+**Work:** The repository-process adapter: ingests pull request, CI, merge, review and blocking events from the repository host into F42.1's model, in its own append-only store outside control state, with a project id and a mapping from pull request to work unit for AEW's own development
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.2 (ledger AIR-14, AIR-15)
+
+**Belongs to or gated by:** **Unscheduled.** After F42.1's schema; F37's redaction boundary first
+
+**Notes:** No separate repository-host analytics subsystem. When AEW's own development runs under AEW, it becomes one more producer of the same model, with no schema migration
+
+*Later notes: `notes.d/F42.2/`, oldest first (`python tools/register.py show F42.2`).*
+
+### F43
+
+**Work:** The attention spine, three ordered slices. **S1 (AX-05):** `ActionProjection` is the single derivation of next actions; it absorbs every duplicate: `resume`'s next actions, the dashboard's attention and health derivation, the operator notifier's condition derivation, the steering loop's consumption of decisions and the wake interpretation of invocation status (the notifier stays the operator's delivery channel with no semantic "what changed" of its own). **S2 (AX-04):** typed outbox kinds for every consequential control fact (anomalies, stage intents, steering, dispositions, unseen coordination). **S3 (AX-03):** Lead-actionable facts reach the existing `wait --any` control lane through a run-less form; one decision-keyed Lead-attention lane
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.3, §3.13 (ledger AIR-16 to AIR-20, AIR-61); the architecture audit of 2026-10-11, AX-03 to AX-05; ADR-0012 D2, D5
+
+**Belongs to or gated by:** **M4.** Mainline (AIR-75): after F44; S1, then S2, then S3; ahead of F41 activation
+
+**Notes:** v0.5 §11.1's "D5/F9 coordination lane" and the F9 lane of MIC-09 are S3's lane, not separate mechanisms. AX-08 (E58), AX-13 (E60) and E64's events fall out of S2 and S3. The new kinds need an ADR-0012 amendment
+
+*Later notes: `notes.d/F43/`, oldest first (`python tools/register.py show F43`).*
+
+### F44
+
+**Work:** The consequential-fact owner registry: one row per semantic control fact or evidence kind that may influence dispatch, `ActionProjection`, a gate, progression, evidence admissibility, publication, Lead or operator attention, or reviewer, verifier or model context; each row records the fact, owner, producers, authoritative or advisory, the A3 classification reference (never restated), outbox consequences, the Lead or operator projection, consuming packs, the staleness or freshness rule, the data and redaction class and the schema version; it covers the top-level control keys and a declared unit-key inventory; CI and static checks fail on a fact with no complete row
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.6, §3.13, §3.18 (ledger AIR-20, AIR-25 to AIR-28, AIR-54, AIR-55, AIR-74); the architecture audit of 2026-10-11, §8(b)
+
+**Belongs to or gated by:** **M4.** Mainline (AIR-75): first, before F43 S2; small
+
+**Notes:** The intended failure: a consequential control fact was added, but nobody declared how the rest of AEW learns about it (the class of AX-04, AX-05 and AX-13). It also names the predicate and owner behind each liveness reason (E69) and each freshness or staleness predicate. The precedent is the Ticket field registry and its test. The second layer of composition enforcement (AIR-74)
+
+*Later notes: `notes.d/F44/`, oldest first (`python tools/register.py show F44`).*
+
+### F45
+
+**Work:** Base-drift integration validation (AX-01): at prepare and rebuild the engine computes the drift between the Ticket's base and the integration base from Git and records its changed paths and their overlap with the Ticket's; the validation obligation consumes the recorded overlap under a legality-affecting key, `gates.post_integration.base_drift_overlap`; the integration verifier's pack gains an engine-derived section, the work integrated since this Ticket's base. The obligation's existing binding is the invalidation mechanism. Path and diff overlap alone triggers the obligation; intervening Ticket ids are best effort, and failing to recover one never suppresses detection
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.1 (ledger AIR-09 to AIR-13); the architecture audit of 2026-10-11, AX-01
+
+**Belongs to or gated by:** **M4.** Its own slice after M4-E's E6a (pull request 200) merges, independent of E6b (not widened); a precondition of F41 activation
+
+**Notes:** Migration (AIR-12): an absent key stays absent, so existing projects are byte-identical on upgrade; `aew init` writes the governing value; a project activated under F41 may not leave it absent or disabled, F41's activation gate verifies it, and migrating to F41 needs its explicit adoption. An overlap only escalates the validation mode, never relaxes it. Ticket ids join robustly once E59 (AX-12's trailers) lands
+
+*Later notes: `notes.d/F45/`, oldest first (`python tools/register.py show F45`).*
+
+### F46
+
+**Work:** The Operator Settings Surface: every operator-editable setting (marked by an explicit schema or registry annotation) has a dashboard editor showing its current value, description, valid values, classification, effective boundary, proposed value, validation result, diff and authority and effect; a generic schema renderer, custom editors where needed, and a completeness test proving every such setting has one. F20 presents, F15.4 classifies, the operator endpoint holds the mutation authority; the dashboard never writes control state and is never a model-visible channel. **Models per role:** (A) the live catalog from the provider's model-information endpoint; (B) AEW's advisory eligibility table (recommended|eligible|not_recommended|incompatible, with evidence and reasons), owned by the execution-profile and model-routing policy, with F19 supplying evidence only; (C) `allowed_models[role]`, the operator's, legality-affecting, through `adopt`, where an override of AEW's recommendation needs an explicit confirmation and an override record and can never override incompatible or unavailable; (D) `model_preference_order[role]`, operational when it only reorders; fallback only to the next usable model inside the adopted allowed set, otherwise operator attention
+
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.16, §3.17 (ledger AIR-65 to AIR-73); the operator's request of 2026-10-11
+
+**Belongs to or gated by:** **Designer.** Gated by a security design for the first write-capable dashboard flow
+
+**Notes:** The operator's goal: never search YAML or JSON files for a normal setting. The operator answered on 2026-10-11 that overrides are allowed with a confirmation and that the live endpoint is the catalog; the designer settled the eligibility owner (§3.17 B). No offline model catalog is needed for this feature
+
+*Later notes: `notes.d/F46/`, oldest first (`python tools/register.py show F46`).*
+
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
 <!-- columns: # | Work | Source | Target and notes -->
@@ -1113,16 +1245,6 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Source:** [remote integration target sketch](../design/proposals/remote-integration-target-sketch-2026-10-04.md) §5 and "Not decided here" (ledger RIT-05, RIT-07); M4-D must not foreclose it (RIT-06). **Deferred (operator, 2026-10-07, [F23 decision](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md)):** not an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement
 
 *Later notes: `notes.d/Q14/`, oldest first (`python tools/register.py show Q14`).*
-
-### Q15
-
-**Question:** The nit-rule divergence (cross-feature integration v0.5 §21): AEW's product rule (§15) needs one bounded delta review after nit corrections, while this repository's AGENTS.md process (PR #181) has the author fix nits and post "Nits fixed at <sha>" with no new review. Recorded as deliberate for now; when the product rule ships (F41.11), the repository either aligns AGENTS.md to the product rule or keeps the difference as an explicit, documented project-policy exception. It must not remain an accidental mismatch. AGENTS.md is unchanged by the ingestion
-
-**Owner:** Operator
-
-**Source:** [cross-feature integration design v0.5](../design/cross-feature-integration-design-v0.5.md) §21 (ledger CFI-97, CFI-98); [decision record](../design/decisions-2026-10-10-cross-feature-integration-freeze.md) §5
-
-*Later notes: `notes.d/Q15/`, oldest first (`python tools/register.py show Q15`).*
 
 ## 5. Dogfood findings left open (small)
 
@@ -1523,6 +1645,186 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Supersedes this row's earlier "move to `steer`" text. A treatment change: it is the Lead's nudge timing and help text, so it observes Q7 v0.3.1 §7's freeze rule. M4-H's frozen treatment, as G1 decided it: messaging off; worker delivery available to the Lead `next-step` only (OpenCode `steer`, through `aew harness send`); `turn-end` (queued) delivery unavailable, because it requires the F9 message store and messaging treatment, refused with `TURN_END_NEEDS_MESSAGING`; no hidden exception (the old `queue` default is removed, not kept for M4-H). The turn-end path, and every `harness send` while messaging is on, is enabled by F9-A's MS5b; the `off_on` mismatch case (a run launched with messaging on, the project since switched off) arrives with MS4, which writes the run's snapshot. **Built (HS1, 2026-10-10):** `aew harness send --when`, the help, the docstring, `OpenCodeAdapter.send(text, delivery)` replacing the hard-coded `queue`, the two-value branch (`send_route`) with the three refusals, and the harness-conformance §5 row. The finality rule this row carried until amendment 2 (`PENDING_TURN_END_MESSAGE`, atomic with the message state) is F9's, built in MS5b for both timings as `PENDING_LEAD_MESSAGE` (ledger CMG-34, MGR)
 
 *Later notes: `notes.d/E55/`, oldest first (`python tools/register.py show E55`).*
+
+### E56
+
+**Work:** Integration debt, audit AX-06 (P2): a `follow_up` disposition is not linked to the follow-up Ticket it promises (no back-link, and no anomaly when the follow-up is abandoned). Designer disposition: **pending / local-owner review**; registration does not adopt the audit's proposed repair
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-06; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: dispositions, the lifecycle and closeout; the owner's local review takes it up
+
+**Notes:** Evidence: `src/aew/engine/disposition_ops.py:445-483` (at `8f4dabb`). F44's unit-key inventory keeps such a fact from escaping the registry
+
+*Later notes: `notes.d/E56/`, oldest first (`python tools/register.py show E56`).*
+
+### E57
+
+**Work:** Integration debt, audit AX-07 (P2): an adopted plan's source freshness never reaches the dispatch predicate, so a plan premise is not rechecked. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-07; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: ADR-0008's freshness and F14's dispatch; the owner's local review takes it up
+
+**Notes:** Evidence: `src/aew/engine/nonmutating_ops.py:886-891`, `src/aew/engine/work_ops.py:614-619` (at `8f4dabb`)
+
+*Later notes: `notes.d/E57/`, oldest first (`python tools/register.py show E57`).*
+
+### E58
+
+**Work:** Integration debt, audit AX-08 (P2): an ancestor plan's invalidation produces no event, no Lead decision and nothing for the worker. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-08; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: ADR-0007's plan binding, F43 S2 and S3, F9; after F43 S2
+
+**Notes:** Evidence: `src/aew/engine/evidence_ops.py:217-221` (at `8f4dabb`). Falls out of F43's typed kinds and lane
+
+*Later notes: `notes.d/E58/`, oldest first (`python tools/register.py show E58`).*
+
+### E59
+
+**Work:** Integration debt, audit AX-12 (P4): the published commit names no integration record or evidence (no trailers), so joining a commit back to its Ticket relies on commit subjects. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-12; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: ADR-0004's controlled integration and F33
+
+**Notes:** Evidence: `src/aew/engine/integration_ops.py:295, 766` (at `8f4dabb`). Makes F45's best-effort Ticket ids robust (AIR-13); F45 never waits for it
+
+*Later notes: `notes.d/E59/`, oldest first (`python tools/register.py show E59`).*
+
+### E60
+
+**Work:** Integration debt, audit AX-13 (P3): `coordination_unseen` is not read by the projections, which blocks F9's worker-reply slice. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-13; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: F9's reply slice (MS6) and F43; after F43 S2
+
+**Notes:** Evidence: `src/aew/coordination/layout.py:86`, `src/aew/harness/lead_broker.py:106` (at `8f4dabb`). A pointer to the owners' work, not a duplicate of it
+
+*Later notes: `notes.d/E60/`, oldest first (`python tools/register.py show E60`).*
+
+### E61
+
+**Work:** Integration debt, audit AX-14 (P3): a re-review gets no delta against the prior review. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-14; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owner: F41.10, the delta-review packet; this row only points at it
+
+**Notes:** Evidence: `src/aew/engine/context_ops.py:209-224` (at `8f4dabb`). It is also Q3's scope-ceiling fact (the fix-brief template, F14)
+
+*Later notes: `notes.d/E61/`, oldest first (`python tools/register.py show E61`).*
+
+### E62
+
+**Work:** Integration debt, audit AX-15 (P4): project maps reach only the investigator's pack, not the planner's, and are not regenerated on publish. Designer disposition: **pending / local-owner review**
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), AX-15; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.9 (ledger AIR-41)
+
+**When:** **Unscheduled.** Owners: F22.1 and F35
+
+**Notes:** Evidence: `src/aew/maps/slices.py` (at `8f4dabb`)
+
+*Later notes: `notes.d/E62/`, oldest first (`python tools/register.py show E62`).*
+
+### E63
+
+**Work:** A fix round names the review it answers: a minimal `answers` link on the repair or re-dispatch record, so review and fix rounds can be counted as cycles (observability inventory gap 3). Designer disposition: **pending / local-owner review**
+
+**Source:** The observability inventory of 2026-10-11, gap 3; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.8 (ledger AIR-33)
+
+**When:** **Unscheduled.** Owner: the review-to-repair protocol; F42 consumes it
+
+**Notes:** Evidence: the dispatch record has no such field, `src/aew/engine/dispatch.py:167-172` (at `8f4dabb`); only the next review's `resolved_findings` looks back. Priority P3
+
+*Later notes: `notes.d/E63/`, oldest first (`python tools/register.py show E63`).*
+
+### E64
+
+**Work:** Identity-bearing block and queue-wait events: blocked time produced by the dependency engine, queue-wait time by the queue, each as canonical process facts that F42 aggregates (observability inventory gap 8). Designer disposition: **pending / local-owner review**
+
+**Source:** The observability inventory of 2026-10-11, gap 8; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.8 (ledger AIR-36)
+
+**When:** **Unscheduled.** Owners: the dependency engine and the queue; after F43 S2
+
+**Notes:** Evidence: `blocked_by` is recomputed on every commit, `src/aew/engine/dependencies.py:177-187` (at `8f4dabb`), and a queue wait emits nothing until the lease moves. Priority P3
+
+*Later notes: `notes.d/E64/`, oldest first (`python tools/register.py show E64`).*
+
+### E65
+
+**Work:** The second composition audit: a narrow, fresh-context, report-only audit of the new actors and control seams since `1dd89d5`, failure and recovery composed across owners, and credential, security and authority flow across the joins; for every recovery path what authority survived or was revoked, what is reconstructed, what evidence stays admissible, which generation or revision owns the result, what wakes whom, and whether stale authority can be resurrected; dynamic fault scenarios where practical (a generation replaced with notifications queued, a delayed or duplicate stale result, custody lost during validation, a broker or steering-loop interruption, a provider gateway restart, a plan or policy change during active work, a concurrent interface change, the queue with more than one lane on the Rocky host); never another complete architecture review
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.14, §3.18 (ledger AIR-62, AIR-74)
+
+**When:** **M4.** After M4-E's E7d merges, which also brings E6b's publication path into scope
+
+**Notes:** The third layer of composition enforcement (AIR-74). Process work for the operator to commission, run the same way as the first audit
+
+*Later notes: `notes.d/E65/`, oldest first (`python tools/register.py show E65`).*
+
+### E66
+
+**Work:** Platform asymmetry of the joins: check that packs, wakes and usage behave the same on Linux, where containment is real, and on Windows, where it is a label
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.15 (ledger AIR-63); the second brief's list of what the audit did not cover
+
+**When:** **Unscheduled.** Owners: containment and adapter qualification (F24, M4-G)
+
+**Notes:** Kept out of Observability's ownership. Priority P3
+
+*Later notes: `notes.d/E66/`, oldest first (`python tools/register.py show E66`).*
+
+### E67
+
+**Work:** Audit coverage debt: the first audit's UNKNOWN areas (F4 beyond S1, M6a Gates A and B, K1 and K2 capture, F36, F30 and F18's attachment, the queue with more than one lane on the real Rocky host)
+
+**Source:** The architecture audit of `main` at `1dd89d5` (2026-10-11), its UNKNOWN list; [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.15 (ledger AIR-63)
+
+**When:** **Unscheduled.** Taken up as each area is built, or by a later audit
+
+**Notes:** Kept out of Observability's ownership. Priority P4
+
+*Later notes: `notes.d/E67/`, oldest first (`python tools/register.py show E67`).*
+
+### E68
+
+**Work:** Built-claim conformance: a machine check that the actual built claims (the free-text `status: done` entries of the requirements ledger and the "Implemented" or "Built" paragraphs of `implementation-status.md`) resolve to a test or path anchor
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.15 (ledger AIR-64)
+
+**When:** **Unscheduled.** Owner: the ledger and the docs tests (`tools/`, `tests/unit/`)
+
+**Notes:** The ledger has no built field; the check applies to the claims as they are written. Priority P4
+
+*Later notes: `notes.d/E68/`, oldest first (`python tools/register.py show E68`).*
+
+### E69
+
+**Work:** One canonical reason vocabulary for externally projected liveness outcomes where their meanings coincide (`lost`, `stale`, `wedged`, `gone`), used by the operator notifier and the projections; the run heartbeat, the broker's beat and the custody worker's identity keep their own mechanisms and thresholds
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.13 (ledger AIR-54)
+
+**When:** **Unscheduled.** Owners: process identity (`harness/procs.py`) and F44, whose rows name the predicate and owner behind each reason
+
+**Notes:** A LINK of the consolidation pass, not a consolidation of mechanisms
+
+*Later notes: `notes.d/E69/`, oldest first (`python tools/register.py show E69`).*
+
+### E70
+
+**Work:** The hard deadline as one semantic fact: canonical in the error and reason vocabulary and projected into the spool, anomaly and steering-loop surfaces, replacing three independent spellings of it
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.13 (ledger AIR-56)
+
+**When:** **Unscheduled.** Owners: `src/aew/errors.py` and `src/aew/engine/reasons.py`, the root reason registry
+
+**Notes:** A LINK of the consolidation pass; the steering loop's stop codes are not yet in the root registry
+
+*Later notes: `notes.d/E70/`, oldest first (`python tools/register.py show E70`).*
 
 ### E47
 
@@ -2195,6 +2497,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** Accepted by the operator after the designer reconciled the three differences (MCP first; I1 and I2 built; the outbox sequencing per ADR-0012 and the M4-D split). The response moves to `docs/design/` as a decision record. Its decisions already have homes: ADR-0012, ADR-0013, the typed Lead surface v0.2, F21 to F27, E18 to E30. ARV-01: the review's "do not build yet" list accepted (F9, F3's sparse workspaces, F20's write actions: on measured need); ARV-02: E30 accepted as work; ARV-03: E19's; ARV-04: F15 and F8; ARV-05: F19 and E35
 
 *Later notes: `notes.d/Q13/`, oldest first (`python tools/register.py show Q13`).*
+
+### Q15
+
+**Was:** The nit-rule divergence (cross-feature integration v0.5 §21): the product's rule (§15) needs one bounded delta review after nit corrections, while AGENTS.md (PR #181) had the author fix nits with no new review; the operator was to align AGENTS.md or keep an explicit, documented project-policy exception
+
+**Closed:** 2026-10-10
+
+**By:** The operator aligned AGENTS.md with the product rule in PR #193 (2026-10-10): after a CLEAR whose only open points are nits, the author fixes them and one short delta review covers the whole diff since the CLEAR, once per CLEAR (AGENTS.md §1, "Nits after a CLEAR get one short delta review"); no project-policy exception remains (ledger CFI-97, CFI-98). Recorded with the [architecture integration decision record](../design/decisions-2026-10-11-architecture-integration.md) §5
+
+*Later notes: `notes.d/Q15/`, oldest first (`python tools/register.py show Q15`).*
 
 ### U2
 

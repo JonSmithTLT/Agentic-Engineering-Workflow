@@ -47,9 +47,13 @@ Inherit shared buttons/selects/panels. Native selects own their popup geometry; 
 
 ## Components
 
+Native disclosures enclose their expanded content with the shared border token and a separated summary row. Table scroll surfaces have an outer border and spacing from neighboring facts. Map fields keep each label/value pair within one divided row; table-valued fields put the label above the complete table. Work detail panels align at their natural top edges, with explanation groups sharing the panel's content inset. Response metadata disclosures identify their owning response even when their values match.
+
 `InvestigationWorkspace` owns selection layout/mobile switching/close. `RelationsExplorer` owns explicit bounded exploration. `SourceStrip` owns source versus browser metadata. `SafeContent` owns hostile Markdown rendering. `Pager` owns cursor navigation. Canonical behavior is in `UX-CONTRACT.md`.
 
 Raw-history search uses one naturally scrolling form and a bounded result list. Its signature is a visibly framed historical snippet with supplied trust labels and fences, rather than an inferred answer or Knowledge card. Literal terms use labeled native input rows; kind checkboxes and the result-limit select use native ownership. UTC dates remain explicit text inputs. Existing tokens, system typography and panel spacing apply; pending Search retains its width, Clear remains reachable, and long snippets wrap within phone bounds. Search is loaded on route demand, keeping additive schemas outside initial page startup.
+
+Maps reuses the same natural document and native controls. Its signature is an exact stored root and compared-against commit, with supplied freshness and omission counts beside the active section. Selected map, Stored maps and Compare maps are exclusive activities; Sections, Inputs and Provenance are exclusive reader tabs. Existing table panels own bounded scrolling; no graph, generation action or acceptance score is introduced. Raw map paths are escaped text, never filesystem links or commands. Full roots remain inspectable and copied navigation pins the displayed root.
 
 ## Do's and Don'ts
 

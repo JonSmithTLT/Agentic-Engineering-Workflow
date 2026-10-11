@@ -101,3 +101,7 @@ S0 merged as `6f8cc28`; W1 starts from merged main `60a26c398dfd37dd2e5101d4e4ab
 ## Search prerequisite update (2026-10-10)
 
 W1 #173 merged as `0c21d9c` and its exact main CI/CodeQL passed. S2 #175 merged as `d975a711e57b57e2a5637b0fdc13a6a91e85cf71`; the Search UI checkpoint starts directly from that merged commit on an independent branch. S1 #178 remains open at this checkpoint's start, so Maps runtime UI remains gated. The operator's existing approved workflow covers this checkpoint. Accepted/provisional artifacts, dependency lock and packaged frontend baseline are unchanged. This update records the prerequisite, not a UI/live acceptance result; exact committed-source evidence and independent review remain merge gates.
+
+## Maps prerequisite update (2026-10-10)
+
+Search #183 merged as `d817c192a8e3b6427a8505f22b1b53b7dfce2d0b`. S1 #178 merged as `cccb9b89587903732cc58ded3f0ef39d51c13715`; the operator explicitly instructed implementation to proceed. Maps starts from this merged S1 commit on its own branch. The earlier prerequisite statuses above remain historical. This records authorization and dependencies, not finished validation, independent acceptance or S3 package selection. The accepted artifact, generated types, dependency lock and F20 packaged baseline remain unchanged.

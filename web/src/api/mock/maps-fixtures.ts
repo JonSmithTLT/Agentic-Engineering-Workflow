@@ -36,7 +36,7 @@ export class MapsFixtureProjector {
     if (path !== '/maps/structural' && (!match || !fixtureMapRoots.includes(match[1]))) return { status: 404 };
     if (path === '/maps/structural' || match?.[2]) {
       const filter = params.get('source_revision') ?? '';
-      const items = path === '/maps/structural' ? fixtureMapRoots.map(mapFixtureSummary).filter(item => !filter || item.source_revision === filter).sort((a, b) => a.root.localeCompare(b.root)) : Array.from({ length: 61 }, (_, index) => ({ path: index === 0 ? '<script>window.__mapsHostile=1</script>' : `src/fictional-${String(index).padStart(3, '0')}.ts`, git_oid: commit, size: 100, read: index < 50, reason: index < 50 ? 'read' : 'metadata_bytes_cap' }));
+      const items = path === '/maps/structural' ? fixtureMapRoots.map(mapFixtureSummary).filter(item => !filter || item.source_revision === filter).sort((a, b) => a.root.localeCompare(b.root)) : Array.from({ length: 61 }, (_, index) => ({ path: index === 0 ? '<script>window.__mapsHostile=1</script>' : `src/fictional-${String(index).padStart(3, '0')}.ts`, git_oid: commit, size: 100, read: index < 50, ...(index < 50 ? {} : { reason: 'capped_total' }) }));
       const limit = Number(params.get('limit') ?? 50);
       let prior: { path: string; offset: number; filter: string } | undefined;
       if (params.has('cursor')) {
@@ -52,14 +52,14 @@ export class MapsFixtureProjector {
     const root = match![1];
     const detail = structuredClone(seed.StructuralDetailResponse.data);
     const sectionData = {
-      directories: { rows: [{ path: 'src', depth: 1, files: 3, languages: ['typescript'], languages_omitted: 0, label: 'candidate' }], submodules: [], rows_total: 3, rows_omitted: 2, dropped_fields: 0, dropped_items: 0 },
-      languages: { counts: { typescript: 3 }, counts_omitted: 0, unknown_files: 1, unknown_extensions: [], dropped_fields: 0, dropped_items: 0 },
-      build_descriptors: { items: [{ path: 'package.json', kind: 'package_json', status: 'parsed' }], omitted: 0, dropped_fields: 0, dropped_items: 0 },
-      entry_point_candidates: { items: [{ label: 'candidate', path: 'src/index.ts', rule: 'fixture_rule' }], dropped_fields: 0, dropped_items: 0 },
+      directories: { rows: [{ path: 'src', depth: 1, files: 3, languages: ['TypeScript'], languages_omitted: 0, label: 'source' }], submodules: [], rows_total: 3, rows_omitted: 2, dropped_fields: 0, dropped_items: 0 },
+      languages: { counts: { TypeScript: 3 }, counts_omitted: 0, unknown_files: 1, unknown_extensions: [], dropped_fields: 0, dropped_items: 0 },
+      build_descriptors: { items: [{ path: 'package.json', kind: 'node', status: 'parsed' }], omitted: 0, dropped_fields: 0, dropped_items: 0 },
+      entry_point_candidates: { items: [{ label: 'convention', path: 'src/index.ts', rule: 'src/index.ts' }], dropped_fields: 0, dropped_items: 0 },
       test_candidates: { items: [{ kind: 'future_fixture_runner', path: 'tests/fictional.test.ts', source: 'fixture' }], dropped_fields: 0, dropped_items: 0 },
       generated_and_vendor: { items: [], omitted: 0, dropped_fields: 0, dropped_items: 0 },
-      semantic_prerequisites: { items: [{ path: 'compile_commands.json', kind: 'compilation_database', source: 'fixture' }], dropped_fields: 0, dropped_items: 0 },
-      limits_and_omissions: { caps_hit: [{ section: 'directories', field: 'rows', limit: 200, omitted: 2 }], parse_failures: [], unsupported: [], lfs_pointers: [], metadata_unread: 11, dropped_fields: 0, dropped_items: 0 },
+      semantic_prerequisites: { items: [{ path: 'compile_commands.json', kind: 'compile_database', source: 'convention' }], dropped_fields: 0, dropped_items: 0 },
+      limits_and_omissions: { caps_hit: [{ section: 'directories', field: 'rows_omitted', limit: 1, omitted: 2 }], parse_failures: [], unsupported: [], lfs_pointers: [], metadata_unread: 11, dropped_fields: 0, dropped_items: 0 },
     };
     const requested = params.get('section');
     if (requested && !Object.hasOwn(sectionData, requested)) return { status: 400 };

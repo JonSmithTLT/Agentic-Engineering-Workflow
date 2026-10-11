@@ -32,6 +32,28 @@ it('invalid presentation sends no Maps request after bootstrap', async () => {
   await waitFor(() => expect(reads.some(url => url.pathname.endsWith('/capabilities'))).toBe(true));
   expect(reads.filter(url => url.pathname.includes('/maps'))).toHaveLength(0);
 });
+it.each(['rev', 'revision', 'snapshot'])('rejects unsupported historical %s before Maps reads', async key => {
+  const reads = mount(`?${key}=old`);
+  await screen.findByRole('alert');
+  await waitFor(() => expect(reads.some(url => url.pathname.endsWith('/capabilities'))).toBe(true));
+  expect(reads.some(url => url.pathname.includes('/maps'))).toBe(false);
+});
+it('renders unknown section vocabulary raw with warnings', async () => {
+  mount('?map_section=test_candidates');
+  const value = await screen.findByText('future_fixture_runner');
+  expect(value.closest('[role="status"]')?.textContent).toContain('Unknown value:');
+});
+it('keeps activity tab focus after Home returns to the loaded selected map', async () => {
+  mount();
+  await screen.findByText('Rows omitted');
+  fireEvent.click(screen.getByRole('tab', { name: 'Stored maps' }));
+  await screen.findByRole('button', { name: fixtureMapRoots[0] });
+  const tab = screen.getByRole('tab', { name: 'Stored maps' });
+  tab.focus();
+  fireEvent.keyDown(tab, { key: 'Home' });
+  await screen.findByText('Rows omitted');
+  expect(document.activeElement?.id).toBe('maps-tab-selected');
+});
 it('reads only the displayed input page, keeps hostile paths inert and replaces the page', async () => {
   const reads = mount(`?map_root=${fixtureMapRoots[0]}&map_tab=inputs`);
   await screen.findByText('<script>window.__mapsHostile=1</script>');

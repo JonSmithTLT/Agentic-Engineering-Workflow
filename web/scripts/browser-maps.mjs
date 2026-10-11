@@ -63,9 +63,18 @@ async function trial(adapter, width) {
     await page.keyboard.press('Home');
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'map-detail-tab-sections');
     await page.getByText('Rows omitted', { exact: true }).waitFor();
+    await page.getByRole('combobox', { name: /^Map section/ }).selectOption('test_candidates');
+    await page.getByText('future_fixture_runner', { exact: true }).waitFor();
+    assert.equal(await page.getByText('future_fixture_runner', { exact: true }).evaluate(node => node.closest('[role="status"]')?.textContent.includes('Unknown value:')), true);
     await page.getByRole('combobox', { name: /^Map section/ }).selectOption('limits_and_omissions');
     await page.getByText('Metadata unread', { exact: true }).waitFor();
     await page.screenshot({ path: `${out}/${adapter}-${width}-selected.png`, fullPage: true });
+    await page.getByRole('tab', { name: 'Stored maps', exact: true }).click();
+    await page.getByRole('button', { name: roots[0], exact: true }).waitFor();
+    await page.getByRole('tab', { name: 'Stored maps', exact: true }).focus();
+    await page.keyboard.press('Home');
+    await page.getByText('Metadata unread', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'maps-tab-selected');
     await page.getByRole('tab', { name: 'Stored maps', exact: true }).click();
     await page.getByRole('button', { name: roots[0], exact: true }).waitFor();
     const summaryHidden = summaries();
@@ -88,11 +97,13 @@ async function trial(adapter, width) {
     await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; document.documentElement.style.fontSize = '200%'; });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
     await page.screenshot({ path: `${out}/${adapter}-${width}-comparison-dark-text-scale.png`, fullPage: true });
-    await page.goto(`${base}/maps?fixture=F1&map_root=HEAD`);
-    const invalidReads = reads.length;
-    await page.getByRole('alert').waitFor();
-    await page.waitForTimeout(100);
-    assert.equal(reads.length, invalidReads, 'Invalid presentation causes no Maps read');
+    for (const invalid of ['map_root=HEAD', 'rev=old', 'revision=old', 'snapshot=old']) {
+      const invalidReads = reads.length;
+      await page.goto(`${base}/maps?fixture=F1&${invalid}`);
+      await page.getByRole('alert').waitFor();
+      await page.waitForTimeout(100);
+      assert.equal(reads.length, invalidReads, 'Invalid/historical presentation causes no Maps read');
+    }
     if (adapter === 'http') assert.equal(context.serviceWorkers().length, 0);
     assert.deepEqual(errors, []);
     results.push({ adapter, width, result: 'PASS', requests: reads.length, detail_reads_before_manual_navigation: detailBefore, scope: 'Compiled fixture adapters; virtual clock and CSS text scaling, not real browser zoom/live acceptance' });

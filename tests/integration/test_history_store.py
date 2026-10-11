@@ -110,6 +110,21 @@ def test_a_sealed_lookup_refuses_a_segment_that_is_not_the_pinned_one(store, dam
     assert not history.verify(root).ok
 
 
+def test_a_caught_up_history_is_a_race_but_a_damaged_sealed_segment_under_an_intact_tail_is_damage(store):
+    """Review of #192, nits I and K: when a lock-free read failed and the tail now ends exactly at the snapshot's root,
+    ``History.race`` calls it a race ("moved") only if the whole history walks to that root. An edited sealed segment
+    under an intact tail fails the walk, so it stays damage (None), never "read again later" for good."""
+    archive(store, 300)  # one sealed segment and a tail that ends at the root
+    root = read_root(store.root)
+    assert root["sealed_head"] and root["count"] == 300
+    assert History(store.root).race(root) == "moved"
+    path = store.root / M.segment_rel(1)
+    doc = load_yaml(path.read_text(encoding="utf-8"))
+    doc["entries"][10]["id"] = "T-7777"  # an edited entry: the segment no longer hashes to its pin
+    rewrite_segment(path, doc)
+    assert History(store.root).race(root) is None
+
+
 def test_a_segment_header_is_read_without_its_entries_or_whole_when_laid_out_otherwise(store):
     archive(store, 600)
     history = History(store.root)

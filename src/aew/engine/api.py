@@ -24,6 +24,7 @@ from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
 from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
 from aew.engine.dispatch import Dispatch
+from aew.engine.disposition_ops import Dispositions
 from aew.engine.evidence_ops import EvidenceCommands, Gates
 from aew.engine.guards import GuardQueries
 from aew.engine.harness_ops import Harness
@@ -417,7 +418,10 @@ class Engine:
         self._steering = steering = Steering(k)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
-        self._stages = stages = StageIntents(k, archive=archive)
+        # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
+        self._dispositions = dispositions = Dispositions(k, gates=gates, archive=archive, views=views)
+        self._stages = stages = StageIntents(
+            k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"])
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -450,9 +454,13 @@ class Engine:
         # coordination seal (F9-A plan D-16) runs after every finalizer that can end an invocation (the queue's ends a
         # custodian and its children) and immediately before archival, so a seal's pointer is on its unit when
         # archival bundles it; a finalizer added later that can end an invocation goes before it.
+        # The anomaly record (M4-E E5b) runs before the seal: it only adds what is signalled to the hot state, ends
+        # nothing, and reads the contradictions of the committed state the transaction starts from.
         k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
-                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, coordination.finalize,
-                                   archive.finalize])
+                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, dispositions.finalize,
+                                   coordination.finalize, archive.finalize])
+        # A Lead transaction refused with a recorded signal (WORKSPACE_MUTATED, OBSERVATION_MUTATED) records it.
+        k.refusal_hooks.append(dispositions.record_refusal)
         # Session.commit's seal check seals a missed ending through it (D-16, R3).
         k.store.seal = coordination.seal_ending
         k.archived_credential = archive.archived_credential  # an archived credential stays stale authority (R7)
@@ -625,6 +633,14 @@ class Engine:
         """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
         stage step's guard takes it produced (M4-E E4b): None when no lease could be granted on it."""
         return self._integration.candidate_overlay(state, work_id)
+
+    def stage_cards(self, work_id: str | None, slot: str, *, state: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The cards a request stage launches for ``work_id``'s ``slot`` now (M4-E E5b; ``Roles.planned_cards``)."""
+        state = self._k.store.read() if state is None else state
+        unit = self._units.unit(state, work_id or "")
+        if unit["kind"] != "ticket" or not unit.get("mutating"):  # a request stage is a mutating Ticket's
+            return {"cards": [], "unresolved": []}
+        return self._roles.planned_cards(state, work_id or "", slot, self._gates.gate_context(state, work_id or ""))
 
     def guard_queries(self) -> list[str]:
         """The primitives whose guard is migrated to a query (beyond the dispatch decisions)."""
@@ -989,6 +1005,49 @@ class Engine:
         """What continuing an unfinished stage would meet now (read-only: ``resume``, and the surface before a
         continue)."""
         return self._stages.recheck_active(self._k.store.read(), intent, contract_digest=contract_digest, plan=plan)
+
+    # ---------------------------------------------------------------- dispositions and anomalies (M4-E E5b)
+
+    def work_dispose(self, *, token: str, expect_rev: int, subject: str, choice: str, rationale: str,
+                     follow_up: str | None = None) -> dict[str, Any]:
+        """The Lead's disposition of a finding or claim policy marks ``requires_disposition``, or of an anomaly."""
+        return self._dispositions.dispose(token=token, expect_rev=expect_rev, subject=subject, choice=choice,
+                                          rationale=rationale, follow_up=follow_up)
+
+    def disposition(self, ref: str) -> dict[str, Any]:
+        """A disposition record, by its id or its subject (TIS-35: found without scanning)."""
+        return self._dispositions.read(self._k.store.read(), ref)
+
+    def anomaly_disposal_refusal(self, anomaly: str) -> dict[str, Any] | None:
+        """Why the open anomaly cannot be disposed of now (its refusal's code, message and details), or None: the
+        query the disposal's own refusal uses (PR 182 review, m4)."""
+        refused = self._dispositions.disposal_refusal(self._k.store.read(), anomaly)
+        return None if refused is None else {"code": refused.code, "message": refused.message,
+                                             "details": dict(refused.details)}
+
+    def anomalies_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """The open anomalies (hot), by id."""
+        state = self._k.store.read() if state is None else state
+        return [dict(a) for _, a in sorted((state.get("anomalies") or {}).items())]
+
+    def disposition_items(self, work_id: str, *, state: dict[str, Any] | None = None,
+                          evidence: list[str] | None = None) -> list[dict[str, Any]]:
+        """The items policy marks ``requires_disposition`` that the Lead has not disposed of for ``work_id``: those
+        recorded on the Ticket, and those of the named reports (``evidence``), which their ingest would record."""
+        from aew.engine import disposition_ops as DO
+
+        state = self._k.store.read() if state is None else state
+        unit = state["work"].get(work_id)
+        if unit is None:
+            return []
+        marked = DO.marks(self._k.policy("gates"))
+        items = DO.unit_items(marked, unit)
+        for eid in evidence or []:
+            ev = self._gates.find_evidence(work_id, eid)
+            items += DO.report_items(marked, ev, advances=DO.report_advances(ev))
+        seen: set[str] = set()
+        return [i for i in DO.undisposed(items, unit) if DO.still_gated(unit, i)
+                and not (i["id"] in seen or seen.add(i["id"]))]
 
     def stage_intents_view(self) -> list[dict[str, Any]]:
         return self._stages.view(self._k.store.read())

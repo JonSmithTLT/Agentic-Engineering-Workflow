@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import disposition_ops as DO
 from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import require_invocation
@@ -696,7 +697,8 @@ class EvidenceCommands:
         if not workspace.exists():
             raise NotFound(f"workspace {workspace} is missing")
         if inv["role"] in SHARED_WORKSPACE_READERS and inv.get("scope") in {"ticket", "integration"}:
-            self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited workspace
+            with DO.signalled(self.k.aew_root, work_id):  # recorded as an anomaly by the next Lead commit (E5b)
+                self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited one
         before = self.invocations.snapshot_of(workspace, ws_id)
         if cfg.get("builtin"):
             if base is None:
@@ -762,10 +764,13 @@ class EvidenceCommands:
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).
             workspace, ws_id, _ = self.invocations.invocation_workspace(state, inv)
-            if inv.get("scope") in {"observation", "parent"}:
-                self.nm.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
-            elif inv["role"] in SHARED_WORKSPACE_READERS:
-                self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # M3-B6
+            # A worker commits no control state: a mutated workspace is a signal the next Lead commit records as an
+            # anomaly (M4-E E5b; plan v3 §2.4). The refusal is unchanged.
+            with DO.signalled(self.k.aew_root, inv["work_unit"]):
+                if inv.get("scope") in {"observation", "parent"}:
+                    self.nm.require_observation_intact(inv_id, inv)  # read-only roles: records, reviews, verifications
+                elif inv["role"] in SHARED_WORKSPACE_READERS:
+                    self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # M3-B6
             work_id = inv["work_unit"]
             unit = state["work"][work_id]
             plan = unit.get("plan") or {}
@@ -954,6 +959,10 @@ class EvidenceCommands:
             if to is not None:  # the change the ingest makes: the table's edge and the state hooks (finding 1)
                 transitions.check(unit["state"], to, "review.ingest")
                 require(self.units.state_change_query(unit, {"from": unit["state"], "to": to}))
+            if to == "REVIEW_PASSED":  # an advance: never past a marked finding left undisposed (M4-E E5b, §2.4)
+                after = copy.deepcopy(unit)
+                self._apply_review(after, ev)
+                DO.require_disposed(DO.unit_items(DO.marks(self.k.policy("gates")), after), after, work_id, to)
             args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev),
                                                 to=to or unit["state"])
 
@@ -1091,6 +1100,9 @@ class EvidenceCommands:
             if to is not None:  # the change the ingest makes: the table's edge and the state hooks
                 transitions.check(unit["state"], to, "verify.ingest")
                 require(self.units.state_change_query(unit, {"from": unit["state"], "to": to}))
+            if to == "VERIFIED" or status == "validated":  # an advance: never past an undisposed marked claim (§2.4)
+                DO.require_disposed(DO.report_items(DO.marks(self.k.policy("gates")), ev), unit, work_id,
+                                    to or "validated")
             args.setdefault("found", {}).update(evidence=ev, ref=self.gates.evidence_ref(ev), to=to or unit["state"],
                                                 integration_status=status)
 

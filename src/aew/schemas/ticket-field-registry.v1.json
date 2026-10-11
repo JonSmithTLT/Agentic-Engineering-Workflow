@@ -69,6 +69,7 @@
     "completion_sha256",
     "coordination",
     "coverage_obligations",
+    "dispositions",
     "created_at",
     "environment_blocker",
     "escalated_from",

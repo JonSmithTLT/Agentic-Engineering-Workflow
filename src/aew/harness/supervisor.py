@@ -189,7 +189,7 @@ class Supervisor:
             inv_id, inv, _ = require_invocation(state, self._credential, None,
                                                 archived=self.engine.archived_credential)
         except errors.AEWError as exc:
-            return self._refuse(f"credential rejected: {exc.message}")
+            return self._refuse(f"credential rejected: {exc.message}", exc.code)
         problem = self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
         if inv_id != self.inv_id or problem:
             return self._refuse(problem or f"credential is for {inv_id}, not {self.inv_id}")
@@ -220,7 +220,9 @@ class Supervisor:
             self.record["launch"] = info
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
         except errors.AEWError as exc:
-            return self._launch_failed(f"{exc.code}: {exc.message}")
+            cause = exc.details.get(K.LAUNCH_CAUSE)
+            return self._launch_failed(f"{exc.code}: {exc.message}", exc.code,
+                                       cause=str(cause) if cause is not None else None)
         except Exception as exc:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
@@ -285,19 +287,24 @@ class Supervisor:
         threading.Thread(target=beat, name=name, daemon=True).start()
         return done
 
-    def _refuse(self, reason: str) -> bool:
-        self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", ended_at=utc_now())
-        self._event("custody_refused", reason=reason)
+    # A launch failure's record and acknowledgement carry its closed code beside the free-text reason (M4-E E8a; plan v3
+    # n8). The acknowledgement's is the one the launcher passes on: the record sits in the model-writable run directory.
+    def _refuse(self, reason: str, error_code: str | None = None) -> bool:
+        code = K.launch_failure_code(K.CUSTODY, error_code)
+        self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", reason_code=code,
+                           ended_at=utc_now())
+        self._event("custody_refused", reason=reason, reason_code=code)
         spool(self.run_dir, "launch_failed", self.record["reason"])  # site 1 (R2-m5), before the terminal record
         self._save()
-        self._send_ack({"custody": False, "reason": reason})
+        self._send_ack({"custody": False, "reason": reason, "reason_code": code})
         self._drop_credential()
         return False
 
-    def _launch_failed(self, reason: str) -> bool:
+    def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None) -> bool:
+        code = K.launch_failure_code(K.START, error_code, cause)
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
-        self._finish(K.LAUNCH_FAILED, reason)
-        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason})
+        self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
+        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
         return False
 
     def watch(self) -> None:
@@ -408,7 +415,7 @@ class Supervisor:
         mine = [e for e in records if e["producer"].get("run") == self.run]
         return [(e["id"], e["kind"]) for e in mine] if kinds else [e["id"] for e in mine]
 
-    def _finish(self, status: str, reason: str) -> None:
+    def _finish(self, status: str, reason: str, *, reason_code: str | None = None) -> None:
         with self._lock:
             if self.record.get("ended_at"):
                 return
@@ -422,11 +429,11 @@ class Supervisor:
             ending = self._background_beats("aew-ending-heartbeat", until=until)
             try:
                 faults.pause("harness.supervisor.finishing")  # tests: a run slow to end (a harness slow to stop)
-                self._end(status, reason)
+                self._end(status, reason, reason_code)
             finally:
                 ending.set()
 
-    def _end(self, status: str, reason: str) -> None:
+    def _end(self, status: str, reason: str, reason_code: str | None = None) -> None:
         self._ending.set()
         # A check outlives neither its run nor the private git state it may use: running checks are killed, one whose
         # request is still in flight starts nothing, and the private state is retired only once they have returned.
@@ -447,6 +454,12 @@ class Supervisor:
         self._compare_effective()
         self.record["evidence"] = self._evidence()
         self.record.update(status=status, reason=reason, ended_at=utc_now())
+        # The vocabulary follows the status (amendment 1, R2-m2): a launch-failure code is written with `launch_failed`
+        # and never survives onto another ending, such as a `crashed` re-end after this one failed (PR #185, F2).
+        if status == K.LAUNCH_FAILED:
+            self.record["reason_code"] = reason_code or K.UNKNOWN_LAUNCH_FAILURE
+        elif self.record.get("reason_code") in K.LAUNCH_FAILURE_CODES:
+            del self.record["reason_code"]
         if self.bridge is not None:
             self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
                                          outcomes=self.bridge.outcomes)
@@ -538,6 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "no credential handoff: the launching process ended before handing "
                                                 "over custody; no process holds this run's credential",
+                                      "reason_code": K.launch_failure_code(K.HANDOFF),
                                       "supervisor_pid": os.getpid(), "ended_at": utc_now()})
         return 3
     try:
@@ -545,7 +559,8 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         spool(run_dir, "launch_failed", "malformed credential handoff")
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
-                                      "reason": "malformed credential handoff", "ended_at": utc_now()})
+                                      "reason": "malformed credential handoff",
+                                      "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": utc_now()})
         return 3
     del raw
     sup = Supervisor(run_dir, handoff, ack)

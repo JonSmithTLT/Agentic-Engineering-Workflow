@@ -660,7 +660,8 @@ class Projector:
             "id": meta["id"], "kind": meta["kind"],
             "result": meta.get("result") if isinstance(meta.get("result"), str) else review.get("disposition"),
             "subject": entity(meta["work_unit"], "work", (unit or {}).get("title")),
-            "currentness": self._currentness(meta, unit), "requires_disposition": False,
+            "currentness": self._currentness(meta, unit),
+            "requires_disposition": self._requires_disposition(meta, unit),
             "claim": rich(str(meta.get("claim") or "")), "body": rich(body, RICH_MARKDOWN),
             "findings": _bounded(findings), "deviations": _bounded(deviations),
             "bindings": {
@@ -677,6 +678,23 @@ class Projector:
             },
             "provenance": _bounded(provenance),
         }
+
+    def _requires_disposition(self, meta: dict[str, Any], unit: dict[str, Any] | None) -> bool:
+        """Whether the report holds an item gates policy marks ``requires_disposition`` (M4-E E5b; plan v3 §2.4) that
+        is still open (a finding the Ticket records as resolved or waived is not), that the Lead has not disposed of,
+        and that an ingest could still be refused on: the Ticket in flight, before the advance the item gates (PR 182
+        review, n6; a later adoption never flags a report no guard will ask about again). Read from the snapshot's
+        gates policy, as the engine's guard reads it."""
+        from aew.engine import disposition_ops as DO
+
+        if unit is None or meta.get("work_unit") not in self.state["work"]:
+            return False
+        marked = DO.marks(self.s.gates)
+        items = DO.report_items(marked, meta, advances=DO.report_advances(meta))
+        on_unit = {f.get("id") for f in unit.get("findings") or []}
+        still = {i["id"] for i in DO.unit_items(marked, unit)}
+        return bool(DO.undisposed([i for i in items if (i["id"] not in on_unit or i["id"] in still)
+                                   and DO.still_gated(unit, i)], unit))
 
     def _hot_evidence(self, wid: str) -> list[tuple[dict[str, Any], str]]:
         out = []

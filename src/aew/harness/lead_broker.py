@@ -109,6 +109,7 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
     "stage abandon", "stage continue",  # the typed `resolve` tool's CLI form: the current Lead's own choice (E3c)
     "verify classify", "verify ingest", "work accept",
     "work acknowledge-input", "work assign", "work cancel", "work close", "work create", "work depend",
+    "work dispose",  # the typed `resolve` tool's disposition, as its CLI form (M4-E E5b)
     "work dispatch", "work move", "work promote", "work reclassify", "work reconcile", "work redispatch",
     "work staff", "work transition",
 ))

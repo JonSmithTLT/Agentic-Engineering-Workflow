@@ -1,0 +1,15 @@
+case: unmigrated_guard
+slice: E5b
+description: >-
+  a non-mutating Ticket under way: its transition out of RUNNING rests on a guard with no query form, so its request
+  stage is never answered AVAILABLE (UNKNOWN at that step, frozen decision 3; its reviewer's decision refuses), and the
+  call commits nothing a guard refuses
+seed: non_mutating_running
+stage: ticket_request_review
+arguments: {work_id: $work_id}
+expect:
+  availability: BLOCKED
+  reason_codes: [GUARD_NOT_QUERYABLE, ILLEGAL_TRANSITION]
+  boundary: refused
+  steps: []
+  unit_state: RUNNING

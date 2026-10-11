@@ -290,6 +290,31 @@ class Roles:
         return {"gate": f"review_{specialty}", "selected_by": "policy", "reason": why,
                 "satisfied_by": f"any reviewer card with specialty {specialty}", "candidates": cards}
 
+    def planned_cards(self, state: dict[str, Any], work_id: str, slot: str, gc: dict[str, Any]) -> dict[str, Any]:
+        """The cards a request stage launches for ``slot`` (M4-E E5b; plan v3 E5: "every card the effective gates
+        require"): each card of the effective role plan whose own gate is not current, in order, as
+        :meth:`resolve_card` takes the first of them. For review, a specialty requirement that no planned card covers
+        is staffed with its only candidate; one with several candidates, or none, is ``unresolved``: choosing among
+        cards is the Lead's (`aew work staff`), never the stage's. Reads only ``state`` and the catalog."""
+        plan = self.effective_role_plan(state, work_id, gc)
+        cards = [e["card"] for e in plan["effective"][slot] if not self._card_gate_current(gc, slot, e["card"])]
+        unresolved: list[dict[str, Any]] = []
+        if slot == "review":
+            catalog = self.role_catalog()
+            covered = {(catalog.cards[c].meta.get("specialty") if c in catalog.cards else None)
+                       for c in [e["card"] for e in plan["effective"][slot]]}
+            for req in plan["specialty_requirements"]:
+                gate = (gc["gates"].get(req["gate"]) or {}).get("status")
+                specialty = req["gate"][len(G.REVIEW_GATES_PREFIX):]
+                if gate in {G.CURRENT, G.WAIVED} or specialty in covered:
+                    continue
+                if len(req["candidates"]) == 1:
+                    cards.append(req["candidates"][0])
+                    covered.add(specialty)
+                else:
+                    unresolved.append({"gate": req["gate"], "candidates": list(req["candidates"])})
+        return {"cards": cards, "unresolved": unresolved}
+
     def resolve_card(self, state: dict[str, Any], work_id: str, slot: str, *, card_id: str | None,
                      role: str | None, gc: dict[str, Any] | None = None) -> roles.Card:
         unit = self.units.unit(state, work_id)

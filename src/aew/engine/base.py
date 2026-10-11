@@ -35,7 +35,7 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen")
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies")
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -110,6 +110,9 @@ class Kernel:
         self._manifest_seen: tuple[Any, ...] | None = None  # file identities the cached manifest reflects
         self.store = ControlStore(self.aew_root, renderer=self._render, after_apply=self._refresh_manifest)
         self.finalizers = TxnFinalizers()  # run inside every Lead transaction before it commits
+        # Called with (token, refusal) after a Lead transaction is refused, outside its session: what a refusal records
+        # of its own (M4-E E5b: an anomaly, ``disposition_ops``). Never changes the refusal.
+        self.refusal_hooks: list[Callable[[str, AEWError], None]] = []
         # Credentials archived with finished work (ADR-0011 R7), set by the composition root; None before archival.
         self.archived_credential: Any = None
         # Lead mutations on a v1 project are refused until `aew migrate`. Only the perf tool sets this, in process, to
@@ -357,40 +360,46 @@ class Kernel:
         Authority is checked before the revision so a superseded Lead is told it
         is superseded (STALE_AUTHORITY) rather than merely out of date.
         """
-        with self.store.session() as s:
-            actor = require_lead(s.state, token, allow_pending=allow_pending, archived=self.archived_credential)
-            if expect_rev is None:
-                raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
-                                    current=s.revision)
-            if expect_rev != s.revision:
-                raise StaleRevision(
-                    f"expected control revision {expect_rev}, current is {s.revision}",
-                    expected=expect_rev, current=s.revision,
-                )
-            if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
-                raise MigrationRequired(
-                    "this project's control state is v1: migrate it first (the operator runs `aew migrate "
-                    "--expect-rev N` at their own terminal); until then the Lead can change the seat and cancel "
-                    "invocations, and the operator can adopt the manifest",
-                    schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
-            if not _adopting_manifest:
-                self.check_manifest_pin(s.state)
-            # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
-            self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
-            try:
-                ctx = TxnContext(session=s, actor=actor, txn_op=op)
-                yield ctx
-                self.finalizers.run(ctx)
-                s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
-                                    events=ctx.events),
-                         expect_rev=expect_rev, state=ctx.commit_state)
-            finally:
-                self._txn_pins = _NOT_IN_TXN
-            for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
+        try:
+            with self.store.session() as s:
+                actor = require_lead(s.state, token, allow_pending=allow_pending, archived=self.archived_credential)
+                if expect_rev is None:
+                    raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
+                                        current=s.revision)
+                if expect_rev != s.revision:
+                    raise StaleRevision(
+                        f"expected control revision {expect_rev}, current is {s.revision}",
+                        expected=expect_rev, current=s.revision,
+                    )
+                if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                    raise MigrationRequired(
+                        "this project's control state is v1: migrate it first (the operator runs `aew migrate "
+                        "--expect-rev N` at their own terminal); until then the Lead can change the seat and cancel "
+                        "invocations, and the operator can adopt the manifest",
+                        schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
+                if not _adopting_manifest:
+                    self.check_manifest_pin(s.state)
+                # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
+                self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
                 try:
-                    effect()
-                except (AEWError, OSError):
-                    pass
+                    ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                    yield ctx
+                    self.finalizers.run(ctx)
+                    s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
+                                        refs=ctx.refs, events=ctx.events),
+                             expect_rev=expect_rev, state=ctx.commit_state)
+                finally:
+                    self._txn_pins = _NOT_IN_TXN
+                for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
+                    try:
+                        effect()
+                    except (AEWError, OSError):
+                        pass
+        except AEWError as refusal:
+            if not self.store.held:  # never inside another session of this process: it would commit under it
+                for hook in self.refusal_hooks:
+                    hook(token, refusal)
+            raise
 
     def new_decision(
         self,

@@ -531,6 +531,12 @@
       "propertyNames": {"pattern": "^SI-[0-9]{4,}$"},
       "additionalProperties": {"allOf": [{"$ref": "../stage-intent/v1"}, {"properties": {"status": {"const": "ACTIVE"}}}]}
     },
+    "anomalies": {
+      "description": "M4-E E5b (plan v3 §2.4, §2.7): the open anomalies, by id: recorded existing signals (WORKSPACE_MUTATED, OBSERVATION_MUTATED, a live contradiction). Only open ones are hot; the Lead's disposition moves one, with its disposition, to its cold record (`work/<T>/dispositions/<DP>.yaml`, or `records/dispositions/`) in the same commit. Bounded by what is open, and deduplicated by `key` while open.",
+      "type": "object",
+      "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
+      "additionalProperties": {"$ref": "#/$defs/anomaly"}
+    },
     "coordination_store": {
       "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Written once, by the operator's `manifest adopt` that leaves `coordination.messaging: enabled`, and never removed: threads may exist after the switch is turned off. An engine built before thread sealing refuses a control state holding it, so it cannot end a messaged invocation without a seal.",
       "type": "object",
@@ -591,7 +597,8 @@
             {"required": ["retired_observations"]},
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
-            {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]}
+            {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
+            {"required": ["anomalies"]}
           ]
         }
       }
@@ -707,6 +714,24 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "anomaly": {
+      "description": "An open anomaly (M4-E E5b; plan v3 §2.4). `subject` is the unit it concerns, or null for the project; `disposition` is null while it is open (the cold record carries it).",
+      "type": "object",
+      "required": ["id", "source", "severity", "subject", "detail", "details", "key", "opened_at", "rev", "disposition"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^ANM-[0-9]{4,}$"},
+        "source": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["high", "low"]},
+        "subject": {"type": ["string", "null"]},
+        "detail": {"type": "string", "maxLength": 2000},
+        "details": {"type": "object", "additionalProperties": false, "properties": {"invocation": {"type": "string", "maxLength": 64}, "work_id": {"type": "string", "maxLength": 64}, "changed": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 300}}}},
+        "key": {"type": "string", "minLength": 1},
+        "opened_at": {"type": "string"},
+        "rev": {"type": "integer", "minimum": 1},
+        "disposition": {"type": "null"}
+      }
+    },
     "work_unit": {
       "type": "object",
       "required": [
@@ -739,6 +764,22 @@
               "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
               "sha256": {"$ref": "#/$defs/sha256"},
               "closed_rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "dispositions": {
+          "description": "M4-E E5b (plan v3 §2.4): the Lead's dispositions concerning this unit, each written immutably at `path` (a finding or claim it marks, or an anomaly about it); the hot index while the unit is live. Archival carries the list into the unit's bundle, which pins each record.",
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["id", "subject", "kind", "choice", "path", "sha256", "rev"], "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "pattern": "^DP-[0-9]{4,}$"},
+              "subject": {"type": "string", "minLength": 1},
+              "kind": {"enum": ["finding", "claim", "anomaly"]},
+              "choice": {"enum": ["accept_risk", "follow_up", "not_applicable"]},
+              "path": {"type": "string", "pattern": "^work/[^/]+/dispositions/DP-[0-9]{4,}\\.yaml$"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "rev": {"type": "integer", "minimum": 1}
             }
           }
         },

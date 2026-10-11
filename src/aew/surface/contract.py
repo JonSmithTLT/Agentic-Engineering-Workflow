@@ -8,9 +8,10 @@ that offer it. Transports render their tool lists from this table and call :mod:
 tests enumerate it against the dispatch registry.
 
 F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. F15.2 builds
-the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``. The other
-stages and the publication decision tool are ``DESIGNED``: their full contract is here so the tests pin it today,
-they are never listed, and a call is refused before the runner.
+the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``, E5b
+``ticket_request_review`` and ``ticket_request_verification``. The other stages and the publication decision tool are
+``DESIGNED``: their full contract is here so the tests pin it today, they are never listed, and a call is refused
+before the runner.
 """
 
 from __future__ import annotations
@@ -93,7 +94,8 @@ def _strings(description: str, *, min_items: int = 0, max_items: int | None = No
 # Descriptions are presentation only, trimmed to keep the normal surface inside its budget with the M4-E tools
 # (plan v3 §2.6; semantics unchanged).
 EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result's revision (CAS)"}
-WORK_ID = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$", "description": "e.g. T-0012"}
+WORK_ID_PATTERN = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}
+WORK_ID = {**WORK_ID_PATTERN, "description": "e.g. T-0012"}
 TEXT = {"type": "string", "description": "free text"}
 EVIDENCE_ID = {"type": "string", "minLength": 1, "description": "the evidence id you inspected"}
 EXECUTION = _obj({
@@ -115,8 +117,11 @@ STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
                       "request_raise": (("mode", "rationale"), ("mode", "rationale")),
                       "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
 
-# The `resolve` tool's choices (plan v3 E3; E5 adds the dispositions).
-RESOLVE_CHOICES = ("continue", "abandon")
+# The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
+# claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).
+STAGE_CHOICES = ("continue", "abandon")
+DISPOSITION_CHOICES = ("accept_risk", "follow_up", "not_applicable")
+RESOLVE_CHOICES = (*STAGE_CHOICES, *DISPOSITION_CHOICES)
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
@@ -203,16 +208,22 @@ TOOLS: dict[str, Tool] = _catalog(
                "rationale": TEXT},
               ("expect_rev", "action")),
          expands_to=("steering",), mutates=True),
-    # ---- the Lead's explicit resolution of an unfinished stage (M4-E E3c; §3.4 rule 8): continue runs the stage's
-    # remaining steps, abandon ends it. E5 adds the finding and anomaly dispositions to `choice` (plan v3 §2.6).
+    # ---- the Lead's explicit resolution of what `resume` or a stop lists (M4-E E3c; §3.4 rule 8): continue runs an
+    # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
+    # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Settle an unfinished stage that resume lists: continue it from its first uncommitted step, or abandon it.",
+         "Settle what resume or a stop lists: continue or abandon an unfinished stage; dispose of a finding or "
+         "anomaly.",
          _obj({"expect_rev": EXPECT_REV,
-               "subject": {"type": "string", "minLength": 1, "description": "the stage intent id"},
+               "subject": {"type": "string", "minLength": 1, "description": "a stage intent, finding or anomaly id"},
                "choice": {"enum": list(RESOLVE_CHOICES)},
+               "follow_up": WORK_ID_PATTERN,
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
               ("expect_rev", "subject", "choice", "rationale")),
-         expands_to=("stage.resolve",), required_judgments=("stage_resolution",), mutates=True, progression=True),
+         # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
+         # review, n2), each with its own judgment. Neither field is advertised.
+         expands_to=("stage.resolve", "work.dispose"), required_judgments=("stage_resolution", "disposition"),
+         mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",
@@ -221,7 +232,9 @@ TOOLS: dict[str, Tool] = _catalog(
               ("argv",)),
          required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
     # ---- designed in F15.1, built by F15.2 over the StageIntent journal: M4-E E5a builds `ticket_draft` and
-    # `ticket_start`; the others stay DESIGNED until E5b and E6a
+    # `ticket_start`, E5b the two request stages; the others stay DESIGNED until E6a. A request stage launches one
+    # invocation per card the effective gates require: its `invoke.create.mutating` and `dispatch.launch` steps repeat
+    # per card, in order (aew.surface.availability.CARDS)
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
          _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
@@ -244,7 +257,7 @@ TOOLS: dict[str, Tool] = _catalog(
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
          expands_to=("work.transition", "invoke.create.mutating", "dispatch.launch"), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1),), ((DISPATCH, 2),))),
     Tool("ticket_request_verification", STAGE, JUDGMENT_BEARING,
          "Accept the named review report, move the Ticket to VERIFY_PENDING and launch the verifiers policy requires.",
@@ -252,7 +265,7 @@ TOOLS: dict[str, Tool] = _catalog(
                "execution": EXECUTION}, ("expect_rev", "work_id", "review_evidence")),
          expands_to=("review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("accept_review_evidence",), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((STATE, 2),), ((DISPATCH, 3),))),
     Tool("ticket_prepare", STAGE, JUDGMENT_BEARING,
          "Accept the named verification and prepare the integration candidate. Publication stays a separate decision.",

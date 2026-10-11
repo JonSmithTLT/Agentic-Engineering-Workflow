@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -210,8 +211,9 @@ def test_validate_only_releases_and_revalidates(tmp_path, contained, custody):
     """VALIDATE_ONLY (plan v3 §2.3): with no publication requested, a clean validation releases the lease and keeps
     the candidate (another entry could take the lease meanwhile). When the head has moved by the time the Lead
     publishes, `integration_publish` gets a fresh lease and commits the one rebuild under it, never publishing the
-    candidate the Lead saw validated; the new custodian revalidates the rebuilt candidate and the entry returns to
-    VALIDATED. Only then does a publish of the rebuilt candidate complete."""
+    candidate the Lead saw validated: the stage stops there (its `rebuilt` boundary; ADR-0004 amendment 2026-10-10),
+    and its result says nothing was published. The new custodian revalidates the rebuilt candidate and the entry
+    returns to VALIDATED. Only then does a publish of the rebuilt candidate complete."""
     p = sample_project(tmp_path)
     checks_mode(p)
     wid, _first = validated(p, tmp_path, custody)
@@ -222,9 +224,14 @@ def test_validate_only_releases_and_revalidates(tmp_path, contained, custody):
     refused = call(p, "integration_publish", work_id=wid, prepared_candidate="0" * 40)
     assert not refused["ok"] and refused["stopped"]["error"]["details"]["reason"] == "candidate_mismatch"
     out = call(p, "integration_publish", work_id=wid, prepared_candidate=old["candidate"])
-    assert out["ok"], out["stopped"]
+    assert not out["ok"] and out["stopped"]["at"] == "integrate.publish"
+    assert out["stopped"]["error"]["code"] == "STALE_CANDIDATE"
+    assert out["stopped"]["error"]["details"]["reason"] == "rebuilt"
+    assert out["stopped"]["error"]["details"]["published"] is False
     assert [s["primitive"] for s in out["completed_steps"]] == ["integrate.publish"]
-    assert out["result"]["steps"][0]["rebuilt"] is True
+    si = intent(p, out)
+    assert si["status"] == SI.STOPPED and si["stopped"]["boundary"] == "rebuilt"
+    assert si["steps"][0]["disposition"] == "integrate.rebuild"
     state = control(p)
     integ = state["work"][wid]["integration"]
     held = state["queue"]["lease"]
@@ -639,18 +646,6 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
 # ---------------------------------------------------------------------------------------------- §10 and SAE-07
 
 
-def long_custody(p: Project) -> None:
-    """A custody bound no test run outlasts: these tests drive their custodians themselves, while a harness run may
-    take longer than S2's default (fixture setup, pinned as the project's starting policy)."""
-    from aew.util import dump_yaml, load_yaml
-
-    gates = p.root / ".aew/policy/gates.yaml"
-    data = load_yaml(gates.read_text(encoding="utf-8"))
-    data["post_integration"]["custody_register_s"] = 3600
-    gates.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
-    p.pin_policy()
-
-
 def _verified(p: Project, held: dict[str, str], *, validate: bool, mode: str) -> dict[str, str]:
     """In one copy: the Ticket to VERIFY_PENDING with its report; with ``validate``, accepted, COMMIT_READY, prepared,
     and validated by its custodian (checks mode), or its integration verifier run and its report routed (verifier
@@ -722,7 +717,6 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
                            else verifier_script(tmp_path / "sync")[:3])
         else:
             checks_mode(p)
-        long_custody(p)
         create_planned_ticket(p, tmp_path)
 
     staged, direct = _twins(tmp_path, prepare)
@@ -759,7 +753,10 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
                 # the integration verifier the stage launches, launched directly
                 e.launch_dispatched(e.invoke_create(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
                                                     role="verifier", scope="integration", launch=True))
-            assert out["ok"], out["stopped"]
+            if (name, case) == ("integration_publish", "rebuild"):  # it stops at its `rebuilt` boundary
+                assert out["stopped"]["error"]["details"]["reason"] == "rebuilt", out["stopped"]
+            else:
+                assert out["ok"], out["stopped"]
             assert [s["primitive"] for s in intent(staged, out)["steps"]] == PLANNED[(name, case)]
             assert done(staged, "T-0001") == (name == "integration_publish" and case in ("done", "verifier"))
             a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
@@ -803,3 +800,147 @@ def test_declared_effects_cover_observed_effects(tmp_path, contained, custody, p
     assert "credential" in seen
     if primitive == "integrate.publish":
         assert {"authoritative_ref", "workspace"} <= seen
+
+
+# ---------------------------------------------------------------------------------------------- PR #200 review
+
+
+def test_resume_says_the_custodian_validates_a_prepared_checks_candidate(tmp_path, contained, custody):
+    """Plan v3 §2.3: the lease's custodian validates; the Lead never does. `resume` tells the Lead so, and to publish
+    the VALIDATED candidate with `integration_publish`; `aew integrate validate` is named only as recovery, while no
+    custody worker has registered."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, custodian, _out = prepared(p, tmp_path)
+    e = engine(p)
+    [unregistered] = [a for a in e._resume.next_actions(e.store.read()) if wid in a]
+    assert "custodian" in unregistered and "integration_publish" in unregistered
+    assert "recovery" in unregistered and "aew integrate validate" in unregistered
+    e.custody_register(custody[custodian])
+    [registered] = [a for a in e._resume.next_actions(e.store.read()) if wid in a]
+    assert "custodian" in registered and "aew integrate validate" not in registered
+
+
+@pytest.mark.parametrize("observed", ["lost", "unconfirmed_past_grace", "unconfirmed_within_grace"])
+def test_a_lost_verifier_run_is_routed_never_waited_on(tmp_path, monkeypatch, custody, observed):
+    """Plan v3 §2.3, verifier mode: a run no supervisor holds any more (its supervisor stopped reporting, or none ever
+    took custody past the launch's grace) is routed to AWAITING_DISPOSITION as a lost run, like a failed one; the
+    custodian never waits on it with the lease held. A run that may still be starting is waited on."""
+    from aew.harness import contract as K
+    from aew.harness import runlog
+
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    try:
+        wid, report = verifying(p, tmp_path)
+        lab.script("default", [{"do": "hang"}])
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert out["ok"], out["stopped"]
+        custodian = lease(p)["custodian"]
+        status = K.LOST if observed == "lost" else K.UNCONFIRMED
+        monkeypatch.setattr(runlog, "observed_status", lambda directory: (status, None))
+        if observed == "unconfirmed_past_grace":
+            monkeypatch.setattr(runlog, "possibly_live", lambda status, launched_at, **kw: False)
+        found, routed = engine(p).custody_step(custodian, custody[custodian])
+        if observed == "unconfirmed_within_grace":
+            assert (found, routed) == (CO.WAITING, None) and lease(p) is not None
+            return
+        assert found == CO.ACTED and routed["routed"]["to"] == "AWAITING_DISPOSITION"
+        assert routed["routed"]["why"] == CO.RUN_LOST
+        assert lease(p) is None and entry(p, wid)["state"] == "AWAITING_DISPOSITION"
+        assert control(p)["work"][wid]["state"] == "COMMIT_READY"
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+def _capture_spawn(monkeypatch) -> dict[str, Any]:
+    """The argv, cwd and environment the next detached spawn is given; it starts nothing."""
+    seen: dict[str, Any] = {}
+
+    class Proc:
+        pid = 4242
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+
+        def kill(self) -> None:
+            pass
+
+    def spawn(argv: list[str], **kw: Any) -> Proc:
+        seen.update(argv=list(argv), cwd=str(kw["cwd"]), env=dict(kw["env"]))
+        return Proc()
+
+    monkeypatch.setattr(procs, "spawn_detached", spawn)
+    return seen
+
+
+@pytest.mark.parametrize("worker", ["custody_worker", "run_supervisor"])
+def test_credential_holding_workers_never_import_from_the_project_tree(tmp_path, monkeypatch, worker):
+    """The engine's processes that receive a credential (the custody worker, a run's supervisor) start in an
+    engine-owned directory, never the project's tree, and nothing in the project's tree or their working directory is
+    on their import path: a `json.py` planted in either is never imported."""
+    from aew.engine.harness_ops import supervisor_env
+
+    p = sample_project(tmp_path)
+    e = Engine.discover(p.root)
+    monkeypatch.delenv(CO.WORKER_SWITCH)
+    seen = _capture_spawn(monkeypatch)
+    if worker == "custody_worker":
+        CO.spawn_worker(p.root, p.root / ".aew", "IA-0001", synthetic("c"))
+    else:
+        from aew.errors import HarnessLaunchFailed
+
+        monkeypatch.setattr("aew.engine.harness_ops.ACK_WAIT_S", 0.1)
+        with pytest.raises(HarnessLaunchFailed):
+            e._harness._spawn_run("INV-0001", "R-INV-0001-1", synthetic("r"))
+        assert seen["env"] == supervisor_env()
+    cwd = Path(seen["cwd"]).resolve()
+    assert cwd.is_relative_to((p.root / ".aew" / "local").resolve()), cwd  # the engine's own runtime directory
+    shadow = "import sys\nprint('IMPORTED FROM THE PROJECT TREE')\nsys.exit(0)\n"
+    for where in (p.root, cwd):
+        (where / "json.py").write_text(shadow, encoding="utf-8")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    run = subprocess.run(seen["argv"], cwd=cwd, env=seen["env"], stdin=subprocess.DEVNULL, capture_output=True,
+                         text=True, timeout=180, creationflags=flags)
+    assert "IMPORTED FROM THE PROJECT TREE" not in run.stdout + run.stderr
+    interpreter = seen["argv"][:seen["argv"].index("-m")]
+    probe = "import json, os, sys; print(json.dumps({'path': sys.path, 'cwd': os.getcwd()}))"
+    found = json.loads(subprocess.run([*interpreter, "-c", probe], cwd=cwd, env=seen["env"], capture_output=True,
+                                      text=True, timeout=60, creationflags=flags, check=True).stdout)
+    project = p.root.resolve()
+    for entry_ in found["path"]:
+        assert entry_ and not Path(entry_).resolve().is_relative_to(project), (entry_, found["path"])
+
+
+def test_a_spawned_custody_worker_validates_end_to_end(tmp_path):
+    """The production path in its own process: a grant starts `aew integrate custody`, which reads its credential from
+    its pipe, registers, runs checks-mode validation under its custody credential and routes the result. Where this
+    host's containment keeps the candidate immutable the entry ends VALIDATED; elsewhere the worker parks it for the
+    Lead (AWAITING_DISPOSITION, containment unavailable). Either way only the custodian committed, and its worker
+    exits."""
+    import os
+
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, _impl = to_commit_ready(p, tmp_path)
+    e = engine(p)
+    contained_here = e._validation.containment_available()
+    switch = os.environ.pop(CO.WORKER_SWITCH, None)
+    try:
+        e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id=wid)
+    finally:
+        if switch is not None:
+            os.environ[CO.WORKER_SWITCH] = switch
+    custodian = control(p)["queue"]["lease"]["custodian"]
+    _wait_for(lambda: entry(p, wid)["state"] in ("VALIDATED", "AWAITING_DISPOSITION"), "the custodian's routing",
+              timeout=300)
+    state = control(p)
+    worker = state["invocations"][custodian]["worker"]
+    assert state["last_transition"]["actor"]["kind"] == "custodian"
+    if contained_here:
+        assert entry(p, wid)["state"] == "VALIDATED" and entry(p, wid)["validated"]["mode"] == "checks"
+    else:
+        assert entry(p, wid)["state"] == "AWAITING_DISPOSITION"
+        assert "VALIDATION_CONTAINMENT_UNAVAILABLE" in json.dumps(entry(p, wid)["disposition"])
+    _wait_for(lambda: not procs.pid_alive(worker["host_pid"]), "the custody worker to exit", timeout=120)
+    assert_control_invariants(p)

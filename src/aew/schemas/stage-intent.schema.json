@@ -83,11 +83,8 @@
           "legality_digest": {"$ref": "#/$defs/policy_digest"},
           "operational_digest": {"$ref": "#/$defs/policy_digest"},
           "retried_after_stale_revision": {"const": true},
-       "disposition": {
-            "description": "M4-E E6a: the step's commit was its primitive's disposition, not its completion (a publish that found its candidate superseded, or the head moved: `integrate.superseded`, `integrate.stale`, `integrate.rebuild`).",
-            "type": "string"
-          },
-             "covered_by": {"description": "M4-E E5a: a launch recorded in the commit of the dispatch it is run 1 of (that step's number).", "type": "integer", "minimum": 1},
+          "disposition": {"description": "M4-E E6a: the step's commit was its primitive's disposition, not its completion (a publish that found its candidate superseded, or the head moved: `integrate.superseded`, `integrate.stale`, `integrate.rebuild`).", "type": "string"},
+          "covered_by": {"description": "M4-E E5a: a launch recorded in the commit of the dispatch it is run 1 of (that step's number).", "type": "integer", "minimum": 1},
           "at": {"type": "string"}
         }
       }

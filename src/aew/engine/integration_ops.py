@@ -544,8 +544,9 @@ class Integration:
         pinned = validation["identity"]
         if {"candidate": pinned["candidate"], "snapshot": pinned["snapshot"], "check_set": pinned["check_set"],
                 "binding": pinned["obligation"]["binding"]} != current:
-            raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: run "
-                                  f"`aew integrate validate {work_id}` again", validated=pinned, current=current)
+            raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: it "
+                                  f"must be validated again (recovery: `aew integrate validate {work_id}`)",
+                                  validated=pinned, current=current)
         run = integ.get("current_validation_run") or {}
         if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":
             raise GateUnsatisfied("the checks-mode validation run did not commit a pass", run=validation["run"])
@@ -640,9 +641,10 @@ class Integration:
                     "queue": queue, "revision": revision,
                     "next": "the authoritative head moved, so the candidate was rebuilt on it under the same lease "
                             "(the one automatic rebuild): " + (
-                                f"run `aew integrate validate {work_id}` on it" if V.obligation(
+                                "the lease's custodian validates it, and its entry returns to VALIDATED for you to "
+                                "publish (M4-E E6a)" if V.obligation(
                                     ctx.state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS
-                                else "rerun post-integration verification on it") + ", then publish"}
+                                else "rerun post-integration verification on it, then publish")}
         if moved["outcome"] == "stale":
             raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
                                  revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})

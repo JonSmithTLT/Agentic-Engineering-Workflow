@@ -77,8 +77,9 @@ def policy(p, *, checks: dict | None = None, post: list[str] | None = None, vali
     c["checks"].update(checks or {})
     (pol / "checks.yaml").write_text(dump_yaml(c), encoding="utf-8", newline="\n")
     g = load_yaml((pol / "gates.yaml").read_text(encoding="utf-8"))
+    kept = {k: v for k, v in (g.get("post_integration") or {}).items() if k == "custody_register_s"}
     g["post_integration"] = {"verification": True, "checks": ["smoke"] if post is None else post,
-                             "validation": "checks" if validation is None else validation}
+                             "validation": "checks" if validation is None else validation, **kept}
     if deadline:
         g["post_integration"]["validation_deadline_s"] = deadline
     (pol / "gates.yaml").write_text(dump_yaml(g), encoding="utf-8", newline="\n")
@@ -527,8 +528,10 @@ def test_the_rebuild_retires_the_validation_and_validate_reruns_on_the_new_candi
     first = validate(calc, wid)
     outside_commit(calc)
     res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
-    assert res.json["rebuilt"] and "aew integrate validate" in res.json["next"], res.stdout
-    second = validate(calc, wid)
+    # The custodian validates (M4-E E6a): the guidance never sends the Lead to `aew integrate validate`.
+    assert res.json["rebuilt"] and "custodian validates" in res.json["next"], res.stdout
+    assert "aew integrate validate" not in res.json["next"]
+    second = validate(calc, wid)  # the recovery command still validates it
     assert second["result"] == "pass" and second["run"] != first["run"]
     assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
     assert_control_invariants(calc)

@@ -170,7 +170,7 @@ class ProcessTree:
             if self._pgid is None:
                 proc = subprocess.Popen(argv, start_new_session=True, **kwargs)
                 self._pgid = proc.pid
-                self._sentinel = subprocess.Popen([sys.executable, "-c", _SENTINEL, str(self._pgid)],
+                self._sentinel = subprocess.Popen([sys.executable, "-P", "-c", _SENTINEL, str(self._pgid)],
                                                   stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                                   stderr=subprocess.DEVNULL, start_new_session=True)
             else:
@@ -378,7 +378,8 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple
     ctl_r, ctl_w = os.pipe()  # pragma: posix-only
     res_r, res_w = os.pipe()
     try:
-        reaper = subprocess.Popen([sys.executable, "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
+        # `-P`: started in the project, it never imports from it (it holds the session's environment).
+        reaper = subprocess.Popen([sys.executable, "-P", "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
                                   cwd=cwd, pass_fds=(ctl_r, res_w))
     except BaseException:
         for fd in (ctl_r, ctl_w, res_r, res_w):

@@ -70,6 +70,7 @@ LOG_DIR = "local/custody"
 LEAD_SESSION_VARS = ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY", "AEW_LEAD_TOKEN")
 POLL_S = 5.0  # the worker re-reads state at least this often; a commit's wake file wakes it sooner
 ENDED, ACTED, WAITING = "ended", "acted", "waiting"
+RUN_LOST = "run lost"  # the integration verifier's run that no supervisor holds any more (routed, §2.3)
 
 
 # ---------------------------------------------------------------------------------------------- the spawn
@@ -85,7 +86,13 @@ def worker_env(base: dict[str, str] | None = None) -> dict[str, str]:
     env["PATH"] = base.get("PATH") or base.get("Path") or ""
     env["PYTHONPATH"] = str(Path(aew.__file__).resolve().parent.parent)
     env["PYTHONUTF8"] = "1"
+    env["PYTHONSAFEPATH"] = "1"  # no working directory or script directory on its import path, whatever its argv
     return env
+
+
+def worker_argv(repo_root: Path, custodian: str) -> list[str]:
+    """The worker's command: the running interpreter with no unsafe import path (``-P``), the project named."""
+    return [sys.executable, "-P", "-m", "aew", "-C", str(repo_root), "integrate", "custody", custodian]
 
 
 def spawn_worker(repo_root: Path, aew_root: Path, custodian: str, credential: str) -> int | None:
@@ -97,10 +104,13 @@ def spawn_worker(repo_root: Path, aew_root: Path, custodian: str, credential: st
     directory = aew_root / LOG_DIR
     try:
         directory.mkdir(parents=True, exist_ok=True)
+        if sys.platform != "win32":
+            directory.chmod(0o700)
         with (directory / f"{custodian}.log").open("ab") as log:
-            proc = procs.spawn_detached([sys.executable, "-m", "aew", "integrate", "custody", custodian],
-                                        env=worker_env(), cwd=str(repo_root), stdin=subprocess.PIPE,
-                                        stdout=subprocess.DEVNULL, stderr=log)
+            # It starts in the engine's own directory and imports only the engine and the standard library: never from
+            # the project's tree (`-P`, `PYTHONSAFEPATH`), which it names with `-C` instead.
+            proc = procs.spawn_detached(worker_argv(repo_root, custodian), env=worker_env(), cwd=str(directory),
+                                        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log)
     except OSError:
         return None
     try:
@@ -181,9 +191,10 @@ class Custody:
             if self.mode(state, wid) == V.CHECKS:
                 return ACTED, self.validation.custody_validate(credential=credential, work_id=wid)
             child = self._verifier(state, custodian)
-            if child is None or not self._ended(state, child):
+            ended = self._ended(state, child) if child is not None else None
+            if child is None or ended is None:
                 return WAITING, None
-            return ACTED, self.route(credential, wid, child)
+            return ACTED, self.route(credential, wid, child, lost=ended == RUN_LOST)
         except (StaleAuthority, PermissionDenied):
             return ENDED, None  # its custody ended meanwhile: S1 admitted nothing
 
@@ -227,18 +238,24 @@ class Custody:
                           if inv.get("custodian") == custodian and inv.get("scope") == "integration")
         return children[-1] if children else None
 
-    def _ended(self, state: dict[str, Any], child: tuple[str, dict[str, Any]]) -> bool:
-        """Whether the verifier's run ended: its supervisor recorded a terminal status. A child with no run yet (being
-        launched) or a run still live is not; nor is one whose launch never reached a supervisor (the stage stopped as
-        launch_failed, and the Lead decides)."""
+    def _ended(self, state: dict[str, Any], child: tuple[str, dict[str, Any]]) -> str | None:
+        """How the verifier's run ended, or None while it may still be live (or has no run yet: being launched).
+        ``ended``: its supervisor recorded a terminal status. ``RUN_LOST``: no supervisor holds it any more, so it never
+        will: its supervisor stopped reporting (``lost``), or none ever took custody past the launch's grace
+        (``unconfirmed``). A lost run is routed like a failed one, never waited on with the lease held (§2.3)."""
         _inv_id, inv = child
         runs = inv.get("runs") or []
         if not runs:
-            return False
+            return None
         observed, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, runs[-1]["run"]))
-        return observed in K.TERMINAL
+        if observed in K.TERMINAL:
+            return "ended"
+        if observed == K.LOST or not runlog.possibly_live(observed, runs[-1].get("launched_at")):
+            return RUN_LOST
+        return None
 
-    def route(self, credential: str, work_id: str, child: tuple[str, dict[str, Any]]) -> dict[str, Any]:
+    def route(self, credential: str, work_id: str, child: tuple[str, dict[str, Any]], *,
+              lost: bool = False) -> dict[str, Any]:
         """Route the verifier's report, never accepting it (§2.3, verifier mode): a clean report releases the lease to
         VALIDATED, the candidate kept and the report named for the Lead's acceptance; anything else releases it to
         AWAITING_DISPOSITION. One custody transaction, which re-reads everything it decides on."""
@@ -252,7 +269,7 @@ class Custody:
                     "custodian") != custodian:
                 raise IllegalTransition(f"{work_id}'s candidate changed while its verifier's report was routed",
                                         integration=integ.get("status"))
-            report, why = self._report(state, work_id, unit, inv_id)
+            report, why = (None, RUN_LOST) if lost else self._report(state, work_id, unit, inv_id)
             if report is not None and why is None:
                 self.queue.release(state, work_id, to="VALIDATED", result="validated", validated=Q.validated_record(
                     integ, mode=V.VERIFIER, custodian=custodian, report=report["id"]))

@@ -276,11 +276,14 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
   custodian) instead of a token: `aew integrate validate` is unchanged, and nothing falls back to the Lead credential.
 - **The custody worker (`aew integrate custody <IA-n>`).**
   - The process that commits a grant starts it right after the commit: detached, with no console window, with an
-    allow-list environment (no `AEW_*` variable), and with the credential on its stdin pipe only.
+    allow-list environment (no `AEW_*` variable), and with the credential on its stdin pipe only. It starts in the
+    engine's own directory (`.aew/local/custody`) and imports only the engine and the standard library, never from
+    the project's tree; a run's supervisor likewise.
   - It registers `{host_pid, started_at}` on its custodian in its own first commit. These are liveness data, never
     authorization.
   - In checks mode it validates a `prepared` candidate under its lease. In verifier mode it waits for the integration
-    verifier's run, launched by the Lead's `ticket_prepare`, to end, and routes the report without accepting it.
+    verifier's run, launched by the Lead's `ticket_prepare`, to end, and routes the report without accepting it. A
+    run no supervisor holds any more (lost, or never confirmed past the launch's grace) is routed as one that failed.
   - It never publishes: on a lease granted to publish, the candidate is the Lead's to publish, and the worker waits.
   - It exits when its custody ends. It refuses to start where a Lead session's environment is present, and the Lead
     bridge never relays it.
@@ -311,7 +314,8 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
   - `integration_publish(verification_evidence)`: in verifier mode, accept the named report, then publish.
   - The publish step is its intent commit (`integrate.publishing`); the CAS, the sync and DONE follow it as its effect.
     A commit that is the publish's disposition (`integrate.superseded`, `integrate.stale`, `integrate.rebuild`) is
-    recorded on the step as such, and stops the stage unless the stage planned the rebuild.
+    recorded on the step as such, and stops the stage unless the stage planned the rebuild. The intent's boundary is
+    `rebuilt`, and the typed result says nothing was published (`STALE_CANDIDATE`, `published: false`).
 - **Oracle rules 39a and 39b** (`tests/helpers/invariants.py`): exactly a `VALIDATED` entry records its validation,
   holds no lease and keeps its Ticket's open candidate; a custody credential stands only for the live lease's active
   custodian of the current generation.

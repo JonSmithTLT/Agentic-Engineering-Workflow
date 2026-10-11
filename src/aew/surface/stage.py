@@ -147,18 +147,20 @@ def _prepare(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
 
 def _publish(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     """The Lead's publication (M4-E E6a): the step is its intent commit, and the CAS, sync and DONE follow it. On a
-    moved head it commits the one rebuild instead, and nothing is published: in checks mode the custodian revalidates
-    the rebuilt candidate and the entry returns to VALIDATED, so the stage is done; in verifier mode the stage goes on
-    to launch the rebuilt candidate's verifier when it planned for the rebuild (``rebuild``), and otherwise stops there,
-    for the Lead to call it again (it then plans that launch)."""
+    moved head it commits the one rebuild instead, and nothing is published. The stage then stops there, at its
+    ``rebuilt`` boundary (ADR-0004 amendment 2026-10-10), unless it planned the rebuild (``rebuild``: verifier mode,
+    where it goes on to launch the rebuilt candidate's verifier). In checks mode the lease's custodian revalidates the
+    rebuilt candidate, and the entry returns to VALIDATED for the Lead's next `integration_publish`."""
     out = c.engine.integrate_publish(token=c.token(), expect_rev=rev, work_id=a["work_id"],
                                      candidate=a.get("candidate"))
-    if out.get("rebuilt") and not a.get("rebuild") and c.engine.validation_mode(a["work_id"]) != "checks":
+    if out.get("rebuilt") and not a.get("rebuild"):
+        then = ("the lease's custodian validates the rebuilt candidate, and the entry returns to VALIDATED: publish "
+                "it then, with integration_publish" if c.engine.validation_mode(a["work_id"]) == "checks"
+                else "call integration_publish again to launch the rebuilt candidate's verifier")
         raise errors.StaleCandidate(
-            f"the authoritative head moved: {a['work_id']}'s candidate was rebuilt on it under the lease (the one "
-            "automatic rebuild) and nothing was published. It is verified again before it can be published: call "
-            "integration_publish again to launch its verifier", reason="rebuilt", rebuilt=True,
-            revision=out.get("revision"))
+            f"nothing was published: the authoritative head moved, so {a['work_id']}'s candidate was rebuilt on it "
+            f"under the lease (the one automatic rebuild). {then}", reason=REBUILT, rebuilt=True, published=False,
+            candidate=(out.get("integration") or {}).get("candidate"), revision=out.get("revision"))
     return out
 
 
@@ -178,6 +180,7 @@ STEP_RUNNERS: dict[str, StepRunner] = {"checkpoint": _checkpoint, "work.assign":
 # Steps whose commit can be followed, in the same call, by an outcome that stops the stage: their commit never
 # completes the intent (M4-E E6a), as a launch's never does.
 AFTER_COMMIT = frozenset({"integrate.prepare", "integrate.publish"})
+REBUILT = "rebuilt"  # a publish that committed only its one rebuild: the stage's boundary (ADR-0004, 2026-10-10)
 
 
 # ---------------------------------------------------------------------------------------------- the Ticket stages
@@ -424,7 +427,10 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                 # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands.
                 return _stop(c, intent, n, step["primitive"], failed, outputs, boundary="launch_failed")
             except errors.AEWError as refusal:
-                return _stop(c, intent, n, step["primitive"], refusal, outputs)
+                # A publish that only rebuilt stops at the journal's `rebuilt` boundary (its typed result keeps the
+                # surface's vocabulary: refused, STALE_CANDIDATE, `published: false`).
+                return _stop(c, intent, n, step["primitive"], refusal, outputs,
+                             journal=REBUILT if refusal.details.get("reason") == REBUILT else None)
         outputs.append(out)
         rev = out["revision"]
         if covers:
@@ -536,10 +542,10 @@ def _revision(c: Call) -> int:
 
 
 def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, outputs: list[dict[str, Any]], *,
-          boundary: str | None = None) -> dict[str, Any]:
+          boundary: str | None = None, journal: str | None = None) -> dict[str, Any]:
     """Stop the stage at step ``n`` and end its intent, or leave it ACTIVE when the stop cannot be recorded. A step
     that committed before its failure (a launch) stops the stage at the next step, or at itself when it was the
-    last."""
+    last. ``journal``: the boundary the intent records, when it names more than the result's vocabulary does."""
     from aew.surface.run import _error, boundary_of
 
     where = boundary or boundary_of(exc)
@@ -547,7 +553,7 @@ def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, ou
     si = c.engine.stage_intent(intent)
     done = len(si["steps"])
     at = done + 1 if done < len(si["plan"]) else done
-    _end(c, lambda r: c.engine.stage_stop(token=c.token(), expect_rev=r, intent=intent, n=at, boundary=where,
+    _end(c, lambda r: c.engine.stage_stop(token=c.token(), expect_rev=r, intent=intent, n=at, boundary=journal or where,
                                           code=exc.code, message=redact(exc.message), reason=exc.details.get("reason")))
     return _payload(c, intent, outputs)
 

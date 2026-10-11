@@ -175,7 +175,8 @@ class Harness:
         base = {"run": run, "invocation": inv_id, "committed": True, "run_dir": str(directory)}
         with (directory / "supervisor.log").open("ab") as log:
             try:
-                proc = procs.spawn_detached([sys.executable, "-m", "aew.harness.supervisor", "--run-dir",
+                # `-P`: its run directory (its cwd) is never on its import path; it imports the engine only.
+                proc = procs.spawn_detached([sys.executable, "-P", "-m", "aew.harness.supervisor", "--run-dir",
                                              str(directory)], env=supervisor_env(), cwd=str(directory),
                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:

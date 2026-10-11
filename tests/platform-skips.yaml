@@ -80,6 +80,10 @@ skipped:
     tests/unit/test_runlog_reads.py::test_the_request_queue_never_blocks_on_a_fifo_or_follows_a_link: >-
       needs POSIX FIFOs, /dev/zero and symlinks. The queue is read like a run record, tested on Windows with a
       request past the bound (test_a_request_past_the_bound_is_dropped). Covered on Linux.
+    tests/unit/test_usage_live_run.py::test_a_linked_or_fifo_live_file_is_no_sample: >-
+      needs POSIX symlinks and FIFOs. Windows reads a live file only when lstat shows it is a regular file, through
+      the same opener as a run record (runlog._open_regular's Windows branch), tested in tests/unit/test_runlog_reads.py.
+      Covered on Linux.
     tests/integration/test_usage_ledger.py::test_links_and_fifos_in_a_run_directory_never_block_a_cancel_or_archival[heartbeat-loop]: >-
       needs POSIX symlinks; the run-directory reads it drives are tested on Windows in tests/unit/test_runlog_reads.py.
       Covered on Linux.
@@ -119,9 +123,6 @@ skipped:
     tests/integration/test_containment.py::test_the_agent_cannot_write_its_live_usage: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/unit/test_usage_live_run.py::test_a_linked_or_fifo_live_file_is_no_sample: >-
-      needs POSIX symlinks and FIFOs; the run directory's guards (no link followed, a regular file only) are
-      the same code on every platform. Covered on Linux.
     tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

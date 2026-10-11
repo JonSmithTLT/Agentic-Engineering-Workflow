@@ -1392,20 +1392,51 @@ def scrub(value: Any) -> Any:
 
     One walk does both, so they cover the same containers: a ``verifier`` key's value is masked as the engine masks
     it (:data:`aew.engine.archive_ops.VERIFIER_MASK`), and every string, dictionary keys included, passes the engine's
-    credential redaction (:func:`aew.harness.contract.redact`). Dictionaries, lists, tuples, sets and dataclass
-    instances are walked (a set in a stable order); any other leaf that is not a JSON scalar is first made the string
-    the response's ``json.dumps(default=str)`` would make of it, so no text reaches a response without passing here."""
+    credential redaction (:func:`aew.harness.contract.redact`). Dictionaries, lists and tuples are walked as the
+    response's ``json.dumps(default=str)`` walks them. Any other value is shown as that serializer would show it,
+    ``str(value)`` redacted, except that a set and a dataclass instance are walked when walking shows no more than
+    ``str(value)`` does (:func:`_walkable`): a set in a stable order, a dataclass by the fields its generated repr
+    shows."""
     if isinstance(value, dict):
         return {(K.redact(k) if isinstance(k, str) else k): VERIFIER_MASK if k == "verifier" else scrub(v)
                 for k, v in value.items()}
     if isinstance(value, list | tuple):
         return [scrub(v) for v in value]
-    if isinstance(value, set | frozenset):
-        return sorted((scrub(v) for v in value), key=canonical_json)
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return scrub({f.name: getattr(value, f.name) for f in dataclasses.fields(value)})
     if isinstance(value, str):
-        return K.redact(str(value))
+        return K.redact(str.__str__(value))  # its characters, as the serializer writes a string (a subclass too)
     if value is None or isinstance(value, bool | int | float):
         return value
+    if isinstance(value, set | frozenset) and _walkable(value):
+        return sorted((scrub(v) for v in value), key=canonical_json)
+    shown = _dataclass_shown(value)
+    if shown is not None:
+        return scrub(shown)
     return K.redact(str(value))
+
+
+def _dataclass_shown(value: Any) -> dict[str, Any] | None:
+    """The fields of a dataclass instance that its ``str()`` shows, when that is the dataclass-generated repr (every
+    field with ``repr=True``, by ``repr()``) of values :func:`_walkable` admits; otherwise None. A ``repr=False``
+    field, a custom ``__str__`` or ``__repr__``, or a value whose repr and ``str()`` may differ is never walked."""
+    if not dataclasses.is_dataclass(value) or isinstance(value, type):
+        return None
+    try:
+        fields = {f.name: getattr(value, f.name) for f in dataclasses.fields(value) if f.repr}
+        generated = f"{type(value).__qualname__}({', '.join(f'{k}={v!r}' for k, v in fields.items())})"
+        same = str(value) == generated
+    except Exception:  # an unset field or a failing repr: shown as the serializer would show it
+        return None
+    return fields if same and all(_walkable(v) for v in fields.values()) else None
+
+
+def _walkable(value: Any) -> bool:
+    """Whether walking ``value`` shows no more than its ``repr()`` and ``str()`` do: ``None`` and values of exactly
+    ``str``, ``bool``, ``int`` or ``float`` (a subclass may define its own repr), and lists, tuples, sets,
+    string-keyed dictionaries and generated-repr dataclasses of them."""
+    if value is None or type(value) in (str, bool, int, float):
+        return True
+    if isinstance(value, list | tuple | set | frozenset):
+        return all(_walkable(v) for v in value)
+    if isinstance(value, dict):
+        return all(type(k) is str and _walkable(v) for k, v in value.items())
+    return _dataclass_shown(value) is not None

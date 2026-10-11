@@ -7,7 +7,7 @@ The credential-shaped value is built here from the engine's credential pattern a
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -59,6 +59,57 @@ def test_scrub_redacts_credentials_in_every_container():
     assert SHAPED not in repr(out)
     assert out["t"] == [MARKER] and set(out["s"]) == {MARKER, "y"} and out["d"]["note"] == MARKER
     assert out["l"] == [[{"k": MARKER}]]
+
+
+@dataclass
+class Held:
+    shown: str
+    hidden: str = field(repr=False, default="held back")
+
+
+@dataclass
+class Told:
+    verifier: str
+    note: str
+
+    def __str__(self) -> str:
+        return f"told {self.note}"
+
+
+@dataclass
+class Brief:
+    verifier: str
+    note: str
+
+    def __repr__(self) -> str:
+        return "brief"
+
+
+class Opaque:
+    def __repr__(self) -> str:
+        return "opaque"
+
+    def __str__(self) -> str:
+        return "opaque"
+
+
+def test_the_walk_never_shows_a_field_the_dataclass_repr_hides():
+    out = P.scrub({"row": Held("s")})
+    assert out == {"row": {"shown": "s"}} and "held back" not in repr(out)
+
+
+def test_a_dataclass_with_its_own_str_or_repr_is_shown_as_its_str():
+    assert P.scrub(Told("v", SHAPED)) == f"told {MARKER}"
+    assert P.scrub([Brief("v", "n")]) == ["brief"]
+
+
+def test_a_container_whose_members_may_show_more_when_walked_is_shown_as_its_str():
+    assert P.scrub({"s": frozenset({Opaque()})}) == {"s": "frozenset({opaque})"}
+    assert P.scrub(Row("TK-4", "v", Opaque())) == "Row(id='TK-4', verifier='v', note=opaque)"  # type: ignore[arg-type]
+
+
+def test_a_walked_dataclass_still_masks_its_verifier():
+    assert P.scrub(Row("TK-5", "sha256:abc", SHAPED)) == {"id": "TK-5", "verifier": "<redacted>", "note": MARKER}
 
 
 def test_scrub_redacts_a_string_subclass_and_bytes():

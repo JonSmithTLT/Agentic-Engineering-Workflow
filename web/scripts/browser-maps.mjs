@@ -117,7 +117,7 @@ async function trial(adapter, width) {
 }
 try {
   await Promise.all(Object.keys(ports).map(async adapter => { const child = server(adapter); await ready(`http://127.0.0.1:${ports[adapter]}`, child); }));
-  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/root/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome', args: ['--no-sandbox'] });
+  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? 'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome', args: ['--no-sandbox'] });
   for (const adapter of ['http', 'worker']) for (const width of [1440, 390]) await trial(adapter, width);
   fs.writeFileSync(`${out}/result.json`, JSON.stringify({ browser: browser.version(), results }, null, 2) + '\n');
 } finally { if (browser) await browser.close(); for (const child of owned) child.kill('SIGTERM'); }

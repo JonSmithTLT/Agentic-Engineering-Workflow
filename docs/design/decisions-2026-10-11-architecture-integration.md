@@ -7,7 +7,8 @@ acceptance, with corrections, of the lead developer's return on that response. W
 response, the acceptance governs. §1 records the morning decisions verbatim. §3 records the response and the
 acceptance **in substance**, not verbatim: the designer's text names models from the current roster, which this
 record writes generically, and it refers to private evidence that stays outside this public repository. §2 and §4 give
-the context; §5 says where each decision is filed. No frozen architectural decision is reopened.
+the context; §5 says where each decision is filed. A fourth round, the designer's provider-mediation decisions later
+the same day, is the addendum in §6, with its own filing. No frozen architectural decision is reopened.
 
 The two inputs of the second brief are not in the repository and are cited by title and date only: **the fresh-context
 architecture audit** of `main` at `1dd89d5` (2026-10-11; findings AX-01 to AX-16, automated and report-only), and **the
@@ -532,3 +533,79 @@ the gates schema and the context packs, and an overlap only escalates the valida
 - **Q15**, the nit-rule divergence of v0.5 §21, is closed separately from these decisions: the operator aligned
   AGENTS.md with the product rule in pull request 193 (2026-10-10; one short delta review after nits following a CLEAR),
   so the register moves it to §9 and its decisions-due item is removed.
+
+## 6. Addendum: provider mediation (designer, 2026-10-11)
+
+Later on 2026-10-11 the designer decided how AEW treats **an OpenAI-compatible chat-completions provider authenticated
+by mutual TLS**, on the lead developer's brief about such a provider and a harness probe of the same day. The
+designer's text is recorded here **in substance**: it refers to a specific deployment, which this public record writes
+generically. The decisions refine §3.5 (the gateway's ownership) and §3.17 (models per role); each subsection says
+which ids it refines. No frozen architectural decision is reopened.
+
+### 6.1 Principal accessibility, a fifth runtime fact
+
+F46's models per role gains a fifth independent runtime fact beside §3.17's A to D: **principal accessibility**. A model
+can exist in the provider's catalog (A) while the credential AEW presents may not use it; the provider answers HTTP 403.
+Accessibility is observed per credential principal and model. It is separate from AEW's eligibility verdict (B): a model
+can be `recommended` and inaccessible, or accessible and `not_recommended`. The operator cannot override it: like an
+unavailable model (AIR-71), an inaccessible one cannot be made usable by an override or by adding it to the allowed set
+(C).
+
+### 6.2 HTTP 403 behaviour
+
+A 403 from the provider is non-retryable for the same invocation and the same model: AEW does not retry it, and it
+updates the accessibility observation of 6.1. Fallback stays inside the operator's adopted allowed set (AIR-73): AEW may
+move to the next accessible model in the preference order only when that model is already allowed, and raises operator
+attention when none is.
+
+### 6.3 Provider capability flags
+
+Capability flags a provider advertises (in its model-information response or elsewhere) can establish **technical
+incompatibility** (B's `incompatible`). They never establish qualification, which stays with qualification evidence
+(B, F19's experiments), and never authority, which stays with the operator's adopted allowed set (C).
+
+### 6.4 Custody of the mTLS credential
+
+The provider's transport credential, the client certificate and its private key, is a provider credential like an API
+key. The AEW Provider Gateway, F18.8 with F28 (§3.5, AIR-24), owns it: it never enters a sandbox, a harness's
+configuration or a model's hands.
+
+### 6.5 The probe result: the gateway becomes a deployment prerequisite
+
+The harness probe of 2026-10-11 found that the pinned harness (OpenCode 2.0.18) speaks the chat-completions protocol
+such a provider serves, but cannot present a client certificate. So AEW cannot reach such a provider without the
+gateway, and **F18.8 with F28 is raised from hardening priority (Q5, AIR-06) to a deployment prerequisite for any
+provider that requires a client certificate**. For other providers Q5's hardening milestone and its order are unchanged.
+
+### 6.6 Usage whose cached and reasoning counts are unknown
+
+F25's token-semantics values (cost and usage ledger v0.2, §5.3) gain one more: prompt (input), completion (output) and
+total tokens known; cached and reasoning tokens **unknown, never zero**. The gateway's usage figure is authoritative
+(AIR-24, AIR-60); the harness's figure is the cross-check. The harness stores a usage field the provider did not report
+as 0, so its figures cannot tell "not reported" from zero, and a harness-side zero for cached or reasoning tokens is
+never read as a measured zero. The value is built as an F25 slice.
+
+### 6.7 The model catalog
+
+AEW or the gateway queries the provider's model-information endpoint for F46's live catalog (A, AIR-69). The harness's
+model configuration is a projection of the catalog and the adopted allowed set, never a source of either.
+
+### 6.8 Request fields the harness always sends
+
+The pinned harness always sends some request fields that its configuration cannot turn off:
+`stream_options.include_usage`, `store: false`, and `strict: false` on tool definitions. They are qualified live against
+the provider by the operator, in the provider's environment. The gateway strips or translates only a field whose
+incompatibility is proven, never one that is merely unfamiliar.
+
+### 6.9 Frozen architecture
+
+Nothing is reopened: these decisions refine F46's runtime facts, F25's usage vocabulary and the gateway's priority under
+the owners §3.5 and §3.17 already named.
+
+### 6.10 Filing (lead developer)
+
+- **Ledger:** AIR-78 to AIR-86, one per subsection from 6.1 to 6.9.
+- **Register:** F46's Work and Source name the fifth fact; F18.8's target becomes a gate before a client-certificate
+  provider is used (a new §1 gate), and F28's target names the same prerequisite beside its internal-alpha gate; F25's
+  new semantics value is a slice to build, recorded in a note on F25.
+- **Notes** on F46, F18.8, F28, F25 and F18.15, each naming the ids above.

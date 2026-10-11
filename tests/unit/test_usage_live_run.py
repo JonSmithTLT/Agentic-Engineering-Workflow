@@ -4,7 +4,9 @@ prompt state, in every turn state.
 The adapter runs for real against the fake V2 server in this process, served over HTTP on loopback
 (``fake_opencode.handler_for``): ``Server.start`` is replaced by a stub that records when it was called and hands the
 adapter that server, so launch, health, the session, the event stream, the watch loop and the meter all run their real
-code. Timing-dependent guarantees are driven by the meter's poll iterations (``_meter_tick``), not by the wall clock."""
+code. Timing-dependent guarantees are driven by the meter's poll iterations (``_meter_tick``), not by the wall clock.
+A guarantee that something never waits is proved by events: the request it must not wait on is held until after it
+happened. Only ``terminate``'s stated budget (``METER_FINAL_S``, plan v4 §4.2) is asserted by wall clock."""
 
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -35,6 +38,7 @@ PROFILE = {"profile": "standard", "harness": "opencode", "provider": "fakeprov",
            "effort": "high", "max_steps": None, "deadline_s": None, "selected_by": "policy", "rule": "default",
            "policy_sha256": "1" * 64}
 PROMPT_TEXT = "PACK-TEXT-THAT-MUST-NOT-REACH-THE-LIVE-FILE"
+HANG_S = 60.0  # a guard against a hang on an event, never a timing expectation
 
 
 def wait_for(cond: Any, timeout: float = 10.0, what: str = "condition") -> None:
@@ -286,27 +290,44 @@ def test_a_run_between_turns_stays_fresh(rig, monkeypatch):
 
 
 def test_the_turn_over_snapshot_is_published(rig, monkeypatch):
-    monkeypatch.setattr(A, "METER_POLL_S", 60.0)  # only the end of the turn can bring a sample this soon
+    # The next scheduled poll is an hour away, past the hang guard: only the end of the turn can bring this sample.
+    monkeypatch.setattr(A, "METER_POLL_S", 3600.0)
     adapter = rig.adapter()
     run_to_end(rig, adapter)
-    wait_for(lambda: rig.live()["steps"] == 1, timeout=5.0, what="the turn's step in the live file")
+    wait_for(lambda: rig.live()["steps"] == 1, timeout=HANG_S, what="the turn's step in the live file")
     adapter.terminate()
 
 
 def test_a_slow_adapter_request_never_delays_the_live_sample(rig, monkeypatch):
+    """An adapter request is in flight, held until two more samples are published: the meter's samples never wait on
+    the adapter's client."""
     monkeypatch.setattr(A, "METER_POLL_S", 0.05)
     adapter = rig.adapter()
     run_to_end(rig, adapter)
     assert adapter.client is not None
     real = adapter.client.request
+    held, returned, release = threading.Event(), threading.Event(), threading.Event()
 
-    def slow(*args: Any, **kwargs: Any) -> Any:
-        time.sleep(5.0)
+    def held_request(*args: Any, **kwargs: Any) -> Any:
+        held.set()
+        try:
+            release.wait(HANG_S)
+        finally:
+            returned.set()
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(adapter.client, "request", slow)  # the adapter's own client: every request takes 5 s
-    seq = rig.live()["seq"]
-    wait_for(lambda: rig.live()["seq"] >= seq + 2, timeout=2.0, what="samples while the adapter's client is slow")
+    monkeypatch.setattr(adapter.client, "request", held_request)  # the adapter's own client
+    asking = threading.Thread(target=adapter._session_exists, name="adapter-request", daemon=True)
+    asking.start()
+    try:
+        assert held.wait(HANG_S), "the adapter's request never started"
+        seq = rig.live()["seq"]
+        wait_for(lambda: rig.live()["seq"] >= seq + 2, timeout=HANG_S, what="samples while an adapter request is held")
+        assert not returned.is_set(), "the samples were published only after the adapter's request returned"
+    finally:
+        release.set()
+    asking.join(HANG_S)
+    assert not asking.is_alive(), "the adapter's request never returned"
     monkeypatch.setattr(adapter.client, "request", real)
     adapter.terminate()
 
@@ -328,23 +349,27 @@ def test_terminate_takes_a_fresh_final_sample(rig):
     assert final["tokens"]["input"] == 100 + 50  # the fake's model step, and the call after the turn
 
 
-def busy_server(rig: Rig, sessions: int = 10) -> None:
-    """Sessions whose totals moved, so each poll reads their messages: a poll is many requests long."""
-    for _ in range(sessions):
-        sid = rig.app.add_session(model={"providerID": "fakeprov", "id": "fake-model", "variant": "default"})
-        rig.app.record_usage(sid, {"input": 10, "output": 1, "reasoning": 0, "cache": {"read": 0, "write": 0}})
+class HeldClient:
+    """The meter's client, whose requests on the threads ``holds`` picks are held until ``release`` is set. A test
+    proves what happened while a poll's request was in flight by these events, never by how long anything took: the
+    meter's lock may legitimately be held for a commit's file writes, which on a loaded runner take any time."""
 
+    def __init__(self, real: Any, holds: Callable[[], bool] = lambda: True) -> None:
+        self.real, self.holds = real, holds
+        self.held, self.returned, self.release = threading.Event(), threading.Event(), threading.Event()
+        self.hung = False  # a held request outlived the hang guard
 
-class SlowClient:
-    """A slow but answering server: every request takes ``delay`` (under the meter's 2 s timeout)."""
-
-    def __init__(self, real: Any, delay: float = 0.5) -> None:
-        self.real, self.delay = real, delay
-        self.started = threading.Event()
+    def in_flight(self) -> bool:
+        return self.held.is_set() and not self.returned.is_set()
 
     def get(self, path: str, params: Any = None, timeout: float = 30.0) -> Any:
-        self.started.set()
-        time.sleep(min(self.delay, timeout))
+        if self.holds():
+            self.held.set()
+            try:
+                if not self.release.wait(HANG_S):
+                    self.hung = True
+            finally:
+                self.returned.set()
         return self.real.get(path, params, timeout=timeout)
 
 
@@ -373,53 +398,67 @@ def test_the_final_sample_fits_inside_terminate_s(rig, monkeypatch):
 
 
 def test_terminate_never_waits_for_a_poll_in_flight(rig):
-    """A poll is in flight on a slow server when the run ends: the meter's share of ``terminate`` stays within
-    ``METER_FINAL_S`` (the poll is cancelled at its next request, never waited for), and the final sample is fresh
-    (PR #197 review, M1)."""
+    """A poll's request is in flight, held until the final sample is written: the final sample is taken beside it, is
+    fresh, and nothing is written after it once the poll is let go (PR #197 review, M1). ``terminate``'s budget is
+    ``test_the_final_sample_fits_inside_terminate_s``'s to prove."""
     adapter = rig.adapter()  # the real meter thread
     run_to_end(rig, adapter)
-    busy_server(rig)
-    assert adapter.meter is not None
-    slow = SlowClient(adapter.meter.client)
-    adapter.meter.client = slow
-    assert slow.started.wait(5), "the meter thread did not start a poll"
-    t0 = time.monotonic()
-    adapter._final_sample()  # the meter's share of terminate
-    took = time.monotonic() - t0
-    assert took <= A.METER_FINAL_S + 0.3, took
-    final = rig.live()
-    assert final["state"] in ("final", "server_gone")
+    meter, thread = adapter.meter, adapter._meter_thread
+    assert meter is not None and thread is not None
+    held = HeldClient(meter.client, holds=lambda: threading.current_thread() is thread)  # final()'s read is not held
+    meter.client = held
+    adapter._meter_wake.set()  # the next poll now
+    try:
+        assert held.held.wait(HANG_S), "the meter thread did not start a poll"
+        adapter._final_sample()  # the meter's share of terminate
+        in_flight = held.in_flight()
+        final = rig.live()
+    finally:
+        held.release.set()
+    assert in_flight, "the final sample waited for the poll's request"
+    assert final["state"] == "final"  # its own read answered: fresh, not the last poll's figures
+    thread.join(HANG_S)
+    assert not thread.is_alive(), "the meter thread never stopped"
     adapter.terminate()
-    assert rig.live() == final  # a dropped poll never writes after the final sample
+    assert rig.live() == final and not held.hung  # a dropped poll never writes after the final sample
 
 
 def test_posting_never_waits_for_a_poll_in_flight(rig, monkeypatch):
-    """The prompt's ``posting`` write happens while a poll on a slow server is in flight: it never waits for that
-    poll's requests, so the prompt is not delayed (PR #197 review, M1)."""
-    busy_server(rig)
-    clients: list[SlowClient] = []
+    """The prompt's ``posting`` and ``posted`` writes happen while a poll's request is in flight, held until both are
+    written: they never wait for a poll's requests, so the prompt is not delayed (PR #197 review, M1). They may wait
+    for a poll's commit, its file writes under the meter's lock, which is why no wall-clock bound is asserted."""
+    clients: list[HeldClient] = []
     original = A.OpenCodeAdapter.meter_client
 
-    def slow_client(self: A.OpenCodeAdapter) -> Any:
-        clients.append(SlowClient(original(self)))
+    def held_client(self: A.OpenCodeAdapter) -> Any:
+        clients.append(HeldClient(original(self)))
         return clients[-1]
 
-    monkeypatch.setattr(A.OpenCodeAdapter, "meter_client", slow_client)
-    waits: dict[str, float] = {}
+    monkeypatch.setattr(A.OpenCodeAdapter, "meter_client", held_client)
+    polling: dict[str, bool] = {}  # a prompt state -> a poll was in flight before it was written
+    in_flight: dict[str, bool] = {}  # a prompt state -> that poll was still in flight once it was written
     original_set = L.Meter.set_prompt_state
 
-    def timed(self: L.Meter, state: str) -> None:
-        if state == "posting":
-            assert clients and clients[0].started.wait(5), "no poll was in flight"
-        t0 = time.monotonic()
+    def watched(self: L.Meter, state: str) -> None:
+        if state in ("posting", "posted"):
+            polling[state] = bool(clients) and clients[0].held.wait(HANG_S)
         original_set(self, state)
-        waits[state] = time.monotonic() - t0
+        if state in ("posting", "posted"):
+            in_flight[state] = bool(clients) and clients[0].in_flight()
+        if state == "posted":
+            clients[0].release.set()
 
-    monkeypatch.setattr(L.Meter, "set_prompt_state", timed)
+    monkeypatch.setattr(L.Meter, "set_prompt_state", watched)
     adapter = rig.adapter()
-    run_to_end(rig, adapter)
+    try:
+        run_to_end(rig, adapter)
+    finally:
+        for c in clients:
+            c.release.set()
     adapter.terminate()
-    assert waits["posting"] < 0.3 and waits["posted"] < 0.3, waits
+    assert polling == {"posting": True, "posted": True}, "no poll was in flight"
+    assert in_flight == {"posting": True, "posted": True}, "a prompt state waited for the poll's request"
+    assert not clients[0].hung and rig.live()["prompt_state"] == "posted"
 
 
 def test_terminate_still_closes_the_server_after_a_failed_final_write(rig, monkeypatch):

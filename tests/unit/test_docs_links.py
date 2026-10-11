@@ -47,6 +47,7 @@ def test_the_docs_map_lists_every_document():
     readme = ROOT / "docs" / "README.md"
     listed = {(readme.parent / t.split("#", 1)[0]).resolve() for t in LINK.findall(readme.read_text(encoding="utf-8"))}
     docs = [p for p in (ROOT / "docs").rglob("*") if p.is_file() and p.suffix in (".md", ".yaml")
-            and not {"skills", "notes.d"} & set(p.relative_to(ROOT / "docs").parent.parts) and p != readme]
+            and "skills" not in p.relative_to(ROOT / "docs").parts and p.parent.parent.name != "notes.d"
+            and p != readme]
     missing = sorted(p.relative_to(ROOT).as_posix() for p in docs if p.resolve() not in listed)
     assert missing == [], "add these to docs/README.md: " + ", ".join(missing)

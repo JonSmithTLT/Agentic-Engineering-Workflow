@@ -42,11 +42,13 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **Adopted amendments** are listed in `docs/spec-amendments.yaml` (as an overlay or under `considered`).
 - **The register is data.** Edit `docs/implementation/future-work.yaml`, then run `python tools/register.py render`.
   Never edit `future-work.md` by hand. Closed rows move to §9 with the date and what closed them; nothing is deleted.
-  **A note on an existing row is a file, never an edit of its Notes cell:**
-  `docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` (`notes.d/README.md`); no other change writes
-  that path, so it never conflicts, and the rendered page does not change. `python tools/register.py show <id>` prints
-  a row with its notes. The same holds for a decisions-due item's `what` and an `implementation-status.md` paragraph:
-  progress goes in a note on the row, and the text changes only when the state it states changes.
+  **A note on an existing row is a file, never an edit of its Notes cell:** `python tools/register.py note <id>`
+  creates `docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` for you to write (the slug rule and
+  what is guaranteed are in `notes.d/README.md`); the rendered page does not change, and branches with different slugs
+  never conflict. `python tools/register.py show <id>` prints a row with its notes. The same holds for a
+  decisions-due item's `what` and an `implementation-status.md` paragraph: progress goes in a note on the row. A
+  capability built in slices has a Status that names no slice and one paragraph per slice, which only that slice
+  edits; a slice with no paragraph there adds a note on the row its **Later slices** paragraph names.
   What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
   command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
   the register, run `python tools/register.py resolve` (it re-merges the YAML row by row and renders), not a hand

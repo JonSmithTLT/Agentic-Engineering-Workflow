@@ -13,14 +13,18 @@ dashboard keep reading the markdown; triage tooling reads the YAML.
     python tools/register.py summary           # open rows by section and target
     python tools/register.py due               # print the decisions-due view
     python tools/register.py show F19          # one row, its decisions-due item and all its later notes
+    python tools/register.py note F19          # create this branch's note on F19 for today, and print its path
 
 **Later notes.** A note added to a row after this change is a file of its own, never an edit of the row's Notes cell:
-``docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`` (``NOTE_NAME_RE``), the date the note was
-written and the branch's name in lower case with every other character a hyphen (``impl/f9a-ms3`` is
-``impl-f9a-ms3``); a second note for the same row on the same branch and day edits that branch's own file. Almost
+``docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`` (``NOTE_NAME_RE``): the date the note was
+written and ``slug`` of the branch's name, which ``note`` derives from the checkout (``SLUG_RULE``); a second note for
+the same row on the same branch and day edits that branch's own file. Almost
 every change used to append a sentence to the same Notes cell of a hub row (F9, F15.5, F19, F20), and two changes to
 the same cell are the same YAML bytes, which no layout and no ``resolve`` can merge, and which GitHub (which runs no
-local merge driver) shows as a conflict. A new file at a path no other branch writes merges by construction. The
+local merge driver) shows as a conflict. Two branches whose slugs differ never write the same note path, so their
+notes merge by construction; branch names that differ only in case or punctuation (``impl/f9a``, ``impl-f9a``) share
+a slug, and two such branches noting one row on one day would still collide, which ``note`` refuses locally (the file
+exists) but nothing can rule out across unmerged branches. The
 page does not inline the notes: every row with an id carries the same pointer to its directory whether or not it holds
 anything (``pointer``), so adding a note changes no shared file, not even ``future-work.md``. ``show`` prints a row
 with its notes oldest first (by file name), and ``check`` refuses a note whose row is not in the register, whose name
@@ -104,6 +108,8 @@ CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
 NOTES = ROOT / "docs" / "implementation" / "notes.d"
 NOTES_README = "README.md"
 NOTE_NAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
+SLUG_RULE = ("the branch slug is the branch's name in lower case, each run of characters other than a-z and 0-9 "
+             "replaced by one hyphen, with none at either end (impl/F9a_MS3 is impl-f9a-ms3)")
 POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
 
 
@@ -492,8 +498,8 @@ def note_problems(data: dict[str, Any], files: list[tuple[str, str | None]]) -> 
             out.append(f"{where}: register row {rid} is not in the register (its directory is the row's exact id)")
         m = NOTE_NAME_RE.match(name)
         if m is None:
-            out.append(f"{where}: a note's name is <YYYY-MM-DD>-<branch slug>.md, in lower case (letters, digits, "
-                       "hyphens)")
+            out.append(f"{where}: a note's name is <YYYY-MM-DD>-<branch slug>.md, where {SLUG_RULE}; "
+                       "`python tools/register.py note <id>` writes it")
         else:
             try:
                 date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -515,6 +521,37 @@ def note_problems(data: dict[str, Any], files: list[tuple[str, str | None]]) -> 
     out += [f"{' and '.join(paths)}: names that differ only in case are one file on Windows and macOS; rename one"
             for paths in folded.values() if len(paths) > 1]
     return out
+
+
+def slug(branch: str) -> str:
+    """A branch's name as it appears in a note's file name (``SLUG_RULE``)."""
+    return re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
+
+
+def new_note(data: dict[str, Any], rid: str, branch_slug: str | None, when: date,
+             root: Path = ROOT) -> tuple[Path | None, str]:
+    """Create this branch's note on ``rid`` for ``when``, empty for the author to write: the path, or None and why not.
+    The slug is the current branch's (``slug``); a detached HEAD has no branch, so it needs ``branch_slug``. It refuses
+    a row the register lacks, and a note that exists (this branch's note for the day: edit it)."""
+    ids = {r["id"] for r in rows(data, open_only=False) if r["id"] and r["id"] != "Gate"}
+    if rid not in ids:
+        return None, f"register row {rid} is not in the register"
+    if branch_slug is None:
+        head = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")  # fails on a detached HEAD
+        if head.returncode or not head.stdout.strip():
+            return None, ("no branch is checked out (a detached HEAD), so there is no branch slug: pass --slug with "
+                          "the name of the branch the note will be committed on")
+        branch_slug = head.stdout.strip()
+    name_slug = slug(branch_slug)
+    if not name_slug:
+        return None, f"{branch_slug!r} gives an empty slug ({SLUG_RULE})"
+    path = root / NOTES.relative_to(ROOT) / rid / f"{when.isoformat()}-{name_slug}.md"
+    if path.exists():
+        return None, (f"{path.relative_to(root).as_posix()} exists: it is this branch's note on {rid} for the day, "
+                      "so add to it")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    return path, path.relative_to(root).as_posix()
 
 
 def show(data: dict[str, Any], due: dict[str, Any], rid: str, files: list[tuple[str, str | None]]) -> str | None:
@@ -812,11 +849,14 @@ def resolve(root: Path = ROOT) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("command", choices=["render", "check", "resolve", "import", "summary", "due", "show"])
-    ap.add_argument("row", nargs="?", help="show: the row's id, as in its heading (F19, F15.5)")
+    ap.add_argument("command", choices=["render", "check", "resolve", "import", "summary", "due", "show", "note"])
+    ap.add_argument("row", nargs="?", help="show, note: the row's id, as in its heading (F19, F15.5)")
+    ap.add_argument("--slug", help="note: the branch the note will be committed on, when no branch is checked out")
     args = ap.parse_args(argv)
-    if (args.command == "show") != (args.row is not None):
-        ap.error("`show` takes one row id, and no other command takes one")
+    if (args.command in ("show", "note")) != (args.row is not None):
+        ap.error("`show` and `note` take one row id, and no other command takes one")
+    if args.slug is not None and args.command != "note":
+        ap.error("only `note` takes --slug")
     if args.command == "import":
         data = parse_markdown(MD.read_text(encoding="utf-8"))
         YAML.write_text(dump(data), encoding="utf-8", newline="\n")
@@ -835,6 +875,13 @@ def main(argv: list[str] | None = None) -> int:
     due = load_due()
     if args.command == "due":
         print(render_due(due), end="")
+        return 0
+    if args.command == "note":
+        path, said = new_note(data, args.row, args.slug, date.today())
+        if path is None:
+            print(said, file=sys.stderr)
+            return 1
+        print(f"{said}: write the note there (it is empty, which `check` refuses until it is written)")
         return 0
     files = note_files()
     if args.command == "show":

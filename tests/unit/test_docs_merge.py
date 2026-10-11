@@ -575,3 +575,15 @@ def test_changes_to_neighbouring_capabilities_merge_and_the_same_field_still_con
     other = repo.commit({STATUS: STATUS_TEXT.replace(evidence, evidence + " Theirs.", 1)}, base)
     conflicts, _ = repo.merge(ours, other)
     assert conflicts == [STATUS]
+
+
+def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices():
+    """A slice-built capability's Status names no slice, and a slice with no paragraph of its own records itself as a
+    note on the register row the section's **Later slices** paragraph names, so concurrent slices never edit one line
+    or insert at one place (review of PR #195, F1). The row must exist, or the notes would have nowhere to go."""
+    ids = {r["id"] for r in register.rows(DATA, open_only=False) if r["id"]}
+    named = re.findall(r"^\*\*Later slices:\*\* .*? register row (\S+) ", STATUS_TEXT, re.M)
+    assert len(named) >= 6, "the slice-built capabilities (outbox, F4, dashboard, M4-E, F25, F9) each name a row"
+    assert [rid for rid in named if rid not in ids] == []
+    m4e = next(p for name, p in capabilities(STATUS_TEXT).items() if name.startswith("Governed stages"))
+    assert not re.search(r"\bE\d[a-z]\b", m4e[0]), "M4-E's Status lists no slice: each slice has its own paragraph"

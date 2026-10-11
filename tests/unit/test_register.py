@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -319,10 +322,11 @@ def test_a_note_for_a_row_the_register_does_not_have_is_refused():
 
 def test_a_malformed_note_is_refused():
     cases = {
-        "F19/2026-10-10-Upper.md": "in lower case",
-        "F19/2026-10-10-x.txt": "in lower case",
+        "F19/2026-10-10-Upper.md": register.SLUG_RULE,
+        "F19/2026-10-10-x.txt": register.SLUG_RULE,
         "F19/2026-13-40-x.md": "is not a date",
-        "F19/2026-10-10-trailing-.md": "in lower case",
+        "F19/2026-10-10-trailing-.md": register.SLUG_RULE,
+        "F19/2026-10-10-a--b.md": register.SLUG_RULE,
     }
     for path, why in cases.items():
         assert any(why in p for p in register.note_problems(DATA, _notes(path))), path
@@ -331,8 +335,6 @@ def test_a_malformed_note_is_refused():
     for text, why in texts.items():
         assert any(why in p for p in register.note_problems(DATA, [("F19/2026-10-10-x.md", text)])), text
     assert any("not UTF-8" in p for p in register.note_problems(DATA, [("F19/2026-10-10-x.md", None)]))
-    assert register.note_problems(DATA, _notes("README.md", "F19/2026-10-10-x.md", "F19/2026-10-10-x-2.md",
-                                               text=NOTE)) != []  # the same text twice (below); README is skipped
     assert register.note_problems(DATA, [("README.md", "anything"), ("F19/2026-10-10-x.md", NOTE)]) == []
 
 
@@ -351,3 +353,48 @@ def test_check_refuses_a_bad_note(monkeypatch, capsys):
     assert register.main(["check"]) == 1
     out = capsys.readouterr().out
     assert "F99999 is not in the register" in out and "future-work.md differs" not in out, out
+
+
+def test_the_slug_rule_is_one_function_and_every_slug_it_makes_is_a_valid_name():
+    assert register.slug("impl/F9a_MS3") == "impl-f9a-ms3"
+    assert register.slug("--feat//a_-b--") == "feat-a-b"
+    for branch in ("impl/f9a-ms3", "Fix/X", "tools/register-fragments", "a__b", "x.y/z"):
+        assert register.NOTE_NAME_RE.match(f"2026-10-10-{register.slug(branch)}.md"), branch
+
+
+def _head(name: str) -> Any:
+    """A stand-in for `git symbolic-ref --short HEAD` answering ``name``, or failing as on a detached HEAD."""
+    detached = name == "HEAD"
+    return lambda root, *args: subprocess.CompletedProcess(args, int(detached), "" if detached else f"{name}\n", "")
+
+
+def test_note_reads_the_branch_of_a_real_checkout(tmp_path):
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(tmp_path / "none")}
+    subprocess.run(["git", "init", "-q", "-b", "impl/Real_Branch", str(tmp_path)], check=True, env=env,
+                   capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    path, said = register.new_note(DATA, "E30", None, register.date(2026, 10, 10), tmp_path)
+    assert said == "docs/implementation/notes.d/E30/2026-10-10-impl-real-branch.md" and path is not None
+
+
+def test_note_creates_the_branchs_note_and_refuses_a_second_or_an_unknown_row(tmp_path, monkeypatch):
+    """`note` derives the path from the checked-out branch, so authors never spell the slug by hand."""
+    monkeypatch.setattr(register, "_git", _head("impl/F9a_MS3"))
+    path, said = register.new_note(DATA, "F19", None, register.date(2026, 10, 10), tmp_path)
+    assert path is not None and said == "docs/implementation/notes.d/F19/2026-10-10-impl-f9a-ms3.md"
+    assert path.read_text(encoding="utf-8") == ""
+    again, said = register.new_note(DATA, "F19", None, register.date(2026, 10, 10), tmp_path)
+    assert again is None and "exists" in said and "add to it" in said
+    missing, said = register.new_note(DATA, "F99999", None, register.date(2026, 10, 10), tmp_path)
+    assert missing is None and "not in the register" in said
+    assert register.note_problems(DATA, register.note_files(tmp_path)) == [
+        "notes.d/F19/2026-10-10-impl-f9a-ms3.md: empty"]  # written by the author before `check` passes
+
+
+def test_note_on_a_detached_head_needs_the_branch_named(tmp_path, monkeypatch):
+    monkeypatch.setattr(register, "_git", _head("HEAD"))
+    path, said = register.new_note(DATA, "F19", None, register.date(2026, 10, 10), tmp_path)
+    assert path is None and "detached HEAD" in said and "--slug" in said
+    path, said = register.new_note(DATA, "F19", "review/pr-195", register.date(2026, 10, 10), tmp_path)
+    assert said == "docs/implementation/notes.d/F19/2026-10-10-review-pr-195.md"
+    path, said = register.new_note(DATA, "F19", "///", register.date(2026, 10, 10), tmp_path)
+    assert path is None and "empty slug" in said

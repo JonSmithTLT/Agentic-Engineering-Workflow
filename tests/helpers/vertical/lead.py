@@ -1,0 +1,417 @@
+"""The scripted Lead of the vertical UAT: a model-free Lead with no AEW knowledge, inside the fake OpenCode TUI.
+
+``aew opencode`` starts the fake TUI (``fake_opencode.tui``) in the Lead session's curated environment; a
+``lead-tui.json`` that names this driver runs :func:`main` there. Like OpenCode, it starts the typed surface's MCP
+server from the ``mcp`` entry of ``OPENCODE_CONFIG_CONTENT`` (``aew lead mcp``, which forwards to the session's real
+Lead broker), and its shell commands run in the TUI's own environment.
+
+**Its whole policy** (docs/implementation/vertical-uat.md, "The Lead"):
+
+1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
+2. If ``decisions_required`` is non-empty, ask the operator and wait for the reply.
+3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
+   no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
+   ``ambiguous_next_action`` is recorded and the first in order is taken.
+4. When the subject is terminal, report the result to the operator.
+
+**Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
+call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
+finishes; they are the only place AEW knowledge appears here:
+
+- ``no_ticket``: an empty project offers no action for the operator's request, so the Lead calls ``ticket_draft``,
+  a tool the projection did not offer (``guessed_commands``), with its own proposition and plan (its judgement);
+- ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
+  then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
+- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell;
+- ``stuck``: anything else gets one ``explain`` (``help_calls``); if that does not unblock it, the Lead tells the
+  operator it is stuck, and the run ends there (the ledger records where).
+
+Events go to ``events`` (JSON lines), the Lead's own accounting: with a scripted Lead it is the ground truth for its
+calls (spec §4, ``shell_aew_calls``).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import queue
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
+from pathlib import Path
+from typing import Any
+
+from vertical.chat import Gone, Mailbox
+
+NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+TERMINAL = frozenset({"DONE", "CANCELLED"})
+AVAILABLE = "AVAILABLE"
+EXIT = "/exit"
+CHAT_TIMEOUT_S = 1800.0
+PROGRESS = ("REVIEW", "VERIFY", "COMMIT_READY", "RUNNING", "READY", "DONE")
+
+
+class Lead:
+    def __init__(self, spec: dict[str, Any]) -> None:
+        self.spec = spec
+        self.steering = bool(spec.get("steering"))
+        self.events_path = Path(spec["events"])
+        self.lock = threading.Lock()
+        self.chat = Mailbox(Path(spec["chat"]), "lead")
+        self.chat.skip_to_end()  # a reopened session answers only what is said to it from now on
+        self.inbox: queue.Queue[dict[str, Any]] = queue.Queue()
+        self.rid = 0
+        self.subject: str | None = None
+        self.stale_pending = False
+        self.step = "start"
+        self.seen: dict[tuple[Any, ...], int] = {}
+        self.server: subprocess.Popen[bytes] | None = None
+        self.reports: dict[str, str] = {}
+        self.last_state: str | None = None
+
+    # ------------------------------------------------------------------ accounting
+
+    def event(self, kind: str, **facts: Any) -> None:
+        with self.lock, self.events_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n")
+
+    # ------------------------------------------------------------------ the operator
+
+    def _listen(self) -> None:
+        """Every operator line arrives here; ``/exit`` ends the TUI at once, whatever the Lead is doing (as
+        OpenCode's own ``/exit`` does)."""
+        while True:
+            try:
+                msg = self.chat.receive(CHAT_TIMEOUT_S)
+            except Gone:
+                msg = {"text": EXIT, "timeout": True}
+            if str(msg.get("text", "")).strip() == EXIT:
+                self.event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
+                with self.lock:
+                    if self.server is not None and self.server.stdin is not None:
+                        self.server.stdin.close()
+                    os._exit(0)
+            self.inbox.put(msg)
+
+    def say(self, kind: str, **body: Any) -> None:
+        self.chat.send({"type": kind, **body})
+
+    def hear(self) -> dict[str, Any]:
+        return self.inbox.get(timeout=CHAT_TIMEOUT_S)
+
+    def ask(self, question: str, *, label: str, detail: Any = None) -> str:
+        self.say("ask", text=question, label=label, detail=detail)
+        answer = str(self.hear().get("text", ""))
+        self.event("asked", label=label, question=question, answer=answer)
+        return answer
+
+    # ------------------------------------------------------------------ the typed surface (MCP)
+
+    def start_mcp(self) -> list[str]:
+        config = json.loads(os.environ["OPENCODE_CONFIG_CONTENT"])
+        server = next(iter(config["mcp"]["servers"].values()))
+        argv = list(server["command"])
+        argv[0] = shutil.which(argv[0], path=os.environ.get("PATH")) or argv[0]  # as OpenCode resolves it
+        self.server = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                       creationflags=NO_WINDOW)
+        self._rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                 "clientInfo": {"name": "vertical-lead", "version": "1"}})
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        return [t["name"] for t in self._rpc("tools/list", {})["result"]["tools"]]
+
+    def _send(self, message: dict[str, Any]) -> None:
+        assert self.server is not None and self.server.stdin is not None
+        self.server.stdin.write((json.dumps(message) + "\n").encode("utf-8"))
+        self.server.stdin.flush()
+
+    def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        assert self.server is not None and self.server.stdout is not None
+        self.rid += 1
+        rid = self.rid
+        self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+        while True:
+            line = self.server.stdout.readline()
+            if not line:
+                raise RuntimeError("the aew-lead MCP server ended")
+            reply = json.loads(line)
+            if reply.get("id") == rid:
+                return reply
+
+    def call(self, tool: str, arguments: dict[str, Any], *, offered: bool = False, mechanical: bool = False,
+             why: str = "") -> dict[str, Any]:
+        if self.stale_pending:
+            self.event("stale_retry", evidence={"tool": tool})
+            self.stale_pending = False
+        reply = self._rpc("tools/call", {"name": tool, "arguments": arguments})
+        if "error" in reply:  # an input error: never reached the engine
+            err = reply["error"]
+            self.event("call", via="mcp", tool=tool, arguments=arguments, offered=offered, mechanical=mechanical,
+                       why=why, ok=False, stopped={"error": (err.get("data") or {}).get("adapter_input_error")
+                                                   or {"code": err.get("code"), "message": err.get("message")}})
+            return {"ok": False, "projection": None, "result": None, "stopped": {"error": err}}
+        out = reply["result"]["structuredContent"]
+        stopped = out.get("stopped")
+        self.event("call", via="mcp", tool=tool, arguments=arguments, offered=offered, mechanical=mechanical, why=why,
+                   ok=out.get("ok"), stopped=stopped,
+                   completed=[s.get("primitive") for s in out.get("completed_steps") or []])
+        if stopped and (stopped.get("error") or {}).get("code") == "STALE_REVISION":
+            self.stale_pending = True
+        if tool == "harness_wait":  # what the Lead read in its own wait's result: the reports a run recorded
+            for found in re.findall(r"INV-\d+-verify-\d+", json.dumps(out.get("result"))):
+                scope = "integration" if (self.last_state or "") == "COMMIT_READY" else "ticket"
+                self.reports[f"verification:{scope}"] = found
+        return out
+
+    def shell(self, argv: list[str], *, why: str, stdin: str | None = None) -> dict[str, Any]:
+        """``aew`` from the Lead's own shell, in the TUI's environment (it reaches the session's broker)."""
+        if self.stale_pending:
+            self.event("stale_retry", evidence={"shell": argv})
+            self.stale_pending = False
+        exe = shutil.which("aew", path=os.environ.get("PATH"))
+        cmd = [exe] if exe else [sys.executable, "-m", "aew"]
+        proc = subprocess.run([*cmd, *argv], input=stdin, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", creationflags=NO_WINDOW,
+                              **({} if stdin is not None else {"stdin": subprocess.DEVNULL}))
+        error = None
+        try:
+            error = json.loads(proc.stderr)["error"] if proc.returncode else None
+        except (ValueError, KeyError, TypeError):
+            error = {"code": None, "message": proc.stderr.strip()[-400:]} if proc.returncode else None
+        self.event("call", via="shell", tool="aew", arguments=argv, why=why, ok=proc.returncode == 0,
+                   stopped={"error": error} if error else None)
+        if error and error.get("code") == "STALE_REVISION":
+            self.stale_pending = True
+        try:
+            return {"ok": proc.returncode == 0, "json": json.loads(proc.stdout), "error": error}
+        except ValueError:
+            return {"ok": proc.returncode == 0, "json": None, "error": error, "stdout": proc.stdout[-400:]}
+
+    # ------------------------------------------------------------------ the policy
+
+    def run(self) -> int:
+        Path(self.spec["pidfile"]).write_text(str(os.getpid()), encoding="utf-8")
+        self.tools = self.start_mcp()
+        threading.Thread(target=self._listen, daemon=True, name="vertical-chat").start()
+        resumed = self.call("resume", {})
+        self.say("status", words=_words(resumed.get("result")), session="started")
+        self.subject = _open_ticket(resumed.get("result"))
+        self.request = str(self.hear().get("text", ""))  # the operator's first line
+        self.event("heard", text=self.request)
+        for _ in range(int(self.spec.get("max_steps") or 150)):
+            if not self.tick():
+                break
+        else:
+            self.stuck("the step budget ran out")
+        while True:  # the session stays open until the operator ends it
+            self.hear()
+
+    def read(self) -> dict[str, Any]:
+        out = self.call("status", {"work_id": self.subject} if self.subject else {})
+        return out
+
+    def tick(self) -> bool:
+        out = self.read()
+        proj = out.get("projection") or {}
+        if self.subject is None:
+            ticket = _open_ticket(self.call("resume", {}).get("result"))
+            if ticket is None:
+                return self.gap_no_ticket(proj)
+            self.subject = ticket
+            return True
+        state = proj.get("state")
+        self.last_state = state
+        self.step = f"{self.subject}:{state}"
+        if state in TERMINAL:
+            self.report(out)
+            return False
+        decisions = proj.get("decisions_required") or []
+        if decisions:
+            return self.decide(decisions[0], proj)
+        offered = [a for a in proj.get("actions") or [] if a.get("availability") == AVAILABLE and a.get("callable")]
+        if len(offered) > 1:
+            self.event("ambiguous", available=[a["action"] for a in offered])
+        if offered:
+            a = offered[0]
+            mechanical = a.get("kind") == "wait" or bool(a.get("auto_runnable"))
+            self.call(a["action"], a["arguments"], offered=True, mechanical=mechanical)
+            return True
+        return self.gap(out, proj)
+
+    def decide(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
+        label = "publish" if d["decision"] == "PUBLISH" else d["decision"].lower()
+        question = (f"{d['decision'].replace('_', ' ').lower()} for {d.get('subject')}"
+                    + (f" (evidence {', '.join(d.get('evidence') or [])})" if d.get("evidence") else "") + "?")
+        answer = self.ask(question, label=label, detail={"decision": d["decision"], "tool": d.get("tool")})
+        if not answer.lower().startswith(("y", "approve", "ok", "go")):
+            self.say("holding", text=f"holding: {question}")
+            self.hear()
+            return True
+        if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
+            self.call(d["tool"], d["arguments"], offered=True)
+            return True
+        cli = list(d.get("cli_fallback") or [])
+        if not cli or any(x.startswith("<") or "{" in x for x in cli):
+            return self.stuck(f"decision {d['decision']} has no typed tool and its fallback needs a choice: {cli}")
+        self.event("gap", gap="decision_without_tool", decision=d["decision"])
+        self.shell(cli, why=f"decision {d['decision']} has no typed tool")
+        return True
+
+    # ------------------------------------------------------------------ the counted fallbacks
+
+    def gap_no_ticket(self, proj: dict[str, Any]) -> bool:
+        if self.seen.get(("no_ticket",)):
+            return self.stuck("ticket_draft did not create a Ticket")
+        self.seen[("no_ticket",)] = 1
+        self.event("gap", gap="no_ticket", why="the project's projection offers no action for the operator's request")
+        draft = dict(self.spec["draft"])
+        args = {"expect_rev": proj.get("revision"), **draft}
+        out = self.call("ticket_draft", args, why="no_ticket")
+        found = (out.get("projection") or {}).get("subject")
+        if out.get("ok") and found and found != "project":
+            self.subject = found
+        return True
+
+    def gap(self, out: dict[str, Any], proj: dict[str, Any]) -> bool:
+        key = (proj.get("revision"), proj.get("state"),
+               tuple((a.get("action"), a.get("availability")) for a in proj.get("actions") or []))
+        self.seen[key] = self.seen.get(key, 0) + 1
+        unit = _unit(out.get("result"))
+        plans = unit.get("plans") or []
+        accepted = unit.get("accepted_plan")
+        proposed = [p for p in plans if str(p.get("status")) == "proposed"]
+        if proposed and not accepted and self.seen[key] == 1:
+            return self.gap_plan(proposed[-1], proj)
+        if self.seen[key] == 1:
+            self.event("gap", gap="no_available_action", why="no decision and no AVAILABLE action")
+            self.call("explain", {"work_id": self.subject}, why="no AVAILABLE action")
+            return True
+        hinted = self.hinted_command(proj)
+        if hinted is not None and self.seen[key] == 2:
+            return self.gap_hint(hinted, proj)
+        candidate = (unit.get("integration") or {}).get("candidate")
+        if proj.get("state") == "COMMIT_READY" and candidate and self.seen[key] <= 3 and not self.seen.get(("pub",)):
+            return self.gap_publish(str(candidate), proj)
+        return self.stuck(f"no decision and no AVAILABLE action at {proj.get('state')}: "
+                          + "; ".join(f"{a.get('action')} {a.get('availability')} {a.get('reason_codes')}"
+                                      for a in proj.get("actions") or []))
+
+    def hinted_command(self, proj: dict[str, Any]) -> list[str] | None:
+        """The first `aew ...` command a hint of the projection names (hints are for a reader: the Lead reads them)."""
+        for hint in proj.get("hints") or []:
+            for quoted in re.findall(r"`aew ([^`]+)`", str(hint)):
+                return shlex.split(quoted)
+        return None
+
+    def gap_hint(self, argv: list[str], proj: dict[str, Any]) -> bool:
+        """Run the command a hint names from the shell, completed the way the Lead learns to: the subject after the
+        command's words, the revision, and ``--launch`` once a refusal asks for it (each a counted call)."""
+        self.event("gap", gap="hint_command", why="the projection offers nothing; a hint names a command",
+                   hint=argv)
+        words = [a for a in argv if not a.startswith("-")]
+        if str(self.subject) not in argv:
+            at = argv.index(words[1]) + 1 if len(words) > 1 else len(argv)
+            argv = [*argv[:at], str(self.subject), *argv[at:]]
+        argv = [*argv, "--expect-rev", str(proj.get("revision"))]
+        out = self.shell(argv, why="hint_command")
+        message = str((out.get("error") or {}).get("message") or "")
+        if not out["ok"] and "--launch" in message:
+            rev = self.call("status", {"work_id": self.subject}).get("revision")
+            argv = [*argv[:-2], "--launch", "--expect-rev", str(rev)]
+            self.shell(argv, why="hint_command: the refusal asked for --launch")
+        return True
+
+    def gap_publish(self, candidate: str, proj: dict[str, Any]) -> bool:
+        """A prepared candidate whose post-integration verification has reported, with no decision offered: the Lead
+        asks the operator to publish, then calls ``integration_publish`` (not offered) with the candidate and the
+        integration verifier's report it saw in its own wait's result."""
+        self.seen[("pub",)] = 1
+        self.event("gap", gap="publish_not_offered", why="a prepared candidate, its verification reported, and no "
+                   "decision offered")
+        report = self.reports.get("verification:integration")
+        answer = self.ask(f"publish the prepared change of {self.subject}?", label="publish",
+                          detail={"decision": None, "gap": "publish_not_offered"})
+        if not answer.lower().startswith(("y", "approve", "ok", "go")):
+            return self.stuck("the operator did not approve the publish")
+        args = {"expect_rev": proj.get("revision"), "work_id": self.subject, "prepared_candidate": candidate,
+                **({"verification_evidence": report} if report else {})}
+        self.call("integration_publish", args, why="publish_not_offered")
+        return True
+
+    def gap_plan(self, plan: dict[str, Any], proj: dict[str, Any]) -> bool:
+        self.event("gap", gap="plan_not_accepted", why="no decision asks for the proposed plan's approval")
+        number = plan.get("revision") or plan.get("revision_number") or 1
+        answer = self.ask(f"approve the plan for {self.subject}?\n\n{plan.get('body') or self.spec['draft']['plan']['body']}",
+                          label="plan", detail={"decision": None, "gap": "plan_not_accepted"})
+        if not answer.lower().startswith(("y", "approve", "ok")):
+            return self.stuck("the operator did not approve the plan")
+        self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--expect-rev",
+                    str(proj.get("revision"))], why="plan_not_accepted")
+        return True
+
+    def stuck(self, why: str) -> bool:
+        self.event("stuck", why=why)
+        self.say("stuck", text=f"I cannot make progress: {why}")
+        return False
+
+    def report(self, out: dict[str, Any]) -> None:
+        unit = _unit(out.get("result"))
+        commit = (unit.get("integration") or {}).get("commit") or _find(out.get("result"), "integrated_commit")
+        diff = ""
+        if commit:
+            proc = subprocess.run(["git", "show", "--format=%H%n%s", str(commit)], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+                                  stdin=subprocess.DEVNULL)
+            diff = proc.stdout
+        evidence = [{"kind": e.get("kind"), "id": e.get("id")} for e in unit.get("evidence") or []]
+        self.say("report", state=(out.get("projection") or {}).get("state"), commit=commit, diff=diff,
+                 evidence=evidence)
+
+
+# ---------------------------------------------------------------------------------------------- reading results
+
+def _unit(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {}
+    for key in ("control", "work_unit"):
+        if isinstance(result.get(key), dict):
+            return result[key]
+    return result
+
+
+def _find(value: Any, key: str) -> Any:
+    if isinstance(value, dict):
+        if value.get(key):
+            return value[key]
+        for v in value.values():
+            found = _find(v, key)
+            if found:
+                return found
+    if isinstance(value, list):
+        for v in value:
+            found = _find(v, key)
+            if found:
+                return found
+    return None
+
+
+def _open_ticket(result: Any) -> str | None:
+    for w in (result or {}).get("work") or []:
+        if w.get("kind") == "ticket" and w.get("state") not in TERMINAL:
+            return str(w["id"])
+    return None
+
+
+def _words(result: Any) -> str | None:
+    """What the resume says in words, if it says anything that is not a data field (a headline or a summary)."""
+    for key in ("headline", "summary", "message", "where_things_stand"):
+        if isinstance((result or {}).get(key), str):
+            return result[key]
+    return None
+
+
+def main(spec_path: Path) -> int:
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    return Lead(spec).run()

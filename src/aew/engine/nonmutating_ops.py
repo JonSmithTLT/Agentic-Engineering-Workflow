@@ -287,12 +287,12 @@ class NonMutating:
         path = Path(obs["path"])
         if not path.exists():
             raise ObservationMutated(f"{inv_id}'s read-only observation workspace is missing", changed=[],
-                                     observation=obs["path"])
+                                     observation=obs["path"], invocation=inv_id)
         if self.invocations.snapshot_of(path, obs["id"])["relevant_inputs_fingerprint"] != obs["fingerprint"]:
             raise ObservationMutated(
                 f"{inv_id} changed its read-only observation workspace; a non-mutating invocation may not mutate "
                 "source (the Lead redispatches the attempt, or dispatches another reviewer or verifier)",
-                changed=changed_paths(path, obs["commit"]))
+                changed=changed_paths(path, obs["commit"]), invocation=inv_id)
 
     def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                source: str, reason: str) -> dict[str, Any]:

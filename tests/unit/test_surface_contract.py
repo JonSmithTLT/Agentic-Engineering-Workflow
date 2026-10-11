@@ -102,9 +102,9 @@ def test_the_catalog_is_the_v1_catalog():
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
     designed = {t.name for t in contract.TOOLS.values() if not t.built}
-    # The stages and publication are built with the journal (F15.2): E5a builds ticket_draft and ticket_start.
-    assert designed == {"ticket_request_review", "ticket_request_verification", "ticket_prepare",
-                        "integration_publish"}
+    # The stages and publication are built with the journal (F15.2): E5a builds ticket_draft and ticket_start, E5b
+    # the two request stages.
+    assert designed == {"ticket_prepare", "integration_publish"}
 
 
 def test_dispatching_tools_name_a_registered_entrypoint_and_the_launch_and_no_other_tool_does():
@@ -245,10 +245,20 @@ def test_a_decision_never_carries_a_default():
 @pytest.mark.parametrize(("name", "arguments", "profile", "code"), [
     ("no_such_tool", {}, NORMAL, "UNKNOWN_TOOL"),
     (7, {}, NORMAL, "UNKNOWN_TOOL"),
-    ("ticket_request_review", {"expect_rev": 1, "work_id": "T-0001"}, NORMAL, "TOOL_NOT_BUILT"),
+    ("ticket_prepare", {"expect_rev": 1, "work_id": "T-0001", "verification_evidence": "EV-1"}, NORMAL,
+     "TOOL_NOT_BUILT"),
     ("ticket_start", {"expect_rev": 1, "work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
     ("integration_publish", {}, RECOVERY, "TOOL_NOT_BUILT"),
+    # M4-E E5b: only the follow_up choice takes, and needs, the Ticket that follows it up
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
+     "INVALID_ARGUMENTS"),
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
+                 "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
+                 "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
+                 "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
     ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
@@ -333,8 +343,8 @@ def test_the_result_schema_is_registered_and_its_surface_version_matches():
 # The primitives the designed stages expand to that nobody has declared yet. Until F15.2 declares them, fail-closed
 # classification makes every stage that names one JUDGMENT_BEARING. This list makes that explicit: it may only shrink,
 # and F15.2 empties it as it builds each stage (E5a declared work.create, plan.propose, work.transition and
-# dispatch.launch; E5b declares the two ingests).
-PENDING_F15_2 = frozenset({"review.ingest", "verify.ingest"})
+# dispatch.launch; E5b declared the two ingests, so it is empty).
+PENDING_F15_2: frozenset[str] = frozenset()
 
 
 def test_the_primitives_still_undeclared_are_exactly_those_pending_f15_2():
@@ -359,8 +369,8 @@ def test_every_staged_primitive_is_declared():
 
     effects = {"control_state", "credential", "workspace", "harness_process", "authoritative_ref"}
     for t in contract.TOOLS.values():
-        if not (t.built and t.kind == contract.STAGE and len(t.expands_to) > 1):
-            continue
+        if not (t.built and t.kind == contract.STAGE and len(t.expands_to) > 1) or t.name == "resolve":
+            continue  # `resolve` runs one of its primitives by choice: never a planned sequence
         assert t.name in stage.STAGES, f"{t.name} is built but has no planner"
         for p in t.expands_to:
             spec = spec_for(p)

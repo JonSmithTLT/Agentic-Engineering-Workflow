@@ -1,0 +1,13 @@
+case: stale_evidence
+slice: E5b
+description: >-
+  the review evaluated a snapshot the workspace no longer holds: its acceptance is BLOCKED (stale), and the call
+  ingests nothing and opens no verification
+seed: stale_review
+stage: ticket_request_verification
+arguments: {work_id: $work_id, review_evidence: $evidence}
+expect:
+  availability: BLOCKED
+  boundary: refused
+  steps: []
+  unit_state: REVIEW_PENDING

@@ -47,11 +47,22 @@ def check_call(name: Any, arguments: Any, profile: str) -> Tool:
         _check_steering(arguments)
     if t.name == "explain":
         _check_explain(arguments)
-    if t.name == "resolve" and not arguments["rationale"].strip():
-        # Kept out of the schema to keep the advertised bytes (plan v3 §2.6); an input error all the same.
+    if t.name == "resolve":
+        _check_resolve(arguments)
+    return t
+
+
+def _check_resolve(arguments: dict[str, Any]) -> None:
+    """Kept out of the schema to keep the advertised bytes (plan v3 §2.6), input errors all the same: the rationale is
+    never blank, and only the `follow_up` choice takes, and needs, the `follow_up` Ticket (M4-E E5b)."""
+    if not arguments["rationale"].strip():
         raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the rationale says why, and is never blank",
                                 violations=["rationale: blank"])
-    return t
+    if (arguments["choice"] == "follow_up") != ("follow_up" in arguments):
+        raise AdapterInputError(
+            "INVALID_ARGUMENTS", "resolve: the follow_up choice names the Ticket that follows it up, and only it",
+            violations=["follow_up: required for choice follow_up" if arguments["choice"] == "follow_up"
+                        else f"follow_up: not taken by choice {arguments['choice']}"])
 
 
 def _check_steering(arguments: dict[str, Any]) -> None:

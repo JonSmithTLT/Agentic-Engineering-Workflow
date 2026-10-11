@@ -11,7 +11,9 @@ with its companion, the [WC §8 / E19-B interface-dependency amendment](wc8-e19b
 
 **Amends (on adoption):** Workflow Contract v0.7 §7.5 (minimum paths), §8 (the transition rule on starting mutating
 work) and §9.6 (plan revision); the [plan assurance design v0.4](plan-assurance-and-premise-validation-design-v0.4.md)
-(F14) §13, §17, §17.1, §18 and §21.
+(F14) its **Authority** header line, §5 (the Lead's authority over accepted plan revisions), §13, §17, §17.1, §18 and
+§21. ADR-0007's `parent_paths` default and the meaning of its `accepted_plan` gate change with it, and need an amendment
+section in ADR-0007 when F41.2 builds them (§10).
 
 **Basis:** the [cross-feature integration design v0.5](cross-feature-integration-design-v0.5.md) (frozen 2026-10-10)
 §2 to §4, §6, §19 and §20; its [freeze record](decisions-2026-10-10-cross-feature-integration-freeze.md) §3; the
@@ -59,7 +61,8 @@ check 26, register F41) verifies them:
    AIR-75).
 
 The other preconditions the register already tracks stand unchanged: section-digest binding (F41.4, a prerequisite,
-v0.5 §6) and the order of AIR §3.19 (F44, then F43, then F45). This amendment adds none and removes none.
+v0.5 §6), the `non_mutating_paths` policy migration for the planning-child exemption (F41.3, v0.5 §3.1) and the order
+of AIR §3.19 (F44, then F43, then F45). This amendment adds none and removes none.
 
 Until activation, nothing here changes how AEW behaves.
 
@@ -187,9 +190,29 @@ interactions:
     rationale_refs: [...]
 ```
 
-`between` names two entries of this plan's structured decomposition (§5.4). `interface_refs` name interfaces the plan
-declares (v0.5 §7.2). `allocated_identifiers` name namespaces the project's policy declares (v0.5 §10: project policy
-data, not an AEW-global list). Nothing else is added to the shape. A disposition that an engine-detected interaction is not
+Every ref is written in **plan terms**, because a plan is first accepted before the children it decomposes into exist
+(§5.4: children are created from entries after adoption):
+
+- `between` names two sibling slices or work units (AIR §3.7): each is an entry of this plan's structured
+  decomposition (§5.4) or an existing child work unit of this Story or Epic, such as an in-flight child with no entry
+  id (§10). An entry resolves within the plan; an existing child must exist when the plan is accepted. Both are resolved
+  again at dispatch, and one that no longer resolves then (a cancelled or moved child) makes every condition naming it
+  false, as §6.3 provides;
+- `dependency_refs` name dependencies the plan declares between its entries (its "known dependencies" content, §5.4),
+  or an existing work unit or edge outside this plan's decomposition, which exists when the plan is accepted;
+- `interface_refs` name interfaces by their canonical source (v0.5 §7.2). An interface the plan declares resolves within
+  the plan. Whether another explicitly governed interface artifact may be named, and how it resolves, is the companion
+  amendment's open question I1; this amendment does not answer it, and until it is answered only plan-declared
+  interfaces resolve;
+- `shared_surfaces` name paths, globs or project-policy surfaces (v0.5 §10's register, schema and config surfaces); a
+  surface may be one the plan's work will create, so it is checked for form and policy membership, never for
+  existence in the tree;
+- `allocated_identifiers` name namespaces the project's policy declares (v0.5 §10: project policy data, not an
+  AEW-global list);
+- a condition's refs follow §6.3.
+
+The engine resolves a plan-term ref to the created child, or to its edge, only when it evaluates it at dispatch (§6.3).
+Nothing else is added to the shape. A disposition that an engine-detected interaction is not
 material (§7 check 6, §8) is a separate plan-level record that names the pair and its rationale; it is not an
 `interactions[]` entry and not a fourth `parallelism` value, and its field shape is an implementation choice (F41.2).
 
@@ -207,8 +230,9 @@ dependency graph and WC §8.1 allow it.
 ### 6.3 Closed conditions
 
 A `CONDITIONAL` verdict governs only through conditions that are closed, engine-evaluable predicates (AIR §3.7, AIR-30).
-A condition is a typed record, `{kind, refs}`, whose `kind` is one of a registered, versioned set and whose `refs`
-resolve to engine records. The acceptance names three:
+A condition is a typed record, `{kind, refs}`, whose `kind` is one of a registered, versioned set. Its `refs` are in
+plan terms (§6.1): a decomposition entry id or an existing child named in `between`, an interface `interface_refs` may
+name, a named path set or allocated-identifier namespace, or an existing work unit outside the plan. The acceptance names three:
 
 ```text
 interface_digest_current   an accepted interface digest is still current
@@ -218,11 +242,26 @@ dependency_state           a named dependency state holds
 ```
 
 `overlap_set_empty` evaluates, from committed and admitted facts only, whether a named set of paths or allocated
-identifiers is disjoint from what the other entry's work has admitted or published (v0.5 §7.3: only committed or
+identifiers is disjoint from what the named entry's work has admitted or published (v0.5 §7.3: only committed or
 accepted facts change authority; workspace-level likely changes are advisory). `dependency_state` evaluates whether a
-named work unit is in a named workflow state.
+named entry's work, or a named existing unit outside the plan, is in a named workflow state.
 
-An unknown or unevaluable condition counts as not holding (fail closed). Free text in `conditions` is refused; an
+**Two-phase resolution** (the Lead's proposal, for adoption: §14's P8):
+
+- **At plan acceptance,** lint checks only that each ref resolves *within the plan*: the entry is in its decomposition,
+  the interface is one it declares, the namespace is one the project's policy declares, a path set is well formed. A ref
+  to an existing unit outside the plan must exist then. No ref has to name a child or an edge, which do not exist yet.
+- **At dispatch,** the engine resolves each ref to engine records: an entry id to the child created from that entry
+  (§5.4: the child records its entry), an existing child to itself if it is still a child of this unit, an interface to
+  that child's `interface_dependency` edge (the companion
+  amendment, its §7.1). How children and edges come to exist is unchanged by this: the Lead creates them, or the
+  engine compiles them from the accepted plan, as §14's P2 and the companion's I6 ask.
+- **A ref that does not resolve at dispatch makes its condition false.** It is never skipped and never passes: an entry
+  with no created child, more than one child for one entry, a child with no edge for the named interface, or an
+  unreadable record each evaluates false.
+
+The predicate stays closed and engine-evaluable (AIR §3.7): its kinds are registered, its refs are typed, and its value
+is computed from recorded state. An unknown or unevaluable condition counts as not holding (fail closed). Free text in `conditions` is refused; an
 explanation goes in `rationale_refs`, which may explain a plan but never governs scheduling.
 
 The engine evaluates a `CONDITIONAL` interaction when either entry's work is dispatched, as part of the same
@@ -244,14 +283,15 @@ checks are at least:
 
 1. the plan has the minimal content of §5.4, and its decomposition entries have unique ids;
 2. every `interactions[]` entry is well formed: `between` names two distinct decomposition entries of this plan;
-   `parallelism` is one of the three values; every ref resolves;
-3. a `CONDITIONAL` entry has at least one condition, and every condition has a registered kind and resolvable refs;
-   none is free text;
+   `parallelism` is one of the three values; every ref resolves in plan terms (§6.1), never by requiring a child or an
+   edge that is created after adoption;
+3. a `CONDITIONAL` entry has at least one condition, and every condition has a registered kind and refs that resolve
+   within the plan (§6.3); none is free text;
 4. the `SERIAL_REQUIRED` constraints, together with the existing blocking dependencies they meet, form no cycle;
 5. every `allocated_identifiers` entry names a namespace the project's policy declares;
 6. every pair of entries for which the engine finds deterministic evidence of interaction (overlapping declared scopes,
-   a shared allocated-identifier namespace, or an interface one names and the other provides, with no declared edge
-   between them) has an `interactions[]` entry or an explicit disposition in the plan that it is not material, with its
+   a shared allocated-identifier namespace, or an interface one names and the other provides, all in plan terms, with
+   no dependency the plan declares between them) has an `interactions[]` entry or an explicit disposition in the plan that it is not material, with its
    rationale (§8).
 
 Where an entry declares no scope, the engine reports its overlap coverage as unknown to the plan's reviewer, never as
@@ -262,8 +302,9 @@ verdict is right.
 
 **A Story or Epic is not plan-complete until every material cross-feature interaction its plan introduces or changes is
 connected to an existing owner or explicitly dispositioned** (AIR §3.7, AIR-32). Connected means an `interactions[]`
-entry whose refs reach an existing owner: a declared dependency, an interface on the companion amendment's edge, a
-shared surface, or an allocated-identifier namespace. Dispositioned means the plan records that the interaction is not
+entry whose refs reach an existing owner, in plan terms (§6.1): a dependency the plan declares or an existing edge, an
+interface the plan declares (which the companion amendment's edge binds once the consumer exists), a shared surface,
+or an allocated-identifier namespace. Dispositioned means the plan records that the interaction is not
 material, with its rationale, and the plan's independent review accepts it.
 
 It is enforced through F14's parent-plan assurance (the lint of §7 and the review of §5.2), not on ordinary Tickets.
@@ -274,6 +315,11 @@ registry), independent audit, operational feedback (F42). No cross-cutting autho
 
 ## 9. Amended F14 (plan assurance design v0.4)
 
+- **The Authority header line and §5, the Lead:** "The Engineering Lead remains the sole authority for accepted plan
+  revisions" and §5's "accepted plan revision" under the Lead are amended for a Story's or Epic's plan: the Lead adopts a
+  plan someone else proposed (the normal path), but a plan the Lead proposed is adopted by the operator or by a Lead
+  generation with a different admitted identity (§5.3, v0.5 §4.2). The Lead still owns workflow state and dispatch; no
+  assurance role gains planning authority. This is an authority change, and §14's P9 asks the designer to confirm it.
 - **§13, plan construction:** for a Story or Epic plan, the minimum content adds the structured decomposition with
   entry ids (§5.4) and `interactions[]` where a material interaction exists (§6).
 - **§17, the derived predicate:** item 2, "required parent obligations are referenced", is extended: every ancestor
@@ -292,6 +338,8 @@ registry), independent audit, operational feedback (F42). No cross-cutting autho
 
 - **The parent path policy.** The engine's `parent_paths` gains `accepted_plan` at Class 0 (v0.5 §2:
   `parent_paths["0"]`), and `accepted_plan` on every parent path is satisfied only by `plan_accepted_current` (§3).
+  ADR-0007 documents today's default and the Lead-accepted meaning of the gate; when F41.2 builds this, ADR-0007 gets an
+  amendment section saying so, never a silent edit.
 - **Projects.** A project activated under v0.5 has `accepted_plan` on its parent path at every class; the activation
   gate verifies it, and a project policy that omits it cannot be activated. A project not activated keeps its current
   policy and behaviour. How a new project gets the value is §14's question P5.
@@ -331,8 +379,10 @@ v0.5's §20 checks 1 to 6 and 26 apply as written (ledger CFI-71 to CFI-76, CFI-
 | A8 | Lint fixture: two entries with overlapping declared scopes and neither an `interactions[]` entry nor a disposition are refused; with either, accepted |
 | A9 | Fixture: a `SERIAL_REQUIRED` pair: the second entry's work is refused dispatch until the first is `DONE`, with the same reason a blocking dependency gives |
 | A10 | Fixture: a `PARALLEL_ALLOWED` pair does not bypass WC §8.1 isolation or any gate |
-| A11 | Fixture: a `CONDITIONAL` pair whose condition is false or unevaluable at dispatch: the second start is refused; when it holds, allowed; an ALLOW computed earlier is not reused |
+| A11 | Fixture, plan-first: a parent plan with a `CONDITIONAL` pair on `dependency_state` (naming an entry) is accepted before any child exists; after the children are created, the condition false or unevaluable at dispatch refuses the second start; when it holds, allowed; an ALLOW computed earlier is not reused |
 | A12 | Schema test: no field of `interactions[]` or the plan record carries a numeric coupling score |
+| A13 | Lint fixture, plan-first: a first acceptance whose interactions and conditions name only decomposition entries, plan-declared interfaces, policy namespaces and new paths passes lint with no child in existence; a ref to an entry or interface the plan does not declare is refused |
+| A14 | Fixture: a condition whose ref does not resolve at dispatch (an entry with no created child, a child with no edge for the named interface) evaluates false and the concurrent start is refused; it is never skipped |
 
 ## 13. What stays unchanged
 
@@ -343,7 +393,8 @@ v0.5's §20 checks 1 to 6 and 26 apply as written (ledger CFI-71 to CFI-76, CFI-
   closes a Story or Epic.
 - WC §8.1: concurrent mutation isolation. An interaction verdict never substitutes for isolation.
 - Ticket planning (v0.5 §5) and the Ticket paths of WC §7.5.
-- A parent's closeout gates other than `accepted_plan` (ADR-0007), and parent review and verification of composed
+- A parent's closeout gates other than `accepted_plan` (ADR-0007, whose `accepted_plan` gate and Class 0 default this
+  amendment changes, §10), and parent review and verification of composed
   behaviour.
 - Section-digest binding (v0.5 §6, F41.4), the planning-child policy migration (F41.3) and the interface edge (the
   companion amendment): each keeps its own owner.
@@ -351,21 +402,28 @@ v0.5's §20 checks 1 to 6 and 26 apply as written (ledger CFI-71 to CFI-76, CFI-
 
 ## 14. For the designer
 
-v0.5 and AIR leave these open. Each is a question, not a decision taken here.
+v0.5 and AIR leave P1 to P7 open; each is a question, not a decision taken here. P8 is the Lead's proposal, written into
+§6.1, §6.3 and §7, for the designer to adopt or change; it is not settled until then. P9 asks the designer to confirm the
+authority change of §9.
 
 - **P1. The direction of `SERIAL_REQUIRED`.** `between: [T-A, T-B]` is a pair; a blocking dependency has a direction.
   Is the order of `between` significant (the first precedes the second), or does a `SERIAL_REQUIRED` entry name its
-  order in another field? The shape of AIR §3.7 has no field for it.
+  order in another field? A candidate within AIR §3.7's shape is `dependency_refs`: a `SERIAL_REQUIRED` entry could name
+  the directed dependency (declared in the plan or existing) it compiles to, so that its direction is the dependency's.
 - **P2. How the compiled constraint follows plan revisions.** Is `SERIAL_REQUIRED` materialized as a declared blocking
   edge when the child is created (and then changed only by the existing edge-edit authority, which ADR-0007 limits to
   `BLOCKED`, `READY` and `REPLAN_REQUIRED` Tickets), or re-derived from the current accepted plan at each dispatch? The
   two differ when an adopted plan revision adds or removes a `SERIAL_REQUIRED` entry between children already started.
-- **P3. A condition that stops holding mid-flight.** When both entries' work has started and a `CONDITIONAL` condition
-  becomes false, is the effect only on further dispatch and progression (as here), a hold on forward gates and publish
-  like E19-B §7.5's, or nothing beyond v0.5 §11's advisory publish-overlap wake? For `interface_digest_current` the
-  companion's hold already applies; the question is the overlap and dependency-state conditions.
-- **P4. Is `interactions[]` a consumed section?** Under v0.5 §6 a descendant consumes the objective, the requirements,
-  the interfaces it names and its own decomposition entry by default. Does it also consume the `interactions[]` entries
+- **P3. A condition that stops holding mid-flight.** AIR §3.7 permits concurrency "only while its named conditions
+  hold", so once both entries' work has started and a condition becomes false, the concurrency may no longer rely on
+  it; v0.5 §11's advisory wake alone would not satisfy that. §6.3 defines only the refusal of a start. Which mechanism
+  stops the reliance: a refusal of forward gates and progression for the entry whose work started second (as if
+  `SERIAL_REQUIRED` applied until the condition holds again), or an E19-B §7.5-style hold on forward gates and publish?
+  For `interface_digest_current` the companion's hold already applies; the question is the overlap and
+  dependency-state conditions.
+- **P4. Is `interactions[]` a consumed section?** v0.5 §6 says a descendant "consumes every governing section by
+  default", then lists the objective, the requirements, the interfaces it names and its own decomposition entry.
+  `SERIAL_REQUIRED` is "a governing scheduling constraint" (AIR §3.7), which bears on the answer. Does it also consume the `interactions[]` entries
   that name it, so that a changed verdict stales its binding?
 - **P5. The policy default for new projects.** AIR §3.1 settles F45's key: absent stays absent, `aew init` writes the
   governing value, activation requires its explicit adoption. Does the same rule apply to `parent_paths["0"]` and to
@@ -375,6 +433,17 @@ v0.5 and AIR leave these open. Each is a question, not a decision taken here.
   known, or does lint coverage stay best effort with the reviewer judging the rest?
 - **P7. The closed condition set.** The acceptance lists three conditions "for example". Is v1's registered set exactly
   those three, with any addition by amendment, or may project policy register more?
+- **P8. Plan-term refs, resolved at dispatch (the Lead's proposal, for adoption).** A plan is first accepted before its
+  children exist, so a ref that had to name a child or an edge at acceptance would make `interface_digest_current` and
+  `dependency_state` on an entry unusable in the normal plan-first flow. Proposed (§6.1, §6.3, §7): refs are written in
+  plan terms (a decomposition entry id, a plan-declared interface, a policy namespace, a path set); lint at acceptance
+  checks that they resolve within the plan; at dispatch the engine resolves them to the created child and its edge, and
+  a ref that does not resolve then makes its condition false, never true. It interacts with P2 and the companion's I6
+  (whether edges are compiled from the plan), not with whether a ref may fail open: under either answer it fails closed.
+- **P9. The Lead's authority over parent plans.** F14's Authority line makes the Lead "the sole authority for accepted
+  plan revisions"; v0.5 §4.2, written in here (§5.3, §9), has a Lead-proposed parent plan adopted by the operator or by
+  another Lead generation. Is that the intended amendment of F14's header and §5 for parent plans, and is the
+  operator's adoption of a parent plan made through the operator's existing out-of-band adoption channel?
 
 ## 15. Governing disposition
 
@@ -387,5 +456,6 @@ targets, each an extension that replaces no frozen text:
 | WC §8 | starting mutating work: the ancestor plans | extends | §4 |
 | WC §9.6 | the reviewed parent-plan record, `interactions[]` | extends | §5, §6 |
 
-The F14 changes of §9 amend an adopted design, not the frozen set, and are recorded on F14 and F14.1. Until adoption it
-is listed under `considered`.
+The F14 changes of §9 amend an adopted design, not the frozen set; they are noted on F14 and F14.1, and ADR-0007 gets
+its amendment section when F41.2 builds the change (§10). Until adoption it is a proposal: listed in `docs/README.md`'s
+proposals table, and neither an overlay nor `considered` in the index.

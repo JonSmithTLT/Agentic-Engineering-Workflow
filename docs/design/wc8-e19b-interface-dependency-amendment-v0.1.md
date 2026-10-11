@@ -51,8 +51,8 @@ check 26, register F41) verifies them:
    adoption of that value, and the activation gate verifies the protection is on (AIR §3.1, AIR-12; AIR §3.19,
    AIR-75).
 
-The other preconditions the register already tracks stand unchanged (section-digest binding, F41.4; the order of AIR
-§3.19). This amendment adds none and removes none. Until activation, nothing here changes how AEW behaves.
+The other preconditions the register already tracks stand unchanged (section-digest binding, F41.4; the planning-child
+policy migration, F41.3; the order of AIR §3.19). This amendment adds none and removes none. Until activation, nothing here changes how AEW behaves.
 
 ## 3. Amended WC §8: two kinds of dependency edge
 
@@ -197,12 +197,18 @@ that condition evaluable.
 ### 7.1 Definition
 
 ```text
-interface_digest_current(interface_id, consumer_work_id)
+interface_digest_current(interface_id, consumer_entry)
 ```
 
-holds exactly when all of these hold, each a fact the engine records:
+Both refs are in plan terms (the companion amendment, its §6.1 and §6.3): `interface_id` is an interface the parent plan
+declares, and `consumer_entry` is the id of the decomposition entry whose work consumes it. A parent plan is first
+accepted before its children exist, so the companion's lint checks only that both resolve within the plan; it never
+requires the edge (the Lead's proposal, for adoption: the companion's P8).
 
-1. the consumer has an `interface_dependency` edge naming `interface_id`;
+At dispatch the engine resolves `consumer_entry` to the child created from that entry, and the condition holds exactly
+when all of these hold, each a fact the engine records:
+
+1. exactly one child records `consumer_entry`, and it has an `interface_dependency` edge naming `interface_id`;
 2. the edge's bound digest equals the engine-computed digest of `interface_id` in the currently accepted canonical
    source (§4);
 3. no `revision_impact_hold` is open on that edge (§6).
@@ -210,8 +216,10 @@ holds exactly when all of these hold, each a fact the engine records:
 A provider's `INTERFACE_CONTRACT_DRIFT` refusal (§3.4) does not change it: the refusal keeps the provider's change out,
 and the accepted digest stays current.
 
-It is false if any part is false, and false if any part cannot be evaluated (fail closed). An interaction whose condition
-names an interface no edge binds is refused by the companion's lint (its §7 check 3: a condition's refs must resolve).
+It is false if any part is false, and false if any part cannot be evaluated (fail closed). In particular, an entry with
+no created child, or a child with no edge for `interface_id`, makes it false at dispatch; it is never skipped and never
+passes. Whether the edge is declared by the Lead or compiled from the plan's `interface_refs` when the child is created
+is §12's I6; the condition fails closed under either answer.
 
 ### 7.2 Evaluation
 
@@ -263,7 +271,8 @@ v0.5's §20 checks 9 to 13 and 15 apply as written (ledger CFI-79 to CFI-83, CFI
 | B7 | Fixture: after the hold clears, a result admitted under the old digest does not satisfy a gate |
 | B8 | Fixture: rebinding while a consumer attempt is active goes through E19-B quiesce and commit |
 | B9 | Fixture: `interface_digest_current` is false when the edge is missing, the digest differs, a hold is open, or an input is unreadable; true otherwise |
-| B10 | Fixture: a `CONDITIONAL` pair on `interface_digest_current` dispatches in parallel while it holds, and the second start is refused after an accepted interface revision |
+| B10 | Fixture, plan-first: a parent plan declaring interface X and a `CONDITIONAL` pair on `interface_digest_current(X, E2)` is accepted before any child exists; the children are created from entries E1 and E2 and E2's child gets its edge on X; the pair dispatches in parallel while the condition holds, and the second start is refused after an accepted interface revision |
+| B11 | Fixture: the same plan, with E2's child created without an edge on X (or with no child for E2): at dispatch `interface_digest_current(X, E2)` is false and the concurrent start is refused |
 
 ## 11. What stays unchanged
 
@@ -279,7 +288,8 @@ v0.5's §20 checks 9 to 13 and 15 apply as written (ledger CFI-79 to CFI-83, CFI
 
 ## 12. For the designer
 
-v0.5 and AIR leave these open. Each is a question, not a decision taken here.
+v0.5 and AIR leave I1 to I6 open; each is a question, not a decision taken here. I7 points at the Lead's proposal,
+written into §7.1, for the designer to adopt or change.
 
 - **I1. Which interface sources are governed in v1.** v0.5 §7.2 allows "an accepted parent-plan interface section or
   another explicitly governed interface artifact". Is v1 limited to parent-plan interface sections? If not, what makes
@@ -302,6 +312,10 @@ v0.5 and AIR leave these open. Each is a question, not a decision taken here.
 - **I6. Declaring the edge.** Is an `interface_dependency` edge declared only by the Lead's dependency-edit authority on
   the consumer, or also compiled from an accepted parent plan's `interactions[]` `interface_refs` when the child is
   created (the companion's question P2 for blocking edges)?
+- **I7. Plan-term refs for `interface_digest_current` (the Lead's proposal, for adoption).** §7.1 takes the condition's
+  refs in plan terms (a plan-declared interface and a decomposition entry), lints them within the plan at acceptance,
+  and resolves them to the child and its edge at dispatch, false when they do not resolve. It is the companion's P8
+  applied here; see also I6.
 
 ## 13. Governing disposition
 
@@ -313,4 +327,5 @@ the frozen set is an extension that replaces no frozen text:
 | WC §8 | dependency edges: blocking and `interface_dependency`; the interface trigger of `revision_impact_hold` | extends | §3, §5, §6 |
 
 Because E19-B's §2.3 and §7.5 are an adopted overlay (`ticket-revisions-2026-10-06`), the index entry for this amendment
-names that overlay where it extends it. Until adoption it is listed under `considered`.
+names that overlay where it extends it. Until adoption it is a proposal: listed in `docs/README.md`'s proposals table,
+and neither an overlay nor `considered` in the index.

@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import disposition_ops as DO
 from aew.engine import queue_ops as Q
-from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
+from aew.errors import AEWError, GateUnsatisfied, IllegalTransition, PermissionDenied, StaleAuthority, StaleCandidate
 from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
@@ -237,12 +237,11 @@ class Custody:
 
     def _finish(self, credential: str, work_id: str) -> dict[str, Any]:
         """The finish of a publish begun under PUBLISH_IF_CLEAN (M4-E E6b): its result, or the refusal it ended with
-        once committed (a withdrawal, a moved head's disposition). A refusal of the custody itself propagates."""
+        once committed (a withdrawal, a moved head's rebuild or disposition). Any other refusal propagates: one of the
+        custody itself ends the worker, and the rest back off to the worker's poll (``run``), never a hot retry."""
         try:
             return self.finish(credential, work_id)
-        except (StaleAuthority, PermissionDenied):
-            raise
-        except AEWError as exc:
+        except (GateUnsatisfied, StaleCandidate) as exc:  # committed: a withdrawal, a rebuild or a disposition
             return {"ok": False, "work_id": work_id, "published": False,
                     "error": {"code": exc.code, "message": exc.message, **exc.details}}
 

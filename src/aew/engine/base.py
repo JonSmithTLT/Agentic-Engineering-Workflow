@@ -424,10 +424,10 @@ class Kernel:
         the current Lead generation, and ``op`` is in the closed family), then the manifest and policy pins and every
         finalizer, as a Lead transaction. There is no expected revision: a custody commit is mechanical, and each one
         re-verifies what it relies on (the validation's transaction 2 does, the routing does). No Lead token is held or
-        used. A publication under custody (the begin, ``integrate.publishing``, or the finish, ``integrate.publish``,
-        or any commit that moves an integration to ``publishing``) is refused unless the PIC exercise found the
-        request, the operator's envelope and the §17 predicate holding on this transaction's state (M4-E E6b:
-        ``ctx.pic_checked``)."""
+        used. A publication under custody (a commit whose effective op is the begin, ``integrate.publishing``, or the
+        finish, ``integrate.publish``, or that moves an integration to ``publishing``) is refused unless the PIC
+        exercise found the request, the operator's envelope and the §17 predicate holding on this transaction's state
+        (M4-E E6b: ``ctx.pic_checked``)."""
         with self.store.session() as s:
             actor = require_custodian(s.state, credential, op)
             if s.state.get("schema") != V2:
@@ -438,7 +438,8 @@ class Kernel:
             try:
                 ctx = TxnContext(session=s, actor=actor, txn_op=op)
                 yield ctx
-                if not ctx.pic_checked and (op in CUSTODY_PUBLISHING or ctx.op in CUSTODY_PUBLISHING
+                # The effective op: a finish that withdrew, or rebuilt on a moved head, publishes nothing.
+                if not ctx.pic_checked and ((ctx.op or op) in CUSTODY_PUBLISHING
                                             or _begins_publishing(s.committed_view(), ctx.state)):
                     raise IllegalTransition("a custodian publishes only under the operator's publication envelope "
                                             "and the §17 predicate, evaluated in the same transaction; they were not, "

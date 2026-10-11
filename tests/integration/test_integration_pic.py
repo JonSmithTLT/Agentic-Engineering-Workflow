@@ -471,3 +471,98 @@ def test_publication_count_survives_a_crash_between_cas_and_count(tmp_path, monk
         assert out["reconciled"] == "pic_publish_not_landed" and not out["published"]
         assert main_head(p) == head and env["published"] == 0 and entry(p, wid)["state"] == "VALIDATED"
     assert_control_invariants(p)
+
+
+def _begun(p: Project, tmp_path: Path, held: dict[str, str]) -> tuple[str, str]:
+    """The custodian's validation commit has begun the publish under PIC; its finish has not run yet."""
+    p_wid, custodian, _out = pic_prepared(p, tmp_path)
+    out = engine(p)._validation.custody_validate(credential=held[custodian], work_id=p_wid)
+    assert out["integration"] == "publishing" and envelope(p)["reserved"] == 1, out
+    return p_wid, custodian
+
+
+@pytest.mark.parametrize("why", ["revoked", "anomaly"])
+def test_the_finish_withdraws_a_publish_whose_authority_no_longer_holds(tmp_path, contained, custody, why):  # noqa: F811
+    """Plan v3 §2.3, S1: the finish re-checks the request, the envelope and §17 in its own transaction, before any CAS.
+    An envelope no longer usable (revoked meanwhile) withdraws the publish to VALIDATE_ONLY; a clause that no longer
+    holds (a high anomaly opened meanwhile) withdraws it to AWAITING_DISPOSITION. Either way nothing is published, the
+    reservation is released and the custodian's lease ends, so the worker has nothing left to retry."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    granted = grant(p, tmp_path)
+    wid, custodian = _begun(p, tmp_path, custody)
+    head = main_head(p)
+    e = engine(p)
+    if why == "revoked":
+        e.publication_revoke(principal(), envelope_id=granted["envelope"])
+    else:
+        e._dispositions.record_violation(token=p.token, subject=wid, detail="a seeded high anomaly")
+    found, result = e.custody_step(custodian, custody[custodian])
+    assert found == CO.ACTED and result is not None and result["error"]["reason"] == "pic_withdrawn", result
+    assert main_head(p) == head and not done(p, wid) and lease(p) is None
+    env = envelope(p)
+    assert env["reserved"] == 0 and env["published"] == 0
+    integ = control(p)["work"][wid]["integration"]
+    assert integ["status"] == "validated" and integ["pic"]["reservation"] == PO.RELEASED
+    if why == "revoked":
+        assert entry(p, wid)["state"] == "VALIDATED" and integ["pic"]["withdrawn"]["which"] == "revoked"
+    else:
+        assert entry(p, wid)["state"] == "AWAITING_DISPOSITION" and integ["pic"]["withdrawn"]["which"] == "7"
+    assert e.custody_step(custodian, custody[custodian]) == (CO.ENDED, None)
+    assert_control_invariants(p)
+
+
+def test_a_reconcile_after_a_lost_worker_never_completes_an_unlanded_pic_publish(  # noqa: F811
+        tmp_path, monkeypatch, contained, custody):  # noqa: F811
+    """HSD-22, n4: the worker dies after the begin, so the next commit's sync ends its custodian and marks the lease for
+    reconciliation (S2). `integrate reconcile` then releases the reservation and returns the candidate VALIDATED: the
+    current generation publishes it, if at all, by its own decision."""
+    from aew.harness import procs
+
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    grant(p, tmp_path)
+    wid, custodian = _begun(p, tmp_path, custody)
+    e = engine(p)
+    e.custody_register(custody[custodian])
+    monkeypatch.setattr(procs, "same_process", lambda pid, started: False)
+    e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
+    assert lease(p)["reconcile"] is not None and envelope(p)["reserved"] == 1
+    head = main_head(p)
+    out = e.integrate_reconcile(token=p.token, expect_rev=p.rev(), work_id=wid)
+    assert out["reconciled"] == "pic_publish_not_landed" and main_head(p) == head
+    assert lease(p) is None and entry(p, wid)["state"] == "VALIDATED" and envelope(p)["reserved"] == 0
+    assert_control_invariants(p)
+
+
+def test_a_request_is_never_exercised_in_verifier_mode(tmp_path, monkeypatch, custody):  # noqa: F811
+    """Designer, 2026-10-07: PIC is checks mode only, and the engine never accepts a verifier report for the Lead. With
+    an envelope and the request, a clean integration report is routed to VALIDATED, never published."""
+    from test_integration_stages import verifier_script
+    from test_stage_runner import launching
+
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    sync = tmp_path / "sync"
+    try:
+        grant(p, tmp_path)
+        wid, report = verifying(p, tmp_path)
+        lab.script("default", verifier_script(sync))
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report, publish_if_clean=True)
+        assert out["ok"], out["stopped"]
+        assert entry(p, wid)["attempts"][-1]["pic_request"]["mode"] == "verifier"
+        assert "verifier mode" in out["result"]["steps"][2]["publish_if_clean"]["note"]
+        custodian = lease(p)["custodian"]
+        head = main_head(p)
+        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        (sync / "release").touch()
+        [run] = engine(p).stage_intent(out["stage_intent_id"])["steps"][4]["outputs"]["runs"]
+        lab.wait(run)
+        found, routed = engine(p).custody_step(custodian, custody[custodian])
+        assert found == CO.ACTED and routed is not None and routed["routed"]["to"] == "VALIDATED", routed
+        integ = control(p)["work"][wid]["integration"]
+        assert "pic" not in integ and main_head(p) == head and not done(p, wid)
+        assert envelope(p)["reserved"] == 0 and envelope(p)["published"] == 0
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()

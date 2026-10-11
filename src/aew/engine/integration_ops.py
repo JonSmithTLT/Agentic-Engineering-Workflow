@@ -864,6 +864,9 @@ class Integration:
                         self._settle(ctx.state, integ, published=False)
                         integ["status"] = "validated"
                         integ.pop("publishing_at", None)
+                        if who.kind == CUSTODIAN:  # the custodian ends its own lease: the Lead decides (M4-E E6b)
+                            self.queue.release(ctx.state, work_id, to="AWAITING_DISPOSITION",
+                                               result="pic_not_exercised", detail={"why": withdrawn.message})
                         ctx.op = "integrate.withdrawn"
                         ctx.summary = f"{work_id} publish withdrawn: {withdrawn.message}"
                     else:

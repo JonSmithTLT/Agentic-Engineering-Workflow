@@ -418,8 +418,8 @@ class OperatorEndpoint:
         return self._challenged(
             conn, args, command="aew operator revoke-publication", preview=self.engine.publication_revoke_preview,
             describe=lambda b: (f"Project '{b['project']}': REVOKE publication envelope {b['envelope']}\n"
-                                f"  published so far    : {b['published']} ({b['reserved']} in flight settle "
-                                "as usual)"),
+                                f"  published so far    : {b['published']} ({b['reserved']} begun: withdrawn "
+                                "before their CAS, or counted if it landed)"),
             destination="the envelope's end (nothing more is published under it)", commit=commit)
 
 

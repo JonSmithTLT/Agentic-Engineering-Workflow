@@ -292,8 +292,9 @@ class Publication:
                 "reserved": env["reserved"], "expires_at": env["expires_at"]}
 
     def revoke(self, principal: OperatorPrincipal, *, envelope_id: str) -> dict[str, Any]:
-        """End the active envelope (the operator endpoint's commit). A publication already begun under it settles as
-        any other: revoking stops every later exercise, never a CAS in flight."""
+        """End the active envelope (the operator endpoint's commit). Every later exercise is refused, and a publish
+        begun under it whose CAS has not landed is withdrawn by its finish's re-check (VALIDATED, the reservation
+        released); one whose CAS landed is confirmed and counted."""
         if not isinstance(principal, OperatorPrincipal):
             raise PermissionDenied("revoking a publication envelope is the operator's, through the operator endpoint")
         with self.k.store.session() as s:

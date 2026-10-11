@@ -179,12 +179,14 @@ The OpenCode adapter runs the §5.1 meter for its own run, so a supervised run p
   (`HarnessLaunchFailed`) and no server is started, so a run directory without a live file never had a server.
 - **Polling.** Once the server answers, the meter polls it every second on its own thread, with its own client and
   2 s request timeouts, whatever the turn state (running, held, between turns), so the adapter's 30 s requests never
-  delay it. The meter's state is `usage.live.state.json` beside it.
+  delay it. The meter's state is `usage.live.state.json` beside it. A poll reads the server outside the meter's lock
+  and commits under it (file writes only), so writing the prompt state never waits on a poll's requests.
 - **The prompt.** `posting` is written immediately before the first prompt's POST (a failed write refuses the launch,
   so a delivered prompt never reads as unsent), and `posted` after it.
 - **Turn end.** The end of a turn wakes the meter for a sample at once.
-- **Terminate.** `terminate` stops the thread and takes a fresh final sample, whatever the turn's snapshot holds,
-  within a 4 s budget of requests, before the server's lease ends: `final`, or `server_gone` with the last figures.
+- **Terminate.** `terminate` takes a fresh final sample, whatever the turn's snapshot holds, before the server's lease
+  ends: `final`, or `server_gone` with the last figures. The meter's whole share is at most 4 s, the thread's join
+  included: a poll in flight is cancelled at its next request and its result dropped, never waited for.
 - **Failures.** A meter failure, a failed poll or a failed write is counted (`meter_errors` in `collect()`, and an
   `opencode.meter_error` event) and never ends or delays the run.
 - **One writer.** The meter alone writes the live file, and a live write wakes no waiter.

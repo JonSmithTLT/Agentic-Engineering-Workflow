@@ -21,7 +21,9 @@ One adapter serves one run, inside the run's supervisor:
    the only writer of ``usage.live.json``: ``prompt_state: unsent`` is written before the server starts (a failed
    write refuses the launch), the meter polls the server every second with its own client and 2 s timeouts in every
    turn state, ``posting`` and ``posted`` bracket the first prompt, the end of a turn asks for a sample at once, and
-   ``terminate`` takes a fresh final sample. A meter failure is counted and never ends or delays the run.
+   ``terminate`` takes a fresh final sample in at most 4 s all told. No adapter-thread call ever waits on the meter's
+   network requests (a poll reads outside the meter's lock; one in flight at ``terminate`` is cancelled and dropped).
+   A meter failure is counted and never ends or delays the run.
 
 Nothing the adapter reports is evidence. Effective model and usage come from the session's assistant
 messages (non-authoritative telemetry that the supervisor compares with the pin).
@@ -75,12 +77,13 @@ CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
-# The live usage meter (F25 for M4-H, slice L2; plan v4 §2.1): one poll a second, 2 s per request, and the final
-# sample's budget inside TERMINATE_S (§4.2: at most 4 s of the adapter's share).
+# The live usage meter (F25 for M4-H, slice L2; plan v4 §2.1): one poll a second, 2 s per request, and at most 4 s
+# of the adapter's share of TERMINATE_S for the final sample, the thread's join included (§4.2). The final read gets
+# the share less a margin for its two file writes; the join gets whatever is left of the share.
 METER_POLL_S = 1.0
 METER_REQUEST_S = 2.0
 METER_FINAL_S = 4.0
-METER_JOIN_S = 3.0
+METER_WRITE_MARGIN_S = 0.5
 # A run's potential sessions (A3): its own session; OpenCode's title and compaction calls run inside it (A2's k).
 RUN_S_POT = 1
 LOGGED_EVENTS = frozenset({
@@ -338,18 +341,21 @@ class OpenCodeAdapter(HarnessAdapter):
             self.meter_errors += 1
 
     def _final_sample(self) -> None:
-        """Stop the meter's thread and take a fresh final sample, within ``METER_FINAL_S`` of requests."""
+        """Take a fresh final sample and stop the meter's thread, in at most ``METER_FINAL_S`` all told. A poll in
+        flight is cancelled at its next request and never waited for: the final read runs beside it, and the poll's
+        result is dropped (PR #197 review, M1)."""
+        t0 = time.monotonic()
         self._meter_stop.set()
         self._meter_wake.set()
-        if self._meter_thread is not None:
-            self._meter_thread.join(METER_JOIN_S)
-        if self.meter is None:
-            return
-        try:
-            self.meter.final(budget_s=METER_FINAL_S)
-        except Exception as exc:  # noqa: BLE001 - the server is closed and the run ends whatever the meter met
-            self.meter_errors += 1
-            self.emit({"event": "opencode.meter_error", "error": f"final: {type(exc).__name__}: {str(exc)[:200]}"})
+        if self.meter is not None:
+            self.meter.cancel_polls()
+            try:
+                self.meter.final(budget_s=METER_FINAL_S - METER_WRITE_MARGIN_S)
+            except Exception as exc:  # noqa: BLE001 - the server is closed and the run ends whatever the meter met
+                self.meter_errors += 1
+                self.emit({"event": "opencode.meter_error", "error": f"final: {type(exc).__name__}: {str(exc)[:200]}"})
+        if self._meter_thread is not None:  # a daemon thread: one still in a request ends on its own, its poll dropped
+            self._meter_thread.join(max(0.0, METER_FINAL_S - (time.monotonic() - t0)))
 
     def deliver_contract(self, contract: LaunchContract) -> None:
         """The first prompt: the launch contract (subclasses in tests act without a model instead)."""

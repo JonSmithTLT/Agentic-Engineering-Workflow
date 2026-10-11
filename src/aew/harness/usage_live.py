@@ -240,9 +240,14 @@ class Meter:
         self.errors = 0
         self.last_error: str | None = None
         self.last_success: float | None = None  # self.clock() at the last successful poll
+        # The lock guards the committed state and the published sample only, and is never held across a request
+        # (PR #197 review, M1): a poll reads the server into a copy outside it, then commits under it if no other
+        # commit came first (`_gen`). So set_prompt_state() and final() never wait on a poll's network I/O.
         self._lock = threading.RLock()
         self._ended = False
-        self._deadline: float | None = None  # final()'s budget, on self.clock
+        self._gen = 0  # committed reads; a poll whose read started before another commit is dropped
+        self._polls_cancelled = threading.Event()  # set by cancel_polls(): an in-flight poll stops at its next request
+        self._read_ctx = threading.local()  # this thread's read: its deadline, whether it is a cancellable poll, active
         self.state = self._load_state()
         started = time.time()
         self.epoch = f"m-{secrets.token_hex(6)}:{_iso_ms(started)}"
@@ -281,13 +286,34 @@ class Meter:
     # ------------------------------------------------------------------ requests
 
     def _timeout(self) -> float:
-        """One request's timeout: ``request_timeout_s``, cut to what is left of ``final()``'s budget, if any."""
-        if self._deadline is None:
+        """One request's timeout: ``request_timeout_s``, cut to what is left of this read's deadline (``final()``'s
+        budget), if any. A poll's read stops at its next request once polls are cancelled."""
+        ctx = self._read_ctx
+        if getattr(ctx, "cancellable", False) and self._polls_cancelled.is_set():
+            raise MeterError("the poll was cancelled: the final sample is being taken")
+        deadline = getattr(ctx, "deadline", None)
+        if deadline is None:
             return self.request_timeout_s
-        left = self._deadline - self.clock()
+        left = deadline - self.clock()
         if left <= 0:
             raise MeterError("the final sample's time budget ran out")
         return min(self.request_timeout_s, left)
+
+    def cancel_polls(self) -> None:
+        """Stop any poll in flight at its next request, and take no more: the run is ending (``final()`` follows)."""
+        self._polls_cancelled.set()
+
+    def _read(self, *, deadline: float | None, cancellable: bool) -> tuple[dict[str, Any], int, set[str]]:
+        """Read the server into a copy of the committed state, holding the lock only to take that copy."""
+        with self._lock:
+            base, gen = copy.deepcopy(self.state), self._gen
+        ctx = self._read_ctx
+        ctx.deadline, ctx.cancellable, ctx.active = deadline, cancellable, set()
+        try:
+            state = self._read_server(base)
+            return state, gen, set(ctx.active)
+        finally:
+            ctx.deadline, ctx.cancellable, ctx.active = None, False, set()
 
     def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         try:
@@ -324,18 +350,22 @@ class Meter:
         """One sample. A failed request or write takes no sample: the last published one is returned, and its
         ``observed_at`` ages; before any sample is published that is ``None``, never a sample made up (PR #186 m2).
         A failed request or write is counted in ``errors``, never raised (a meter never ends the run, L2)."""
+        if self._ended or self.client is None or self._polls_cancelled.is_set():
+            return self.sample
+        try:
+            state, gen, active = self._read(deadline=None, cancellable=True)
+        except MeterError as exc:
+            with self._lock:
+                if not self._polls_cancelled.is_set():  # a cancelled poll is the run ending, not a failure
+                    self.errors += 1
+                    self.last_error = str(exc)[:300]
+                return self.sample
+        observed = _iso_ms()
         with self._lock:
-            if self._ended or self.client is None:
-                return self.sample
+            if self._ended or gen != self._gen:
+                return self.sample  # overtaken: final() or another poll committed a newer read
             try:
-                state = self._read_server()
-            except MeterError as exc:
-                self.errors += 1
-                self.last_error = str(exc)[:300]
-                return self.sample
-            observed = _iso_ms()
-            try:
-                sample = self._publish("live", state=state, observed_at=observed)
+                sample = self._publish("live", state=state, observed_at=observed, active=active)
             except OSError as exc:
                 self.errors += 1
                 self.last_error = f"write: {exc}"[:300]
@@ -347,24 +377,31 @@ class Meter:
         """The final sample: ``final`` after a successful last poll, else ``server_gone`` with the last figures.
         A failed write raises ``OSError`` and ends nothing: ``final()`` can be called again (PR #186 m4).
         ``budget_s`` bounds the last poll's requests in all (the adapter's share of ``TERMINATE_S``, plan v4 §4.2); a
-        poll that runs out of it is a failed poll."""
+        poll that runs out of it is a failed poll. It never waits for a poll in flight: polls are cancelled, its own
+        read runs beside them, and a poll that finishes later is dropped."""
         with self._lock:
             if self._ended and self.sample is not None:
                 return self.sample
-            state, observed, run_state = self.state, self.observed_at, "server_gone"
-            if self.client is not None:
-                self._deadline = None if budget_s is None else self.clock() + budget_s
-                try:
-                    state, observed, run_state = self._read_server(), _iso_ms(), "final"
-                except MeterError as exc:
+            client, prompt_state = self.client, self.prompt_state
+            state, observed, active = self.state, self.observed_at, set(self._active)
+        self.cancel_polls()
+        run_state = "server_gone"
+        if client is not None:
+            deadline = None if budget_s is None else self.clock() + budget_s
+            try:
+                state, _gen, active = self._read(deadline=deadline, cancellable=False)
+                observed, run_state = _iso_ms(), "final"
+            except MeterError as exc:
+                with self._lock:
                     self.errors += 1
                     self.last_error = str(exc)[:300]
-                finally:
-                    self._deadline = None
-            elif self.prompt_state == "unsent":
-                run_state = "final"  # no server was started: nothing could have been spent (never launched)
-            sample = self._publish(run_state, state=state, observed_at=observed)
-            if run_state == "final" and self.client is not None:
+        elif prompt_state == "unsent":
+            run_state = "final"  # no server was started: nothing could have been spent (never launched)
+        with self._lock:
+            if self._ended and self.sample is not None:
+                return self.sample
+            sample = self._publish(run_state, state=state, observed_at=observed, active=active)
+            if run_state == "final" and client is not None:
                 self.last_success = self.clock()
             self._ended = True
             return sample
@@ -384,14 +421,14 @@ class Meter:
                 self.prompt_state = previous  # memory never runs ahead of the file (PR #186 m4)
                 raise
 
-    def _read_server(self) -> dict[str, Any]:
-        state = copy.deepcopy(self.state)
+    def _read_server(self, state: dict[str, Any]) -> dict[str, Any]:
+        """One read of the server into ``state`` (a private copy), outside the lock."""
         if self.server_version is None:
             version = _obj(self._get("/api/info")).get("version")
             self.server_version = U.identifier(version, MAX_VERSION) or "unknown"
         listed = self._list_sessions(state)
         active_raw = _obj(self._get("/api/session/active")).get("data")
-        self._active = {str(k) for k in active_raw} if isinstance(active_raw, dict) else set()
+        active = self._read_ctx.active = {str(k) for k in active_raw} if isinstance(active_raw, dict) else set()
         sessions: dict[str, Any] = state["sessions"]
         for info in listed:
             sid = str(info["id"])
@@ -405,7 +442,7 @@ class Meter:
             else:
                 new = False
             moved = self._observe_totals(state, s, info)
-            if new or moved or sid in self._active or any(s["types"][t]["held"] or s["types"][t]["more"]
+            if new or moved or sid in active or any(s["types"][t]["held"] or s["types"][t]["more"]
                                                           for t in TYPES):
                 for kind in TYPES:
                     if not self._read_messages(state, s, sid, kind, moved):
@@ -539,7 +576,7 @@ class Meter:
         # R3-m1: completed, or failed, or finished while its session is idle. On 2.0.18 `finish` and `error` are only
         # ever set together with `time.completed` (P1(a)), so `time.completed` alone decides there.
         return (_time(m, "completed") is not None or isinstance(m.get("error"), Mapping)
-                or (m.get("finish") is not None and sid not in self._active))
+                or (m.get("finish") is not None and sid not in getattr(self._read_ctx, "active", set())))
 
     def _count(self, state: dict[str, Any], st: dict[str, Any], kind: str, m: Mapping[str, Any]) -> None:
         tokens, trust = U.normalize_tokens(m.get("tokens"))
@@ -580,21 +617,28 @@ class Meter:
 
     # ------------------------------------------------------------------ the sample
 
-    def _publish(self, run_state: str, *, state: dict[str, Any] | None = None,
-                 observed_at: str | None = None) -> dict[str, Any]:
-        """Persist the state, then write the sample with the next ``seq``. Nothing in memory changes unless both
-        writes succeed, so a failed write is retried from where it was and a ``seq`` is never reused."""
+    def _publish(self, run_state: str, *, state: dict[str, Any] | None = None, observed_at: str | None = None,
+                 active: set[str] | None = None) -> dict[str, Any]:
+        """Persist the state, then write the sample with the next ``seq``, under the lock (file writes only, never a
+        request). Nothing in memory changes unless both writes succeed, so a failed write is retried from where it was
+        and a ``seq`` is never reused. A new ``state`` (a read) is a commit: it advances ``_gen``."""
+        new_read = state is not None
         state = self.state if state is None else state
         observed = self.observed_at if observed_at is None else observed_at
+        active = self._active if active is None else active
         self._persist(state)  # first: a state past its cap marks the source truncated in this very sample
-        held, self.observed_at = self.observed_at, observed
+        held = self.observed_at, self._active
+        self.observed_at, self._active = observed, active
         try:
             sample = self._build(state, run_state, self.seq + 1)
         finally:
-            self.observed_at = held
+            self.observed_at, self._active = held
         if self.live_path is not None:
             runlog.write_live(self.live_path, sample)  # the live file's only writer (F25 L2, R2-m3)
-        self.state, self.observed_at, self.seq, self.sample = state, observed, self.seq + 1, sample
+        self.state, self.observed_at, self._active = state, observed, active
+        self.seq, self.sample = self.seq + 1, sample
+        if new_read:
+            self._gen += 1
         return sample
 
     def _build(self, state: dict[str, Any], run_state: str, seq: int) -> dict[str, Any]:

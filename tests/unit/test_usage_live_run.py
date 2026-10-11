@@ -328,12 +328,32 @@ def test_terminate_takes_a_fresh_final_sample(rig):
     assert final["tokens"]["input"] == 100 + 50  # the fake's model step, and the call after the turn
 
 
+def busy_server(rig: Rig, sessions: int = 10) -> None:
+    """Sessions whose totals moved, so each poll reads their messages: a poll is many requests long."""
+    for _ in range(sessions):
+        sid = rig.app.add_session(model={"providerID": "fakeprov", "id": "fake-model", "variant": "default"})
+        rig.app.record_usage(sid, {"input": 10, "output": 1, "reasoning": 0, "cache": {"read": 0, "write": 0}})
+
+
+class SlowClient:
+    """A slow but answering server: every request takes ``delay`` (under the meter's 2 s timeout)."""
+
+    def __init__(self, real: Any, delay: float = 0.5) -> None:
+        self.real, self.delay = real, delay
+        self.started = threading.Event()
+
+    def get(self, path: str, params: Any = None, timeout: float = 30.0) -> Any:
+        self.started.set()
+        time.sleep(min(self.delay, timeout))
+        return self.real.get(path, params, timeout=timeout)
+
+
 def test_the_final_sample_fits_inside_terminate_s(rig, monkeypatch):
-    """The meter's share of ``terminate`` is bounded whatever the server does: the thread's join plus the final
-    sample's request budget, well inside the supervisor's ``TERMINATE_S``."""
+    """The meter's whole share of ``terminate``, the thread's join included, is at most ``METER_FINAL_S`` (4 s), and
+    that share plus the lease's own 3 s wait fits the supervisor's ``TERMINATE_S``, whatever the server does."""
     from aew.harness import supervisor
 
-    assert A.METER_JOIN_S + A.METER_FINAL_S + 3.0 <= supervisor.TERMINATE_S  # + the lease's own 3 s wait
+    assert A.METER_FINAL_S + 3.0 <= supervisor.TERMINATE_S
     adapter = rig.adapter(Manual)
     run_to_end(rig, adapter)
     assert adapter.meter is not None
@@ -344,11 +364,62 @@ def test_the_final_sample_fits_inside_terminate_s(rig, monkeypatch):
             raise OpenCodeUnavailable("timed out")
 
     adapter.meter.client = Hanging()
-    monkeypatch.setattr(A, "METER_FINAL_S", 0.6)
+    monkeypatch.setattr(A, "METER_FINAL_S", 1.0)
+    monkeypatch.setattr(A, "METER_WRITE_MARGIN_S", 0.2)
     t0 = time.monotonic()
     adapter.terminate()
-    assert time.monotonic() - t0 < 0.6 + 1.0
+    assert time.monotonic() - t0 < 1.0 + 0.5
     assert rig.live()["state"] == "server_gone"
+
+
+def test_terminate_never_waits_for_a_poll_in_flight(rig):
+    """A poll is in flight on a slow server when the run ends: the meter's share of ``terminate`` stays within
+    ``METER_FINAL_S`` (the poll is cancelled and dropped, never waited for), and the final sample is fresh (PR #197
+    review, M1)."""
+    adapter = rig.adapter()  # the real meter thread
+    run_to_end(rig, adapter)
+    busy_server(rig)
+    assert adapter.meter is not None
+    slow = SlowClient(adapter.meter.client)
+    adapter.meter.client = slow
+    assert slow.started.wait(5), "the meter thread did not start a poll"
+    t0 = time.monotonic()
+    adapter._final_sample()  # the meter's share of terminate
+    took = time.monotonic() - t0
+    assert took <= A.METER_FINAL_S + 0.3, took
+    final = rig.live()
+    assert final["state"] in ("final", "server_gone")
+    adapter.terminate()
+    assert rig.live() == final  # a dropped poll never writes after the final sample
+
+
+def test_posting_never_waits_for_a_poll_in_flight(rig, monkeypatch):
+    """The prompt's ``posting`` write happens while a poll on a slow server is in flight: it never waits for that
+    poll's requests, so the prompt is not delayed (PR #197 review, M1)."""
+    busy_server(rig)
+    clients: list[SlowClient] = []
+    original = A.OpenCodeAdapter.meter_client
+
+    def slow_client(self: A.OpenCodeAdapter) -> Any:
+        clients.append(SlowClient(original(self)))
+        return clients[-1]
+
+    monkeypatch.setattr(A.OpenCodeAdapter, "meter_client", slow_client)
+    waits: dict[str, float] = {}
+    original_set = L.Meter.set_prompt_state
+
+    def timed(self: L.Meter, state: str) -> None:
+        if state == "posting":
+            assert clients and clients[0].started.wait(5), "no poll was in flight"
+        t0 = time.monotonic()
+        original_set(self, state)
+        waits[state] = time.monotonic() - t0
+
+    monkeypatch.setattr(L.Meter, "set_prompt_state", timed)
+    adapter = rig.adapter()
+    run_to_end(rig, adapter)
+    adapter.terminate()
+    assert waits["posting"] < 0.3 and waits["posted"] < 0.3, waits
 
 
 def test_terminate_still_closes_the_server_after_a_failed_final_write(rig, monkeypatch):

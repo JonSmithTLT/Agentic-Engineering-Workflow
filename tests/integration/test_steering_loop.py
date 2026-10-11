@@ -898,6 +898,8 @@ def test_the_live_catalog_meets_what_the_loop_relies_on():
     steps); a tool `dispatches` exactly when its plan launches a run (Run's hard-deadline check reads `dispatches`);
     and in Walk such a tool needs a confirmation exactly when a primitive it can run changes more than control state."""
     from aew.engine.steering import WALK_ALLOWED, confirmation_reason
+    from aew.surface.classify import AVAILABLE, auto_runnable, effective_class
+    from aew.surface.contract import JUDGMENT_BEARING
 
     checked = []
     for t in contract.TOOLS.values():
@@ -917,8 +919,10 @@ def test_the_live_catalog_meets_what_the_loop_relies_on():
         assert (confirmation_reason("walk", t.expands_to) is not None) == beyond, t.name
         assert confirmation_reason("crawl", t.expands_to) is not None and confirmation_reason("run", t.expands_to) \
             is None
+        if t.required_judgments or t.base_class == JUDGMENT_BEARING:  # the loop never runs a judgment (m2)
+            assert not auto_runnable(t, AVAILABLE, effective_class(t, _arguments(t))), t.name
         checked.append(t.name)
-    assert {"ticket_start", "ticket_request_review"} <= set(checked), checked
+    assert {"ticket_start", "ticket_request_review", "ticket_prepare", "integration_publish"} <= set(checked), checked
 
 
 # ---------------------------------------------------------------------------------------------- the runtime check (F5)
@@ -1022,3 +1026,74 @@ def test_a_condition_still_recurring_is_never_forgotten_first(p):
             lp._record(standing, None, "walk")  # it recurs all along: still the same occurrence
     lp._record(standing, None, "walk")
     assert sum(1 for x in stop_lines(p) if "T-0001's start" in x) == 1
+
+
+@pytest.mark.parametrize("found", ["before_the_stage", "inside_a_step"])
+def test_a_dead_custodian_ended_under_an_auto_run_step(tmp_path, monkeypatch, found):
+    """M4-E E6a's custody sweep (the queue's ``sync``, a finalizer of every Lead transaction) ends a custodian whose
+    worker is gone and revokes its custody credential in whichever transaction first sees it (S2).
+
+    ``before_the_stage``: a custodian already dead when the loop picks its step is ended by the stage's opening
+    commit, which records the intent and is no step's, so the step commits stay control state and the loop goes on.
+    ``inside_a_step``: one found dead only by a step's own commit (its worker died between the stage's opening and
+    that step) puts the revocation in the step's commit, which SAE-07 holds to the step's declarations: the loop
+    stops, failing closed, with SIDE_EFFECT_UNDECLARED and a high anomaly the Lead disposes of. That window is the
+    residual; closing it needs provenance on finalizer events, not a weaker check."""
+    from test_integration_stages import checks_mode, prepared
+    from test_validation_checks import CONTAINED
+
+    from aew.engine import api as engine_api
+    from aew.engine import validation_ops as VO
+    from aew.harness import procs
+
+    held: dict[str, str] = {}
+    monkeypatch.setattr(engine_api, "spawn_worker",
+                        lambda repo, aew_root, custodian, credential: held.__setitem__(custodian, credential))
+    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(CONTAINED)))
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    _wid, custodian, _out = prepared(p, tmp_path)
+    Engine.discover(p.root).custody_register(held[custodian])
+    for name, (row, planner) in PROBES.items():
+        monkeypatch.setitem(contract.TOOLS, name, row)
+        monkeypatch.setitem(stage.STAGES, name, planner)
+    command, _ = recorder(tmp_path)
+    p.extra["notify"] = command
+    policy_text(p, mode="walk", command=command)
+    mode(p, "walk")
+    control = load_control(p.root)
+    assert control["queue"]["lease"]["reconcile"] is None and control["invocations"][custodian]["status"] == "active"
+    token_id = control["queue"]["lease"]["custody"]["token_id"]
+    before = p.rev()
+
+    gone = {"yes": found == "before_the_stage"}  # the custody worker is gone from this moment on
+    monkeypatch.setattr(procs, "same_process", lambda pid, started: not gone["yes"])
+    if found == "inside_a_step":
+        real_open = Engine.stage_open
+
+        def open_then_die(self: Any, **kw: Any) -> Any:
+            out = real_open(self, **kw)
+            gone["yes"] = True
+            return out
+
+        monkeypatch.setattr(Engine, "stage_open", open_then_die)
+    lp = loop(p, Scripted(notes))
+    stop = lp.activate()
+
+    control = load_control(p.root)
+    assert control["invocations"][custodian]["status"] == "interrupted"
+    assert control["queue"]["lease"]["reconcile"] is not None
+    assert control["tokens"][token_id]["revoked_at"] is not None
+    e = Engine.discover(p.root)
+    steps = {int(s["revision"]) for x in lp.executed for s in e.stage_intent(x["intent"])["steps"]}
+    revoked = [r["revision"] for r in outbox.read_transitions(p.root / ".aew", before, p.rev(),
+                                                              outbox=control.get("outbox"))
+               if any(ev["kind"] == "credential.revoked" and ev.get("id") == token_id for ev in r.get("events") or [])]
+    assert len(revoked) == 1, revoked
+    if found == "before_the_stage":
+        assert stop.code == L.REPETITION, stop  # both steps ran: no SIDE_EFFECT_UNDECLARED, no DECLARATION_UNCHECKED
+        assert revoked[0] not in steps, (revoked, steps)
+    else:
+        assert stop.code == L.SIDE_EFFECT_UNDECLARED and "credential" in stop.message, stop
+        assert revoked[0] in steps, (revoked, steps)

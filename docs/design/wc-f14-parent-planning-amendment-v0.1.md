@@ -151,7 +151,9 @@ verification method
 
 A Class-0 Story or Epic may state them thinly. Length is never a quality signal. The decomposition is structured: each
 entry has a stable id within the plan, and a child created from an entry records it (v0.5 §6's "its structured
-decomposition entry"). Where the plan introduces or changes a material interaction between entries, it carries
+decomposition entry"). **One decomposition entry creates exactly one child**; work that needs several children is
+written as several entries. A ref to an entry resolves to that one child at dispatch (§6.3), so an entry with two or
+more children would make every condition naming it false (§14's P8). Where the plan introduces or changes a material interaction between entries, it carries
 `interactions[]` (§6).
 
 ### 5.5 Derived plan phase
@@ -242,31 +244,34 @@ dependency_state           a named dependency state holds
 ```
 
 `overlap_set_empty` evaluates, from committed and admitted facts only, whether a named set of paths or allocated
-identifiers is disjoint from what the named entry's work has admitted or published (v0.5 §7.3: only committed or
+identifiers is disjoint from what the named unit's work (an entry's child or an existing child) has admitted or published (v0.5 §7.3: only committed or
 accepted facts change authority; workspace-level likely changes are advisory). `dependency_state` evaluates whether a
-named entry's work, or a named existing unit outside the plan, is in a named workflow state.
+named unit's work (an entry's child or an existing child), or a named existing unit outside the plan, is in a named
+workflow state.
 
 **Two-phase resolution** (the Lead's proposal, for adoption: §14's P8):
 
-- **At plan acceptance,** lint checks only that each ref resolves *within the plan*: the entry is in its decomposition,
-  the interface is one it declares, the namespace is one the project's policy declares, a path set is well formed. A ref
-  to an existing unit outside the plan must exist then. No ref has to name a child or an edge, which do not exist yet.
+- **At plan acceptance,** lint checks only that each ref resolves *in plan terms* (§6.1): an entry is in the plan's
+  decomposition, an existing child named in `between` is a child of this unit, the interface is one `interface_refs`
+  may name, the namespace is one the project's policy declares, a path set is well formed. A ref to an existing unit,
+  inside or outside the plan's decomposition, must exist then. No ref has to name a child or an edge, which do not exist yet.
 - **At dispatch,** the engine resolves each ref to engine records: an entry id to the child created from that entry
   (§5.4: the child records its entry), an existing child to itself if it is still a child of this unit, an interface to
   that child's `interface_dependency` edge (the companion
   amendment, its §7.1). How children and edges come to exist is unchanged by this: the Lead creates them, or the
   engine compiles them from the accepted plan, as §14's P2 and the companion's I6 ask.
 - **A ref that does not resolve at dispatch makes its condition false.** It is never skipped and never passes: an entry
-  with no created child, more than one child for one entry, a child with no edge for the named interface, or an
+  with no created child, more than one child for one entry (§5.4 forbids it), an existing child that was cancelled or
+  moved, a child with no edge for the named interface, or an
   unreadable record each evaluates false.
 
 The predicate stays closed and engine-evaluable (AIR §3.7): its kinds are registered, its refs are typed, and its value
 is computed from recorded state. An unknown or unevaluable condition counts as not holding (fail closed). Free text in `conditions` is refused; an
 explanation goes in `rationale_refs`, which may explain a plan but never governs scheduling.
 
-The engine evaluates a `CONDITIONAL` interaction when either entry's work is dispatched, as part of the same
+The engine evaluates a `CONDITIONAL` interaction when either side's work is dispatched, as part of the same
 `DispatchDecision`, recomputed against the current revision and never cached (F14 §17.1). While a condition does not
-hold, concurrency is not permitted: the entry's work that would start while the other's is dispatched and neither
+hold, concurrency is not permitted: the side's work that would start while the other's is dispatched and neither
 `DONE` nor `CANCELLED` is refused, with the failing condition as its reason. What happens when a condition stops
 holding after both have started is §14's question P3.
 
@@ -282,19 +287,20 @@ today plan acceptance runs no lint, register F14.1). Adoption is refused while a
 checks are at least:
 
 1. the plan has the minimal content of §5.4, and its decomposition entries have unique ids;
-2. every `interactions[]` entry is well formed: `between` names two distinct decomposition entries of this plan;
+2. every `interactions[]` entry is well formed: `between` names two distinct sibling slices or work units in plan terms
+   (§6.1: entries of this plan's decomposition or existing children of this unit);
    `parallelism` is one of the three values; every ref resolves in plan terms (§6.1), never by requiring a child or an
    edge that is created after adoption;
 3. a `CONDITIONAL` entry has at least one condition, and every condition has a registered kind and refs that resolve
-   within the plan (§6.3); none is free text;
+   in plan terms (§6.3); none is free text;
 4. the `SERIAL_REQUIRED` constraints, together with the existing blocking dependencies they meet, form no cycle;
 5. every `allocated_identifiers` entry names a namespace the project's policy declares;
-6. every pair of entries for which the engine finds deterministic evidence of interaction (overlapping declared scopes,
+6. every pair of sibling units in plan terms (entries, or existing children) for which the engine finds deterministic evidence of interaction (overlapping declared scopes,
    a shared allocated-identifier namespace, or an interface one names and the other provides, all in plan terms, with
    no dependency the plan declares between them) has an `interactions[]` entry or an explicit disposition in the plan that it is not material, with its
    rationale (§8).
 
-Where an entry declares no scope, the engine reports its overlap coverage as unknown to the plan's reviewer, never as
+Where an entry or an existing child declares no scope, the engine reports its overlap coverage as unknown to the plan's reviewer, never as
 empty (v0.5 §10). The lint reports evidence; the reviewer judges whether an interaction is material and whether the
 verdict is right.
 
@@ -383,6 +389,7 @@ v0.5's §20 checks 1 to 6 and 26 apply as written (ledger CFI-71 to CFI-76, CFI-
 | A12 | Schema test: no field of `interactions[]` or the plan record carries a numeric coupling score |
 | A13 | Lint fixture, plan-first: a first acceptance whose interactions and conditions name only decomposition entries, plan-declared interfaces, policy namespaces and new paths passes lint with no child in existence; a ref to an entry or interface the plan does not declare is refused |
 | A14 | Fixture: a condition whose ref does not resolve at dispatch (an entry with no created child, a child with no edge for the named interface) evaluates false and the concurrent start is refused; it is never skipped |
+| A15 | Lint fixture, in-flight parent: a plan whose `between` and conditions name an existing child alongside an entry passes lint; a `between` naming a unit that is not a child of this Story or Epic is refused; creating a second child from one entry is refused |
 
 ## 13. What stays unchanged
 
@@ -415,9 +422,9 @@ authority change of §9.
   `BLOCKED`, `READY` and `REPLAN_REQUIRED` Tickets), or re-derived from the current accepted plan at each dispatch? The
   two differ when an adopted plan revision adds or removes a `SERIAL_REQUIRED` entry between children already started.
 - **P3. A condition that stops holding mid-flight.** AIR §3.7 permits concurrency "only while its named conditions
-  hold", so once both entries' work has started and a condition becomes false, the concurrency may no longer rely on
+  hold", so once both sides' work has started and a condition becomes false, the concurrency may no longer rely on
   it; v0.5 §11's advisory wake alone would not satisfy that. §6.3 defines only the refusal of a start. Which mechanism
-  stops the reliance: a refusal of forward gates and progression for the entry whose work started second (as if
+  stops the reliance: a refusal of forward gates and progression for the side whose work started second (as if
   `SERIAL_REQUIRED` applied until the condition holds again), or an E19-B §7.5-style hold on forward gates and publish?
   For `interface_digest_current` the companion's hold already applies; the question is the overlap and
   dependency-state conditions.
@@ -436,9 +443,11 @@ authority change of §9.
 - **P8. Plan-term refs, resolved at dispatch (the Lead's proposal, for adoption).** A plan is first accepted before its
   children exist, so a ref that had to name a child or an edge at acceptance would make `interface_digest_current` and
   `dependency_state` on an entry unusable in the normal plan-first flow. Proposed (§6.1, §6.3, §7): refs are written in
-  plan terms (a decomposition entry id, a plan-declared interface, a policy namespace, a path set); lint at acceptance
-  checks that they resolve within the plan; at dispatch the engine resolves them to the created child and its edge, and
-  a ref that does not resolve then makes its condition false, never true. It interacts with P2 and the companion's I6
+  plan terms (a decomposition entry id or an existing child, a plan-declared interface, a policy namespace, a path set);
+  lint at acceptance checks that they resolve in plan terms; at dispatch the engine resolves them to the child and its
+  edge, and a ref that does not resolve then makes its condition false, never true. It needs one decomposition entry to
+  create exactly one child (§5.4): if the designer allowed an entry to yield several children, every condition naming
+  that entry would be permanently false under this rule, and refs would need another way to name the children. It interacts with P2 and the companion's I6
   (whether edges are compiled from the plan), not with whether a ref may fail open: under either answer it fails closed.
 - **P9. The Lead's authority over parent plans.** F14's Authority line makes the Lead "the sole authority for accepted
   plan revisions"; v0.5 §4.2, written in here (§5.3, §9), has a Lead-proposed parent plan adopted by the operator or by

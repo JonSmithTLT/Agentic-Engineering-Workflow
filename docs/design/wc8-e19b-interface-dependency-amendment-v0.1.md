@@ -197,18 +197,20 @@ that condition evaluable.
 ### 7.1 Definition
 
 ```text
-interface_digest_current(interface_id, consumer_entry)
+interface_digest_current(interface_id, consumer)
 ```
 
 Both refs are in plan terms (the companion amendment, its §6.1 and §6.3): `interface_id` is an interface the parent plan
-declares, and `consumer_entry` is the id of the decomposition entry whose work consumes it. A parent plan is first
-accepted before its children exist, so the companion's lint checks only that both resolve within the plan; it never
-requires the edge (the Lead's proposal, for adoption: the companion's P8).
+may name, and `consumer` is either the id of the decomposition entry whose work consumes it or an existing child of the
+unit (an in-flight child with no entry). A parent plan is first accepted before the children of its entries exist, so the
+companion's lint checks only that both resolve in plan terms; it never requires the edge (the Lead's proposal, for
+adoption: the companion's P8).
 
-At dispatch the engine resolves `consumer_entry` to the child created from that entry, and the condition holds exactly
-when all of these hold, each a fact the engine records:
+At dispatch the engine resolves `consumer` to one child: the child created from the entry (one entry creates exactly
+one child, the companion's §5.4), or the existing child itself while it is still a child of the unit. The condition
+holds exactly when all of these hold, each a fact the engine records:
 
-1. exactly one child records `consumer_entry`, and it has an `interface_dependency` edge naming `interface_id`;
+1. `consumer` resolves to exactly one child, and that child has an `interface_dependency` edge naming `interface_id`;
 2. the edge's bound digest equals the engine-computed digest of `interface_id` in the currently accepted canonical
    source (§4);
 3. no `revision_impact_hold` is open on that edge (§6).
@@ -217,19 +219,20 @@ A provider's `INTERFACE_CONTRACT_DRIFT` refusal (§3.4) does not change it: the 
 and the accepted digest stays current.
 
 It is false if any part is false, and false if any part cannot be evaluated (fail closed). In particular, an entry with
-no created child, or a child with no edge for `interface_id`, makes it false at dispatch; it is never skipped and never
+no created child, an existing child that was cancelled or moved, or a child with no edge for `interface_id`, makes it
+false at dispatch; it is never skipped and never
 passes. Whether the edge is declared by the Lead or compiled from the plan's `interface_refs` when the child is created
 is §12's I6; the condition fails closed under either answer.
 
 ### 7.2 Evaluation
 
-The condition is evaluated inside `DispatchDecision`, at each dispatch of either entry's work, against the current
+The condition is evaluated inside `DispatchDecision`, at each dispatch of either side's work, against the current
 revision and generation; an ALLOW is never cached (F14 §17.1). Every input is recorded state: no model judgment, no
 workspace-level guess, no coupling score.
 
 ### 7.3 Mid-flight
 
-When an accepted interface revision makes the condition false while both entries' work is running, the consumer is
+When an accepted interface revision makes the condition false while both sides' work is running, the consumer is
 already held by §6: it cannot pass a forward gate or publish until the hold clears. The condition therefore needs no
 separate mid-flight mechanism for interfaces. (For the other conditions the question is the companion's P3.)
 
@@ -273,6 +276,7 @@ v0.5's §20 checks 9 to 13 and 15 apply as written (ledger CFI-79 to CFI-83, CFI
 | B9 | Fixture: `interface_digest_current` is false when the edge is missing, the digest differs, a hold is open, or an input is unreadable; true otherwise |
 | B10 | Fixture, plan-first: a parent plan declaring interface X and a `CONDITIONAL` pair on `interface_digest_current(X, E2)` is accepted before any child exists; the children are created from entries E1 and E2 and E2's child gets its edge on X; the pair dispatches in parallel while the condition holds, and the second start is refused after an accepted interface revision |
 | B11 | Fixture: the same plan, with E2's child created without an edge on X (or with no child for E2): at dispatch `interface_digest_current(X, E2)` is false and the concurrent start is refused |
+| B12 | Fixture, in-flight parent: a plan naming an existing child T as consumer, `interface_digest_current(X, T)`, passes lint; with T's edge on X bound to the current digest it holds; after T is moved out of the unit it is false |
 
 ## 11. What stays unchanged
 
@@ -313,7 +317,8 @@ written into §7.1, for the designer to adopt or change.
   the consumer, or also compiled from an accepted parent plan's `interactions[]` `interface_refs` when the child is
   created (the companion's question P2 for blocking edges)?
 - **I7. Plan-term refs for `interface_digest_current` (the Lead's proposal, for adoption).** §7.1 takes the condition's
-  refs in plan terms (a plan-declared interface and a decomposition entry), lints them within the plan at acceptance,
+  refs in plan terms (a plan-declared interface, and a decomposition entry or an existing child), lints them in plan
+  terms at acceptance,
   and resolves them to the child and its edge at dispatch, false when they do not resolve. It is the companion's P8
   applied here; see also I6.
 

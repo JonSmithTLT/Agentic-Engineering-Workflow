@@ -706,3 +706,20 @@ replace this ADR's "queued prompt" with two explicit timings. Built by slice HS1
   wakes it, as `queue` did.
 - **The completion-boundary rule** (a turn is over only when none of AEW's prompts is still queued) is unchanged and
   stays tested with a `queue` input at the adapter level.
+
+## Amendment 2026-10-10 — the run directory holds the run's live usage (F25 for M4-H, slice L2)
+
+A supervised OpenCode run's directory gains two files beside the run record: `usage.live.json`, the run's live usage
+sample (`aew/usage-live/v1`), and `usage.live.state.json`, its meter's own state. Like the rest of the local run
+records they are non-authoritative telemetry that no gate reads (`runlog.py`'s docstring says the same):
+
+- the adapter's meter is the live file's only writer: it writes `prompt_state: unsent` before the harness server
+  starts, and a failed write refuses the launch;
+- a live write never bumps the wake file, unlike a run record's;
+- a live file is read with the run directory's guards (`runlog.read_live`: no link followed, a regular file, at most
+  16 MiB), and anything else is no sample.
+
+The files are at the run root, outside what a contained run binds back (scratch, harness state, git), so the agent
+cannot write them there. Without containment, and in a deployment where the Lead and AEW's supervisors share one uid,
+the same-uid residual of this ADR applies to them as to the run record. See
+[harness conformance](../harness-conformance.md) §5.2.

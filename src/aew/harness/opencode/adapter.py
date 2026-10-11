@@ -17,6 +17,15 @@ One adapter serves one run, inside the run's supervisor:
    longer queued, and all of that holds on two consecutive polls. The event stream only wakes the poll
    and feeds telemetry; losing it changes nothing. A permission request or form is never expected (every
    rule is allow or deny): it is rejected or cancelled and recorded.
+5. **Live usage** (F25 for M4-H, slice L2). The run's meter (:mod:`aew.harness.usage_live`) is created first and is
+   the only writer of ``usage.live.json``: ``prompt_state: unsent`` is written before the server starts (a failed
+   write refuses the launch), the meter polls the server every second with its own client and 2 s timeouts in every
+   turn state, ``posting`` and ``posted`` bracket the first prompt, the end of a turn asks for a sample at once, and
+   ``terminate`` takes a fresh final sample in at most 4 s all told. No adapter-thread call ever waits on the meter's
+   network requests (a poll reads outside the meter's lock). At ``terminate`` polls are cancelled: one in flight
+   stops at its next request, one that has not committed by then never commits, and the final sample never lowers
+   the figure of one that did; no sample is written after ``terminate`` returns.
+   A meter failure is counted and never ends or delays the run.
 
 Nothing the adapter reports is evidence. Effective model and usage come from the session's assistant
 messages (non-authoritative telemetry that the supervisor compares with the pin).
@@ -37,8 +46,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aew.errors import HarnessError, HarnessIncompatible
-from aew.harness import agentenv
+from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed
+from aew.harness import agentenv, runlog
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import (
@@ -60,6 +69,7 @@ from aew.harness.opencode.client import (
     Server,
     location,
 )
+from aew.harness.usage_live import Meter
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
@@ -69,6 +79,15 @@ CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
+# The live usage meter (F25 for M4-H, slice L2; plan v4 §2.1): one poll a second, 2 s per request, and at most 4 s
+# of the adapter's share of TERMINATE_S for the final sample, the thread's join included (§4.2). The final read gets
+# the share less a margin for its two file writes; the join gets whatever is left of the share.
+METER_POLL_S = 1.0
+METER_REQUEST_S = 2.0
+METER_FINAL_S = 4.0
+METER_WRITE_MARGIN_S = 0.5
+# A run's potential sessions (A3): its own session; OpenCode's title and compaction calls run inside it (A2's k).
+RUN_S_POT = 1
 LOGGED_EVENTS = frozenset({
     "session.created", "session.execution.started", "session.execution.succeeded", "session.execution.failed",
     "session.execution.interrupted", "session.step.started", "session.step.ended", "session.step.failed",
@@ -199,6 +218,11 @@ class OpenCodeAdapter(HarnessAdapter):
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._monitor: threading.Thread | None = None
+        self.meter: Meter | None = None
+        self.meter_errors = 0
+        self._meter_wake = threading.Event()
+        self._meter_stop = threading.Event()
+        self._meter_thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------ launch
 
@@ -220,22 +244,30 @@ class OpenCodeAdapter(HarnessAdapter):
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
                                                              encoding="utf-8")
         command = binary_command()
+        self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
         env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
                          config=config, password=secrets.token_urlsafe(32))
         self.server = Server.start(self.tree.spawn, command, env=env, cwd=self.directory,
                                    log_path=self.state_dir / "server.log")
         del env
         self.client = self.server.client
+        self._bind_meter()
         self.emit({"event": "opencode.server", "pid": self.server.proc.pid, "start_s": round(self.server.started_s, 3)})
         self.health = self._health(contract, config)
+        if self.meter is not None and self.health.get("version"):
+            self.meter.version = str(self.health["version"])  # semantics follow the version that runs, as collect()'s
         body = projection.session_body(contract, self.directory, rules)
         self.session = str(self.client.post("/api/session", body)["data"]["id"])
+        if self.meter is not None:
+            self.meter.main_session = self.session
         self.client.put(f"/api/session/{self.session}/environment", {"variables": dict(agent_env)})
         self.events = EventStream(self.client, self._on_event, self.server.alive)
         self.events.start()
         self._monitor = threading.Thread(target=self._watch, name="aew-opencode-monitor", daemon=True)
         self._monitor.start()
+        self._set_prompt_state("posting", required=True)  # immediately before the prompt's POST (M6, R2-m3)
         self.deliver_contract(contract)
+        self._set_prompt_state("posted")
         return {"harness": self.name, "version": self.health.get("version"), "session": self.session,
                 "state_dir": str(self.state_dir), "server_pid": self.server.proc.pid, "health": self.health,
                 "model": projection.model_ref(contract.execution_profile), "skills": self.skills,
@@ -251,6 +283,82 @@ class OpenCodeAdapter(HarnessAdapter):
         request = REQUEST_TIMEOUT_S
         return (START_TIMEOUT_S + request + OPENAPI_TIMEOUT_S + 2 * (CATALOG_WAIT_S + request) + 4 * request
                 + EVENT_CONNECT_S)
+
+    # ------------------------------------------------------------------ live usage (F25 L2)
+
+    def _start_meter(self, contract: LaunchContract) -> None:
+        """The run's meter, and its ``seq 0, unsent`` sample, before the server starts. A failed write refuses the
+        launch: a server, and so a prompt, never exists without a live file (plan v4 R3-m3)."""
+        self.meter = Meter(None, source={"kind": "run", "id": self.run_dir.name},
+                           version=capabilities.TESTED_VERSIONS[0], semantics_table=self.token_semantics,
+                           s_pot=RUN_S_POT, state_path=self.run_dir / runlog.LIVE_STATE_FILE,
+                           live_path=self.run_dir / runlog.LIVE_FILE, request_timeout_s=METER_REQUEST_S,
+                           pinned_model=projection.model_ref(contract.execution_profile))
+        try:
+            self.meter.set_prompt_state("unsent")
+        except OSError as exc:
+            raise HarnessLaunchFailed(f"the run's live usage file could not be written ({type(exc).__name__}: "
+                                      f"{exc}); no server was started") from None
+
+    def meter_client(self) -> Client:
+        """The meter's own client: never the adapter's, so a slow 30 s request of ``_poll`` cannot delay a sample."""
+        assert self.server is not None
+        return Client(self.server.url, self.server.password)
+
+    def _bind_meter(self) -> None:
+        """Once the server answers, the meter polls it every second in every turn state, until ``terminate``."""
+        if self.meter is None or self.server is None:
+            return
+        self.meter.client = self.meter_client()
+        self._meter_thread = threading.Thread(target=self._meter_loop, name="aew-opencode-meter", daemon=True)
+        self._meter_thread.start()
+
+    def _meter_loop(self) -> None:
+        while not self._meter_stop.is_set():
+            self._meter_tick()
+            self._meter_wake.wait(METER_POLL_S)
+            self._meter_wake.clear()
+
+    def _meter_tick(self) -> None:
+        """One meter poll. Its failures are the meter's own (``meter.errors``), never the run's."""
+        if self.meter is None or self._meter_stop.is_set():
+            return
+        try:
+            self.meter.poll()
+        except Exception as exc:  # noqa: BLE001 - a meter failure never ends or delays the run
+            self.meter_errors += 1
+            self.emit({"event": "opencode.meter_error", "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
+
+    def _set_prompt_state(self, prompt_state: str, *, required: bool = False) -> None:
+        """``posting`` must be on file before the prompt is posted, or a delivered prompt could read as never launched:
+        a failed write refuses the launch. ``posted`` only narrows ``posting``, so its failure is counted."""
+        if self.meter is None:
+            return
+        try:
+            self.meter.set_prompt_state(prompt_state)
+        except OSError as exc:
+            if required:
+                raise HarnessLaunchFailed(f"the run's live usage file could not record the prompt as {prompt_state} "
+                                          f"({type(exc).__name__}: {exc}); the prompt was not sent") from None
+            self.meter_errors += 1
+
+    def _final_sample(self) -> None:
+        """Take a fresh final sample and stop the meter's thread, in at most ``METER_FINAL_S`` all told. A poll in
+        flight is cancelled at its next request and never waited for (PR #197 review, M1): the final read runs beside
+        it, and a poll that has not committed when polls are cancelled never commits, so nothing is written after this
+        returns; one that committed first is carried into the final sample, never lowered (PR #197 review, N1)."""
+        t0 = time.monotonic()
+        self._meter_stop.set()
+        self._meter_wake.set()
+        if self.meter is not None:
+            self.meter.cancel_polls()
+            try:
+                self.meter.final(budget_s=METER_FINAL_S - METER_WRITE_MARGIN_S)
+            except Exception as exc:  # noqa: BLE001 - the server is closed and the run ends whatever the meter met
+                self.meter_errors += 1
+                self.emit({"event": "opencode.meter_error", "error": f"final: {type(exc).__name__}: {str(exc)[:200]}"})
+        if self._meter_thread is not None:  # a daemon thread: one still in a request ends on its own, never committing
+            self._meter_thread.join(max(0.0, METER_FINAL_S - (time.monotonic() - t0)))
 
     def deliver_contract(self, contract: LaunchContract) -> None:
         """The first prompt: the launch contract (subclasses in tests act without a model instead)."""
@@ -524,6 +632,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def _turn_over(self, outcome: str, last: str, since: float = 0.0) -> None:
         """Close the turn whose last prompt was ``last`` (delivered at ``since``), unless a newer prompt arrived since
         the poll decided."""
+        self._meter_wake.set()  # F25 L2: a turn's end is sampled at once, by the meter's own thread
         self._take_snapshot()
         with self._lock:  # the decision and the state change are one step for `_prompt` (independent audit I3)
             if self.turn != "running" or self.sent[-1] != last:
@@ -611,8 +720,8 @@ class OpenCodeAdapter(HarnessAdapter):
         self.snapshot = {"assistant": assistant, "session": {k: info.get(k) for k in ("outcome", "tokens", "cost")},
                          "truncated": truncated}
         # Every other session in the run's private state (a subagent's, or anyone's): recorded even if the event
-        # stream missed its creation.
-        for other in (self.client.get("/api/session", location(self.directory)) or {}).get("data") or []:
+        # stream missed its creation. Listed unfiltered: the server is the run's alone (F25 plan v4, m1).
+        for other in (self.client.get("/api/session") or {}).get("data") or []:
             sid = other.get("id")
             if sid and sid != self.session and sid not in self.foreign_sessions:
                 self.foreign_sessions.append(str(sid))
@@ -620,6 +729,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def terminate(self) -> None:
         self._stop.set()
         self._wake.set()
+        self._final_sample()  # fresh, whatever self.snapshot holds (m7), before the lease ends
         if self.server is not None and self.server.alive() and self.snapshot is None:
             try:
                 self._take_snapshot()
@@ -635,7 +745,8 @@ class OpenCodeAdapter(HarnessAdapter):
                                "prompts": len(self.sent), "permission_rejected": self.permission_rejected,
                                "forms_cancelled": self.forms_cancelled, "foreign_sessions": self.foreign_sessions,
                                "events_dropped": self.events.drops if self.events else None,
-                               "poll_errors": self.poll_errors, "skills": getattr(self, "skills", None)}
+                               "poll_errors": self.poll_errors, "skills": getattr(self, "skills", None),
+                               "meter_errors": self.meter_errors + (self.meter.errors if self.meter else 0)}
         snap = self.snapshot
         if snap is not None:
             out["effective"] = _effective([m["model"] for m in snap["assistant"]])

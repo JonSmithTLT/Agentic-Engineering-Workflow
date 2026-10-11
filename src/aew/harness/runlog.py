@@ -5,6 +5,10 @@ heartbeat and log, the harness's event log, the delivered prompt, Lead requests 
 the harness's private state. None of it is project authority and no gate reads it: deleting a run
 directory loses a conversation and telemetry, never engineering state. No file here ever holds an AEW
 credential; the supervisor scans the directory for one when the run ends.
+
+``usage.live.json`` is the run's live usage sample (``aew/usage-live/v1``; F25 for M4-H, slice L2), written by the
+adapter's meter alone, and ``usage.live.state.json`` that meter's own state. Both are non-authoritative telemetry like
+the rest: no gate reads them, and a live write wakes no waiter.
 """
 
 from __future__ import annotations
@@ -25,6 +29,9 @@ from aew.harness import contract as K
 from aew.util import atomic_write, utc_now
 
 RUNS_REL = "local/harness/runs"
+LIVE_FILE = "usage.live.json"              # the run's live usage sample (F25 L2)
+LIVE_STATE_FILE = "usage.live.state.json"  # its meter's high-water state; not part of any contract
+LIVE_SCHEMA = "aew/usage-live/v1"
 HEARTBEAT_S = 1.0
 # A supervisor that has not beaten for this long has stopped supervising (tests shorten it).
 STALE_AFTER_S = float(os.environ.get("AEW_RUN_STALE_S", "10"))
@@ -103,6 +110,23 @@ def write_record(directory: Path, record: dict[str, Any]) -> None:
         from aew.engine.outbox import bump_wake
 
         bump_wake(aew_root)
+
+
+def write_live(path: Path, sample: dict[str, Any]) -> None:
+    """Replace a live usage sample atomically. Unlike ``write_record`` it bumps no wake file: a sample changes every
+    second, and nothing waits on it (F25 plan v4, m12)."""
+    atomic_write(path, json.dumps(sample, sort_keys=True, separators=(",", ":")))
+
+
+def read_live(directory: Path) -> dict[str, Any] | None:
+    """A run's live usage sample, read with the run directory's guards (no link followed, a regular file, at most
+    16 MiB), or None: missing, unreadable, not a regular file, not JSON, or not an ``aew/usage-live/v1`` object."""
+    try:
+        text = _read_text(directory / LIVE_FILE)
+        sample = json.loads(text) if text is not None else None
+    except (OSError, ValueError, RecursionError):
+        return None
+    return sample if isinstance(sample, dict) and sample.get("schema") == LIVE_SCHEMA else None
 
 
 def beat(directory: Path) -> None:

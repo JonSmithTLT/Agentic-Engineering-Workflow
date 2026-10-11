@@ -38,6 +38,8 @@
     "failurePaths": "tests/evidence.test.ts",
     "keyboardAndResponsive": "scripts/browser-w05.mjs",
     "historySearchLifecycle": "tests/history-search.test.ts",
-    "historySearchForm": "tests/history-search-page.test.tsx"
+    "historySearchForm": "tests/history-search-page.test.tsx",
+    "mapsReadPolicy": "tests/maps-page.test.tsx",
+    "mapsPresentation": "tests/maps.test.ts"
   }
 }

@@ -1697,3 +1697,17 @@ summary {
 .search-snippet { border-left: 3px solid var(--border); padding: 12px; background: var(--canvas); overflow-wrap: anywhere; }
 .search-snippet pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-family: monospace; }
 .history-search-form, .search-results, .search-hit { padding: 16px; }
+.maps-panel, .map-detail { padding: 16px; min-width: 0; }
+.maps-panel form, .maps-panel dl { min-width: 0; }
+.maps-panel :is(input, select), .maps-against input { min-width: 0; max-width: 100%; }
+.maps-panel button { max-width: 100%; }
+.maps-panel code, .map-value { overflow-wrap: anywhere; }
+.map-detail { margin-top: 16px; }
+.map-refresh { min-width: 180px; }
+.map-summary-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.maps-panel table { white-space: normal; }
+.maps-panel td { height: auto; overflow-wrap: anywhere; }
+.maps-panel dd { margin-left: 0; min-width: 0; }
+.maps-panel dl > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px; }
+.map-architecture > span { margin-right: 12px; }
+@media (max-width: 1023px) { .maps-panel dl > div { display: block; } }

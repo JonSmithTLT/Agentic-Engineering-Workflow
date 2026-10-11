@@ -6,6 +6,7 @@ const comparisonKeys = ['investigation_case', 'a_source', 'b_source', 'a_run', '
 const evidenceKeys = ['evidence_reference','evidence_source','evidence_artifact','evidence_revision','evidence_tab','evidence_case','evidence_filter','evidence_work','evidence_source_cursor','evidence_artifact_cursor','evidence_excerpt_cursor','evidence_pane'];
 const executionKeys = ['execution_case','execution_trace','execution_selected','execution_kind','execution_view','execution_display','execution_lane','execution_filter','execution_cursor','execution_trace_cursor','execution_work','execution_invocation','execution_run','execution_tab','execution_pane','execution_locator','execution_receipt_cursor','execution_control_tab'];
 const presentationKeys = ['selected', 'inspector', 'field', 'view', 'focus', 'work_pane'];
+const mapKeys = ['map_activity', 'map_root', 'map_against', 'map_tab', 'map_section', 'map_cursor', 'map_input_cursor', 'map_source_revision', 'map_a', 'map_b'];
 const filterKeys = [
   'state',
   'kind',
@@ -27,7 +28,7 @@ export function navigationParams(params: URLSearchParams, full = false) {
     ...(full && import.meta.env.MODE === 'demo' ? comparisonKeys : []),
     ...(full && import.meta.env.MODE === 'demo' ? evidenceKeys : []),
     ...(full && import.meta.env.MODE === 'demo' ? executionKeys : []),
-    ...(full ? [...filterKeys, ...presentationKeys, ...historicalKeys] : []),
+    ...(full ? [...filterKeys, ...presentationKeys, ...mapKeys, ...historicalKeys] : []),
   ]) {
     const value = params.get(key);
     if (value) next.set(key, value);

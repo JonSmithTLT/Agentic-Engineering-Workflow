@@ -1060,7 +1060,8 @@ class Projector:
                 break
         op, summary = str(record.get("op") or "transition"), record.get("summary")
         title = f"{op}: {summary}" if isinstance(summary, str) and summary else op
-        return {"id": f"R{rev}", "subject": subject, "occurred_at": str(record["at"]), "title": title[:1000],
+        # redacted before the cut, so no prefix of a credential survives it
+        return {"id": f"R{rev}", "subject": subject, "occurred_at": str(record["at"]), "title": K.redact(title)[:1000],
                 "reason": reason("TRANSITION_REASON", str(record["reason"])) if record.get("reason") else None}
 
     def activity_list(self, *, limit: int, cursor: str | None) -> dict[str, Any]:
@@ -1387,4 +1388,19 @@ def _architecture_id(value: str) -> bool:
 
 def scrub(value: Any) -> Any:
     """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers."""
-    return redact(value)
+    return _credential_strings(redact(value))
+
+
+def _credential_strings(value: Any) -> Any:
+    """``value`` with the engine's credential redaction (:func:`aew.harness.contract.redact`) applied to every string
+    in it, dictionary keys included. A leaf that is not a JSON scalar is first made the string the response's
+    ``json.dumps(default=str)`` would make of it, so no text reaches a response without passing here."""
+    if isinstance(value, dict):
+        return {(K.redact(k) if isinstance(k, str) else k): _credential_strings(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_credential_strings(v) for v in value]
+    if isinstance(value, str):
+        return K.redact(value)
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    return K.redact(str(value))

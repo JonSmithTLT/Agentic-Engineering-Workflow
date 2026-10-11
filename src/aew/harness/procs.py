@@ -170,7 +170,7 @@ class ProcessTree:
             if self._pgid is None:
                 proc = subprocess.Popen(argv, start_new_session=True, **kwargs)
                 self._pgid = proc.pid
-                self._sentinel = subprocess.Popen([sys.executable, "-P", "-c", _SENTINEL, str(self._pgid)],
+                self._sentinel = subprocess.Popen([sys.executable, "-I", "-c", _SENTINEL, str(self._pgid)],
                                                   stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                                   stderr=subprocess.DEVNULL, start_new_session=True)
             else:
@@ -378,8 +378,9 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple
     ctl_r, ctl_w = os.pipe()  # pragma: posix-only
     res_r, res_w = os.pipe()
     try:
-        # `-P`: started in the project, it never imports from it (it holds the session's environment).
-        reaper = subprocess.Popen([sys.executable, "-P", "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
+        # `-I`: started in the project with the session's environment, it imports the standard library only (no cwd,
+        # no PYTHON* variable, no user site), while the harness it starts still gets that environment unchanged.
+        reaper = subprocess.Popen([sys.executable, "-I", "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
                                   cwd=cwd, pass_fds=(ctl_r, res_w))
     except BaseException:
         for fd in (ctl_r, ctl_w, res_r, res_w):
@@ -461,6 +462,20 @@ def harden_current_process() -> None:
             c.CDLL(None, use_errno=True).prctl(4, 0)  # PR_SET_DUMPABLE = 0
         except Exception:  # noqa: S110 (hardening is best effort; ADR-0009 documents the residual)
             pass
+
+
+# How the engine starts a Python process that receives a credential (a run's supervisor, a custody worker): no
+# working directory or script directory (`-P`) and no user site (`-s`) on its import path...
+ENGINE_PYTHON_FLAGS = ("-P", "-s")
+
+
+def engine_imports(env: dict[str, str]) -> dict[str, str]:
+    """...and ``env`` with its import path pinned to the engine's own location: an inherited ``PYTHONPATH`` (one that
+    names a project's source, absolute or relative) is replaced, never searched. Only that process's: what it hands
+    its own children is built separately (``agentenv``, ``server_env``, the checks' allow-list)."""
+    import aew
+
+    return {**env, "PYTHONPATH": str(Path(aew.__file__).resolve().parent.parent), "PYTHONSAFEPATH": "1"}
 
 
 def spawn_detached(argv: list[str], *, env: dict[str, str], cwd: str | Path | None = None,

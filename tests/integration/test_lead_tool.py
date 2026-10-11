@@ -89,9 +89,9 @@ def test_ill_formed_calls_never_reach_the_engine(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
     for name, args, profile, code in (("nope", {}, "normal", "UNKNOWN_TOOL"),
-                                      ("ticket_prepare", {"expect_rev": rev, "work_id": wid,
-                                                          "verification_evidence": "EV-0001"}, "normal",
-                                       "TOOL_NOT_BUILT"),
+                                      # every catalog row is built since E6a: a malformed stage call instead
+                                      ("ticket_prepare", {"expect_rev": rev, "work_id": wid}, "normal",
+                                       "INVALID_ARGUMENTS"),
                                       ("cli", {"argv": ["status"]}, "normal", "TOOL_NOT_EXPOSED"),
                                       ("checkpoint", {"expect_rev": rev, "bogus": 1}, "normal", "INVALID_ARGUMENTS")):
         with pytest.raises(AdapterInputError) as exc:

@@ -71,9 +71,16 @@ SCRUBBED_ENV = K.CREDENTIAL_ENV
 ACK_WAIT_S = float(os.environ.get("AEW_LAUNCH_ACK_S", "90"))
 
 
-def supervisor_env(base: dict[str, str] | None = None) -> dict[str, str]:
+def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """The launching process's environment minus every credential-bearing variable."""
     return K.scrub_credentials(dict(os.environ if base is None else base))
+
+
+def supervisor_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """A run supervisor's environment: :func:`scrubbed_env`, with its import path pinned to the engine's own
+    (``procs.engine_imports``), since the supervisor receives the run's credential. What it hands the harness is built
+    from an allow-list (``agentenv``, ``server_env``), so the pin never reaches a harness or a check."""
+    return procs.engine_imports(scrubbed_env(base))
 
 
 class Harness:
@@ -175,10 +182,12 @@ class Harness:
         base = {"run": run, "invocation": inv_id, "committed": True, "run_dir": str(directory)}
         with (directory / "supervisor.log").open("ab") as log:
             try:
-                # `-P`: its run directory (its cwd) is never on its import path; it imports the engine only.
-                proc = procs.spawn_detached([sys.executable, "-P", "-m", "aew.harness.supervisor", "--run-dir",
-                                             str(directory)], env=supervisor_env(), cwd=str(directory),
-                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+                # It imports the engine and the standard library only: never its run directory (its cwd), an inherited
+                # PYTHONPATH or a user site (`procs.ENGINE_PYTHON_FLAGS`, `supervisor_env`).
+                proc = procs.spawn_detached(
+                    [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew.harness.supervisor", "--run-dir",
+                     str(directory)], env=supervisor_env(), cwd=str(directory),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
                                           "with `aew harness launch` (the credential rotates)", **base,

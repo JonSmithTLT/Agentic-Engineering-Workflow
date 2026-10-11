@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -874,42 +875,82 @@ def _capture_spawn(monkeypatch) -> dict[str, Any]:
     return seen
 
 
-@pytest.mark.parametrize("worker", ["custody_worker", "run_supervisor"])
-def test_credential_holding_workers_never_import_from_the_project_tree(tmp_path, monkeypatch, worker):
-    """The engine's processes that receive a credential (the custody worker, a run's supervisor) start in an
-    engine-owned directory, never the project's tree, and nothing in the project's tree or their working directory is
-    on their import path: a `json.py` planted in either is never imported."""
-    from aew.engine.harness_ops import supervisor_env
+class _Stop(Exception):
+    """Raised by a captured spawn: nothing is started."""
+
+
+def _capture_popen(monkeypatch) -> dict[str, Any]:
+    """The argv, cwd and environment of the next ``procs`` Popen (the session helper's); it starts nothing."""
+    seen: dict[str, Any] = {}
+
+    def popen(argv: list[str], **kw: Any) -> Any:
+        seen.update(argv=list(argv), cwd=str(kw.get("cwd")), env=dict(kw.get("env") or {}))
+        raise _Stop
+
+    monkeypatch.setattr(procs.subprocess, "Popen", popen)
+    return seen
+
+
+WORKERS = ["custody_worker", "run_supervisor",
+           pytest.param("session_reaper", marks=pytest.mark.skipif(not sys.platform.startswith("linux"),
+                                                                   reason="the session helper is Linux's"))]
+
+
+@pytest.mark.parametrize("launcher_path", ["none", "absolute", "relative"])
+@pytest.mark.parametrize("worker", WORKERS)
+def test_credential_holding_workers_never_import_from_the_project_tree(tmp_path, monkeypatch, worker, launcher_path):
+    """The engine's Python processes that receive a credential (the custody worker, a run's supervisor) or a session's
+    environment (the Lead session's helper) import only the engine's own paths and the standard library: never their
+    working directory, the project's tree, a `PYTHONPATH` their launcher had (absolute, or relative to where they
+    start) or a user site. The workers start in an engine-owned directory; a `json.py` planted anywhere they could
+    look is never imported."""
+    import os
 
     p = sample_project(tmp_path)
     e = Engine.discover(p.root)
     monkeypatch.delenv(CO.WORKER_SWITCH)
-    seen = _capture_spawn(monkeypatch)
-    if worker == "custody_worker":
-        CO.spawn_worker(p.root, p.root / ".aew", "IA-0001", synthetic("c"))
+    if launcher_path != "none":  # a developer of a Python project often has its source on PYTHONPATH
+        entry_ = str(p.root / "src") if launcher_path == "absolute" else "src"
+        monkeypatch.setenv("PYTHONPATH", os.pathsep.join([entry_, os.environ.get("PYTHONPATH", "")]))
+    if worker == "session_reaper":
+        seen = _capture_popen(monkeypatch)
+        with pytest.raises(_Stop):
+            procs.run_session_tree([sys.executable, "-c", "pass"], env=dict(os.environ), cwd=str(p.root))
+        monkeypatch.undo()  # Popen back, before this test starts anything itself
+        cwd = Path(seen["cwd"]).resolve()  # the session's own project, by design
+        interpreter = seen["argv"][:seen["argv"].index("-c")]
     else:
-        from aew.errors import HarnessLaunchFailed
+        seen = _capture_spawn(monkeypatch)
+        if worker == "custody_worker":
+            CO.spawn_worker(p.root, p.root / ".aew", "IA-0001", synthetic("c"))
+        else:
+            from aew.errors import HarnessLaunchFailed
 
-        monkeypatch.setattr("aew.engine.harness_ops.ACK_WAIT_S", 0.1)
-        with pytest.raises(HarnessLaunchFailed):
-            e._harness._spawn_run("INV-0001", "R-INV-0001-1", synthetic("r"))
-        assert seen["env"] == supervisor_env()
-    cwd = Path(seen["cwd"]).resolve()
-    assert cwd.is_relative_to((p.root / ".aew" / "local").resolve()), cwd  # the engine's own runtime directory
+            monkeypatch.setattr("aew.engine.harness_ops.ACK_WAIT_S", 0.1)
+            with pytest.raises(HarnessLaunchFailed):
+                e._harness._spawn_run("INV-0001", "R-INV-0001-1", synthetic("r"))
+        cwd = Path(seen["cwd"]).resolve()
+        assert cwd.is_relative_to((p.root / ".aew" / "local").resolve()), cwd  # the engine's own runtime directory
+        interpreter = seen["argv"][:seen["argv"].index("-m")]
     shadow = "import sys\nprint('IMPORTED FROM THE PROJECT TREE')\nsys.exit(0)\n"
-    for where in (p.root, cwd):
+    for where in (p.root, p.root / "src", cwd, cwd / "src"):
+        where.mkdir(parents=True, exist_ok=True)
         (where / "json.py").write_text(shadow, encoding="utf-8")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    run = subprocess.run(seen["argv"], cwd=cwd, env=seen["env"], stdin=subprocess.DEVNULL, capture_output=True,
-                         text=True, timeout=180, creationflags=flags)
-    assert "IMPORTED FROM THE PROJECT TREE" not in run.stdout + run.stderr
-    interpreter = seen["argv"][:seen["argv"].index("-m")]
-    probe = "import json, os, sys; print(json.dumps({'path': sys.path, 'cwd': os.getcwd()}))"
-    found = json.loads(subprocess.run([*interpreter, "-c", probe], cwd=cwd, env=seen["env"], capture_output=True,
-                                      text=True, timeout=60, creationflags=flags, check=True).stdout)
+    if worker != "session_reaper":  # the worker itself, as started, up to reading its pipe
+        run = subprocess.run(seen["argv"], cwd=cwd, env=seen["env"], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=180, creationflags=flags)
+        assert "IMPORTED FROM THE PROJECT TREE" not in run.stdout + run.stderr
+    probe = ("import json, os, site, sys; print(json.dumps({'path': sys.path, 'user_site': site.ENABLE_USER_SITE, "
+             "'user': site.getusersitepackages()}))")
+    out = subprocess.run([*interpreter, "-c", probe], cwd=cwd, env=seen["env"], capture_output=True, text=True,
+                         timeout=60, creationflags=flags, check=True).stdout
+    assert "IMPORTED FROM THE PROJECT TREE" not in out
+    found = json.loads(out)
     project = p.root.resolve()
     for entry_ in found["path"]:
         assert entry_ and not Path(entry_).resolve().is_relative_to(project), (entry_, found["path"])
+    assert not found["user_site"] and found["user"] not in found["path"]
 
 
 def test_a_spawned_custody_worker_validates_end_to_end(tmp_path):

@@ -277,8 +277,9 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **The custody worker (`aew integrate custody <IA-n>`).**
   - The process that commits a grant starts it right after the commit: detached, with no console window, with an
     allow-list environment (no `AEW_*` variable), and with the credential on its stdin pipe only. It starts in the
-    engine's own directory (`.aew/local/custody`) and imports only the engine and the standard library, never from
-    the project's tree; a run's supervisor likewise.
+    engine's own directory (`.aew/local/custody`) and imports only the engine and the standard library: not its working
+    directory, an inherited `PYTHONPATH` or a user site (`-P`, `-s` and its import path pinned to the engine's). A
+    run's supervisor starts the same way, in its run directory.
   - It registers `{host_pid, started_at}` on its custodian in its own first commit. These are liveness data, never
     authorization.
   - In checks mode it validates a `prepared` candidate under its lease. In verifier mode it waits for the integration

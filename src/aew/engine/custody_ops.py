@@ -46,7 +46,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import aew
 from aew.engine import disposition_ops as DO
 from aew.engine import queue_ops as Q
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
@@ -84,15 +83,14 @@ def worker_env(base: dict[str, str] | None = None) -> dict[str, str]:
     env = {k: v for k, v in base.items()
            if k.upper() in keep or (sys.platform != "win32" and k.startswith("LC_"))}
     env["PATH"] = base.get("PATH") or base.get("Path") or ""
-    env["PYTHONPATH"] = str(Path(aew.__file__).resolve().parent.parent)
     env["PYTHONUTF8"] = "1"
-    env["PYTHONSAFEPATH"] = "1"  # no working directory or script directory on its import path, whatever its argv
-    return env
+    return procs.engine_imports(env)  # the engine's own import path only, whatever its argv or its launcher's
 
 
 def worker_argv(repo_root: Path, custodian: str) -> list[str]:
-    """The worker's command: the running interpreter with no unsafe import path (``-P``), the project named."""
-    return [sys.executable, "-P", "-m", "aew", "-C", str(repo_root), "integrate", "custody", custodian]
+    """The worker's command: the running interpreter with no unsafe import path or user site, the project named."""
+    return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "-C", str(repo_root), "integrate", "custody",
+            custodian]
 
 
 def spawn_worker(repo_root: Path, aew_root: Path, custodian: str, credential: str) -> int | None:

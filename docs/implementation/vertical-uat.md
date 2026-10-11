@@ -63,7 +63,7 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and `--launch` filled in as refusals ask) |
 | A prepared candidate whose post-integration verification reported, with no decision offered | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
 | The gate still lacks the local check after the operator's own workaround (U14) | `aew harness launch` of the implementer's invocation, from the shell, so its check runs again |
-| A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete, then stuck |
+| A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete (for `RESOLVE_STAGE`, `aew stage continue` with the Lead's own rationale), then stuck |
 | Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
 
 **The workers** come from the fake harness: implementer, reviewer, verifier and integration verifier, each run's

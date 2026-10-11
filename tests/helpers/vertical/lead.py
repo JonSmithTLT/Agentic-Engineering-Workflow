@@ -33,7 +33,8 @@ finishes; they are the only place AEW knowledge appears here:
 - ``recheck``: the gate still lacks the local check after the operator's own workaround (U14): the Lead relaunches
   the implementer's invocation from its shell, so its check runs again;
 - ``decision_refused``: a decision still required after its answer was acted on is never re-asked: one
-  ``explain``, its concrete ``cli_fallback`` if it has one, then stuck;
+  ``explain``, its concrete ``cli_fallback`` if it has one (for ``RESOLVE_STAGE``, ``stage continue`` with the Lead's
+  own rationale), then stuck;
 - ``stuck``: anything else: the Lead tells the operator it is stuck and waits; whatever the operator says next (for
   example after a workaround of their own), it goes on.
 
@@ -339,6 +340,14 @@ class Lead:
             self.call("explain", {"work_id": self.subject}, why=f"decision {d['decision']} still required")
             return True
         cli = list(d.get("cli_fallback") or [])
+        if step == 1 and d["decision"] == "RESOLVE_STAGE":
+            # The known gap: an unfinished stage (often the steering loop's, or one a lost session left) whose typed
+            # call lacks the choice and rationale. The Lead continues it with its own rationale, from the shell, as
+            # the decision's command names (`aew stage continue <intent> --rationale ... --expect-rev N`).
+            self.event("gap", gap="resolve_stage", why="the stage's typed resolution was refused; its command needs a "
+                                                        "choice and a rationale")
+            cli = [("continue" if x == "<continue|abandon>" else
+                    "the stage's work is still wanted; continue it" if x == "<why>" else x) for x in cli]
         if step == 1 and cli and not any(x.startswith("<") or "{" in x for x in cli):
             self.shell(cli, why=f"decision {d['decision']} still required: its cli_fallback")
             return True

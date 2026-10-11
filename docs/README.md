@@ -291,7 +291,8 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
   row's cells change only when what they state changes. The same goes for a decisions-due item's `what` and for a
   capability's paragraphs in `implementation-status.md`: progress and evidence go in a note on the register row. A
   capability built in slices has a Status that names no slice and one paragraph per slice, which only that slice's
-  change edits; a slice with no paragraph there adds a note on the row its **Later slices** paragraph names.
+  change edits (a convention review keeps; `tests/unit/test_docs_merge.py` refuses the known shapes, not every
+  wording); a slice with no paragraph there adds a note on the row its **Later slices** paragraph names.
 - The register merges: its preamble carries no per-change log (the history is `git log` on the YAML and each row's
   own dates; the log to 2026-10-05 is [archived](archive/register-changelog-to-2026-10-05.md)), and §9 *Closed* is kept in id
   order, which `render` applies and `check` enforces, so append a closed row anywhere. After every sync with main,

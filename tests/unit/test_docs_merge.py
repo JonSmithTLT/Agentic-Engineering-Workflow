@@ -57,8 +57,10 @@ NOTES = "docs/implementation/notes.d"
 STATUS = "docs/implementation/implementation-status.md"
 STATUS_TEXT = (ROOT / STATUS).read_text(encoding="utf-8")
 # A slice named as the plans name them (E3a, S2a, MS2, HS1, D2, L1, P2b, W06), or as "slice 1" / "Slice 2b" /
-# "slices S1"; a decision id after its ADR ("ADR-0017 D8") and a register row ("register E55") are not slices.
-SLICE_TOKEN = re.compile(r"(?<!ADR-\d\d\d\d )(?<!register )\b(?:E|S|MS|HS|D|L|P|W)\d+[a-z]?\b"
+# "slices S1". A decision id after its ADR ("ADR-0017 D8") and a register row ("register E55") are not slices; both
+# are suffix-less, so a suffixed token ("register E5b", "ADR-0016 E5b") is still a slice (review of PR #195, R4-F1).
+SLICE_TOKEN = re.compile(r"\b(?:E|S|MS|HS|D|L|P|W)\d+[a-z]\b"
+                         r"|(?<!ADR-\d\d\d\d )(?<!register )\b(?:E|S|MS|HS|D|L|P|W)\d+\b(?![a-z])"
                          r"|(?i:\bslices?) [A-Za-z]*\d+[a-z]?\b")
 # A part of a capability named by its register row (the dashboard's F20.2 to F20.6).
 PART_ID = re.compile(r"\bF\d+\.\d+\b")
@@ -592,14 +594,32 @@ def _slices_named(label: str) -> set[str]:
     return found
 
 
+def _parts(heading: str) -> set[str]:
+    """The register rows a section's heading names as its parts: each id, and every id of a range ("F20.2 to
+    F20.6")."""
+    found = set(PART_ID.findall(heading))
+    for row, first, last in re.findall(r"\bF(\d+)\.(\d+) to F\1\.(\d+)\b", heading):
+        found |= {f"F{row}.{n}" for n in range(int(first), int(last) + 1)}
+    return found
+
+
+def _next_names_another(label: str, paragraph: str) -> list[str]:
+    """For a "next" paragraph, the slices its body names besides its own: a "next" paragraph that lists what comes
+    after it would be edited by each of those slices."""
+    if "next" not in label.lower():
+        return []
+    own = _slices_named(label)
+    body = paragraph[len(label) + 4:]
+    return sorted(t for t in _slices_named(body) if t not in own)
+
+
 def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices():
-    """A slice-built capability's sections stay merge-free by construction (review of PR #195, F1, R2-F1, R3-F1):
-    every paragraph has at most one author. The Status names no slice (it changes only with the capability's own
-    state); the Acceptance paragraph names none (it points at the plan); **Later slices** names the register row where
-    a slice with no paragraph records itself as a note, and that row exists; and every other paragraph opens with a
-    bold label naming exactly one slice, so a paragraph that lists several (what is built, what comes next), which
-    every one of them would edit, cannot be written. The structure is checked, not a growing list of phrasings: only
-    the Status and Acceptance lines use the slice pattern, and each label must name one slice."""
+    """The shapes found so far that would give a paragraph of a slice-built capability several authors (review of PR
+    #195, F1, R2-F1, R3-F1, R4-F1). Refused: a Status or an Acceptance paragraph that names a slice; a label naming
+    several slices or none; a label whose only slice is a register row the heading does not name as a part; a "next"
+    paragraph whose body names another slice; an unlabelled paragraph; a **Later slices** paragraph missing, not last,
+    or naming no existing row. This checks shapes, not meaning: a paragraph in prose about what comes next ("the stage
+    tools come next") passes. One author per paragraph is a convention that review keeps."""
     ids = {r["id"] for r in register.rows(DATA, open_only=False) if r["id"]}
     sliced = {name: paragraphs for name, paragraphs in capabilities(STATUS_TEXT).items()
               if any(p.startswith("**Later slices:**") for p in paragraphs)}
@@ -616,8 +636,12 @@ def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices(
             label = LABEL.match(paragraph)
             if label is None:
                 wrong.append(f"{name}: a paragraph without a bold label: {paragraph[:50]!r}")
-            elif len(_slices_named(label.group(1))) != 1:
-                wrong.append(f"{name}: {label.group(1)!r} names {sorted(_slices_named(label.group(1)))}, not one slice")
+            elif len(slices := _slices_named(label.group(1))) != 1:
+                wrong.append(f"{name}: {label.group(1)!r} names {sorted(slices)}, not one slice")
+            elif PART_ID.fullmatch(next(iter(slices))) and next(iter(slices)) not in _parts(name):
+                wrong.append(f"{name}: {label.group(1)!r} names a register row the heading does not name as a part")
+            elif others := _next_names_another(label.group(1), paragraph):
+                wrong.append(f"{name}: the next paragraph {label.group(1)!r} also names {others}")
     assert wrong == []
 
 
@@ -633,6 +657,14 @@ def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_th
     for text in ("E3a", "the stage tools are E5 and E6", "S2a", "MS2", "HS1", "sealing and compaction are D2", "L1",
                  "P2b", "W06", "slice 1", "Slice 2b", "slices S1 to S12", "slice L1"):
         assert SLICE_TOKEN.search(text), text
+    for text in ("register E5b", "ADR-0016 E5b"):  # suffixed: a slice, whatever precedes it (R4-F1)
+        assert SLICE_TOKEN.search(text), text
+    assert _parts("The read-only dashboard's server (register F20.2 to F20.6)") == {
+        "F20.2", "F20.3", "F20.4", "F20.5", "F20.6"}
+    assert _parts("Ticket revisions (register F4)") == set()  # so a label "F20.3, ..." there is refused (R4-F1)
+    assert _next_names_another("D2, next", "**D2, next:** sealing and compaction.") == []
+    assert _next_names_another("E5b, next", "**E5b, next:** then E6a and E6b.") == ["e6a", "e6b"]
+    assert _next_names_another("E5a, the first Ticket stages", "**E5a, the first Ticket stages** then E6a.") == []
     for text in ("M4-D", "M4-H's live usage", "F20.2 to F20.6", "the F9-A plan v4", "ADR-0016", "ADR-0017 D8",
                  "register E55", "§7", "what each slice built is in its paragraph",
                  "the row named under **Later slices**"):

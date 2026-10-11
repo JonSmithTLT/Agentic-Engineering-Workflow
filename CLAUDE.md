@@ -48,7 +48,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   never conflict. `python tools/register.py show <id>` prints a row with its notes. The same holds for a
   decisions-due item's `what` and an `implementation-status.md` paragraph: progress goes in a note on the row. A
   capability built in slices has a Status that names no slice and one paragraph per slice, which only that slice
-  edits; a slice with no paragraph there adds a note on the row its **Later slices** paragraph names.
+  edits (a convention review keeps; the docs test refuses the known shapes, not every wording); a slice with no
+  paragraph there adds a note on the row its **Later slices** paragraph names.
   What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
   command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
   the register, run `python tools/register.py resolve` (it re-merges the YAML row by row and renders), not a hand

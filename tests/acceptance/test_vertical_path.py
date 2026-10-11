@@ -182,6 +182,9 @@ def result_problems(op: Operator) -> list[str]:
 def verdict(op: Operator, *, decisions: tuple[str, ...] | None = V1_DECISIONS,
             limits: tuple[str, ...] = ("publish_needs_decision", "containment")) -> list[str]:
     problems = [f"{k} = {n} (must be 0)" for k, n in op.ledger.over().items()]
+    fallbacks = [o.get("step") for o in op.ledger.operator_fallbacks()]
+    if fallbacks:  # any operator fallback fails the gate, whatever counter (if any) it touched
+        problems.append(f"the operator fell back to today's workaround at: {', '.join(map(str, fallbacks))}")
     labels = tuple(d["label"] for d in op.ledger.decisions)
     if decisions is not None and labels != decisions:
         problems.append(f"operator decisions {list(labels)} (must be exactly {list(decisions)})")

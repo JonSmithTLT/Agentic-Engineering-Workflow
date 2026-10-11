@@ -126,6 +126,10 @@ the end and writes its ledger before it asserts.
 | `lifecycle_steps` | any operator command or chat line that pushes a lifecycle stage. Approving the plan and the publish are decisions, not steps. |
 | `manifest_adopts` | any separate adopt step |
 
+**Any operator fallback fails the verdict.** Every fallback the operator took (each a ledger entry with its evidence)
+is listed in the summary and fails the scenario, whether or not one of the counters above classifies it, so a
+workaround no counter sees (editing git's own exclude file, for example) can never let the zeros pass.
+
 **Operator decisions** are listed, not counted against: every question AEW or the Lead put to the operator, with the
 answer. V1 must list exactly `plan`, `publish`. Any other question fails that comparison and is reviewed by hand: is it
 a real product, policy or safety judgement? The summary shows, for each decision, the tool its answer drives and

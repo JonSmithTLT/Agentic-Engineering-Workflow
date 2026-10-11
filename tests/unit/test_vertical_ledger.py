@@ -149,3 +149,12 @@ def test_the_summary_shows_the_tool_each_decision_drives_and_whose_it_is():
                  detail={"decision": "ACCEPT_REVIEW_EVIDENCE", "tool": "ticket_request_verification", "owner": None})
     assert ("accept_review_evidence [drives ticket_request_verification; owner not stated] -> yes"
             in led.summary())
+
+
+def test_every_operator_fallback_is_listed_and_the_document_says_it_fails_the_verdict():
+    led = L.Ledger("unit")
+    led.observe("fallback", step="caches", ideal="(nothing)", observed="GATE_UNSATISFIED", fallback="exclude")
+    led.observe("lead.gap", gap="no_ticket")
+    assert [o["step"] for o in led.operator_fallbacks()] == ["caches"]
+    assert "operator fallbacks: caches" in led.summary()
+    assert "**Any operator fallback fails the verdict.**" in DOC.read_text(encoding="utf-8")

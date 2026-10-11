@@ -182,6 +182,11 @@ class Ledger:
 
     # ------------------------------------------------------------------ results
 
+    def operator_fallbacks(self) -> list[dict[str, Any]]:
+        """Every workaround the operator fell back to. Any one fails the verdict, whether or not a counter classifies
+        it (a fallback no counter sees must not let the zeros pass)."""
+        return [o for o in self.observations if o["kind"] == "fallback"]
+
     def counts(self) -> dict[str, int]:
         out = {c: 0 for c in COUNTERS}
         for e in self.entries:
@@ -206,6 +211,8 @@ class Ledger:
                  "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
                  "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
                  "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none")]
+        lines.append("operator fallbacks: " + (", ".join(o.get("step") or "?" for o in self.operator_fallbacks())
+                                               or "none"))
         for name, r in sorted(self.hard_limits.items()):
             lines.append(f"hard limit {name}: {r['outcome']}")
         for o in self.observations:

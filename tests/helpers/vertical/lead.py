@@ -279,18 +279,19 @@ class Lead:
 
     def loop_acts(self, proj: dict[str, Any]) -> bool:
         """Steering on: an action the projection marks ``auto_runnable`` is the loop's to run. The Lead waits for an
-        event: the revision moves (the loop acted: True), or the loop records a stop newer than this projection (it
-        will not act: False, and the Lead pushes it, counted). Bounded, so a loop that never answers is measured."""
-        rev = proj.get("revision")
-        seen = _loop(self.call("status", {}).get("result"))
+        event: the revision moves (the loop acted: True), or the loop has recorded a stop at this projection's revision
+        or later (it will not act: False, and the Lead pushes it, counted; the stop's code is recorded). A stop recorded
+        before the Lead looked counts too, so the bound only covers a loop that is genuinely silent."""
+        rev = int(proj.get("revision") or 0)
         deadline = time.monotonic() + LOOP_WAIT_S
         while time.monotonic() < deadline:
             out = self.call("status", {})
             loop = _loop(out.get("result"))
             if (out.get("projection") or {}).get("revision") != rev:
                 return True
-            if loop.get("updated_at") != seen.get("updated_at") and loop.get("status") != "running":
-                self.event("loop_declined", stop=loop.get("stop"))
+            stop = loop.get("stop") or {}
+            if loop.get("status") != "running" and int(stop.get("revision") or -1) >= rev:
+                self.event("loop_declined", stop=stop)
                 return False
             time.sleep(POLL_S)
         self.event("loop_declined", stop=None, why=f"no loop event within {LOOP_WAIT_S:.0f}s")

@@ -639,13 +639,71 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
 # ---------------------------------------------------------------------------------------------- §10 and SAE-07
 
 
-@pytest.mark.parametrize("name", ["ticket_prepare", "integration_publish"])
-def test_stage_matches_primitives(tmp_path, monkeypatch, name):
+def long_custody(p: Project) -> None:
+    """A custody bound no test run outlasts: these tests drive their custodians themselves, while a harness run may
+    take longer than S2's default (fixture setup, pinned as the project's starting policy)."""
+    from aew.util import dump_yaml, load_yaml
+
+    gates = p.root / ".aew/policy/gates.yaml"
+    data = load_yaml(gates.read_text(encoding="utf-8"))
+    data["post_integration"]["custody_register_s"] = 3600
+    gates.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
+    p.pin_policy()
+
+
+def _verified(p: Project, held: dict[str, str], *, validate: bool, mode: str) -> dict[str, str]:
+    """In one copy: the Ticket to VERIFY_PENDING with its report; with ``validate``, accepted, COMMIT_READY, prepared,
+    and validated by its custodian (checks mode), or its integration verifier run and its report routed (verifier
+    mode), so the entry is VALIDATED."""
+    implement(assign(p, "T-0001"), SUBTRACT_PATCH)
+    p.lead("work", "transition", "T-0001", "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", "T-0001", "--evidence", review(p, "T-0001"))
+    p.lead("work", "transition", "T-0001", "--to", "VERIFY_PENDING")
+    found = {"report": verify(p, "T-0001")}
+    if not validate:
+        return found
+    e = engine(p)
+    e.verify_ingest(token=p.token, expect_rev=p.rev(), work_id="T-0001", evidence_id=found["report"])
+    e.work_transition(token=p.token, expect_rev=p.rev(), work_id="T-0001", to="COMMIT_READY")
+    e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id="T-0001")
+    custodian = lease(p)["custodian"]
+    if mode == "verifier":
+        out = e.launch_dispatched(e.invoke_create(token=p.token, expect_rev=p.rev(), work_id="T-0001",
+                                                  role="verifier", scope="integration", launch=True))
+        assert not e.harness_wait(out["launch"]["run"], timeout=300)["timed_out"]
+    found_step, routed = e.custody_step(custodian, held[f"{p.root / '.aew'}|{custodian}"])
+    assert found_step == CO.ACTED, routed
+    validated = entry(p, "T-0001")["validated"]
+    found["candidate"] = validated["candidate"]
+    found["integration_report"] = validated.get("report", "")
+    return found
+
+
+# Every terminal shape of the two integration stages (plan v3 §6, §10; PR #200 review): the steps a stage plans for the
+# state it is called in, each compared with its primitives run directly.
+EQUIVALENCE_CASES = [("ticket_prepare", "checks"), ("ticket_prepare", "verifier"),
+                     ("integration_publish", "done"), ("integration_publish", "rebuild"),
+                     ("integration_publish", "verifier"), ("integration_publish", "rebuild_verifier")]
+PLANNED = {
+    ("ticket_prepare", "checks"): ["verify.ingest", "work.transition", "integrate.prepare"],
+    ("ticket_prepare", "verifier"): ["verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
+                                     "dispatch.launch"],
+    ("integration_publish", "done"): ["integrate.publish"],
+    ("integration_publish", "rebuild"): ["integrate.publish"],
+    ("integration_publish", "verifier"): ["verify.ingest.integration", "integrate.publish"],
+    ("integration_publish", "rebuild_verifier"): ["integrate.publish", "invoke.create.mutating", "dispatch.launch"]}
+
+
+@pytest.mark.parametrize(("name", "case"), EQUIVALENCE_CASES, ids=[f"{n}-{c}" for n, c in EQUIVALENCE_CASES])
+def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
     """Plan v3 §10: the stage and its primitives run directly, with the same arguments, end in the same state,
-    compared without the journal's own records (``stage_equivalence``). Checks mode, so no harness runs; commit times
-    are fixed so the two copies' candidates are the same commits. `integration_publish` is compared on a VALIDATED
-    entry whose head moved: the fresh lease and the rebuild under it (a publication to DONE archives the unit, which
-    the staged copy's journal then annotates; its own tests cover that path)."""
+    compared without the journal's own records (``stage_equivalence``), for each shape the stage plans:
+    `ticket_prepare` in checks mode (three steps) and in verifier mode (the integration verifier launched);
+    `integration_publish` on a VALIDATED entry publishing to DONE (the unit archived, its intent then annotating it),
+    on a moved head (the fresh lease and the one rebuild), in verifier mode (the report accepted, then published to
+    DONE), and on a moved head in verifier mode (the rebuild, then the rebuilt candidate's verifier). Commit times are
+    fixed so the two copies' candidates are the same commits; a verifier's harness run is the fake harness's."""
+    verifier = "verifier" in case
     monkeypatch.setenv("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
     monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
     monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
@@ -654,53 +712,65 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
     monkeypatch.setattr(engine_api, "spawn_worker",
                         lambda repo, aew_root, custodian, credential: held.__setitem__(f"{aew_root}|{custodian}",
                                                                                        credential))
-    found: dict[str, str] = {}
+    labs: list[Any] = []
 
     def prepare(p: Project) -> None:
-        checks_mode(p)
+        if verifier:
+            labs.append(launching(p, tmp_path, monkeypatch))
+            # The first verifier reports and ends; one the stage launches stays live in both copies.
+            labs[0].script("default", [{"do": "hang"}] if name == "ticket_prepare"
+                           else verifier_script(tmp_path / "sync")[:3])
+        else:
+            checks_mode(p)
+        long_custody(p)
         create_planned_ticket(p, tmp_path)
 
     staged, direct = _twins(tmp_path, prepare)
-    for p in (staged, direct):  # the same work in each copy, after the copy: each has its own workspace
-        implement(assign(p, "T-0001"), SUBTRACT_PATCH)
-        p.lead("work", "transition", "T-0001", "--to", "REVIEW_PENDING")
-        p.lead("review", "ingest", "T-0001", "--evidence", review(p, "T-0001"))
-        p.lead("work", "transition", "T-0001", "--to", "VERIFY_PENDING")
-        found["report"] = verify(p, "T-0001")
-        if name == "integration_publish":  # prepared and validated by the custodian, in each copy
-            e = engine(p)
-            e.verify_ingest(token=p.token, expect_rev=p.rev(), work_id="T-0001", evidence_id=found["report"])
-            e.work_transition(token=p.token, expect_rev=p.rev(), work_id="T-0001", to="COMMIT_READY")
-            e.integrate_prepare(token=p.token, expect_rev=p.rev(), work_id="T-0001")
-            custodian = lease(p)["custodian"]
-            e.custody_step(custodian, held[f"{p.root / '.aew'}|{custodian}"])
-            found["candidate"] = entry(p, "T-0001")["validated"]["candidate"]
-            # The head moves (the same commit in each copy): the publish takes a fresh lease and commits the one
-            # rebuild under it, the stage's whole path short of DONE, whose archival the journal then annotates.
-            outside_commit(p)
-    decisions = recorded_decisions()
-    recorded = decisions.__enter__()
     try:
-        e = engine(direct)
-        before = differences(end_state(staged.root, recorded), end_state(direct.root, recorded))
-        assert all(d.startswith("/files/evidence/") or "validation-runs" in d for d in before), before
-        if name == "ticket_prepare":
-            out = call(staged, name, work_id="T-0001", verification_evidence=found["report"])
+        found: dict[str, str] = {}
+        for p in (staged, direct):  # the same work in each copy, after the copy: each has its own workspace
+            found = _verified(p, held, validate=name == "integration_publish",
+                              mode="verifier" if verifier else "checks")
+            if "rebuild" in case:  # the same commit in each copy: the publish rebuilds under a fresh lease
+                outside_commit(p)
+        if labs:
+            labs[0].script("default", [{"do": "hang"}])
+        decisions = recorded_decisions()
+        recorded = decisions.__enter__()
+        try:
+            e = engine(direct)
+            before = differences(end_state(staged.root, recorded), end_state(direct.root, recorded))
+            assert all(d.startswith("/files/evidence/") or "validation-runs" in d for d in before), before
+            if name == "ticket_prepare":
+                out = call(staged, name, work_id="T-0001", verification_evidence=found["report"])
+                e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                                evidence_id=found["report"], scope="ticket")
+                e.work_transition(token=direct.token, expect_rev=direct.rev(), work_id="T-0001", to="COMMIT_READY")
+                e.integrate_prepare(token=direct.token, expect_rev=direct.rev(), work_id="T-0001")
+            else:
+                accept = {"verification_evidence": found["integration_report"]} if case == "verifier" else {}
+                out = call(staged, name, work_id="T-0001", prepared_candidate=found["candidate"], **accept)
+                if accept:
+                    e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                                    evidence_id=found["integration_report"], scope="integration")
+                e.integrate_publish(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                                    candidate=found["candidate"])
+            if (name, case) in (("ticket_prepare", "verifier"), ("integration_publish", "rebuild_verifier")):
+                # the integration verifier the stage launches, launched directly
+                e.launch_dispatched(e.invoke_create(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
+                                                    role="verifier", scope="integration", launch=True))
             assert out["ok"], out["stopped"]
-            e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
-                            evidence_id=found["report"], scope="ticket")
-            e.work_transition(token=direct.token, expect_rev=direct.rev(), work_id="T-0001", to="COMMIT_READY")
-            e.integrate_prepare(token=direct.token, expect_rev=direct.rev(), work_id="T-0001")
-        else:
-            out = call(staged, name, work_id="T-0001", prepared_candidate=found["candidate"])
-            assert out["ok"], out["stopped"]
-            assert out["result"]["steps"][0]["rebuilt"] is True
-            e.integrate_publish(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
-                                candidate=found["candidate"])
-        a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
-        assert differences(a, b) == before, "\n".join(sorted(set(differences(a, b)) ^ set(before)))
+            assert [s["primitive"] for s in intent(staged, out)["steps"]] == PLANNED[(name, case)]
+            assert done(staged, "T-0001") == (name == "integration_publish" and case in ("done", "verifier"))
+            a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
+            assert differences(a, b) == before, "\n".join(sorted(set(differences(a, b)) ^ set(before)))
+        finally:
+            decisions.__exit__(None, None, None)
     finally:
-        decisions.__exit__(None, None, None)
+        for lab in labs:
+            lab.cleanup()
+            lab.project = direct  # the copy's runs are its own: end them the same way
+            lab.cleanup()
 
 
 @pytest.mark.parametrize("primitive", ["integrate.prepare", "verify.ingest.integration", "integrate.publish"])

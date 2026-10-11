@@ -22,6 +22,14 @@ makes), so any other difference in the decision still compares; a digest no reco
 authored file's hash, wherever it is cited, becomes ``"<sha256 of <path>>"``, and the file itself is compared,
 normalised: the invocation packs under ``local/packs/`` included (PR #177 review, finding 3).
 
+**History records** (M4-E E6a: a publication to DONE archives its unit in the same commit): the unit's bundle
+(``work/<T>/archive.yaml``), its annotations and the chain's tail (``history/tail.yaml``) are compared as data,
+normalised like the rest. A stage that ends after its unit was archived records itself on the unit as an annotation
+(``rel: stage_intent``): that annotation file, its tail entry and the ``annotation`` counter are the journal's own and
+are removed; every other annotation and history entry is kept and compared. A tail entry's chain value ``h`` hashes
+the entry's own fields, times included, so it becomes ``"<chain-hash>"``; the fields themselves still compare.
+``cold.unverified_since`` is a time.
+
 E5's ``test_stage_matches_primitives[<stage>]`` compares through this view; extend it there for what Ticket stages
 add (workspaces, invocations), by path, never by loosening what it keeps.
 """
@@ -45,7 +53,10 @@ from aew.engine import stage_intents as SI
 DROPPED = frozenset({("revision",), ("last_transition",), ("outbox",), ("stage_intents",),
                      ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents"),
                      # M4-E E6a: the intent whose step granted the lease, recorded on it for attribution (§2.3)
-                     ("queue", "lease", "custody", "requested_by")})
+                     ("queue", "lease", "custody", "requested_by"),
+                     # M4-E E6a: counts annotations, the journal's own on an archived unit included (module docstring);
+                     # every other annotation is compared as its file and its tail entry
+                     ("counters", "annotation")})
 # The revision a dispatch was decided at (M4-E E5a): the stage's intent commit comes first, so its assignment is
 # decided one revision later than the same assignment made directly. Normalised to "<revision-bound>", never dropped.
 REVISION_BOUND = frozenset({("invocations", "*", "dispatch", "revision"),
@@ -60,7 +71,11 @@ DECISION_DIGEST = frozenset({("invocations", "*", "dispatch", "decision"),
                              ("queue", "entries", "*", "attempts", "rebuild_admission", "decision")})
 TIME_KEY = re.compile(r"^(at|.+_at)$")
 # Times kept under another name: a custody credential binds its lease's grant time (M4-E E6a).
-TIME_PATHS = frozenset({("tokens", "*", "scope", "lease")})
+TIME_PATHS = frozenset({("tokens", "*", "scope", "lease"), ("cold", "unverified_since")})
+# History records compared as data (module docstring), and the journal's own annotation among them.
+HISTORY_RECORD = re.compile(r"^(work/[^/]+/archive\.yaml|work/[^/]+/annotations/[^/]+\.yaml|history/tail\.yaml)$")
+JOURNAL_ANNOTATION = "stage_intent"
+TAIL = "history/tail.yaml"
 TOKEN_ID = re.compile(r"tk_[0-9a-f]{8,}")
 SHA256 = re.compile(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])")
 # The transition log, its redo records, the control file (compared as data above) and its generated view (which
@@ -173,8 +188,14 @@ def end_state(root: Path, decisions: dict[str, dict[str, Any]] | None = None) ->
                              for rel, path in authored.items()}, decisions)
     control = _clean(load_control(root), str(root), normalise)
     files: dict[str, Any] = {}
-    for rel, path in authored.items():
+    # The chain's tail last: it lists credentials by their random ids, so their ordinals come from the bundles first.
+    for rel, path in sorted(authored.items(), key=lambda kv: kv[0] == TAIL):
         text = path.read_text(encoding="utf-8", errors="replace")
+        if HISTORY_RECORD.match(rel):
+            record = history_record(rel, yaml.safe_load(text), normalise)
+            if record is not None:  # None: the journal's own annotation
+                files[rel] = record
+            continue
         if text.startswith("<!-- generated copy"):  # its first line names the control revision it was made at
             text = text.split("\n", 1)[1]
         if text.startswith("---\n"):  # front matter: compared as data, so its times are normalised
@@ -184,6 +205,34 @@ def end_state(root: Path, decisions: dict[str, dict[str, Any]] | None = None) ->
         else:
             files[rel] = normalise.text(text)
     return {"control": control, "files": files}
+
+
+def history_record(rel: str, data: Any, normalise: _Normaliser) -> Any:
+    """A history record as the comparison sees it (module docstring), or None for the journal's own annotation: an
+    annotation file with ``rel: stage_intent``. The tail keeps every other entry, its chain values become
+    ``"<chain-hash>"`` and its entries' link lists compare as sets; a bundle's credentials are ordered by what they were
+    issued to (their ids are random), so each gets the same ordinal in both projects."""
+    if not isinstance(data, dict):
+        return normalise(data)
+    if "/annotations/" in rel and data.get("rel") == JOURNAL_ANNOTATION:
+        return None
+    if rel == TAIL:
+        data = {**data, "entries": [{**e, **({"h": "<chain-hash>"} if "h" in e else {})}
+                                    for e in data.get("entries") or []
+                                    if not (e.get("kind") == "annotation" and e.get("rel") == JOURNAL_ANNOTATION)]}
+    if rel.endswith("archive.yaml") and isinstance(data.get("tokens"), dict):
+        data = {**data, "tokens": dict(sorted(data["tokens"].items(), key=lambda kv: _issue_order(kv[1])))}
+    out = normalise(data)
+    if rel == TAIL:
+        for e in out.get("entries") or []:
+            e["links"] = {k: sorted(v) if isinstance(v, list) else v for k, v in (e.get("links") or {}).items()}
+    return out
+
+
+def _issue_order(record: dict[str, Any]) -> tuple[str, ...]:
+    scope = record.get("scope") or {}
+    return (str(scope.get("invocation_id") or ""), str(record.get("kind")), str(record.get("issued_at")),
+            str(scope.get("attempt") or ""), json.dumps(scope, sort_keys=True, default=str))
 
 
 def differences(a: Any, b: Any, path: str = "") -> list[str]:

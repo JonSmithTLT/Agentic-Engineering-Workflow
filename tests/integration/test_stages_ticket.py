@@ -210,10 +210,11 @@ def _twins(tmp_path: Path, prepare: Callable[[Project], None]) -> tuple[Project,
     return first, Project(second, first.token)
 
 
-@pytest.mark.parametrize("name", ["ticket_draft", "ticket_start"])
+@pytest.mark.parametrize("name", ["ticket_draft", "ticket_draft_without_plan", "ticket_start"])
 def test_stage_matches_primitives(tmp_path, monkeypatch, name):
     """Plan v3 §10 (fake harness): a stage and its primitives run directly, with the same arguments, end in the same
-    state, compared without the journal's own records (``stage_equivalence``)."""
+    state, compared without the journal's own records (``stage_equivalence``), for each shape the stage plans:
+    `ticket_draft` with and without a plan (one step; PR #200 review's class sweep), and `ticket_start`."""
     labs = []
 
     def prepare(p: Project) -> None:
@@ -231,7 +232,13 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
         def rev() -> int:
             return int(e.store.read()["revision"])
 
-        if name == "ticket_draft":
+        if name == "ticket_draft_without_plan":
+            out = call(staged, "ticket_draft", **{k: v for k, v in DRAFT.items() if k != "plan"})
+            assert out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["work.create"]
+            e.work_create(token=direct.token, expect_rev=rev(), kind="ticket", title=DRAFT["title"], risk_class=1,
+                          mutating=True, scope_paths=DRAFT["scope"], goal_backwards=DRAFT["goal"],
+                          contract=DRAFT["contract"], body="")
+        elif name == "ticket_draft":
             assert call(staged, "ticket_draft", **DRAFT)["ok"]
             made = e.work_create(token=direct.token, expect_rev=rev(), kind="ticket", title=DRAFT["title"],
                                  risk_class=1, mutating=True, scope_paths=DRAFT["scope"], goal_backwards=DRAFT["goal"],

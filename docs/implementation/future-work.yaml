@@ -1071,7 +1071,8 @@ sections:
       plugin) and the stateless generation (`POST /api/experimental/generate`, the plugin host) make model calls that record
       no usage, so the live figure cannot see them. A counted server sets no `warming` (L3''s preflight refuses one), loads
       no plugin beyond OpenCode''s own and has no TUI or app attached that could send `/btw`; otherwise the provider reconciliation
-      (Q7 v0.3.1 §9.1) is the only backstop for that usage.'
+      (Q7 v0.3.1 §9.1) is the only backstop for that usage. **S8a built (2026-10-10):** the run supervisor''s core; its
+      status is in implementation-status.md''s F19 section.'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

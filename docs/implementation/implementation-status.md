@@ -212,7 +212,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **S7, the dispatcher and the frozen validity classifier:** not built.
 
-**S8, the run supervisor:** not built.
+**S8, the run supervisor:** S8a built (2026-10-10, the core): `eval/aew_eval/supervisor.py` runs one counted run through an arm driver (R's in S9, A's in S13), from the first prompt (the task bytes checked against the run manifest; the wall clock starts there) to the settled cost: the responder (`responder.py`, `aew/m4h-responder/v1`: Q7's clarification and continuation texts verbatim, the denial an unsealed draft that no counted run may use, R's delivery through OpenCode 2.0.18's own reply operations), the quiescence machine (one continuation, then a second quiescence ends the run; it never reads correctness), per-worker meters built from `arm-tap`'s events with their own state under the evaluator's 0700 root and the passwords in memory only, F19's termination rule (`spend.py`: usd plus projection plus guard against the cap, the proxy's test, S_pot_hard, staleness and `unknown`), the shutdown order with its last reads, throttle events per run and partition, and the counted cost (the proxy's ledger under layer (c), the live figure a cross-check whose divergence above the run's tolerance is CF evidence; the counted cost under the fallback layers is a lower bound; layer (a) is not admissible for counted runs, and S12's seal refuses it too). Every exit from a run, a failed preparation or first prompt included, takes the shutdown order and returns its record; arm-written data never makes a supervisor fault. The helper contract is `helpers.py`; `tests/unit/test_eval_supervisor.py`. Next: S8b, the helpers made real (`arm-launch`, `arm-kill`, `arm-pack`, `arm-tap` as `arm`), after S8a merges.
 
 **S9, the R and R+ arms under the supervisor:** not built.
 
@@ -224,7 +224,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **S13, the A arm:** not built (after M4-E's E7c).
 
-**S14, the F25 binding:** not built (after F25 L4).
+**S14, the F25 binding:** not built (after F25 L4). It must pin that a source is `final` only from the evaluator's own `final()` call on its meter, never from a status the arm can write (S8a exempts `final` sources from the projection and the staleness ceiling).
 
 **S15, scoring, audit and the report:** not built.
 

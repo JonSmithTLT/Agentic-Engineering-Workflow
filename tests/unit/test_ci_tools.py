@@ -789,6 +789,85 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     assert jobs["changes"]["permissions"]["pull-requests"] == "read"
 
 
+class _Config:
+    """What ``lanes.ignore_collect`` reads of a pytest config."""
+
+    def __init__(self, lane: str | None, live: bool = False) -> None:
+        self.rootpath = ROOT
+        self.options = {"aew_lane": lane, "aew_live": live}
+
+    def getoption(self, name: str) -> object:
+        return self.options[name]
+
+
+def test_the_vertical_uat_is_its_own_lane_and_never_a_required_one():
+    """The vertical UAT carries the `acceptance` marker, yet maps to its own lane, which no tier requires (it is in
+    shadow: docs/implementation/vertical-uat.md)."""
+    import lanes
+
+    assert lanes.lane_of(lanes.VERTICAL_PATH, ["acceptance"]) == "vertical"
+    assert lanes.lane_of("tests/acceptance/test_at1_serial_lifecycle.py", ["acceptance"]) == "acceptance"
+    assert "vertical" in lanes.LANES
+    assert all("vertical" not in required for required in tier.LANES.values())
+
+
+@pytest.mark.parametrize("lane", [None, "fast", "serial", "integration", "acceptance", "regression", "adversarial"])
+def test_no_required_lane_collects_the_vertical_uat(lane):
+    """A required job collects every test it finds and deselects other lanes' tests; a collected test that never ran
+    fails assurance, and a red one blocks the merge. So the module is not collected at all, whatever the lane."""
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / lanes.VERTICAL_PATH, _Config(lane)) is True
+    assert lanes.ignore_collect(ROOT / lanes.VERTICAL_PATH, _Config(lane, live=True)) is True
+    assert lanes.ignore_collect(ROOT / "tests/acceptance/test_at1_serial_lifecycle.py", _Config(lane)) is None
+
+
+def test_the_vertical_job_collects_it():
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / lanes.VERTICAL_PATH, _Config("vertical")) is None
+
+
+def test_collection_proves_the_lanes_split():
+    """The real collection, over the acceptance directory: the acceptance lane never holds the vertical UAT and the
+    vertical lane holds only it."""
+    import subprocess
+
+    def collected(*args: str) -> set[str]:
+        out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                              "-p", "no:xdist", *args, "tests/acceptance"], cwd=ROOT, capture_output=True, text=True,
+                             timeout=300, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        return {line.split("::")[0] for line in out.stdout.splitlines() if "::" in line}
+
+    import lanes
+
+    assert lanes.VERTICAL_PATH not in collected("--lane", "acceptance")
+    assert collected("--lane", "vertical") == {lanes.VERTICAL_PATH}
+
+
+def test_the_vertical_job_runs_in_shadow_and_uploads_its_ledgers():
+    """Structure of the `vertical` job: every pull request and main, both OSes, its ledgers uploaded whatever the
+    outcome, not a lane report, not in the merge gate's needs, and honestly red (no continue-on-error)."""
+    from vertical.ledger import VERTICAL_MODE
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    jobs = wf["jobs"]
+    job = jobs["vertical"]
+    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]
+    assert "if" not in job and "needs" not in job and "continue-on-error" not in job
+    assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
+    run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
+    assert "--lane vertical tests/acceptance/test_vertical_path.py" in run["run"] and "continue-on-error" not in run
+    assert run["env"]["AEW_VERTICAL_OUT"] == "${{ runner.temp }}/vertical"
+    upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
+    assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
+    assert not upload["with"]["name"].startswith("lane-report-")  # assurance downloads lane-report-* only
+    assert "vertical" not in jobs["assurance"]["needs"] and VERTICAL_MODE == "shadow"
+    for name, other in jobs.items():  # no other job runs the vertical lane or names its module
+        if name != "vertical":
+            assert "vertical" not in json.dumps(other.get("steps", [])), name
+
+
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
     """A scheduled job that hits its timeout ends `cancelled`; the report must open the issue for it too (CI posture
     review 2026-10-05, finding 1: six of eight nightlies timed out silently)."""

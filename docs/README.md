@@ -143,6 +143,7 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 | [`agent-effectiveness-implementation-delta-2026-10-09.md`](implementation/agent-effectiveness-implementation-delta-2026-10-09.md) | The planning pass of the agent-effectiveness adoption (2026-10-09): every item classified, the ordered delta D1 to D16 (owner row, dependency, new work, completion, probe, before M4-H or not), the implementation-local choices; no true design gap. Nothing in it is built |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
+| [`vertical-uat.md`](implementation/vertical-uat.md) | The vertical UAT (in shadow): a fresh project to a published fix, its burden ledger and the thresholds the test pins |
 
 **ADRs** (one entry per ADR with a blank line between, so a change to one entry and an ADR added after it merge; an entry says what the ADR decides and when it was accepted or amended, and build progress goes in [`implementation-status.md`](implementation/implementation-status.md) or a [register note](implementation/notes.d/README.md)):
 

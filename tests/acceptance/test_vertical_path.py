@@ -14,13 +14,18 @@ checked by a real ``python -m pytest``).
 
 from __future__ import annotations
 
+import json
 import os
+import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import git
+from conftest import git, run_aew
+from notifier import recorder
 from vertical import workers
+from vertical.chat import Mailbox
 from vertical.ledger import HELD, NOT_REFUSED, UNNAMED, V1_DECISIONS, Ledger
 from vertical.scripted_operator import (
     Operator,
@@ -30,7 +35,8 @@ from vertical.scripted_operator import (
     lead_spec,
     new_world,
 )
-from vertical.chat import Mailbox
+
+from aew.harness import runlog
 
 pytestmark = pytest.mark.acceptance("VUAT")
 
@@ -57,8 +63,11 @@ IDEAL_PATH: dict[str, dict[str, str]] = {
                         "(PROPOSED behaviour)"},
     "preflight": {"input": "aew preflight", "status": PROPOSED,
                   "ideal": "readiness: fails before any Ticket exists, naming the cause and the fix"},
-    "change_model": {"input": "aew settings set execution.profiles.standard.model cheaper-model", "status": PROPOSED,
+    "change_model": {"input": "aew settings set execution.roles.implementer.model other/cheaper-model",
+                     "status": PROPOSED,
                      "ideal": "one operator action that validates and saves; no raw YAML, no adopt, no restart"},
+    "raise": {"input": "aew lead mode raise run", "status": EXISTS,
+              "ideal": "the operator raises the Lead's steering mode at the operator endpoint: a decision"},
 }
 
 
@@ -66,27 +75,40 @@ IDEAL_PATH: dict[str, dict[str, str]] = {
 
 
 def ideal_argv(step: str) -> list[str]:
-    import shlex
-
     return shlex.split(IDEAL_PATH[step]["input"])[1:]
 
 
-def configure(op: Operator, *, steering: str | None = None) -> None:
-    """Setup: the check command and the harness, the ideal way first."""
+def configure(op: Operator, *, steering: bool = False, cause: str | None = None) -> None:
+    """Setup: the check command and the harness, the ideal way first. ``cause`` puts a V3 cause into the operator's
+    first configuration; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines)."""
     res = op.type("configure", ideal_argv("configure"))
     if res.returncode == 0:
         return
     instead = "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt (quickstart)"
     op.fallback("configure", IDEAL_PATH["configure"]["input"], res.stderr or res.stdout, instead)
+    command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
+               else workers.UNIT)
 
     def checks(doc: dict[str, Any]) -> None:
         doc.update({"schema": "aew/checks/v1", "baseline_failures": [],
-                    "checks": {"unit": {"configured": True, "command": workers.UNIT, "cwd": ".", "timeout_s": 300,
+                    "checks": {"unit": {"configured": True, "command": command, "cwd": ".", "timeout_s": 300,
                                         "description": "the project's tests"}}})
 
+    def execution(doc: dict[str, Any]) -> None:
+        doc.clear()
+        doc.update(execution_policy(op.lab, steering="crawl" if steering else None))
+        if steering:
+            doc["profiles"]["standard"]["deadline_s"] = 1800
+            doc["notify"] = {"command": recorder(op.tmp)[0]}
+        if cause == "provider-env-unset":
+            doc["provider_env"] = ["VUAT_PROVIDER_KEY"]
+        if cause in ("model-not-listed", "model-id-provider-prefix"):
+            doc["harness"] = "opencode"
+            doc["profiles"] = {"standard": {"provider": "vuatprov", "model": "vuat-missing-model"
+                                            if cause == "model-not-listed" else "vuatprov/vuat-model"}}
+
     op.edit_policy("configure", "checks.yaml", checks)
-    op.edit_policy("configure", "execution.yaml",
-                   lambda doc: (doc.clear(), doc.update(execution_policy(op.lab, steering=steering))))
+    op.edit_policy("configure", "execution.yaml", execution)
     acquired = op.type("configure:acquire", ["lead", "acquire", "--expect-rev", "0", "--session-label", "operator"])
     assert acquired.returncode == 0, acquired.stderr
     op.credential = acquired.json["token"]
@@ -172,9 +194,29 @@ def finish(op: Operator, session) -> None:
     op.end_session(session, "exit")
     merge_lead(op)
     containment(op.lab, op.ledger)
+    if op.ledger.steering:
+        steering_facts(op)
     if "publish_needs_decision" not in op.ledger.hard_limits:
         op.check_heads("at the end")
         op.ledger.hard_limits.setdefault("publish_needs_decision", {"outcome": HELD})
+
+
+def steering_facts(op: Operator) -> None:
+    """What the steering loop did (the stages it ran, attributed on their intents) and where it stopped: the
+    steering-on variant's measurement, recorded whatever it is (spec: check first whether it completes a Ticket)."""
+    import yaml
+
+    auto, by_lead = [], []
+    for path in sorted(op.lab.aew_root.glob("work/*/stage-intents/*.yaml")):
+        intent = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        row = {"intent": path.stem, "tool": intent.get("tool"), "status": intent.get("status")}
+        (auto if intent.get("auto_run") else by_lead).append(row)
+    loop = op.lab.aew_root / "local" / "steering" / "loop.json"
+    state = json.loads(loop.read_text(encoding="utf-8")) if loop.exists() else None
+    op.ledger.observe("steering_loop", auto_run_stages=auto, lead_stages=by_lead, loop=state,
+                      loop_completed_the_ticket=bool(auto) and not [r for r in by_lead
+                                                                    if r["tool"] != "ticket_draft"])
+    op.ledger.observe("steering_stop", stop=(state or {}).get("stop"), mode=(state or {}).get("mode"))
 
 
 @pytest.fixture
@@ -183,25 +225,383 @@ def world(tmp_path):
     yield made
     for op in made:
         op.lab.cleanup()
+        for close in op.closers:
+            close()
+
+
+def run_aew_json(op: Operator, *args: str) -> Any:
+    res = run_aew("-C", str(op.root), *args, env=op.lab.env)
+    return res.json if res.returncode == 0 else None
 
 
 # ---------------------------------------------------------------------------------------------- V1
 
 
-def test_v1_fresh_path_reaches_a_published_fix_with_no_machinery(tmp_path, world, request):
-    op = setup_operator(tmp_path, "V1")
+def run_v1_path(op: Operator, *, steering: bool = False) -> None:
+    """Setup, open the Lead session, ask for the fix, answer the Lead until the result, close the session."""
+    configure(op, steering=steering)
+    op.in_setup = False
+    if steering:
+        raise_steering(op)
+    session, _ = open_session(op, "open", steering=steering)
+    op.say("ask", workers.REQUEST)
+    op.converse(session)
+    finish(op, session)
+
+
+def v1_decisions(op: Operator) -> tuple[str, ...]:
+    """V1's decisions; a steering-on run also has the operator's raise, a decision that is not V1's to count."""
+    return (("steering_mode",) if op.ledger.steering else ()) + V1_DECISIONS
+
+
+@pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "steering-on"])
+def test_v1_fresh_path_reaches_a_published_fix_with_no_machinery(tmp_path, world, request, steering):
+    op = setup_operator(tmp_path, "V1", steering=steering)
+    world.append(op)
+    try:
+        run_v1_path(op, steering=steering)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+# ---------------------------------------------------------------------------------------------- V1: the hard limits
+
+
+def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, request):
+    """Main moves under the prepared publish: the step must refuse, with a message that names the change ("last
+    writer wins" fails)."""
+    op = setup_operator(tmp_path, "V1-semantic-conflict")
+    world.append(op)
+    moved: dict[str, str] = {}
+
+    def move_main(msg: dict[str, Any]) -> None:
+        if moved:
+            return
+        moved["subject"] = "Document the money module"
+        moved["sha"] = op.own_commit({"ledger/money.py": '"""Money formatting for the ledger."""\n\n\n'
+                                      + workers.BUGGY}, moved["subject"])
+        op.typed("conflict", "(someone else's change lands on main: ledger/money.py)")
+
+    op.on_ask["publish"] = move_main
+    try:
+        run_v1_path(op)
+        semantic_conflict(op, moved)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=None, limits=("semantic_conflict", "publish_needs_decision", "containment"))
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+def semantic_conflict(op: Operator, moved: dict[str, str]) -> None:
+    """``did_not_refuse``: the other change was lost, or the stale candidate was published over it (last writer
+    wins). Otherwise the step stopped short of publishing; it held if what the Lead was told names the change."""
+    publishes = [e for e in lead_events(op.lab) if e.get("kind") == "call" and e.get("tool") == "integration_publish"]
+    if not moved or not publishes:
+        op.ledger.hard_limit("semantic_conflict", NOT_REFUSED, note="the publish step was never reached", moved=moved)
+        return
+    first = publishes[0]
+    head = git("rev-parse", "main", cwd=op.root)
+    kept = subprocess.run(["git", "merge-base", "--is-ancestor", moved["sha"], head], cwd=op.root,
+                          capture_output=True).returncode == 0
+    stale = first.get("arguments", {}).get("prepared_candidate")
+    if not kept or head == stale:
+        op.ledger.hard_limit("semantic_conflict", NOT_REFUSED, call=first, moved=moved, head=head,
+                             note="the step went ahead over the change that moved main (last writer wins)")
+        return
+    said = str(((first.get("stopped") or {}).get("error") or {}).get("message") or "") + str(first.get("said") or "")
+    named = moved["sha"][:7] in said or moved["subject"] in said or "ledger/money.py" in said
+    op.ledger.hard_limit("semantic_conflict", HELD if named else UNNAMED, call=first, moved=moved, head=head,
+                         stopped_publishing=True,
+                         note="" if named else "the step did not publish, but nothing it told the Lead names the "
+                                               "change (its commit, subject or path)")
+
+
+def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, request):
+    """The project keeps its check's caches in the snapshot (no .gitignore): the gate must refuse, naming them (an
+    auto-waived mismatch fails)."""
+    op = setup_operator(tmp_path, "V1-evidence-mismatch", gitignore=False)
+    world.append(op)
+    try:
+        run_v1_path(op)
+        evidence_mismatch(op)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=None, limits=("evidence_mismatch", "publish_needs_decision", "containment"))
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+CACHE_PATHS = ("__pycache__", ".pytest_cache")
+# The refusals that are about evidence and its snapshot (a git or usage error is not the gate speaking).
+EVIDENCE_CODES = frozenset({"GATE_UNSATISFIED", "INPUT_STALE", "STALE_CANDIDATE", "WORKSPACE_MUTATED",
+                            "OBSERVATION_MUTATED", "EVIDENCE_STALE", "SNAPSHOT_MISMATCH"})
+
+
+def evidence_mismatch(op: Operator) -> None:
+    """The gate's answer to a check that changed its own snapshot. Candidates: a refusal the Lead met with an evidence
+    code, a worker's submission refused with one, and a check result AEW marked as having mutated its inputs. Named:
+    one of them names a changed cache path. Anything else the run met is kept as an observation."""
+    found: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []
+    for e in lead_events(op.lab):
+        for b in e.get("blockers") or [] if e.get("kind") in ("gap", "stuck") else []:
+            if b.get("code") in EVIDENCE_CODES:  # the gate, as the projection showed it to the Lead
+                found.append({"by": "lead (projection blocker)", "error": b})
+        if e.get("kind") == "call" and e.get("ok") is False:
+            error = (e.get("stopped") or {}).get("error") or {}
+            (found if error.get("code") in EVIDENCE_CODES else other).append(
+                {"by": "lead", "tool": e.get("tool"), "error": error})
+    for path in sorted(op.lab.aew_root.rglob("transcript.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            step = json.loads(line)
+            result = step.get("result") or {}
+            out = result.get("stdout_json") if isinstance(result.get("stdout_json"), dict) else {}
+            stderr = result.get("stderr_json") if isinstance(result.get("stderr_json"), dict) else {}
+            error = stderr.get("error") or {}
+            run = path.parent.parent.name
+            if out.get("mutated_inputs"):
+                found.append({"by": run, "do": step.get("do"), "flag": {k: out.get(k) for k in (
+                    "result", "mutated_inputs", "message", "changed_paths") if k in out}})
+            elif error:
+                (found if error.get("code") in EVIDENCE_CODES else other).append(
+                    {"by": run, "do": step.get("do"), "error": error})
+    op.ledger.observe("evidence_mismatch.other_refusals", refusals=other[:6])
+    if not found:
+        op.ledger.hard_limit("evidence_mismatch", NOT_REFUSED,
+                             note="the check's caches changed the snapshot and nothing refused or flagged it")
+        return
+    named = [f for f in found if any(c in json.dumps(f) for c in CACHE_PATHS)]
+    op.ledger.hard_limit("evidence_mismatch", HELD if named else UNNAMED, refusals=found[:6],
+                         note="" if named else "refused or flagged without naming the changed paths")
+
+
+# ---------------------------------------------------------------------------------------------- V2
+
+
+@pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "steering-on"])
+@pytest.mark.parametrize("how", ["exit", "kill"])
+def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tmp_path, world, request, how,
+                                                                              steering):
+    gate = tmp_path / "sync" / "implementer-gate"
+    op = setup_operator(tmp_path, f"V2-{how}", steering=steering, gate=gate)
+    world.append(op)
+    ready = Path(f"{gate}.ready")
+    facts: dict[str, Any] = {"how": how}
+    try:
+        configure(op, steering=steering)
+        op.in_setup = False
+        if steering:
+            raise_steering(op)
+        session, _ = open_session(op, "open", steering=steering)
+        op.say("ask", workers.REQUEST)
+        op.converse(session, stop=ready.exists)  # until the implementer announces that it is running
+        facts["implementer_running"] = ready.exists()
+        op.end_session(session, how)
+        facts["lead_gone"] = lead_gone(session)
+        session, first = open_session(op, "reopen", steering=steering)
+        facts["first_words"] = first.get("words")
+        facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
+        op.say("reopen:ask", "Where do things stand?")
+        gate.write_text("go", encoding="utf-8")  # the implementer finishes only now, after the reopen
+        op.converse(session)
+        finish(op, session)
+        facts.update(v2_facts(op))
+        op.ledger.observe("v2", **facts)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+def lead_gone(session: Any) -> bool:
+    """The closed session's TUI process has ended (its pid, recorded by the scripted Lead), within a bound."""
+    from notifier import until
+
+    from aew.harness import procs
+
+    if not session.pidfile.exists():
+        return True
+    pid = int(session.pidfile.read_text(encoding="utf-8"))
+    try:
+        until(lambda: not procs.pid_alive(pid), 60, "the Lead's TUI to end")
+    except AssertionError:
+        return False
+    return True
+
+
+def run_status(op: Operator, run: str) -> str | None:
+    return runlog.observed_status(runlog.run_dir(op.lab.aew_root, run))[0]
+
+
+def v2_facts(op: Operator) -> dict[str, Any]:
+    shown = run_aew_json(op, "work", "show", "T-0001")
+    history = ((shown or {}).get("control") or {}).get("history") or []
+    runs = sorted(d.name for d in runlog.run_dir(op.lab.aew_root, "x").parent.glob("R-INV-0001-*"))
+    reconciled = [e for e in lead_events(op.lab) if e.get("kind") == "call"
+                  and "reconcile" in json.dumps(e.get("arguments"))]
+    record = runlog.read_record(runlog.run_dir(op.lab.aew_root, "R-INV-0001-1")) or {}
+    return {"interrupted": any(h.get("to") == "INTERRUPTED" for h in history), "implementer_runs": runs,
+            "implementer_record": record.get("status"), "reconciles": len(reconciled)}
+
+
+def v2_problems(facts: dict[str, Any]) -> list[str]:
+    problems = []
+    if not facts.get("implementer_running"):
+        problems.append("the implementer was not running when the session ended")
+    if not facts.get("lead_gone"):
+        problems.append("the closed Lead session's TUI was still running")
+    if facts.get("run_after_reopen") not in ("running", "starting"):
+        problems.append(f"the implementer's run was {facts.get('run_after_reopen')} after the reopen (want running)")
+    if facts.get("interrupted"):
+        problems.append("the Ticket was INTERRUPTED")
+    if facts.get("reconciles"):
+        problems.append("a reconcile was needed")
+    if facts.get("implementer_runs") != ["R-INV-0001-1"] or facts.get("implementer_record") != "ended_with_evidence":
+        problems.append(f"the implementer's run was not left alone: {facts.get('implementer_runs')} "
+                        f"{facts.get('implementer_record')}")
+    words = facts.get("first_words")
+    if not words or "T-0001" not in str(words):
+        problems.append(f"the operator was not told where things stand in words on reopening: {words!r}")
+    return problems
+
+
+# ---------------------------------------------------------------------------------------------- V3
+
+
+V3_CASES: dict[str, dict[str, Any]] = {
+    # A provider variable the policy names is not set where AEW launches.
+    "provider-env-unset": {"cause": ["VUAT_PROVIDER_KEY"], "fix": ["set ", "export"]},
+    # A configured model the harness does not list.
+    "model-not-listed": {"cause": ["vuat-missing-model"], "fix": ["vuatprov/vuat-model"]},
+    # The check changes the snapshot it runs on (it writes into the tree).
+    "check-changes-snapshot": {"cause": ["check-output.txt"], "fix": [".gitignore", "ignore"]},
+    # Stale state the engine could recover: a Lead session that died holding the seat.
+    "stale-lead-session": {"cause": ["session"], "fix": ["recover", "reattach", "resume"]},
+    # The model id carries the provider prefix: the operator pasted the harness's own printed `provider/model` id,
+    # and AEW passes provider and id apart, so the joined reference is doubled. Ideal: accepted as typed (no error);
+    # otherwise readiness names the doubled reference and suggests the listed id.
+    "model-id-provider-prefix": {"cause": ["vuatprov/vuatprov/vuat-model"], "fix": ["vuatprov/vuat-model"],
+                                 "accept_as_typed": True},
+}
+V3_MODELS = [{"id": "vuat-model", "modelID": "vuat-model", "providerID": "vuatprov", "name": "VUAT", "enabled": True,
+              "variants": []}]
+
+
+def v3_setup(op: Operator, case: str) -> None:
+    """Setup with the cause in it: the operator's own first configuration, before any Ticket."""
+    if case in ("model-not-listed", "model-id-provider-prefix"):
+        scripts = Path(op.lab.env["AEW_FAKE_SCRIPTS"])
+        (scripts / "default.json").write_text(json.dumps({"steps": [], "server": {"models": V3_MODELS}}),
+                                              encoding="utf-8")
+    configure(op, cause=case)
+    if case == "stale-lead-session":
+        op.in_setup = False
+        session, _ = open_session(op, "stale:open")
+        op.end_session(session, "kill")
+        lead_gone(session)
+
+
+@pytest.mark.parametrize("case", sorted(V3_CASES))
+def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, world, request, case):
+    op = setup_operator(tmp_path, f"V3-{case}")
+    world.append(op)
+    want = V3_CASES[case]
+    problems: list[str] = []
+    try:
+        v3_setup(op, case)
+        op.in_setup = False
+        res = op.type("preflight", ideal_argv("preflight"))
+        said = res.stdout + res.stderr
+        if res.returncode != 0 and "invalid choice: 'preflight'" in said:
+            op.fallback("preflight", IDEAL_PATH["preflight"]["input"], said, "aew doctor (structural health only)")
+        doctor = op.type("preflight:doctor", ["doctor"])
+        accepted = bool(want.get("accept_as_typed")) and res.returncode == 0
+        op.ledger.observe("v3", case=case, preflight_exit=res.returncode, preflight=said[-1500:],
+                          doctor_exit=doctor.returncode,
+                          doctor_names_cause=any(c in doctor.stdout + doctor.stderr for c in want["cause"]),
+                          operator_input_was_the_harness_id=bool(want.get("accept_as_typed")),
+                          accepted_as_typed=accepted)
+        if not accepted:
+            if res.returncode == 0:
+                problems.append(f"readiness passed with the cause in place: {said[-300:]}")
+            elif not any(c in said for c in want["cause"]):
+                problems.append(f"readiness did not name the cause {want['cause']}: {said[-300:]}")
+            elif not any(f in said for f in want["fix"]):
+                problems.append(f"readiness did not name the fix {want['fix']}: {said[-300:]}")
+        launched = launched_anything(op)
+        if launched:
+            problems.append(f"something was launched before any Ticket: {launched}")
+    finally:
+        write_out(op, request)
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
+def launched_anything(op: Operator) -> list[str]:
+    runs = runlog.run_dir(op.lab.aew_root, "x").parent
+    found = [d.name for d in runs.glob("R-*")] if runs.is_dir() else []
+    state = run_aew_json(op, "resume", "--json") or {}
+    return found + [w["id"] for w in state.get("work") or []]
+
+
+# ---------------------------------------------------------------------------------------------- V4
+
+
+CHEAPER = {"provider": "other", "model": "cheaper-model"}
+
+
+def test_v4_changing_a_setting_is_one_action_that_validates_and_saves(tmp_path, world, request):
+    op = setup_operator(tmp_path, "V4")
     world.append(op)
     try:
         configure(op)
         op.in_setup = False
         session, _ = open_session(op, "open")
+        res = op.type("change_model", ideal_argv("change_model"))
+        if res.returncode != 0:
+            op.fallback("change_model", IDEAL_PATH["change_model"]["input"], res.stderr or res.stdout,
+                        "edit .aew/policy/execution.yaml; aew manifest adopt")
+
+            def route(doc: dict[str, Any]) -> None:
+                doc["profiles"]["cheaper"] = dict(CHEAPER)
+                doc["routing"].setdefault("archetypes", {})["implementer"] = "cheaper"
+
+            op.edit_policy("change_model", "execution.yaml", route)
+            op.adopt("change_model:adopt", "the implementer runs on the cheaper model")
         op.say("ask", workers.REQUEST)
         op.converse(session)
         finish(op, session)
     finally:
         write_out(op, request)
+    record = runlog.read_record(runlog.run_dir(op.lab.aew_root, "R-INV-0001-1")) or {}
+    pin = (record.get("contract") or {}).get("execution_profile") or {}
     problems = verdict(op) + result_problems(op)
+    if pin.get("model") != CHEAPER["model"]:
+        problems.append(f"the implementer ran on {pin.get('provider')}/{pin.get('model')}, not the new setting")
     assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
 
 
-__all__ = ["NOT_REFUSED", "UNNAMED"]
+# ---------------------------------------------------------------------------------------------- steering
+
+
+def raise_steering(op: Operator) -> None:
+    """The operator raises the steering mode to Run at the operator endpoint: a decision, not a lifecycle step. The
+    endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed back; both
+    terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are real."""
+    from notifier import Console
+
+    from aew.engine.api import Engine
+    from aew.harness import operator_client, operator_endpoint
+
+    console = Console()
+    endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=console, dev=True, timeout=30)
+    endpoint.start()
+    op.closers.append(endpoint.close)
+    op.typed("steering:serve", "aew operator serve --dev")
+    op.typed("steering:raise", "aew lead mode raise run")
+    try:
+        out = operator_client.request_raise(op.lab.aew_root, "run", ask=lambda prompt: console.code())
+        answer = f"yes (typed the code): {json.dumps(out)[:200]}"
+    except Exception as exc:  # recorded, never hidden: the run goes on in the mode it has  # noqa: BLE001
+        answer = f"refused: {exc}"
+    op.ledger.decision("raise the Lead's steering mode to run?", answer, label="steering_mode", asked_by="operator")

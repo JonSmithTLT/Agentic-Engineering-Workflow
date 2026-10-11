@@ -21,8 +21,12 @@ from typing import Any
 
 import pytest
 
-LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live")
+LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical")
 LIVE_DIR = "tests/live/"
+# The vertical UAT (docs/implementation/vertical-uat.md): its own lane and CI job, in shadow. It is expected to fail
+# on today's main, so no required job may collect it (a collected test that did not run fails assurance; one that ran
+# red blocks the merge): it is collected only by `--lane vertical`, or when named on the command line.
+VERTICAL_PATH = "tests/acceptance/test_vertical_path.py"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
@@ -53,10 +57,13 @@ def lane_of(path: str, markers: Iterable[str]) -> str:
     """The single lane of a test. ``path`` is the nodeid's file part relative to the rootdir (``/``-separated).
 
     First match wins: the opt-in live lane (real harness binaries and models; collected only with ``--live``, never
-    part of CI assurance), then the cross-cutting properties (serial, acceptance, exploratory), then the directory.
+    part of CI assurance), the vertical UAT (collected only by its own shadow job), then the cross-cutting properties
+    (serial, acceptance, exploratory), then the directory.
     """
     if path.startswith(LIVE_DIR):
         return "live"
+    if path == VERTICAL_PATH:  # before its `acceptance` marker: the vertical UAT is never an acceptance-lane test
+        return "vertical"
     marks = set(markers)
     if "serial" in marks:
         return "serial"
@@ -332,10 +339,15 @@ def process_isolation():
 
 
 def ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
-    """``tests/live`` is collected only with ``--live``: CI never collects it, so assurance is unaffected."""
+    """``tests/live`` is collected only with ``--live``: CI never collects it, so assurance is unaffected. The vertical
+    UAT is collected only with ``--lane vertical`` (its shadow job), never by a required lane's job. A path named on
+    the command line is collected either way (pytest asks this hook only of what it finds)."""
+    root = Path(str(config.rootpath))
+    if Path(collection_path).resolve() == (root / VERTICAL_PATH).resolve():
+        return None if config.getoption("aew_lane") == "vertical" else True
     if config.getoption("aew_live"):
         return None
-    live = Path(str(config.rootpath)) / LIVE_DIR
+    live = root / LIVE_DIR
     try:
         Path(collection_path).resolve().relative_to(live.resolve())
     except ValueError:

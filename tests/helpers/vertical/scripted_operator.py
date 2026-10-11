@@ -33,12 +33,12 @@ from typing import Any
 from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_repo, run_aew
 from fake_harness import SCRIPTS_ENV, HarnessLab
 from fake_opencode import TUI_SCRIPT, write_launcher
-from vertical import workers
-from vertical.chat import Gone, Mailbox
-from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_REFUSED, Ledger
 
 from aew.harness import runlog
 from aew.util import dump_yaml
+from vertical import workers
+from vertical.chat import Gone, Mailbox
+from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_REFUSED, Ledger
 
 SESSION_START_S = 300.0
 CONVERSATION_S = 1800.0
@@ -78,6 +78,7 @@ class Operator:
     answers: dict[str, str] = field(default_factory=dict)
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
+    closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
 
     @property
     def root(self) -> Path:
@@ -187,19 +188,17 @@ class Operator:
         self.chat.send({"text": text})
         self.typed(step, text)
 
-    def converse(self, session: Session, *, until: Callable[[dict[str, Any]], bool] | None = None
-                 ) -> dict[str, Any] | None:
-        """Answer the Lead until it reports a result, says it is stuck, or ``until`` says stop (the message is
-        returned), or the session ends (None)."""
+    def converse(self, session: Session, *, stop: Callable[[], bool] | None = None) -> dict[str, Any] | None:
+        """Answer the Lead until it reports a result or says it is stuck (that message is returned), or the session
+        ends, or ``stop`` (an event the test waits for) holds (None)."""
         while True:
             self.check_heads("while the Lead works")
             try:
-                msg = self.chat.receive(CONVERSATION_S, gone=session.ended)
+                msg = self.chat.receive(CONVERSATION_S,
+                                        gone=lambda: session.ended() or (stop is not None and stop()))
             except Gone:
                 return None
             self.said.append(msg)
-            if until is not None and until(msg):
-                return msg
             kind = msg.get("type")
             if kind == "ask":
                 label = str(msg.get("label"))
@@ -225,7 +224,14 @@ class Operator:
             if not session.ended():
                 self.say("exit", "/exit")
         else:
-            session.proc.kill()
+            # The session dies from outside, as when its terminal is closed: Windows, the session's process (its job
+            # object then ends the TUI); POSIX, its whole process group (the hangup a closed terminal sends).
+            if IS_WINDOWS:
+                session.proc.kill()
+            else:
+                import signal
+
+                os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
         try:
             return session.proc.wait(EXIT_S)

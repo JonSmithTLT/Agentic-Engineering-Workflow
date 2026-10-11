@@ -203,10 +203,13 @@ class Ledger:
                  "decisions: " + (", ".join(f"{d['label']} -> {d['answer']}" for d in self.decisions) or "none")]
         for name, r in sorted(self.hard_limits.items()):
             lines.append(f"hard limit {name}: {r['outcome']}")
+        for o in self.observations:
+            if o["kind"] == "steering_stop":
+                lines.append(f"steering loop: mode {o.get('mode')}, stopped {(o.get('stop') or {}).get('code')}")
         gaps = [o for o in self.observations if o["kind"] in ("fallback", "lead.gap", "lead.stuck", "gap")]
         for o in gaps[:12]:
-            lines.append(f"  {o['kind']}: {o.get('step') or o.get('gap') or ''} {o.get('why') or o.get('observed') or ''}"
-                         [:118])
+            what = o.get("why") or o.get("observed") or ""
+            lines.append(f"  {o['kind']}: {o.get('step') or o.get('gap') or ''} {what}"[:118])
         return "\n".join(lines)
 
     def write(self, directory: Path) -> Path:

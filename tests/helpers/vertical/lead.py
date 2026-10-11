@@ -23,8 +23,14 @@ finishes; they are the only place AEW knowledge appears here:
 - ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
   then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
 - ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell;
-- ``stuck``: anything else gets one ``explain`` (``help_calls``); if that does not unblock it, the Lead tells the
-  operator it is stuck, and the run ends there (the ledger records where).
+- ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
+  - ``hint_command``: the command a projection hint names, run from the shell with the subject and the revision filled
+    in, and ``--launch`` added once a refusal asks for it (each a counted shell call);
+  - ``publish_not_offered``: a prepared candidate whose post-integration verification reported, with no decision
+    offered: the Lead asks the operator, then calls ``integration_publish`` (not offered) with the candidate and the
+    report it read in its own wait's result;
+- ``stuck``: anything else: the Lead tells the operator it is stuck, and the run ends there (the ledger records
+  where).
 
 Events go to ``events`` (JSON lines), the Lead's own accounting: with a scripted Lead it is the ground truth for its
 calls (spec §4, ``shell_aew_calls``).
@@ -71,10 +77,15 @@ class Lead:
         self.server: subprocess.Popen[bytes] | None = None
         self.reports: dict[str, str] = {}
         self.last_state: str | None = None
+        self.last_projection: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ accounting
 
     def event(self, kind: str, **facts: Any) -> None:
+        if kind in ("gap", "stuck") and self.last_projection is not None:  # what the Lead was shown when it fell back
+            facts.setdefault("blockers", [{k: b.get(k) for k in ("code", "message", "details")}
+                                          for b in self.last_projection.get("blockers") or []][:8])
+            facts.setdefault("hints", list(self.last_projection.get("hints") or [])[:8])
         with self.lock, self.events_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n")
 
@@ -154,9 +165,12 @@ class Lead:
             return {"ok": False, "projection": None, "result": None, "stopped": {"error": err}}
         out = reply["result"]["structuredContent"]
         stopped = out.get("stopped")
+        if out.get("projection"):
+            self.last_projection = out["projection"]
         self.event("call", via="mcp", tool=tool, arguments=arguments, offered=offered, mechanical=mechanical, why=why,
                    ok=out.get("ok"), stopped=stopped,
-                   completed=[s.get("primitive") for s in out.get("completed_steps") or []])
+                   completed=[s.get("primitive") for s in out.get("completed_steps") or []],
+                   said=_said(out) if tool not in ("status", "resume") else None)
         if stopped and (stopped.get("error") or {}).get("code") == "STALE_REVISION":
             self.stale_pending = True
         if tool == "harness_wait":  # what the Lead read in its own wait's result: the reports a run recorded
@@ -314,10 +328,15 @@ class Lead:
         if str(self.subject) not in argv:
             at = argv.index(words[1]) + 1 if len(words) > 1 else len(argv)
             argv = [*argv[:at], str(self.subject), *argv[at:]]
+        if "--expect-rev" in argv:  # a placeholder (`N`) in the hint: the Lead fills in the revision it read
+            at = argv.index("--expect-rev")
+            argv = [*argv[:at], *argv[at + 2:]]
         argv = [*argv, "--expect-rev", str(proj.get("revision"))]
         out = self.shell(argv, why="hint_command")
         message = str((out.get("error") or {}).get("message") or "")
-        if not out["ok"] and "--launch" in message:
+        if not out["ok"] and "unrecognized arguments: --expect-rev" in message:  # a read command takes none
+            self.shell(argv[:-2], why="hint_command: the usage error refused --expect-rev")
+        elif not out["ok"] and "--launch" in message:
             rev = self.call("status", {"work_id": self.subject}).get("revision")
             argv = [*argv[:-2], "--launch", "--expect-rev", str(rev)]
             self.shell(argv, why="hint_command: the refusal asked for --launch")
@@ -343,8 +362,9 @@ class Lead:
     def gap_plan(self, plan: dict[str, Any], proj: dict[str, Any]) -> bool:
         self.event("gap", gap="plan_not_accepted", why="no decision asks for the proposed plan's approval")
         number = plan.get("revision") or plan.get("revision_number") or 1
-        answer = self.ask(f"approve the plan for {self.subject}?\n\n{plan.get('body') or self.spec['draft']['plan']['body']}",
-                          label="plan", detail={"decision": None, "gap": "plan_not_accepted"})
+        body = plan.get("body") or self.spec["draft"]["plan"]["body"]
+        answer = self.ask(f"approve the plan for {self.subject}?\n\n{body}", label="plan",
+                          detail={"decision": None, "gap": "plan_not_accepted"})
         if not answer.lower().startswith(("y", "approve", "ok")):
             return self.stuck("the operator did not approve the plan")
         self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--expect-rev",
@@ -361,8 +381,9 @@ class Lead:
         commit = (unit.get("integration") or {}).get("commit") or _find(out.get("result"), "integrated_commit")
         diff = ""
         if commit:
-            proc = subprocess.run(["git", "show", "--format=%H%n%s", str(commit)], capture_output=True, text=True,
-                                  encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+            # The published commit against main's previous tip (its first parent): the change the operator gets.
+            proc = subprocess.run(["git", "diff", "--stat", "-p", f"{commit}^1", str(commit)], capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
                                   stdin=subprocess.DEVNULL)
             diff = proc.stdout
         evidence = [{"kind": e.get("kind"), "id": e.get("id")} for e in unit.get("evidence") or []]
@@ -371,6 +392,28 @@ class Lead:
 
 
 # ---------------------------------------------------------------------------------------------- reading results
+
+def _said(out: dict[str, Any]) -> str:
+    """What a result told the Lead in words: its refusal, the text in its result, and its projection's hints and
+    blockers (bounded)."""
+    parts = [str(((out.get("stopped") or {}).get("error") or {}).get("message") or "")]
+
+    def texts(value: Any) -> None:
+        if isinstance(value, str) and " " in value:
+            parts.append(value)
+        elif isinstance(value, dict):
+            for v in value.values():
+                texts(v)
+        elif isinstance(value, list):
+            for v in value:
+                texts(v)
+
+    texts(out.get("result"))
+    proj = out.get("projection") or {}
+    parts += [str(h) for h in proj.get("hints") or []]
+    parts += [str(b.get("message")) for b in proj.get("blockers") or []]
+    return "\n".join(p for p in parts if p)[:4000]
+
 
 def _unit(result: Any) -> dict[str, Any]:
     if not isinstance(result, dict):

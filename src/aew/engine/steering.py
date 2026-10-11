@@ -171,9 +171,10 @@ LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and wh
 LOOP_SCHEMA = "aew/steering-loop/v1"
 
 
-def loop_state(aew_root: Any) -> dict[str, Any] | None:
+def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] | None:
     """The steering loop's last recorded state, as ``status`` shows it, or ``None``. A local file the broker writes:
-    read for display only, field by field."""
+    read for display only, field by field. With ``generation``, a record another Lead generation's loop wrote is no
+    state of the current session's, and ``None`` (review of PR #199, F8)."""
     from pathlib import Path
 
     path = Path(aew_root) / LOOP_REL
@@ -185,7 +186,9 @@ def loop_state(aew_root: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(data, dict) or data.get("schema") != LOOP_SCHEMA:
         return None
-    out = {k: data.get(k) for k in ("status", "mode", "activation", "actions", "updated_at")}
+    if generation is not None and data.get("generation") != generation:
+        return None
+    out = {k: data.get(k) for k in ("generation", "status", "mode", "activation", "actions", "updated_at")}
     stop = data.get("stop")
     if isinstance(stop, dict):
         out["stop"] = {k: str(stop.get(k))[:500] if stop.get(k) is not None else None
@@ -239,7 +242,7 @@ class Steering:
         open_now = [dict(r) for r in s["requests"] if r["generation"] == generation]  # an ended generation's lapse
         if open_now:
             out["requests"] = open_now
-        loop = loop_state(self.k.aew_root)
+        loop = loop_state(self.k.aew_root, generation)
         if loop is not None:  # the steering loop's own state (M4-E E7b): local, never control state (plan v3 §2.7)
             out["loop"] = loop
         return out

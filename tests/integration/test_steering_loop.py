@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -453,11 +454,12 @@ def test_policy_drift_between_steps_is_stale_policy(p, monkeypatch):
     assert si["stopped"]["error"]["code"] == "STALE_POLICY"
 
 
-def test_mode_change_mid_step_leaves_the_step(p, monkeypatch):
-    """A3 / CWR §8: a mode changed while an auto-run stage is between its steps does not invalidate it. The mode is
-    operational, so nothing is STALE_POLICY and the stage's binding is unchanged; the committed step stands. The
-    change is a commit like any other, so the next step meets the ordinary CAS rule (a checkpoint's guard has no query
-    form, so R5-1 does not retry it, and the stage stops there as STALE_REVISION). The next tick obeys the new mode."""
+def test_a_mode_change_is_never_stale_policy(p, monkeypatch):
+    """A3 §6: the mode is operational, so a mode changed between an auto-run stage's steps never makes it
+    STALE_POLICY and leaves its binding unchanged; the committed step stands, and the next tick obeys the new mode.
+    The change is itself a commit, so the next step meets the ordinary CAS: here a probe whose checkpoint guard has no
+    query form, which R5-1 cannot re-ask, so the probe stops as STALE_REVISION. A stage R5-1 can re-ask completes:
+    ``test_mode_change_mid_step_leaves_the_step``."""
     mode(p, "walk")
     e = Engine.discover(p.root)
     digest = e.policy_digests()["legality_digest"]
@@ -637,3 +639,266 @@ def test_a_project_without_steering_records_nothing(project):
     assert stop.code == L.OFF and not (project.root / ".aew/local/steering/loop.json").exists()
     assert not event_spool.file_of(project.root / ".aew", event_spool.BROKER).exists()
 
+
+
+# ---------------------------------------------------------------------------------------------- review of PR #199
+
+
+def stop_lines(project: Any) -> list[str]:
+    return [x["reason"] for x in spooled(project) if x["event"] == "loop_stopped"]
+
+
+def test_a_standing_stop_is_notified_once(p):
+    """F1: one standing condition (T-0001's start needs a confirmation E7b cannot give) is one occurrence, notified
+    once, however many unrelated commits wake the loop meanwhile: each moves the revision, never the condition."""
+    mode(p, "walk")
+    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": "T-0001"})]))
+    assert lp.activate().code == L.CONFIRMATION_UNAVAILABLE
+    e = Engine.discover(p.root)
+    for n in range(5):  # the Lead works elsewhere; each of its commits wakes the loop (lead_broker._tool)
+        e.checkpoint(token=p.token, expect_rev=p.rev(), note=f"Lead work {n}", next_action=None)
+        assert lp.activate().code == L.CONFIRMATION_UNAVAILABLE
+    assert len(stop_lines(p)) == 1, stop_lines(p)
+
+
+def test_a_quiet_stop_never_resets_what_was_notified(p):
+    """F2: an attention stop, a quiet stop, then the same attention stop is one occurrence, notified once: what was
+    notified is kept across quiet stops and activations."""
+    mode(p, "run")  # no operator endpoint: NOTIFIER_UNAVAILABLE whenever an action is eligible
+    current: dict[str, Any] = {}
+
+    def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
+        rev = int(s["revision"])
+        return projection("project", rev), [projection("T-0001", rev, actions=current["offer"](rev))]
+
+    lp = loop(p, projector)
+    codes = []
+    for offer in (notes, lambda rev: [], notes):
+        current["offer"] = offer
+        codes.append(lp.activate().code)
+    assert codes == [L.NOTIFIER_UNAVAILABLE, L.IDLE, L.NOTIFIER_UNAVAILABLE]
+    assert len(stop_lines(p)) == 1, stop_lines(p)
+
+
+def test_a_change_after_the_last_read_is_never_lost(p):
+    """F3: a change made by another actor after the loop's last read in an activation (a run record's wake mark,
+    moved while the final tick projects) is looked at: only what a tick has read counts as seen, so the loop acts on
+    the action that change made eligible."""
+    mode(p, "walk")
+    root = p.root / ".aew"
+    calls = {"n": 0}
+
+    def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
+        calls["n"] += 1
+        rev = int(s["revision"])
+        if calls["n"] == 1:  # the activation's only tick: nothing to do as of its read ...
+            outbox.bump_wake(root)  # ... then a run record moves
+            return projection("project", rev), [projection("T-0001", rev)]
+        return projection("project", rev), [projection("T-0001", rev, actions=notes(rev))]
+
+    lp = loop(p, projector)
+    lp.start()
+    try:
+        until(lambda: lp.executed, 10, "the change after the last read to be acted on")
+    finally:
+        lp.close()
+
+
+def test_no_new_action_starts_once_the_broker_is_closing(p):
+    """F4: once `LeadBroker.close()` begins, the loop starts no auto-run action with the session's credential, even
+    while the bridge drains a request still in flight (up to 60 s) and another actor's commit wakes it."""
+    from aew.harness import lead_broker
+
+    mode(p, "walk")
+    broker = lead_broker.LeadBroker(Engine.discover(p.root), p.token)
+    assert broker.loop is not None
+    broker.loop._project = Scripted(notes)
+    release = threading.Event()
+    broker.start()
+    try:
+        until(lambda: len(broker.loop.executed) == 2, 30, "the first activation")
+        real_drain = broker.server.drain
+        broker.server.drain = lambda t: (release.wait(8), real_drain(t))[1]  # a Lead request still in flight
+        closer = threading.Thread(target=broker.close)
+        closer.start()
+        time.sleep(0.5)
+        Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="another actor's commit",
+                                           next_action=None)
+        time.sleep(3 * lead_broker.POLL_S)
+        ran_while_closing = len(broker.loop.executed) - 2
+        release.set()
+        closer.join(30)
+    finally:
+        release.set()
+    assert ran_while_closing == 0, f"{ran_while_closing} auto-run action(s) started after close() began"
+    assert not closer.is_alive()
+
+
+def test_the_loops_own_commits_never_restart_the_envelope(p, endpoint):
+    """F3's other side: an activation woken only by the loop's own last commits resumes the one before it, so its
+    envelope goes on. A stage that commits its first step and is refused at its second, every time, runs at most
+    repetition_n (2) times, then the loop stops; without this every own commit would start a fresh envelope."""
+    mode(p, "run")
+    wid = Engine.discover(p.root).work_create(token=p.token, expect_rev=p.rev(), kind="ticket", title="Unplanned",
+                                              risk_class=1)["id"]  # not READY: its assignment is always refused
+    lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": wid})]))
+    lp.start()
+    try:
+        until(lambda: (p.root / ".aew/local/steering/loop.json").exists() and json.loads(
+            (p.root / ".aew/local/steering/loop.json").read_text())["stop"]["code"] == L.REPETITION, 30,
+            "the repetition stop")
+        time.sleep(3 * lp.poll_s)  # nothing moves now: no further activation
+    finally:
+        lp.close()
+    assert [x["action"] for x in lp.executed] == ["probe_start"] * 2, lp.executed
+    assert not any(x["ok"] for x in lp.executed)
+
+
+def test_mode_change_mid_step_leaves_the_step(tmp_path, monkeypatch):
+    """A3 §4, §6 / CWR §8: changing the mode does not interrupt an executing action. Run is lowered to Walk between
+    `ticket_start`'s steps: the stage completes, its next step retried once under R5-1 (its guard is re-asked and the
+    mode changed no legality), with its binding unchanged and nothing STALE_POLICY; the next tick follows Walk."""
+    p, lab, wid = _run_lab(tmp_path, monkeypatch)
+    lab.script("default", [{"do": "hang"}])
+    e = Engine.discover(p.root)
+    digest = e.policy_digests()["legality_digest"]
+
+    def lower(c: Any) -> None:
+        e.steering_lower(token=p.token, expect_rev=int(e.store.read()["revision"]), mode="walk")
+
+    ep = operator_endpoint.OperatorEndpoint(Engine.discover(p.root), console=Console(), dev=True, timeout=10)
+    ep.start()
+    try:
+        intervene(monkeypatch, "work.transition", times=1, before=lower)
+        lp = loop(p)
+        ran = lp.tick(L.Activation("LA-a3", time.monotonic()))
+        assert isinstance(ran, dict) and ran["ok"], ran
+        si = Engine.discover(p.root).stage_intent(lp.executed[0]["intent"])
+        assert si["status"] == "COMPLETED" and si["stopped"] is None
+        assert [s["primitive"] for s in si["steps"]] == ["work.assign", "dispatch.launch", "work.transition"]
+        assert si["steps"][-1].get("retried_after_stale_revision") is True
+        assert si["binding"]["legality_digest"] == digest == Engine.discover(p.root).policy_digests()[
+            "legality_digest"]
+        assert Engine.discover(p.root).steering_view()["effective"] == "walk"
+        after = loop(p, Scripted(lambda rev: [action("ticket_start", {"expect_rev": rev, "work_id": "T-0001"})]),
+                     executor=Spy()).tick(L.Activation("LA-next", time.monotonic()))
+        assert isinstance(after, L.Stop) and after.code == L.CONFIRMATION_UNAVAILABLE  # Walk confirms a dispatch
+    finally:
+        ep.close()
+        lab.cleanup()
+
+
+# ---------------------------------------------------------------------------------------------- the live catalog (F7)
+
+
+def _dummy(prop: dict[str, Any]) -> Any:
+    if "enum" in prop:
+        return prop["enum"][0]
+    kind = prop.get("type")
+    return {"integer": 1, "boolean": True, "array": ["x"], "object": {}}.get(kind, "x") if kind != "string" else "x"
+
+
+def _arguments(t: contract.Tool) -> dict[str, Any]:
+    """Arguments for ``t`` with every property its schema has (so a planner plans every optional step)."""
+    props = t.input_schema.get("properties") or {}
+    a = {name: _dummy(prop) for name, prop in props.items() if name not in ("execution", "plan")}
+    a["work_id"] = "T-0001"
+    if "plan" in props:
+        a["plan"] = {"body": "a plan", "assurance": "none"}
+    return a
+
+
+def test_the_live_catalog_meets_what_the_loop_relies_on():
+    """Amendment 1, E7b's row (review of PR #199, F7): over every built progression tool of the live catalog, so that
+    E6a's and E6b's stages are checked as they join it, what the loop reads agrees with what runs. Every primitive a
+    stage's planner emits is in its `expands_to` (Walk's confirmation reads `expands_to`, the runtime check the
+    steps); a tool `dispatches` exactly when its plan launches a run (Run's hard-deadline check reads `dispatches`);
+    and in Walk such a tool needs a confirmation exactly when a primitive it can run changes more than control state."""
+    from aew.engine.steering import WALK_ALLOWED, confirmation_reason
+
+    checked = []
+    for t in contract.TOOLS.values():
+        if not (t.built and t.progression):
+            continue
+        planner = stage.STAGES.get(t.name)
+        if planner is None:
+            planned = list(t.expands_to)
+        else:
+            a = _arguments(t)
+            plan = planner(a, ["card-a", "card-b"]) if t.name in stage.SA.CARDS else planner(a)
+            planned = [step["primitive"] for step in plan]
+            assert set(planned) <= set(t.expands_to), (t.name, planned, t.expands_to)
+        assert t.dispatches == ("dispatch.launch" in planned or "dispatch.launch" in t.expands_to), t.name
+        beyond = any(not P.spec_for(x).declared or set(P.spec_for(x).side_effect_class.split("+")) - WALK_ALLOWED
+                     for x in t.expands_to)
+        assert (confirmation_reason("walk", t.expands_to) is not None) == beyond, t.name
+        assert confirmation_reason("crawl", t.expands_to) is not None and confirmation_reason("run", t.expands_to) \
+            is None
+        checked.append(t.name)
+    assert {"ticket_start", "ticket_request_review"} <= set(checked), checked
+
+
+# ---------------------------------------------------------------------------------------------- the runtime check (F5)
+
+
+def test_every_event_kind_maps_to_a_side_effect_class():
+    """SAE-07 at runtime is total: every typed event kind a commit can carry maps to the classes it shows, a sealed
+    thread's fallback among them (coordination_record); an unmapped kind fails closed."""
+    assert set(L.EVENT_EFFECTS) == set(outbox.DERIVED_KINDS) | set(outbox.DECLARED_KINDS)
+    assert L.EVENT_EFFECTS["coordination.seal_fallback"] == {"coordination_record"}
+    with pytest.raises(L.Unmapped):
+        L.observed_effects([{"kind": "something.new"}])
+
+
+@pytest.mark.parametrize("case", ["unreadable", "no_events", "unmapped_kind"])
+def test_the_runtime_check_fails_closed(p, monkeypatch, case):
+    """Plan v3 E7 / A1 §2.1 (review of PR #199, F5): a step whose commit cannot be read with its events, or carries an
+    event kind no class maps, is never passed: the loop stops with attention, DECLARATION_UNCHECKED."""
+    from aew import errors
+
+    mode(p, "walk")
+    real = outbox.read_transitions
+
+    def read(*args: Any, **kw: Any) -> Any:
+        if case == "unreadable":
+            raise errors.IntegrityError("the transition hash chain is broken")
+        for record in real(*args, **kw):
+            yield {**record, "events": None} if case == "no_events" else {
+                **record, "events": [*record["events"], {"kind": "something.new"}]}
+
+    monkeypatch.setattr(outbox, "read_transitions", read)
+    lp = loop(p, Scripted(notes))
+    stop = lp.activate()
+    assert stop.code == L.DECLARATION_UNCHECKED and lp.executed, stop
+    assert stop_lines(p)[-1].startswith(L.DECLARATION_UNCHECKED)
+    assert not (load_control(p.root).get("anomalies") or {})  # unchecked is not a violation: no anomaly
+
+
+# ---------------------------------------------------------------------------------------------- supersession (F8)
+
+
+def test_a_superseded_loop_writes_nothing_shared(p, monkeypatch):
+    """Review of PR #199, F8: once its generation is superseded (here by a takeover while an auto-run stage is between
+    its steps), the old session's loop appends nothing to the broker's spool file, never overwrites `loop.json`, and
+    notifies nothing: the takeover is the endpoint's to notify (`generation_ended`). `status` shows no loop state
+    another generation wrote."""
+    from notifier import takeover
+
+    mode(p, "walk")
+    old_token = p.token
+    e = Engine.discover(p.root)
+    lp = L.SteeringLoop(e, generation=1, session_label="lead-a", token=lambda: old_token, poll_s=0.2,
+                        projector=Scripted(notes))
+    assert lp.activate().code == L.REPETITION  # it wrote its state and one notification
+    loop_json = p.root / ".aew/local/steering/loop.json"
+    spool = event_spool.file_of(p.root / ".aew", event_spool.BROKER)
+    before = (loop_json.read_bytes(), spool.read_bytes())
+    assert json.loads(before[0])["generation"] == 1
+    Engine.discover(p.root).checkpoint(token=old_token, expect_rev=p.rev(), note="the Lead acts", next_action=None)
+    seen = intervene(monkeypatch, "checkpoint", times=2,
+                     before=lambda c: takeover(p, monkeypatch) if len(seen) == 2 else None)
+    stop = lp.activate()  # a new activation: its stage is cut by the takeover, and the loop finds itself superseded
+    assert stop.code == L.STALE_AUTHORITY, stop
+    assert lp.activate().code == L.STALE_AUTHORITY
+    assert (loop_json.read_bytes(), spool.read_bytes()) == before
+    assert "loop" not in (Engine.discover(p.root).steering_view() or {})

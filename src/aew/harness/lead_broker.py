@@ -202,6 +202,8 @@ class LeadBroker:
             self.loop.start()
 
     def close(self) -> None:
+        if self.loop is not None:  # no new auto-run action once the session starts closing (review of PR #199, F4)
+            self.loop.request_stop()
         self._stop.set()
         self.server.close()
         self.server.drain(60)

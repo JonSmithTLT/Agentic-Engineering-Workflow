@@ -49,6 +49,7 @@ import json
 import os
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,8 +78,10 @@ LOOP_DEADLINE = "LOOP_DEADLINE"
 MAX_AUTO_ACTIONS = "MAX_AUTO_ACTIONS"
 REPETITION = "REPETITION"
 SIDE_EFFECT_UNDECLARED = "SIDE_EFFECT_UNDECLARED"
+DECLARATION_UNCHECKED = "DECLARATION_UNCHECKED"  # a step commit SAE-07 could not check: never passed (F5)
 ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch_failed): the Lead reads its result
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
+NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
 STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
 TERMINAL_STATES = frozenset({"DONE", "CANCELLED"})
 
@@ -88,10 +91,22 @@ class Stop:
     code: str
     message: str
     subject: str = "project"
+    action: str | None = None  # the action a stop is about, if any: with its arguments, the condition's identity
+    arguments_digest: str | None = None  # of its arguments without expect_rev (``arguments_digest``)
+    episode: str | None = None  # an envelope stop's activation: each activation that exhausts it is an occurrence
 
     @property
     def attention(self) -> bool:
         return self.code not in QUIET
+
+    @property
+    def condition(self) -> tuple[str | None, ...]:
+        """What makes two stops the same occurrence, so it is notified once (review of PR #199, F1): the code, the
+        subject and the action with its arguments, never the revision, which moves with every unrelated commit. A
+        stop about no action is the same condition while its message is (no such message names a revision); an
+        envelope stop is one per activation (``episode``)."""
+        return (self.code, self.subject, self.action, self.arguments_digest if self.action else self.message,
+                self.episode)
 
 
 @dataclass(frozen=True)
@@ -109,6 +124,7 @@ class Activation:
     counts: dict[str, int] = field(default_factory=dict)
     run_checked: bool = False
     last_own_rev: int | None = None
+    own_rev: int | None = None  # the revision after the loop's own last action in this activation
 
 
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
@@ -153,23 +169,49 @@ def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Sto
     return first or Stop(IDLE, "no eligible action")
 
 
+def arguments_digest(action: dict[str, Any]) -> str:
+    """An action's arguments without ``expect_rev``, which moves with every commit and names no different action."""
+    args = {k: v for k, v in (action.get("arguments") or {}).items() if k != "expect_rev"}
+    return sha256_bytes(json.dumps(args, sort_keys=True, default=str).encode("utf-8"))[:32]
+
+
 def repetition_key(choice: Choice) -> str:
     """``(action, arguments, subject, subject state)``: the same key again means no progress (A1 §3.1)."""
-    args = {k: v for k, v in (choice.action.get("arguments") or {}).items() if k != "expect_rev"}
-    return sha256_bytes(json.dumps([choice.action["action"], args, choice.subject, choice.projection.get("state")],
-                                   sort_keys=True, default=str).encode("utf-8"))[:32]
+    return sha256_bytes(json.dumps([choice.action["action"], arguments_digest(choice.action), choice.subject,
+                                    choice.projection.get("state")], sort_keys=True,
+                                   default=str).encode("utf-8"))[:32]
 
 
-# Typed events of a commit (ADR-0012 D2) and the side-effect class each shows (SAE-07, at runtime). A run recorded is a
-# process to be started under a new credential; anything else a commit records is control state.
-EVENT_EFFECTS = {"run.added": frozenset({"harness_process", "credential"}),
-                 "credential.revoked": frozenset({"credential"})}
+def about(choice: Choice, code: str, message: str) -> Stop:
+    """A stop about the chosen action: its condition is the action and its arguments (``Stop.condition``)."""
+    return Stop(code, message, choice.subject, choice.action["action"], arguments_digest(choice.action))
+
+
+# Every typed event kind a commit can carry (ADR-0012 D2: ``outbox.DERIVED_KINDS`` and ``DECLARED_KINDS``) and the
+# side-effect classes it shows (SAE-07, at runtime). Total, and tested to be (review of PR #199, F5): a kind not here
+# stops the loop, never counts as control state. A run recorded is a process to be started under a new credential; a
+# thread sealed by the commit check's fallback is a coordination record; the rest is control state.
+CONTROL = frozenset({"control_state"})
+EVENT_EFFECTS: dict[str, frozenset[str]] = {
+    "lead.generation": CONTROL, "work.state": CONTROL, "invocation.status": CONTROL,
+    "run.added": frozenset({"harness_process", "credential"}), "credential.revoked": frozenset({"credential"}),
+    "history.appended": CONTROL, "unit.archived": CONTROL, "queue.entry": CONTROL, "queue.lease": CONTROL,
+    "decision.recorded": CONTROL, "handoff.recorded": CONTROL, "evidence.ingested": CONTROL, "audit.recorded": CONTROL,
+    "coordination.seal_fallback": frozenset({"coordination_record"}),
+}
+
+
+class Unmapped(Exception):
+    """A commit carried an event kind this engine version does not map to a side-effect class."""
 
 
 def observed_effects(events: list[dict[str, Any]]) -> set[str]:
-    out = {"control_state"}
+    out = set(CONTROL)
     for e in events:
-        out |= EVENT_EFFECTS.get(str(e.get("kind")), frozenset())
+        kind = str(e.get("kind"))
+        if kind not in EVENT_EFFECTS:
+            raise Unmapped(kind)
+        out |= EVENT_EFFECTS[kind]
     return out
 
 
@@ -204,8 +246,10 @@ class SteeringLoop:
         self._wake = threading.Event()
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
-        self._seen: Any = None
-        self._last_stop: tuple[str, str, int] | None = None
+        self._seen: Any = None  # what the last tick started from: the control file's identity and the wake mark
+        # The conditions already notified (review of PR #199, F1, F2): bounded, kept across quiet stops and activations.
+        self._notified: OrderedDict[tuple[Any, ...], None] = OrderedDict()
+        self._act: Activation | None = None  # the last activation: resumed while only the loop itself has committed
         self._activations = 0
         self.executed: list[dict[str, Any]] = []  # what this loop ran: (action, subject, intent), for tests and status
 
@@ -219,45 +263,61 @@ class SteeringLoop:
         """A committed Lead tool call (plan v3 E7, M8.1): look now."""
         self._wake.set()
 
-    def close(self, timeout: float = 60.0) -> None:
-        """Stop; an action in flight finishes first (a stage is never cut between its steps by the loop)."""
+    def request_stop(self) -> None:
+        """No new action from now on (review of PR #199, F4): the broker calls this first when it starts closing; an
+        action already running finishes. :meth:`close` then waits for the thread."""
         self._closed.set()
         self._wake.set()
+
+    def close(self, timeout: float = 60.0) -> None:
+        """Stop; an action in flight finishes first (a stage is never cut between its steps by the loop)."""
+        self.request_stop()
         if self._thread is not None and self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout)
 
-    def _changed(self) -> bool:
+    def _snapshot(self) -> tuple[Any, Any]:
         from aew.engine import outbox
 
-        seen = (self.engine.store.control_identity(), outbox.wake_mark(self.aew_root))
-        changed, self._seen = seen != self._seen, seen
-        return changed
+        return (self.engine.store.control_identity(), outbox.wake_mark(self.aew_root))
+
+    def _changed(self) -> bool:
+        """Whether anything moved since the last tick started (``_seen``). It marks nothing seen: only a tick does,
+        with the snapshot it takes before its own reads (review of PR #199, F3)."""
+        return self._snapshot() != self._seen
 
     def _run_forever(self) -> None:
         while not self._closed.is_set():
             woken = self._wake.wait(self.poll_s)
-            self._wake.clear()
             if self._closed.is_set():
                 return
             if not (woken or self._changed()):
                 continue
+            self._wake.clear()  # cleared only when an activation follows: a wake set from now on is a new one
             try:
                 stop = self.activate()
             except Exception as exc:  # noqa: BLE001  a defect stops the loop visibly, never the broker
-                stop = Stop(ACTION_STOPPED, f"the steering loop failed: {type(exc).__name__}: {exc}")
+                lost = self._authority_lost()  # a superseded session writes nothing shared (F8)
+                stop = (Stop(STALE_AUTHORITY, f"this Lead session no longer holds Lead authority: {lost}") if lost
+                        else Stop(ACTION_STOPPED, f"the steering loop failed: {type(exc).__name__}: {exc}"))
                 self._record(stop, None, None)
-            # Its own commits are no reason to look again: an activation re-projects after each of them, and a new
-            # one would restart the envelope. A Lead's commit wakes it (``wake``); others show at the next change.
-            self._changed()
             if stop.code == STALE_AUTHORITY:
                 return
 
     # ------------------------------------------------------------------ one activation
 
     def activate(self) -> Stop:
-        """Tick until a stop, and record it. Returns the stop."""
-        self._activations += 1
-        act = Activation(id=f"LA-{os.getpid()}-{self._activations}", started=self._clock())
+        """Tick until a stop, and record it. Returns the stop.
+
+        An activation woken only by the loop's own last commits (its final tick ran an action, then stopped) resumes
+        the previous one, so its envelope (deadline, count, repetitions) goes on: a commit by another actor is what
+        starts a new one (A1 §3; review of PR #199, F3)."""
+        prev = self._act
+        if prev is not None and prev.own_rev is not None and self._revision() == prev.own_rev:
+            act = prev
+        else:
+            self._activations += 1
+            act = Activation(id=f"LA-{os.getpid()}-{self._activations}", started=self._clock())
+        self._act = act
         stale = 0
         while True:
             outcome = self.tick(act)
@@ -269,11 +329,17 @@ class SteeringLoop:
                 if stale >= STALE_RETRIES:
                     stop = Stop(ACTION_STOPPED, "the projection kept moving under the loop's calls "
                                                 f"({STALE_RETRIES} stale revisions in a row): it waits for the next "
-                                                "change")
+                                                "change", episode=act.id)
                     self._record(stop, act, self._mode())
                     return stop
                 continue
             stale = 0
+
+    def _revision(self) -> int | None:
+        try:
+            return int(self.engine.store.read()["revision"])
+        except errors.AEWError:
+            return None
 
     def _mode(self) -> str | None:
         try:
@@ -286,6 +352,7 @@ class SteeringLoop:
         the call: nothing ran, and the next tick re-projects)."""
         if self._closed.is_set():
             return Stop(OFF, "the broker is closing")  # recorded as nothing: the session ended, not the loop
+        self._seen = self._snapshot()  # before any read: a change after it is one this tick did not see (F3)
         lost = self._authority_lost()
         if lost:
             return Stop(STALE_AUTHORITY, f"this Lead session no longer holds Lead authority: {lost}")
@@ -305,10 +372,10 @@ class SteeringLoop:
         bounds = S.envelope(policy)
         if self._clock() - act.started > bounds["loop_deadline_s"]:
             return Stop(LOOP_DEADLINE, f"this activation ran past loop_deadline_s ({bounds['loop_deadline_s']}s); "
-                                       "it returns control (A1 §3.2)")
+                                       "it returns control (A1 §3.2)", episode=act.id)
         if act.actions >= bounds["max_auto_actions"]:
             return Stop(MAX_AUTO_ACTIONS, f"this activation executed max_auto_actions ({bounds['max_auto_actions']}) "
-                                          "(A1 §3)")
+                                          "(A1 §3)", episode=act.id)
         ctx = self._ctx()
         project, units = self._project(self.engine, ctx, state)
         picked = select(project, units)
@@ -320,18 +387,18 @@ class SteeringLoop:
         assert t is not None  # auto_runnable is never true for an unknown tool (surface.classify)
         why = S.confirmation_reason(mode, t.expands_to)
         if why is not None:
-            return Stop(CONFIRMATION_UNAVAILABLE, f"{picked.action['action']} on {picked.subject} needs a "
-                                                  f"confirmation ({why}); confirmation arrives with M4-E E7c, so it is "
-                                                  "never executed here", picked.subject)
+            return about(picked, CONFIRMATION_UNAVAILABLE, f"{picked.action['action']} on {picked.subject} needs a "
+                                                          f"confirmation ({why}); confirmation arrives with M4-E E7c, "
+                                                          "so it is never executed here")
         if mode == "run":
             refused = self._run_checks(act, policy, t)
             if refused is not None:
-                return Stop(refused[0], refused[1], picked.subject)
+                return about(picked, refused[0], refused[1])
         key = repetition_key(picked)
         if act.counts.get(key, 0) >= bounds["repetition_n"]:
-            return Stop(REPETITION, f"{picked.action['action']} on {picked.subject} in state "
-                                    f"{picked.projection.get('state')} would run more than repetition_n "
-                                    f"({bounds['repetition_n']}) times with no progress (A1 §3.1)", picked.subject)
+            return about(picked, REPETITION, f"{picked.action['action']} on {picked.subject} in state "
+                                             f"{picked.projection.get('state')} would run more than repetition_n "
+                                             f"({bounds['repetition_n']}) times with no progress (A1 §3.1)")
         return self._do(act, picked, mode, now, digests, key)
 
     def _run_checks(self, act: Activation, policy: dict[str, Any] | None, t: Any) -> tuple[str, str] | None:
@@ -374,25 +441,31 @@ class SteeringLoop:
             return {"stale": True}  # another actor committed first: nothing ran (the intent never opened)
         act.actions += 1
         act.counts[key] = act.counts.get(key, 0) + 1
-        act.last_own_rev = int(result.get("revision") or 0)
+        act.last_own_rev = act.own_rev = int(result.get("revision") or 0)
+        self._forget(picked.subject)  # the subject moved: a stop about it from now on is a new occurrence
         self.executed.append({"action": picked.action["action"], "subject": picked.subject,
                               "intent": result.get("stage_intent_id"), "ok": result.get("ok")})
-        excess = self._declaration_check(result, picked.subject)
+        excess = self._declaration_check(act, picked, result)
         if excess is not None:
             return excess
         if stopped:
             code = STALE_POLICY if stopped.get("boundary") == "stale_policy" else (
                 STALE_AUTHORITY if stopped.get("boundary") == "stale_authority" else ACTION_STOPPED)
             err = stopped.get("error") or {}
-            return Stop(code, f"{picked.action['action']} on {picked.subject} stopped at {stopped.get('at')} "
-                              f"({stopped.get('boundary')}): {err.get('code')}: {err.get('message')}", picked.subject)
+            return about(picked, code, f"{picked.action['action']} on {picked.subject} stopped at {stopped.get('at')} "
+                                       f"({stopped.get('boundary')}): {err.get('code')}: {err.get('message')}")
         return result
 
-    def _declaration_check(self, result: dict[str, Any], subject: str) -> Stop | None:
+    def _declaration_check(self, act: Activation, picked: Choice, result: dict[str, Any]) -> Stop | None:
         """SAE-07 at runtime: each step's commit, by its typed events, within what its primitives declare. A
-        launch planned after its dispatch shares that commit, so the commit is held to both."""
+        launch planned after its dispatch shares that commit, so the commit is held to both. Only the step's own
+        commits are read (the revisions the intent records for its steps), never a commit another actor made
+        meanwhile. It fails closed (review of PR #199, F5): a step whose commit cannot be read with its complete events,
+        through the log's retrying reader, or whose events include a kind not mapped (``EVENT_EFFECTS``), stops the loop
+        with attention (``DECLARATION_UNCHECKED``) and is never passed."""
         from aew.engine import outbox
 
+        subject = picked.subject
         intent = result.get("stage_intent_id")
         if not intent:
             return None
@@ -400,19 +473,38 @@ class SteeringLoop:
         by_rev: dict[int, list[str]] = {}
         for s in si["steps"]:
             by_rev.setdefault(int(s["revision"]), []).append(s["primitive"])
+        if not by_rev:
+            return None
         state = self.engine.store.read()
+        try:
+            read = outbox.read_transitions(self.aew_root, min(by_rev) - 1, max(by_rev), outbox=state.get("outbox"))
+            records = {int(r["revision"]): r for r in read if int(r["revision"]) in by_rev}
+        except errors.AEWError as exc:
+            return about(picked, DECLARATION_UNCHECKED,
+                         f"{si['tool']}'s step commits could not be read to check them against their declarations "
+                         f"(SAE-07): {exc.code}: {exc.message}")
         for rev, primitives in sorted(by_rev.items()):
-            record = outbox.read_record(self.aew_root, rev, since=(state.get("outbox") or {}).get("since"))
-            if record is None:
-                continue
-            events = outbox.complete_events(self.aew_root, record) or []
-            excess = sorted(observed_effects(events) - declared_effects(primitives))
+            steps = f"{si['tool']} step(s) {', '.join(primitives)} committed revision {rev}"
+            events = (records.get(rev) or {}).get("events")
+            if events is None:
+                return about(picked, DECLARATION_UNCHECKED,
+                             f"{steps}, whose events cannot be read: never passed unchecked (SAE-07)")
+            try:
+                excess = sorted(observed_effects(events) - declared_effects(primitives))
+            except Unmapped as unmapped:
+                return about(picked, DECLARATION_UNCHECKED,
+                             f"{steps} with an event of kind {unmapped}, which this engine maps to no side-effect "
+                             "class (SAE-07)")
             if excess:
                 detail = (f"{si['tool']} step(s) {', '.join(primitives)} committed revision {rev} with "
                           f"{', '.join(excess)}, which they do not declare")
-                self.engine.anomaly_record_violation(token=self._token(), subject=subject, detail=detail,
-                                                     details={"work_id": subject})
-                return Stop(SIDE_EFFECT_UNDECLARED, detail + " (SAE-07): recorded as a high anomaly", subject)
+                try:
+                    recorded = self.engine.anomaly_record_violation(token=self._token(), subject=subject,
+                                                                    detail=detail, details={"work_id": subject})
+                except errors.StaleAuthority as exc:  # superseded meanwhile: the session has ended (F8)
+                    return Stop(STALE_AUTHORITY, f"this Lead session no longer holds Lead authority: {exc.message}")
+                act.own_rev = int(recorded["revision"])  # the anomaly's commit is the loop's own too
+                return about(picked, SIDE_EFFECT_UNDECLARED, detail + " (SAE-07): recorded as a high anomaly")
         return None
 
     def _authority_lost(self) -> str | None:
@@ -437,25 +529,39 @@ class SteeringLoop:
     # ------------------------------------------------------------------ records
 
     def _record(self, stop: Stop, act: Activation | None, mode: str | None) -> None:
-        """``loop.json``, and a ``loop_stopped`` spool line for a stop that needs attention, once per stop (its code,
-        subject and the revision it was met at). With steering off, nothing is written."""
-        if stop.code == OFF:
+        """``loop.json``, and a ``loop_stopped`` spool line for a stop that needs attention, once per condition
+        (``Stop.condition``: never per revision, and never forgotten because a quiet stop came between; review of PR
+        #199, F1, F2). With steering off, nothing is written.
+
+        **A superseded session writes nothing shared** (review of PR #199, F8): the spool's ``broker`` file and
+        ``loop.json`` belong to the current generation's broker, and the takeover itself is the endpoint's to notify
+        (``generation_ended``, E7a). So a stale-authority stop is not recorded, and authority is checked again here,
+        just before writing, whatever stop is being recorded: a stop met just before a takeover is dropped too."""
+        if stop.code in (OFF, STALE_AUTHORITY) or self._authority_lost():
             return
         try:
             revision = int(self.engine.store.read()["revision"])
         except errors.AEWError:
             revision = -1
-        data = {"schema": S.LOOP_SCHEMA, "status": "idle" if stop.code == IDLE else "stopped", "mode": mode,
+        data = {"schema": S.LOOP_SCHEMA, "generation": self.generation,
+                "status": "idle" if stop.code == IDLE else "stopped", "mode": mode,
                 "activation": act.id if act else None, "actions": act.actions if act else 0,
                 "stop": {"code": stop.code, "message": stop.message[:2000], "subject": stop.subject,
                          "revision": revision, "at": utc_now()},
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
-        mark = (stop.code, stop.subject, revision)
-        if stop.attention and mark != self._last_stop:
-            event_spool.append(self.aew_root, event_spool.BROKER, "loop_stopped", subject=stop.subject,
-                               reason=f"{stop.code}: {stop.message}", ref=act.id if act else None)
-        self._last_stop = mark
+        if not stop.attention or stop.condition in self._notified:
+            return
+        event_spool.append(self.aew_root, event_spool.BROKER, "loop_stopped", subject=stop.subject,
+                           reason=f"{stop.code}: {stop.message}", ref=act.id if act else None)
+        self._notified[stop.condition] = None
+        while len(self._notified) > NOTIFIED_MAX:
+            self._notified.popitem(last=False)
+
+    def _forget(self, subject: str) -> None:
+        """The loop acted on ``subject``: a stop about it from now on is a new occurrence, notified again."""
+        for condition in [c for c in self._notified if c[1] == subject]:
+            del self._notified[condition]
 
 
 def _write(path: Path, data: dict[str, Any]) -> None:

@@ -19,17 +19,17 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ### F41.1
 
-**Due by:** M4-E · **Owner:** designer · **Needs:** design
+**Due by:** M4-E · **Owner:** designer · **Needs:** adoption
 
-**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
+**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the adoption, or amendment, of the written Workflow Contract / F14 parent-planning amendment, `wc-f14-parent-planning-amendment-v0.1.md` (proposed 2026-10-11, ledger PPA): mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]`, with the reviewed-plan record contract, the parent-plan guard as an input to the single `DispatchDecision`, and the parent plan's `interactions[]` with lint at acceptance and the composition rule (F14.1); with answers to its open questions P1 to P7 (PPA-26 to PPA-32). Reviewed together with F41.5's amendment; v0.5 activates only after both are adopted and F45 is built with its policy adopted (AIR-07, AIR-12)
 
 **Blocks:** F14.1, F41, F41.2
 
 ### F41.5
 
-**Due by:** M4-E · **Owner:** designer · **Needs:** design
+**Due by:** M4-E · **Owner:** designer · **Needs:** adoption
 
-**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
+**What:** Before the cross-feature integration design v0.5 is activated: the adoption, or amendment, of the written Workflow Contract §8 / E19-B amendment, `wc8-e19b-interface-dependency-amendment-v0.1.md` (proposed 2026-10-11, ledger IDA): the non-blocking `interface_dependency` edge kind (V-1(b)), with E19-B §7.5's `revision_impact_hold` trigger extended to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35) and the `interface_digest_current` condition; with answers to its open questions I1 to I6 (IDA-22 to IDA-27). Reviewed together with F41.1's amendment
 
 **Blocks:** F41, F41.6
 
@@ -193,17 +193,17 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
 
-- **F14.1** waits for F41.1 (design, designer, by M4-E)
+- **F14.1** waits for F41.1 (adoption, designer, by M4-E)
 
 - **F39** waits for F38 (adoption, operator, by M6)
 
 - **F40** waits for F38 (adoption, operator, by M6)
 
-- **F41** waits for F41.1 (design, designer, by M4-E); F41.5 (design, designer, by M4-E)
+- **F41** waits for F41.1 (adoption, designer, by M4-E); F41.5 (adoption, designer, by M4-E)
 
-- **F41.2** waits for F41.1 (design, designer, by M4-E)
+- **F41.2** waits for F41.1 (adoption, designer, by M4-E)
 
-- **F41.6** waits for F41.5 (design, designer, by M4-E)
+- **F41.6** waits for F41.5 (adoption, designer, by M4-E)
 
 - **F42.1** waits for F42 (design, designer, by Unscheduled)
 

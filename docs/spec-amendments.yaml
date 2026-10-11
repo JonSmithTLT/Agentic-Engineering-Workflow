@@ -248,8 +248,9 @@ considered:
   - path: docs/design/cross-feature-integration-design-v0.5.md
     reason: >-
       design frozen by the designer (F41, 2026-10-10), activation gated: it needs a WC/F14 amendment (the Class-0
-      parent path, F41.1) and a WC §8 amendment (the interface_dependency edge, F41.5), neither yet written; until
-      they are adopted it replaces no WC/KC text, and they will be their own overlays
+      parent path, F41.1) and a WC §8 amendment (the interface_dependency edge, F41.5), both written and proposed
+      2026-10-11, neither adopted yet; until they are adopted it replaces no WC/KC text, and they will be their own
+      overlays
   - path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
     reason: >-
       decision record (F41, 2026-10-10); the freeze of the cross-feature integration design v0.5, V-1(b), freeze
@@ -260,7 +261,20 @@ considered:
       decision record (F42 to F46, F9.1, F9.2, F14.1, F18.15, E56 to E70, 2026-10-11); the designer's architecture
       integration decisions: Observability and Feedback, the attention spine, the owner registry, base-drift
       validation before v0.5 activation, parent-plan interactions, the F9 kinds, Lead instructions in review packs and
-      the operator settings surface; the v0.5 activation amendments are owed, not written; replaces no WC/KC text
+      the operator settings surface; the v0.5 activation amendments it owes are written and proposed (2026-10-11), not
+      yet adopted; replaces no WC/KC text
+  - path: docs/design/wc-f14-parent-planning-amendment-v0.1.md
+    reason: >-
+      proposed amendment (F41.1, F14.1, 2026-10-11), awaiting the designer's adoption: the WC/F14 parent-planning
+      amendment the cross-feature integration design v0.5 needs before activation (mandatory reviewed Story/Epic plans,
+      Class 0 included; the reviewed-plan record; parent-plan interactions[], lint at acceptance and the composition
+      rule); on adoption it extends WC §7.5, §8 and §9.6 as its own overlay; until then it replaces no WC/KC text
+  - path: docs/design/wc8-e19b-interface-dependency-amendment-v0.1.md
+    reason: >-
+      proposed amendment (F41.5, 2026-10-11), awaiting the designer's adoption: the WC §8 / E19-B amendment the
+      cross-feature integration design v0.5 needs before activation (the non-blocking interface_dependency edge and
+      the extension of E19-B §7.5's revision_impact_hold trigger to accepted interface revisions); on adoption it
+      extends WC §8 as its own overlay; until then it replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

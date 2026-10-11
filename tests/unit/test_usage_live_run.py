@@ -444,8 +444,11 @@ def test_terminate_never_waits_for_a_poll_in_flight(rig, monkeypatch):
 
     def final_then_release(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
+            seen["final_start"] = time.monotonic()
             out = real_final(*args, **kwargs)
             seen["in_flight"], seen["final"] = held.in_flight(), rig.live()
+            time.sleep(0.05)  # time provably spent before the join, never zero at Windows' clock resolution
+            seen["final_end"] = time.monotonic()
             return out
         finally:
             held.release.set()  # let the poll go before the join, which then returns at once
@@ -470,8 +473,12 @@ def test_terminate_never_waits_for_a_poll_in_flight(rig, monkeypatch):
     assert seen["in_flight"], "the final sample waited for the poll's request"
     final = seen["final"]
     assert final["state"] == "final"  # its own read answered: fresh, not the last poll's figures
-    # The join's timeout is METER_FINAL_S less the time since _final_sample began: an inequality, not a timing bound.
-    assert len(joins) == 1 and joins[0] is not None and A.METER_FINAL_S - took <= joins[0] <= A.METER_FINAL_S, joins
+    # The join is given METER_FINAL_S less the time since _final_sample began, so less what final() provably took:
+    # inequalities on one clock, never a timing bound.
+    spent = seen["final_end"] - seen["final_start"]
+    assert spent > 0
+    assert len(joins) == 1 and joins[0] is not None, joins
+    assert A.METER_FINAL_S - took <= joins[0] <= A.METER_FINAL_S - spent, (joins, took, spent)
     real_join(HANG_S)
     assert not thread.is_alive(), "the meter thread never stopped"
     adapter.terminate()
@@ -665,7 +672,9 @@ def test_a_meter_failure_never_ends_or_delays_the_run(rig, monkeypatch):
     run_to_end(rig, adapter)
     state = adapter.inspect()
     assert (state["exit_code"], state["detail"]) == (0, "the agent's turn ended: succeeded")
-    assert adapter.meter_errors >= 1 and any(e.get("event") == "opencode.meter_error" for e in rig.events)
+    # The meter thread may first poll after the turn ended (a loaded runner schedules it late): wait for the failure.
+    wait_for(lambda: adapter.meter_errors >= 1 and any(e.get("event") == "opencode.meter_error" for e in rig.events),
+             timeout=HANG_S, what="a failed meter poll, counted and reported")
     adapter.terminate()
     assert rig.live()["state"] == "final"
 

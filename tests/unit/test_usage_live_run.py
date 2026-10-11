@@ -6,7 +6,8 @@ The adapter runs for real against the fake V2 server in this process, served ove
 adapter that server, so launch, health, the session, the event stream, the watch loop and the meter all run their real
 code. Timing-dependent guarantees are driven by the meter's poll iterations (``_meter_tick``), not by the wall clock.
 A guarantee that something never waits is proved by events: the request it must not wait on is held until after it
-happened. Only ``terminate``'s stated budget (``METER_FINAL_S``, plan v4 §4.2) is asserted by wall clock."""
+happened. ``terminate``'s stated budget (``METER_FINAL_S``, plan v4 §4.2) is proved from the timeouts the meter hands
+its requests, on its own clock: no test bounds a file write by wall clock."""
 
 from __future__ import annotations
 
@@ -290,9 +291,18 @@ def test_a_run_between_turns_stays_fresh(rig, monkeypatch):
 
 
 def test_the_turn_over_snapshot_is_published(rig, monkeypatch):
-    # The next scheduled poll is an hour away, past the hang guard: only the end of the turn can bring this sample.
+    """The end of the turn wakes the meter for a sample. The contract is delivered only once the first poll has
+    committed, and the next scheduled poll is an hour away (past the hang guard): only that wake can bring the turn's
+    step, however late the meter thread was scheduled."""
+
+    class FirstPollFirst(A.OpenCodeAdapter):
+        def deliver_contract(self, contract: LaunchContract) -> None:
+            wait_for(lambda: self.meter is not None and self.meter.last_success is not None, timeout=HANG_S,
+                     what="the meter's first poll")
+            super().deliver_contract(contract)
+
     monkeypatch.setattr(A, "METER_POLL_S", 3600.0)
-    adapter = rig.adapter()
+    adapter = rig.adapter(FirstPollFirst)
     run_to_end(rig, adapter)
     wait_for(lambda: rig.live()["steps"] == 1, timeout=HANG_S, what="the turn's step in the live file")
     adapter.terminate()
@@ -368,56 +378,101 @@ class HeldClient:
             try:
                 if not self.release.wait(HANG_S):
                     self.hung = True
+                    self.release.set()  # one hang fails the test: never hold the rest
             finally:
                 self.returned.set()
         return self.real.get(path, params, timeout=timeout)
 
 
-def test_the_final_sample_fits_inside_terminate_s(rig, monkeypatch):
-    """The meter's whole share of ``terminate``, the thread's join included, is at most ``METER_FINAL_S`` (4 s), and
-    that share plus the lease's own 3 s wait fits the supervisor's ``TERMINATE_S``, whatever the server does."""
+def busy_server(rig: Rig, sessions: int = 10) -> None:
+    """Sessions whose totals moved, so each read fetches their messages: a read is many requests long."""
+    for _ in range(sessions):
+        sid = rig.app.add_session(model={"providerID": "fakeprov", "id": "fake-model", "variant": "default"})
+        rig.app.record_usage(sid, {"input": 10, "output": 1, "reasoning": 0, "cache": {"read": 0, "write": 0}})
+
+
+def test_the_final_sample_fits_inside_terminate_s(rig):
+    """The final read's requests are given at most ``METER_FINAL_S - METER_WRITE_MARGIN_S`` in all (plan v4 §4.2),
+    whatever the server does, and the meter's share of ``terminate`` plus the lease's own 3 s wait fits the
+    supervisor's ``TERMINATE_S``. Proved from the timeouts the meter hands its requests, on the meter's own clock,
+    never by timing file writes; the join's share is ``test_terminate_never_waits_for_a_poll_in_flight``'s."""
     from aew.harness import supervisor
 
     assert A.METER_FINAL_S + 3.0 <= supervisor.TERMINATE_S
-    adapter = rig.adapter(Manual)
+    adapter = rig.adapter(Manual)  # no meter thread: every request below is the final read's
     run_to_end(rig, adapter)
-    assert adapter.meter is not None
+    busy_server(rig)
+    meter = adapter.meter
+    assert meter is not None
+    now = [0.0]
+    given: list[float] = []
 
-    class Hanging:
+    class AtItsTimeout:
+        """The slowest server that still answers: every request takes its whole timeout, so the read never ends
+        early on an error and runs until the budget does."""
+
+        def __init__(self, real: Any) -> None:
+            self.real = real
+
         def get(self, path: str, params: Any = None, timeout: float = 30.0) -> Any:
-            time.sleep(timeout)  # every request runs to its timeout
-            raise OpenCodeUnavailable("timed out")
+            given.append(timeout)
+            now[0] += timeout
+            return self.real.get(path, params, timeout=30.0)
 
-    adapter.meter.client = Hanging()
-    monkeypatch.setattr(A, "METER_FINAL_S", 1.0)
-    monkeypatch.setattr(A, "METER_WRITE_MARGIN_S", 0.2)
-    t0 = time.monotonic()
+    meter.client = AtItsTimeout(meter.client)
+    meter.clock = lambda: now[0]
     adapter.terminate()
-    assert time.monotonic() - t0 < 1.0 + 0.5
+    assert given and all(0 < t <= A.METER_REQUEST_S for t in given), given
+    assert sum(given) <= A.METER_FINAL_S - A.METER_WRITE_MARGIN_S, given
+    assert meter.last_error is not None and "time budget ran out" in meter.last_error, meter.last_error
     assert rig.live()["state"] == "server_gone"
 
 
-def test_terminate_never_waits_for_a_poll_in_flight(rig):
+def test_terminate_never_waits_for_a_poll_in_flight(rig, monkeypatch):
     """A poll's request is in flight, held until the final sample is written: the final sample is taken beside it, is
-    fresh, and nothing is written after it once the poll is let go (PR #197 review, M1). ``terminate``'s budget is
-    ``test_the_final_sample_fits_inside_terminate_s``'s to prove."""
+    fresh, and nothing is written after it once the poll is let go (PR #197 review, M1). The meter thread's join is
+    given what is left of ``METER_FINAL_S``, never more."""
+    monkeypatch.setattr(A, "METER_FINAL_S", HANG_S)  # the final read's budget is the budget test's, not this one's
     adapter = rig.adapter()  # the real meter thread
     run_to_end(rig, adapter)
     meter, thread = adapter.meter, adapter._meter_thread
     assert meter is not None and thread is not None
     held = HeldClient(meter.client, holds=lambda: threading.current_thread() is thread)  # final()'s read is not held
     meter.client = held
+    seen: dict[str, Any] = {}
+    real_final = meter.final
+
+    def final_then_release(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        try:
+            out = real_final(*args, **kwargs)
+            seen["in_flight"], seen["final"] = held.in_flight(), rig.live()
+            return out
+        finally:
+            held.release.set()  # let the poll go before the join, which then returns at once
+
+    meter.final = final_then_release  # type: ignore[method-assign]
+    joins: list[float | None] = []
+    real_join = thread.join
+
+    def join(timeout: float | None = None) -> None:
+        joins.append(timeout)
+        real_join(timeout)
+
+    thread.join = join  # type: ignore[method-assign]
     adapter._meter_wake.set()  # the next poll now
     try:
         assert held.held.wait(HANG_S), "the meter thread did not start a poll"
+        before = time.monotonic()
         adapter._final_sample()  # the meter's share of terminate
-        in_flight = held.in_flight()
-        final = rig.live()
+        took = time.monotonic() - before
     finally:
         held.release.set()
-    assert in_flight, "the final sample waited for the poll's request"
+    assert seen["in_flight"], "the final sample waited for the poll's request"
+    final = seen["final"]
     assert final["state"] == "final"  # its own read answered: fresh, not the last poll's figures
-    thread.join(HANG_S)
+    # The join's timeout is METER_FINAL_S less the time since _final_sample began: an inequality, not a timing bound.
+    assert len(joins) == 1 and joins[0] is not None and A.METER_FINAL_S - took <= joins[0] <= A.METER_FINAL_S, joins
+    real_join(HANG_S)
     assert not thread.is_alive(), "the meter thread never stopped"
     adapter.terminate()
     assert rig.live() == final and not held.hung  # a dropped poll never writes after the final sample

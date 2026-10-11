@@ -22,7 +22,9 @@ One adapter serves one run, inside the run's supervisor:
    write refuses the launch), the meter polls the server every second with its own client and 2 s timeouts in every
    turn state, ``posting`` and ``posted`` bracket the first prompt, the end of a turn asks for a sample at once, and
    ``terminate`` takes a fresh final sample in at most 4 s all told. No adapter-thread call ever waits on the meter's
-   network requests (a poll reads outside the meter's lock; one in flight at ``terminate`` is cancelled and dropped).
+   network requests (a poll reads outside the meter's lock). At ``terminate`` polls are cancelled: one in flight
+   stops at its next request, one that has not committed by then never commits, and the final sample never lowers
+   the figure of one that did; no sample is written after ``terminate`` returns.
    A meter failure is counted and never ends or delays the run.
 
 Nothing the adapter reports is evidence. Effective model and usage come from the session's assistant
@@ -342,8 +344,9 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def _final_sample(self) -> None:
         """Take a fresh final sample and stop the meter's thread, in at most ``METER_FINAL_S`` all told. A poll in
-        flight is cancelled at its next request and never waited for: the final read runs beside it, and the poll's
-        result is dropped (PR #197 review, M1)."""
+        flight is cancelled at its next request and never waited for (PR #197 review, M1): the final read runs beside
+        it, and a poll that has not committed when polls are cancelled never commits, so nothing is written after this
+        returns; one that committed first is carried into the final sample, never lowered (PR #197 review, N1)."""
         t0 = time.monotonic()
         self._meter_stop.set()
         self._meter_wake.set()
@@ -354,7 +357,7 @@ class OpenCodeAdapter(HarnessAdapter):
             except Exception as exc:  # noqa: BLE001 - the server is closed and the run ends whatever the meter met
                 self.meter_errors += 1
                 self.emit({"event": "opencode.meter_error", "error": f"final: {type(exc).__name__}: {str(exc)[:200]}"})
-        if self._meter_thread is not None:  # a daemon thread: one still in a request ends on its own, its poll dropped
+        if self._meter_thread is not None:  # a daemon thread: one still in a request ends on its own, never committing
             self._meter_thread.join(max(0.0, METER_FINAL_S - (time.monotonic() - t0)))
 
     def deliver_contract(self, contract: LaunchContract) -> None:

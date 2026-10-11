@@ -374,8 +374,8 @@ def test_the_final_sample_fits_inside_terminate_s(rig, monkeypatch):
 
 def test_terminate_never_waits_for_a_poll_in_flight(rig):
     """A poll is in flight on a slow server when the run ends: the meter's share of ``terminate`` stays within
-    ``METER_FINAL_S`` (the poll is cancelled and dropped, never waited for), and the final sample is fresh (PR #197
-    review, M1)."""
+    ``METER_FINAL_S`` (the poll is cancelled at its next request, never waited for), and the final sample is fresh
+    (PR #197 review, M1)."""
     adapter = rig.adapter()  # the real meter thread
     run_to_end(rig, adapter)
     busy_server(rig)
@@ -428,6 +428,48 @@ def test_terminate_still_closes_the_server_after_a_failed_final_write(rig, monke
     monkeypatch.setattr(runlog, "write_live", lambda path, sample: (_ for _ in ()).throw(PermissionError("no")))
     adapter.terminate()  # never raises
     assert rig.server is not None and rig.server.closed and adapter.meter_errors >= 1
+
+
+
+def test_no_live_sample_is_written_after_terminate_returns(rig, monkeypatch):
+    """``terminate``'s final write fails, so the meter has not ended; a poll whose requests were all done before the
+    cancel then reaches its commit on the meter's daemon thread. It writes nothing: once polls are cancelled no poll
+    commits (PR #197 review, N1)."""
+    adapter = rig.adapter(Manual)
+    run_to_end(rig, adapter)
+    meter = adapter.meter
+    assert meter is not None
+    read_done, go = threading.Event(), threading.Event()
+    real_read = meter._read_server
+
+    def read_then_hold(state: dict[str, Any]) -> dict[str, Any]:
+        out = real_read(state)
+        if threading.current_thread().name == "held-poll":
+            read_done.set()
+            go.wait(10)
+        return out
+
+    monkeypatch.setattr(meter, "_read_server", read_then_hold)
+    poller = threading.Thread(target=adapter._meter_tick, name="held-poll", daemon=True)
+    poller.start()
+    assert read_done.wait(10), "the poll's read never finished"
+    before = rig.live()
+    written: list[dict[str, Any]] = []
+    real_write = runlog.write_live
+
+    def refuse_the_final_then_record(path: Path, sample: dict[str, Any]) -> None:
+        if threading.current_thread() is not poller:
+            raise PermissionError("refused: the final write")
+        written.append(sample)
+        real_write(path, sample)
+
+    monkeypatch.setattr(runlog, "write_live", refuse_the_final_then_record)
+    adapter.terminate()
+    assert adapter.meter_errors >= 1 and not meter._ended  # the final sample was not written
+    go.set()
+    poller.join(10)
+    assert not poller.is_alive(), "the poll never returned"
+    assert written == [] and rig.live() == before
 
 
 def test_a_killed_supervisor_leaves_a_non_final_sample(rig):

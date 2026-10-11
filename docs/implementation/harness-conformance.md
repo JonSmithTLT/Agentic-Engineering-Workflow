@@ -187,7 +187,10 @@ The OpenCode adapter runs the §5.1 meter for its own run, so a supervised run p
 - **Turn end.** The end of a turn wakes the meter for a sample at once.
 - **Terminate.** `terminate` takes a fresh final sample, whatever the turn's snapshot holds, before the server's lease
   ends: `final`, or `server_gone` with the last figures. The meter's whole share is at most 4 s, the thread's join
-  included: a poll in flight is cancelled at its next request and its result dropped, never waited for.
+  included: a poll in flight is cancelled at its next request, never waited for. A poll that has not committed when
+  polls are cancelled never commits, so no sample is written after `terminate` returns; one that committed first
+  (its requests were done) is kept, and the final sample, `server_gone` included, never lowers its figure or the
+  persisted high-water marks.
 - **Failures.** A meter failure, a failed poll or a failed write is counted (`meter_errors` in `collect()`, and an
   `opencode.meter_error` event) and never ends or delays the run.
 - **One writer.** The meter alone writes the live file, and a live write wakes no waiter.

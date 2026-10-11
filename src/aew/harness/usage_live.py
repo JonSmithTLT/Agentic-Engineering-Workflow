@@ -362,8 +362,11 @@ class Meter:
                 return self.sample
         observed = _iso_ms()
         with self._lock:
-            if self._ended or gen != self._gen:
-                return self.sample  # overtaken: final() or another poll committed a newer read
+            # Overtaken: final() or another poll committed a newer read. Or cancelled: once cancel_polls() has run, no
+            # poll commits, so final()'s own read starts from the newest committed state and nothing is written after
+            # terminate(), even when final()'s write failed and `_ended` is still false (PR #197 review, N1).
+            if self._ended or gen != self._gen or self._polls_cancelled.is_set():
+                return self.sample
             try:
                 sample = self._publish("live", state=state, observed_at=observed, active=active)
             except OSError as exc:
@@ -378,14 +381,19 @@ class Meter:
         A failed write raises ``OSError`` and ends nothing: ``final()`` can be called again (PR #186 m4).
         ``budget_s`` bounds the last poll's requests in all (the adapter's share of ``TERMINATE_S``, plan v4 §4.2); a
         poll that runs out of it is a failed poll. It never waits for a poll in flight: polls are cancelled, its own
-        read runs beside them, and a poll that finishes later is dropped."""
+        read runs beside them, and a poll that has not committed by then never does. One that committed before the
+        cancel is kept: ``server_gone`` publishes the committed state as it is at the final commit, never an older
+        copy, so the figure and the persisted high-water marks never go down (plan v4 §2.4; PR #197 review, N1)."""
         with self._lock:
             if self._ended and self.sample is not None:
                 return self.sample
             client, prompt_state = self.client, self.prompt_state
-            state, observed, active = self.state, self.observed_at, set(self._active)
         self.cancel_polls()
         run_state = "server_gone"
+        # None: publish the committed state, observed_at and in-flight set as they are under the commit's lock.
+        state: dict[str, Any] | None = None
+        observed: str | None = None
+        active: set[str] | None = None
         if client is not None:
             deadline = None if budget_s is None else self.clock() + budget_s
             try:

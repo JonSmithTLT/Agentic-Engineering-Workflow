@@ -100,6 +100,12 @@ class StatusViews:
                 lines.append(f"  {steering['pending_raise']}")
             lines += [f"  request {r['id']}: {r['kind']} {r.get('mode') or r.get('action_ref')} ({r['rationale']})"
                       for r in steering.get("requests") or []]
+            loop = steering.get("loop")
+            if loop:  # M4-E E7b: the steering loop's state, and why it stopped
+                stop = loop.get("stop") or {}
+                lines.append(f"  steering loop: {loop.get('status')} ({loop.get('mode')}, {loop.get('actions')} "
+                             "auto-run action(s) this activation)"
+                             + (f"; stopped: {stop.get('code')}: {stop.get('message')}" if stop.get("code") else ""))
             lines.append(f"  operator endpoint: running (pid {endpoint.get('pid')}, guarantee "
                          f"{endpoint.get('guarantee')})" if endpoint.get("running") else
                          "  operator endpoint: not running (`aew operator serve --dev`)")

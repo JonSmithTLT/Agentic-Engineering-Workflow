@@ -13,6 +13,15 @@ intro: |
   material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
   show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
+- row: F15.5
+  needs: decision
+  owner: designer
+  due: M4-E
+  what: Whether outbox events a Lead-transaction finalizer derives (such as the queue sync's `credential.revoked` when it
+    ends a custodian whose custody worker is gone) carry their origin (ADR-0012 D2), so the steering loop's runtime declaration
+    check (SAE-07) can attribute a step commit's effects to the step alone; until then a sweep first seen by a step's own
+    commit stops the loop, failing closed, with `SIDE_EFFECT_UNDECLARED` (M4-E E7b)
+
 - row: F41.1
   needs: adoption
   owner: designer

@@ -202,8 +202,32 @@ def test_a_raise_binds_the_generation_and_legality_it_was_shown(project):
     assert engine.steering_view()["effective"] == "walk"
 
 
-def test_run_needs_an_executable_notifier(project, tmp_path):
-    """Decision 1: unattended Run needs a configured notifier whose argv[0] resolves to an executable file."""
+@pytest.mark.parametrize("case", ["raise", "loop_activation"])
+def test_run_needs_an_executable_notifier(project, tmp_path, case):
+    """Decision 1: unattended Run needs a configured notifier whose argv[0] resolves to an executable file: checked at
+    the raise to run (E2), and again at each activation of the steering loop in run (M4-E E7b; amendment 1, m4), so a
+    notifier that stops resolving after the raise stops the loop before it auto-runs anything."""
+    if case == "loop_activation":
+        from aew.harness import steering_loop as L
+
+        engine = _adopt(project, mode="crawl", notify=[_executable(tmp_path)])
+        _raise(engine, "run")
+        engine = _adopt(project, mode="crawl", notify=[str(tmp_path / "gone-notifier")])  # the run raise stands
+        assert engine.steering_view()["effective"] == "run"
+        ran: list[str] = []
+
+        def offer(e: Any, ctx: Any, state: dict[str, Any]) -> Any:
+            rev = int(state["revision"])
+            act = {"action": "checkpoint", "kind": "stage", "arguments": {"expect_rev": rev},
+                   "availability": "AVAILABLE", "auto_runnable": True, "reason_codes": []}
+            return ({"subject": "project", "anomalies": [], "blockers": [], "decisions_required": []},
+                    [{"subject": "T-0001", "revision": rev, "state": "READY", "actions": [act],
+                      "decisions_required": [], "blockers": []}])
+
+        stop = L.SteeringLoop(engine, generation=1, session_label=None, token=lambda: project.token, poll_s=0.2,
+                              projector=offer, executor=lambda *a, **k: ran.append("ran") or {}).activate()
+        assert stop.code == L.NOTIFIER_UNAVAILABLE and "executable notifier" in stop.message and ran == [], stop
+        return
     engine = _adopt(project, mode="crawl")
     with pytest.raises(errors.IllegalTransition) as refused:
         engine.steering_raise_preview("run")

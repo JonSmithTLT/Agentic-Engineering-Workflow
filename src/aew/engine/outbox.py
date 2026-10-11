@@ -49,6 +49,10 @@ MAX_HOT_EVENTS = 64
 GENESIS_H = hashlib.sha256(b"aew/transition/v1 genesis").hexdigest()
 LOG_DIR = "state/log"
 WAKE_REL = "local/wake"
+# Windows refuses a rename over a file another handle has open, a reader's stat included (``wake_mark``), so a bump
+# retries it briefly. A bump is on the commit path: the bound is tens of milliseconds, never ``replace_with_retry``'s.
+WAKE_REPLACE_TRIES = 8
+WAKE_REPLACE_PAUSE_S = 0.005
 LOG_WINDOW = 4096  # D6: revisions kept as per-revision files; older ones are sealed
 SEGMENT_SIZE = 256  # D6: logical transitions per sealed segment ``state/log/seg-NNNNNN.yaml``
 SEGMENT_SCHEMA = "aew/transition-segment/v1"
@@ -478,7 +482,10 @@ def bump_wake(aew_root: Path, revision: int | None = None) -> None:
     """Advisory: change ``local/wake``. Written to a temp file and renamed over it, so every bump gives the file a new
     identity (file id) even when two land in one timestamp tick with the same size (D1 review F4). Never fsynced:
     waiters only stat the file, and durability would cost a commit milliseconds on Windows for nothing (ADR-0012's H2
-    budget). Failure is ignored; a waiter's coarse check covers a missed wake.
+    budget). Failure is ignored; a waiter's coarse check covers a missed wake, so **every waiter needs one**. On
+    Windows the rename fails while any other handle is open on the file (a waiter's own stat, an indexer, a scanner),
+    and the mark then does not move; the rename is retried briefly (``WAKE_REPLACE_TRIES``), which makes that rare,
+    not impossible.
 
     The temp file has one fixed name per process (``local/.wake.<pid>.tmp``), so a process that dies between the
     write and the rename leaves at most one behind, and the next process with that pid reuses it. Two threads of one
@@ -490,7 +497,14 @@ def bump_wake(aew_root: Path, revision: int | None = None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".wake.{os.getpid()}.tmp")
         tmp.write_text(f"{revision if revision is not None else '-'} {time.time_ns()}\n", encoding="utf-8")
-        os.replace(tmp, path)
+        for attempt in range(WAKE_REPLACE_TRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if not IS_WINDOWS or attempt == WAKE_REPLACE_TRIES - 1:
+                    raise
+                time.sleep(WAKE_REPLACE_PAUSE_S)
     except OSError:
         if tmp is not None:
             try:

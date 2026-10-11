@@ -124,7 +124,7 @@ def _line(run: str, **over: Any) -> str:
 
 def test_spool_lines_are_capped_validated_rate_bounded_and_unauthenticated(project, tmp_path):
     """Amendment 1, m9: an oversize line is dropped and counted; a line outside its writer's closed enum, about another
-    run, or from a writer with no events yet is invalid; strings are capped and cleaned; at most ten deliveries per
+    run, or an event its writer never writes is invalid; strings are capped and cleaned; at most ten deliveries per
     writer per minute; every spool notification says `authenticated: false`."""
     command, out = recorder(tmp_path)
     adopt(project, command=command)
@@ -141,7 +141,7 @@ def test_spool_lines_are_capped_validated_rate_bounded_and_unauthenticated(proje
         _line(run, reason="\x1b]0;evil\x07" + "y" * 2000),
         *[_line(run, reason=f"flood {n}") for n in range(15)],
     ])
-    _spool_lines(root, event_spool.BROKER, [_line(run)])  # the broker has no spool events before M4-E E7b
+    _spool_lines(root, event_spool.BROKER, [_line(run)])  # a run's event: never the broker's (it writes loop_stopped)
     watcher = notify.Watcher(project.root, root)
     watcher.start()
     try:
@@ -227,6 +227,13 @@ def spooled(project, event: str, reason: str, run: str = "R-INV-0001-1") -> None
     event_spool.append(root, event_spool.run_writer(run), event, subject=run, reason=reason)
 
 
+def _high_anomaly(state: dict[str, Any]) -> None:
+    state["counters"]["anomaly"] = 1
+    state["anomalies"] = {"ANM-0001": {"id": "ANM-0001", "source": "WORKSPACE_MUTATED", "severity": "high",
+                                       "subject": None, "detail": "seeded", "details": {}, "key": "k" * 32,
+                                       "opened_at": "2026-10-11T00:00:00Z", "rev": 1, "disposition": None}}
+
+
 def _breaker(state: dict[str, Any]) -> None:
     state["queue"] = {"next_seq": 1, "lease": None, "entries": {}, "validation_breaker": {
         "failures": [], "open": {"at": "2026-10-10T00:00:00Z", "codes": ["SANDBOX_UNAVAILABLE"], "runs": ["V-1"]}}}
@@ -247,6 +254,11 @@ SEEDS = {
     "custodian_lost[reconcile]": lambda project, mp: seed(project, _reconcile),
     "hard_deadline": lambda project, mp: spooled(project, "hard_deadline", "deadline"),
     "launch_failed": lambda project, mp: spooled(project, "launch_failed", "custody refused"),
+    # M4-E E7b: a high anomaly opened in control state, and the steering loop's stop in the broker's spool.
+    "anomaly_high": lambda project, mp: seed(project, _high_anomaly),
+    "loop_stopped": lambda project, mp: event_spool.append(
+        project.root / ".aew", event_spool.BROKER, "loop_stopped", subject="T-0001",
+        reason="REPETITION: probe_notes on T-0001 would run more than repetition_n (2) times", ref="LA-1-1"),
 }
 
 

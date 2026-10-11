@@ -17,8 +17,9 @@ confirmation) are recorded with their rationale and grant nothing.
 
 **Records.** Every mode change and every closed request is a line in ``records/steering/<date>.jsonl``, append-only,
 naming who changed it (with the operator principal's guarantee label), the previous and new mode, the Lead
-generation, both policy digests and the revision at which it took effect (A1 §1.3). Nothing reads the mode to act on
-it until the steering loop (M4-E E7b; plan v3 amendment 1). The operator endpoint's notifier (M4-E E7a) reads it only to
+generation, both policy digests and the revision at which it took effect (A1 §1.3). The steering loop
+(``aew.harness.steering_loop``, M4-E E7b) is what reads the mode to act on it: who confirms an already-legal action
+(:func:`confirmation_reason`), never whether it is legal. The operator endpoint's notifier (M4-E E7a) reads it only to
 say whether Run is effective when the broker is gone.
 
 **The guarantee label.** Every operator record is ``guarantee: dev``: the operator principal cannot yet be shown
@@ -107,6 +108,94 @@ def effective(state: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------------------------------------- the loop's policy (E7b)
+# What the steering loop (``aew.harness.steering_loop``, M4-E E7b) reads of steering to decide who confirms. None of it
+# is read by a guard, gate, transition, dispatch or ingest (CWR §2; test_legality_modules_never_import_steering).
+
+# A1 §2: Walk auto-runs an action only when every side effect its primitives declare is in this allow-list.
+WALK_ALLOWED = frozenset({"control_state"})
+# The side-effect classes this engine version knows (``PrimitiveSpec.side_effect_class``); any other fails closed.
+EFFECT_CLASSES = frozenset({"control_state", "credential", "workspace", "harness_process", "authoritative_ref",
+                            "coordination_record"})
+# Plan v3 E7 (M8.4): the auto-run envelope's defaults (operational policy `execution.steering.envelope`).
+ENVELOPE_DEFAULTS = {"loop_deadline_s": 3600, "max_auto_actions": 50, "repetition_n": 2}
+
+
+def confirmation_reason(mode: str | None, primitives: list[str] | tuple[str, ...]) -> str | None:
+    """Why ``confirm_before`` holds for an action that expands to ``primitives`` in ``mode``, or ``None`` when the
+    mode lets it run unconfirmed (CWR §3, amended by A1 §2). Walk is an allow-list: a primitive that declares no
+    side-effect class, one this engine does not know, or one outside ``WALK_ALLOWED`` needs confirmation."""
+    from aew.engine.primitives import spec_for
+
+    if mode == "run":
+        return None
+    if mode != "walk":
+        return f"{mode or 'no mode'} confirms every eligible step before it runs"
+    if not primitives:
+        return "walk: the action declares no primitives, so none of its effects is declared (fail closed, A1 §2)"
+    for p in primitives:
+        spec = spec_for(p)
+        effects = {e for e in spec.side_effect_class.split("+") if e}
+        if not spec.declared or not effects:
+            return f"walk: {p} declares no side effects (fail closed, A1 §2)"
+        unknown = sorted(effects - EFFECT_CLASSES)
+        if unknown:
+            return f"walk: {p} declares {', '.join(unknown)}, which this engine does not know (fail closed, A1 §2)"
+        outside = sorted(effects - WALK_ALLOWED)
+        if outside:
+            return f"walk: {p} changes {', '.join(outside)}, outside the bookkeeping allow-list (A1 §2)"
+    return None
+
+
+def envelope(policy: dict[str, Any] | None) -> dict[str, int]:
+    """The auto-run envelope in force: the adopted `execution.steering.envelope`, each bound defaulted."""
+    given = (((policy or {}).get("steering") or {}).get("envelope")) or {}
+    return {k: int(given.get(k) or v) for k, v in ENVELOPE_DEFAULTS.items()}
+
+
+def profiles_without_deadline(policy: dict[str, Any] | None) -> list[str]:
+    """The execution profiles policy routing can select that set no `deadline_s` (A1 §3.2: a hard deadline is set
+    before unattended execution begins), or ``["<none>"]`` when policy selects no profile at all. Run never auto-starts
+    a run while any is left: the routing, not the loop, picks the profile, so every profile it can pick must bound the
+    run (fail closed)."""
+    if not policy or not policy.get("configured"):
+        return ["<none>"]
+    routing = policy.get("routing") or {}
+    names = {routing.get("default"), *(routing.get("cards") or {}).values(), *(routing.get("classes") or {}).values(),
+             *(routing.get("archetypes") or {}).values()} - {None}
+    profiles = policy.get("profiles") or {}
+    return sorted(n for n in names if not (profiles.get(n) or {}).get("deadline_s"))
+
+
+LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)
+LOOP_SCHEMA = "aew/steering-loop/v1"
+
+
+def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] | None:
+    """The steering loop's last recorded state, as ``status`` shows it, or ``None``. A local file the broker writes:
+    read for display only, field by field. With ``generation``, a record another Lead generation's loop wrote is no
+    state of the current session's, and ``None`` (review of PR #199, F8)."""
+    from pathlib import Path
+
+    path = Path(aew_root) / LOOP_REL
+    try:
+        if not path.is_file() or path.stat().st_size > 64 * 1024:
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    if not isinstance(data, dict) or data.get("schema") != LOOP_SCHEMA:
+        return None
+    if generation is not None and data.get("generation") != generation:
+        return None
+    out = {k: data.get(k) for k in ("generation", "status", "mode", "activation", "actions", "updated_at")}
+    stop = data.get("stop")
+    if isinstance(stop, dict):
+        out["stop"] = {k: str(stop.get(k))[:500] if stop.get(k) is not None else None
+                       for k in ("code", "message", "subject", "revision", "at")}
+    return out
+
+
 def notifier_problem(policy: dict[str, Any] | None) -> str | None:
     """Why the adopted notifier cannot deliver, or ``None``: unattended Run needs a configured notifier whose
     ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). The operator endpoint delivers
@@ -153,6 +242,9 @@ class Steering:
         open_now = [dict(r) for r in s["requests"] if r["generation"] == generation]  # an ended generation's lapse
         if open_now:
             out["requests"] = open_now
+        loop = loop_state(self.k.aew_root, generation)
+        if loop is not None:  # the steering loop's own state (M4-E E7b): local, never control state (plan v3 §2.7)
+            out["loop"] = loop
         return out
 
     # ------------------------------------------------------------------ adoption (plan v3 §2.1, N1)

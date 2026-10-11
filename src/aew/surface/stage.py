@@ -358,7 +358,7 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
         token=c.token(), expect_rev=a["expect_rev"], tool=t.name, contract_digest=contract_digest(t), arguments=a,
         judgment_inputs=judgments, base_class=t.base_class, effective_class=effective_class(t, a),
         plan=[{"primitive": p["primitive"], "args": p.get("args") or {}} for p in plan], subject=c.subject,
-        ingress=c.ctx.ingress)
+        ingress=c.ctx.ingress, **({"auto_run": c.auto_run} if c.auto_run is not None else {}))  # M4-E E7b
     intent, rev = opened["intent"], opened["revision"]
     c.intent, c.binding = intent, opened["binding"]
     return _run_steps(c, intent, plan, 1, rev)

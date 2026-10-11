@@ -176,10 +176,15 @@ class StageIntents:
 
     def open(self, *, token: str, expect_rev: int, tool: str, contract_digest: str, arguments: dict[str, Any],
              judgment_inputs: list[str], base_class: str, effective_class: str, plan: list[dict[str, Any]],
-             subject: str | None, ingress: str) -> dict[str, Any]:
+             subject: str | None, ingress: str, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
         """Open an intent as the stage's first commit (rules 1 and 2): a stale ``expect_rev`` commits nothing. Every
         planned primitive must be declared (an undeclared one is judgment-bearing and has no step runner: fail
-        closed), and a unit has at most one ACTIVE intent (a stage is never stacked over an unresolved one)."""
+        closed), and a unit has at most one ACTIVE intent (a stage is never stacked over an unresolved one).
+
+        ``auto_run`` is the steering loop's attribution of a stage it runs (M4-E E7b; CWR §7, §11): its activation,
+        the steering mode and the record that set it, the generation that mode was granted to, and the projection it
+        executed. It is recorded on the intent, and so in its cold record, and grants nothing: the stage is the same
+        call, checked the same way, as a Lead's."""
         if ingress not in CHANNELS:
             raise UsageError(f"unknown ingress {ingress!r}", allowed=list(CHANNELS))
         if not plan or len(plan) > MAX_STEPS:
@@ -247,9 +252,12 @@ class StageIntents:
                             "start": unit_state(state["work"].get(subject)) if subject else None},
                 "plan": steps, "steps": [], "retried_after_stale_revision": False, "stopped": None, "rebound": [],
                 "resolution": None, "closed": None}
+            if auto_run is not None:
+                intent["auto_run"] = dict(auto_run)
             self._validate(intent)
             state.setdefault("stage_intents", {})[sid] = intent
-            ctx.summary = f"stage {tool} opened as {sid}: {len(steps)} step(s)"
+            ctx.summary = (f"stage {tool} opened as {sid}: {len(steps)} step(s)"
+                           + (f", auto-run by the steering loop in {auto_run.get('mode')}" if auto_run else ""))
             ctx.refs.append(sid)
             revision = ctx.session.revision + 1
         return {"intent": sid, "revision": revision, "binding": dict(intent["binding"])}

@@ -342,6 +342,11 @@ class Supervisor:
                 return self._finish_exited(status)
             if deadline is not None and now >= deadline:
                 spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
+                # A low anomaly the next Lead commit records (M4-E E7b; plan v3 §2.4, A1 §3.2): this process commits
+                # nothing, so it leaves a worker-side signal, as a refused report does.
+                from aew.engine.disposition_ops import HARD_DEADLINE, signal_source
+
+                signal_source(self.engine.aew_root, HARD_DEADLINE, self.inv_id)
                 return self._finish(K.TERMINATED, f"deadline of {deadline_s}s exceeded")
             time.sleep(TICK_S)
 

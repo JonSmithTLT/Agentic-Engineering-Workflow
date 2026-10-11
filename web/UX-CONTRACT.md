@@ -4,7 +4,7 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
-Overview panel bodies use the shared `overview-scroll` geometry: desktop max-height with keyboard-focusable named regions, visible native scrollbars, and headings outside the scroll body; below1024px content keeps natural document scrolling. It bounds presentation height, not supplied rows or completeness. Short panels do not acquire a fixed empty height.
+Overview panel bodies use the shared `overview-scroll` geometry: desktop max-height with keyboard-focusable named regions, visible native scrollbars, and headings outside the scroll body; below 1024px content keeps natural document scrolling. It bounds presentation height, not supplied rows or completeness. Short panels do not acquire a fixed empty height.
 
 Work's Invocations section renders explicit Work references and exact work-kind/ID matches from the already loaded, same-project Overview summary. It labels that summary as bounded and incomplete, discloses its revision/time, and marks retained data after refresh failure. Missing/withdrawn summaries establish no absence. It adds no Runs scans, filters, polling or inferred current/latest attempt. Complete invocation history still requires an accepted backend projection. Shared inspection buttons wrap long raw values without changing their meaning.
 

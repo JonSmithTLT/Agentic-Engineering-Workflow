@@ -19,6 +19,7 @@ export const pollIntervals = {
   list: 5000,
   detail: 10000,
   history: false,
+  maps: 30000,
 } as const;
 export function comparisonScope() {
   const identity = transport.context.identity;

@@ -874,7 +874,11 @@ class DashboardServer:
     @classmethod
     def _send(cls, h: BaseHTTPRequestHandler, status: int, body: dict[str, Any], *, head: bool,
               extra: list[tuple[str, str]] | None = None) -> None:
-        body = P.scrub(body)  # every JSON body, an ``Error`` too, passes the second display layer
+        try:
+            body = P.scrub(body)  # every JSON body, an ``Error`` too, passes the second display layer
+        except TypeError:  # not JSON-native structure: refused, as a projection that fails is (never a dropped reply)
+            LOG.error("a response body of status %s is not JSON-native structure", int(status))
+            status, body = HTTPStatus.INTERNAL_SERVER_ERROR, error_body("PROJECTION_FAILED")
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
         h.send_response(int(status))
         h.send_header("Content-Type", "application/json; charset=utf-8")

@@ -1,16 +1,22 @@
 """F20: ``projections.scrub``, the second display layer behind the projections' allowlist: the engine's verifier
-masking and its credential redaction (``aew.harness.contract.redact``), over every string in a body.
+masking and its credential redaction (``aew.harness.contract.redact``) over JSON-native structure, refusing anything
+else.
 
 The credential-shaped value is built here from the engine's credential pattern at run time; it is not a credential.
 """
 
 from __future__ import annotations
 
+import enum
 import json
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from enum import StrEnum
+import uuid
+from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from enum import IntEnum, StrEnum
 from pathlib import PurePosixPath
+from types import MappingProxyType
 
 import pytest
 
@@ -33,95 +39,15 @@ def test_scrub_masks_verifiers():
                              "nested": {"verifier": "<redacted>"}}
 
 
-@dataclass
-class Row:
-    id: str
-    verifier: str
-    note: str
-
-
 @pytest.mark.parametrize("body, expected", [
     ({"rows": ({"id": "TK-1", "verifier": "v"},)}, {"rows": [{"id": "TK-1", "verifier": "<redacted>"}]}),
     ([({"verifier": "v"}, [{"verifier": "v"}])], [[{"verifier": "<redacted>"}, [{"verifier": "<redacted>"}]]]),
     (({"a": ({"b": [({"verifier": "v", "c": 1},)]},)},),
      [{"a": [{"b": [[{"verifier": "<redacted>", "c": 1}]]}]}]),
-    ({"rows": frozenset({"x", "y"})}, {"rows": ["x", "y"]}),
-    ({"row": Row("TK-1", "v", "n")}, {"row": {"id": "TK-1", "verifier": "<redacted>", "note": "n"}}),
-    ({"rows": [Row("TK-2", "v", "n")]}, {"rows": [{"id": "TK-2", "verifier": "<redacted>", "note": "n"}]}),
+    ({"x": [[[{"y": ({"verifier": ["v"]},)}]]]}, {"x": [[[{"y": [{"verifier": "<redacted>"}]}]]]}),
 ])
-def test_scrub_masks_verifiers_in_every_container(body, expected):
+def test_scrub_masks_a_verifier_at_any_depth(body, expected):
     assert P.scrub(body) == expected
-
-
-def test_scrub_redacts_credentials_in_every_container():
-    body = {"t": (SHAPED,), "s": {SHAPED, "y"}, "d": Row("TK-3", "v", SHAPED), "l": [({"k": SHAPED},)]}
-    out = P.scrub(body)
-    assert SHAPED not in repr(out)
-    assert out["t"] == [MARKER] and set(out["s"]) == {MARKER, "y"} and out["d"]["note"] == MARKER
-    assert out["l"] == [[{"k": MARKER}]]
-
-
-@dataclass
-class Held:
-    shown: str
-    hidden: str = field(repr=False, default="held back")
-
-
-@dataclass
-class Told:
-    verifier: str
-    note: str
-
-    def __str__(self) -> str:
-        return f"told {self.note}"
-
-
-@dataclass
-class Brief:
-    verifier: str
-    note: str
-
-    def __repr__(self) -> str:
-        return "brief"
-
-
-class Opaque:
-    def __repr__(self) -> str:
-        return "opaque"
-
-    def __str__(self) -> str:
-        return "opaque"
-
-
-def test_the_walk_never_shows_a_field_the_dataclass_repr_hides():
-    out = P.scrub({"row": Held("s")})
-    assert out == {"row": {"shown": "s"}} and "held back" not in repr(out)
-
-
-def test_a_dataclass_with_its_own_str_or_repr_is_shown_as_its_str():
-    assert P.scrub(Told("v", SHAPED)) == f"told {MARKER}"
-    assert P.scrub([Brief("v", "n")]) == ["brief"]
-
-
-def test_a_container_whose_members_may_show_more_when_walked_is_shown_as_its_str():
-    assert P.scrub({"s": frozenset({Opaque()})}) == {"s": "frozenset({opaque})"}
-    assert P.scrub(Row("TK-4", "v", Opaque())) == "Row(id='TK-4', verifier='v', note=opaque)"  # type: ignore[arg-type]
-
-
-def test_a_walked_dataclass_still_masks_its_verifier():
-    assert P.scrub(Row("TK-5", "sha256:abc", SHAPED)) == {"id": "TK-5", "verifier": "<redacted>", "note": MARKER}
-
-
-def test_scrub_redacts_a_string_subclass_and_bytes():
-    class Label(StrEnum):
-        A = "x " + SHAPED
-
-    out = P.scrub({"v": Label.A, "b": SHAPED.encode()})
-    assert type(out["v"]) is str and SHAPED not in json.dumps(out) and MARKER in out["v"] and MARKER in out["b"]
-
-
-def test_the_engines_verifier_masking_walks_tuples():
-    assert redact({"rows": ({"verifier": "v"},)}) == {"rows": [{"verifier": "<redacted>"}]}
 
 
 def test_scrub_applies_the_engines_credential_redaction_to_every_string():
@@ -134,15 +60,62 @@ def test_scrub_applies_the_engines_credential_redaction_to_every_string():
     assert (out["count"], out["ratio"], out["flag"], out["none"]) == (2, 0.5, False, None)
 
 
-def test_scrub_redacts_a_leaf_the_serializer_would_stringify():
+def test_scrub_redacts_a_plain_leaf_as_its_str():
     when = datetime(2026, 1, 1, tzinfo=UTC)
-    out = P.scrub({"path": PurePosixPath(f"/x/{SHAPED}"), "at": when})
-    assert out == {"path": f"/x/{MARKER}", "at": str(when)}
+    ident = uuid.UUID(int=7)
+    out = P.scrub({"path": PurePosixPath(f"/x/{SHAPED}"), "at": when, "day": date(2026, 1, 2),
+                   "b": SHAPED.encode(), "n": Decimal("1.5"), "id": ident})
+    assert out == {"path": f"/x/{MARKER}", "at": str(when), "day": "2026-01-02", "b": str(SHAPED.encode()).replace(
+        SHAPED, MARKER), "n": "1.5", "id": str(ident)}
+    assert SHAPED not in json.dumps(out)
+
+
+def test_scrub_emits_scalar_and_string_subclasses_as_plain_values():
+    class Label(StrEnum):
+        A = "x " + SHAPED
+
+    class Count(IntEnum):
+        ONE = 1
+
+    class Colour(enum.Enum):
+        RED = "red"
+
+    out = P.scrub({"v": Label.A, "n": Count.ONE, "c": Colour.RED})
+    assert type(out["v"]) is str and out["v"] == f"x {MARKER}"
+    assert type(out["n"]) is int and out["n"] == 1 and out["c"] == "Colour.RED"
+
+
+@dataclass
+class Row:
+    id: str
+    verifier: str
+
+
+class Thing:
+    def __str__(self) -> str:
+        return "thing"
+
+
+@pytest.mark.parametrize("value", [
+    {"x", "y"}, frozenset({"x"}), Row("TK-1", "v"), MappingProxyType({"verifier": "v"}), (v for v in [1]), Thing(),
+    {1: "an integer key"},
+], ids=["set", "frozenset", "dataclass", "mapping", "generator", "object", "non-string-key"])
+def test_scrub_refuses_what_is_not_json_native_structure(value):
+    with pytest.raises(TypeError):
+        P.scrub({"rows": [value]})
+
+
+def test_a_dict_subclass_is_walked_as_a_dict():
+    assert P.scrub(OrderedDict(verifier="v", a=SHAPED)) == {"verifier": "<redacted>", "a": MARKER}
 
 
 def test_scrub_is_idempotent():
-    once = P.scrub({"a": SHAPED, "verifier": "v"})
+    once = P.scrub({"a": SHAPED, "verifier": "v", "t": (1, PurePosixPath("/p"))})
     assert P.scrub(once) == once
+
+
+def test_the_engines_verifier_masking_walks_tuples():
+    assert redact({"rows": ({"verifier": "v"},)}) == {"rows": [{"verifier": "<redacted>"}]}
 
 
 def test_an_activity_title_is_redacted_before_it_is_cut():
@@ -151,3 +124,37 @@ def test_an_activity_title_is_redacted_before_it_is_cut():
     record = {"revision": 7, "at": "2026-01-01T00:00:00Z", "op": "op", "summary": pad + SHAPED}
     title = Projector._activity(None, record)["title"]  # type: ignore[arg-type]  # uses no projector state
     assert SHAPED[:30] not in title and len(title) <= 1000
+
+
+class _Reply:
+    """Records what ``DashboardServer._send`` writes."""
+
+    def __init__(self) -> None:
+        self.status: int | None = None
+        self.body = b""
+
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self.status = code
+
+    def send_header(self, keyword: str, value: str) -> None:
+        pass
+
+    def end_headers(self) -> None:
+        pass
+
+    @property
+    def wfile(self) -> _Reply:
+        return self
+
+    def write(self, data: bytes) -> None:
+        self.body += data
+
+
+def test_a_body_the_layer_refuses_is_answered_as_a_projection_failure():
+    from aew.dashboard.server import DashboardServer
+
+    reply = _Reply()
+    DashboardServer._send(reply, 200, {"rows": [Row("TK-1", "secret-verifier")]}, head=False)  # type: ignore[arg-type]
+    assert reply.status == 500
+    assert json.loads(reply.body)["code"] == "PROJECTION_FAILED"
+    assert b"secret-verifier" not in reply.body

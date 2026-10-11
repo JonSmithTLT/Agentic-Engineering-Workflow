@@ -24,15 +24,17 @@ computes the validator over that and then stamps the real time in (F20.4), so th
 
 from __future__ import annotations
 
-import dataclasses
+import enum
 import hashlib
 import logging
 import os
 import re
 import sqlite3
 import time
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+import uuid
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path, PurePath
 from typing import Any
 
 from aew import errors
@@ -1390,53 +1392,42 @@ def _architecture_id(value: str) -> bool:
 def scrub(value: Any) -> Any:
     """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers.
 
-    One walk does both, so they cover the same containers: a ``verifier`` key's value is masked as the engine masks
-    it (:data:`aew.engine.archive_ops.VERIFIER_MASK`), and every string, dictionary keys included, passes the engine's
-    credential redaction (:func:`aew.harness.contract.redact`). Dictionaries, lists and tuples are walked as the
-    response's ``json.dumps(default=str)`` walks them. Any other value is shown as that serializer would show it,
-    ``str(value)`` redacted, except that a set and a dataclass instance are walked when walking shows no more than
-    ``str(value)`` does (:func:`_walkable`): a set in a stable order, a dataclass by the fields its generated repr
-    shows."""
+    JSON-native structure only; unrecognised containers are refused. One walk does both parts:
+
+    * a ``dict`` is walked; its keys must be strings and pass the engine's credential redaction
+      (:func:`aew.harness.contract.redact`), and a ``verifier`` key's value is masked as the engine masks it
+      (:data:`aew.engine.archive_ops.VERIFIER_MASK`);
+    * a ``list`` or ``tuple`` is walked and emitted as a list;
+    * ``None``, ``bool``, ``int`` and ``float`` (subclasses too) are emitted as the plain value;
+    * a string (a subclass too) is emitted by its own characters, redacted;
+    * a plain leaf with no structure (:data:`TEXT_LEAVES`, or an ``Enum`` that is not a ``str`` or ``int``) is
+      emitted as ``str(value)``, redacted;
+    * anything else (a set, a dataclass, another mapping, a generator, an arbitrary object) raises ``TypeError``,
+      which the server answers as ``PROJECTION_FAILED``: a projection emits JSON-native structure, and nothing is
+      printed that could hold a verifier."""
     if isinstance(value, dict):
-        return {(K.redact(k) if isinstance(k, str) else k): VERIFIER_MASK if k == "verifier" else scrub(v)
-                for k, v in value.items()}
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise TypeError(f"a response key is a string, not {type(k).__name__}")
+            out[K.redact(str.__str__(k))] = VERIFIER_MASK if k == "verifier" else scrub(v)
+        return out
     if isinstance(value, list | tuple):
         return [scrub(v) for v in value]
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if value is None:
+        return None
     if isinstance(value, str):
-        return K.redact(str.__str__(value))  # its characters, as the serializer writes a string (a subclass too)
-    if value is None or isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, set | frozenset) and _walkable(value):
-        return sorted((scrub(v) for v in value), key=canonical_json)
-    shown = _dataclass_shown(value)
-    if shown is not None:
-        return scrub(shown)
-    return K.redact(str(value))
+        return K.redact(str.__str__(value))
+    if isinstance(value, TEXT_LEAVES) or isinstance(value, enum.Enum):
+        return K.redact(str(value))
+    raise TypeError(f"a response holds JSON-native structure, not {type(value).__name__}")
 
 
-def _dataclass_shown(value: Any) -> dict[str, Any] | None:
-    """The fields of a dataclass instance that its ``str()`` shows, when that is the dataclass-generated repr (every
-    field with ``repr=True``, by ``repr()``) of values :func:`_walkable` admits; otherwise None. A ``repr=False``
-    field, a custom ``__str__`` or ``__repr__``, or a value whose repr and ``str()`` may differ is never walked."""
-    if not dataclasses.is_dataclass(value) or isinstance(value, type):
-        return None
-    try:
-        fields = {f.name: getattr(value, f.name) for f in dataclasses.fields(value) if f.repr}
-        generated = f"{type(value).__qualname__}({', '.join(f'{k}={v!r}' for k, v in fields.items())})"
-        same = str(value) == generated
-    except Exception:  # an unset field or a failing repr: shown as the serializer would show it
-        return None
-    return fields if same and all(_walkable(v) for v in fields.values()) else None
-
-
-def _walkable(value: Any) -> bool:
-    """Whether walking ``value`` shows no more than its ``repr()`` and ``str()`` do: ``None`` and values of exactly
-    ``str``, ``bool``, ``int`` or ``float`` (a subclass may define its own repr), and lists, tuples, sets,
-    string-keyed dictionaries and generated-repr dataclasses of them."""
-    if value is None or type(value) in (str, bool, int, float):
-        return True
-    if isinstance(value, list | tuple | set | frozenset):
-        return all(_walkable(v) for v in value)
-    if isinstance(value, dict):
-        return all(type(k) is str and _walkable(v) for k, v in value.items())
-    return _dataclass_shown(value) is not None
+# Leaves with no structure that a response may carry as their ``str()``.
+TEXT_LEAVES = (PurePath, bytes, bytearray, datetime, date, Decimal, uuid.UUID)

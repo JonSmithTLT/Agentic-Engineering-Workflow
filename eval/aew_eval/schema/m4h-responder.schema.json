@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/m4h-responder/v1",
   "title": "The M4-H responder contract (Q7 v0.3.1 §2.4; F19 plan v5 §2.8 and S8)",
-  "description": "The fixed texts the unattended responder sends, and what each class of arm request gets. The clarification and continuation texts are Q7 §2.4.4's and §2.4.5's verbatim. The denial is fixed before calibration (Q7 §2.4.2, §14.1 item 8): until the pre-calibration seal binds it, `denial.sealed` is false and no counted run may use the contract. The A arm's classification table (designer decision D3) is filled by S13.",
+  "description": "The fixed texts the unattended responder sends, and what each class of arm request gets. The clarification and continuation texts are Q7 §2.4.4's and §2.4.5's verbatim. The denial is fixed before calibration (Q7 §2.4.2, §14.1 item 8): until the pre-calibration seal binds it, `denial.sealed` is false and no counted run may use the contract. The flag is not proof by itself: the counted path also refuses the draft text verbatim, and S12's seal binds the sealed denial's hash. The A arm's classification table (designer decision D3) is filled by S13.",
   "type": "object",
   "required": ["schema", "texts", "classes", "channels"],
   "additionalProperties": false,

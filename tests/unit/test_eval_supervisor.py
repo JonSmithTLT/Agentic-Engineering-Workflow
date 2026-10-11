@@ -222,7 +222,7 @@ def supervisor(tmp_path: Path, *, clock: Clock | None = None, log: Log | None = 
         spend_terms=terms(**spend_over), driver=driver, helpers=helpers or FakeHelpers(log),
         feed=feed or FakeFeed(log), proxy=proxy, responder=R.Responder(R.DRAFT),
         meter_factory=factory or default_factory, state_root=tmp_path / "state", worker_s_pot=2,
-        clock=clock, sleep=clock.sleep)
+        clock=clock, sleep=clock.sleep, unsealed_responder_for_tests=True)
     return sup, driver, log, clock, made
 
 
@@ -289,9 +289,13 @@ def test_an_out_of_envelope_request_gets_exactly_the_denial(tmp_path):
     # The draft denial is unsealed: no counted or calibration run may use it.
     with pytest.raises(Invalid, match="unsealed draft"):
         R.Responder.for_counted_run(R.DRAFT)
-    sealed = json.loads(json.dumps(R.DRAFT))
-    sealed["texts"]["denial"]["sealed"] = True
-    assert R.Responder.for_counted_run(sealed).answer("deny").text == R.DRAFT_DENIAL
+    flagged = json.loads(json.dumps(R.DRAFT))
+    flagged["texts"]["denial"]["sealed"] = True  # the flag alone is not proof: the draft text is refused verbatim
+    with pytest.raises(Invalid, match="unsealed draft"):
+        R.Responder.for_counted_run(flagged)
+    sealed = json.loads(json.dumps(flagged))
+    sealed["texts"]["denial"]["text"] = "A sealed denial text (synthetic)."
+    assert R.Responder.for_counted_run(sealed).answer("deny").text == "A sealed denial text (synthetic)."
 
 
 def test_the_responder_never_answers_an_unclassified_request_or_a_changed_fixed_text():
@@ -351,7 +355,8 @@ def test_aeweval_meters_every_worker_server_with_its_own_high_water_state(tmp_pa
     sup.run(TASK)
     assert set(made) == {server(1).key, server(2).key}
     paths = {m["state_path"] for m in made.values()}
-    assert len(paths) == 2 and all(p.parent.parent.parent == tmp_path / "state" for p in paths)
+    assert len(paths) == 2 and all(p.parent.parent == tmp_path / "state" / "runs" / "demo" / "r1" / "meters"
+                                   for p in paths)
     assert all(("poll", f"worker:{k}") in log for k in made)
 
 
@@ -637,17 +642,236 @@ def validate_body(path: str, body: dict) -> None:
     jsonschema.Draft202012Validator({**schema, "components": FIXTURE["components"]}).validate(body)
 
 
-def test_an_evaluator_failure_still_takes_the_shutdown_order_and_kills_the_arm(tmp_path):
+def test_a_failing_shutdown_step_never_stops_the_kill_or_the_settle(tmp_path):
     clock, log = Clock(), Log()
-
-    def broken(tick: int) -> Observation:
-        raise RuntimeError("the driver lost its session")
-
-    driver = FakeDriver(clock, log, broken)
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=True))
     driver.interrupt = lambda: (_ for _ in ()).throw(ConnectionError("server gone"))  # type: ignore[method-assign]
     sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver)
     result = sup.run(TASK)
-    assert result.end == "EVALUATOR_FAILURE" and not result.arm_failure
-    assert [e["at"] for e in result.errors] == ["run", "interrupt"]
+    assert result.end == "FINAL_COMPLETION" and [e["at"] for e in result.errors] == ["interrupt"]
     assert ("kill",) in log and any(e[0] == "settle" for e in log)  # the kill and the settle still happened
     assert [s["step"] for s in result.shutdown][-2:] == ["kill", "settle"]
+
+
+# ---------------------------------------------------------------------------------------------- PR #196 review
+
+SHUTDOWN_STEPS = ["residual", "interrupt", "supersede", "final_samples", "workers_final", "last_reads", "kill",
+                  "settle", "proxy_closed"]
+
+
+def _raise(exc: Exception):
+    def call(*args: Any, **kwargs: Any) -> Any:
+        raise exc
+    return call
+
+
+def _prepare_fails(driver: FakeDriver, feed: FakeFeed) -> None:
+    driver.prepare = _raise(RuntimeError("the endpoint reported an error after it started"))  # type: ignore
+
+
+def _prompt_fails(driver: FakeDriver, feed: FakeFeed) -> None:
+    driver.send_first_prompt = _raise(TimeoutError("the reply timed out after admission"))  # type: ignore
+
+
+def _feed_fails(driver: FakeDriver, feed: FakeFeed) -> None:
+    feed.total_spend = _raise(RuntimeError("the spend feed failed"))  # type: ignore
+
+
+def _observe_fails(driver: FakeDriver, feed: FakeFeed) -> None:
+    driver.script = _raise(ValueError("the arm's server sent junk"))
+
+
+FAILURE_ENDS = {
+    "PREPARE_FAILED": (_prepare_fails, False),
+    "FIRST_PROMPT_FAILED": (_prompt_fails, False),
+    "EVALUATOR_FAILURE": (_feed_fails, False),
+    "ARM_FACING_FAILURE": (_observe_fails, True),
+}
+
+
+@pytest.mark.parametrize("end", sorted(FAILURE_ENDS))
+def test_every_exit_from_run_takes_the_shutdown_order_and_returns_a_record(tmp_path, end):
+    inject, arm_failure = FAILURE_ENDS[end]
+    clock, log = Clock(), Log()
+    driver, feed, proxy = FakeDriver(clock, log), FakeFeed(log), FakeProxy(log, usd=0.5)
+    inject(driver, feed)
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, feed=feed, proxy=proxy, layer="c")
+    result = sup.run(TASK)
+    assert result.end == end and result.arm_failure is arm_failure
+    assert [s["step"] for s in result.shutdown] == SHUTDOWN_STEPS
+    assert ("kill",) in log and ("proxy_close",) in log and result.cost["counted_usd"] == pytest.approx(0.5)
+
+
+def test_the_wall_clock_runs_while_the_first_prompt_blocks(tmp_path):
+    clock, log = Clock(), Log()
+    driver = FakeDriver(clock, log)
+
+    def blocking(task: bytes) -> None:  # a driver that wrongly waits for the turn: still supervised and capped
+        clock.t += 200.0
+
+    driver.send_first_prompt = blocking  # type: ignore[method-assign]
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, wall_s=100.0)
+    result = sup.run(TASK)
+    assert result.end == "WALL_CAP" and result.wall_s >= 200.0
+
+
+@pytest.mark.parametrize("sample", [{"tokens": {"input": "lots"}}, {"tokens": [1, 2]}, [1, 2], {"tokens": None},
+                                    {"tokens": {"input": -5}}, {"tokens": {"output": True}}])
+def test_a_malformed_live_file_is_cf_evidence_never_a_supervisor_fault(tmp_path, sample):
+    clock, log = Clock(), Log()
+    batches = [[server(1)], [TapLiveFile("runs/w1", sample)]]  # type: ignore[arg-type]
+    driver = FakeDriver(clock, log, lambda t: quiet(1, final=t >= 3))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, helpers=FakeHelpers(log, batches))
+    result = sup.run(TASK)
+    assert result.end == "FINAL_COMPLETION"
+    assert {"kind": "WORKER_LIVE_FILE_MALFORMED", "worker": server(1).key} in result.cf_evidence
+
+
+def test_a_meter_that_raises_on_an_arm_server_is_a_source_that_ages_never_a_fault(tmp_path):
+    clock, log = Clock(), Log()
+
+    class Broken(FakeMeter):
+        def poll(self) -> dict | None:
+            raise ValueError("the arm's server answered junk")
+
+    driver = FakeDriver(clock, log, meter=Broken("own", clock, log))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver,
+                         factory=lambda srv, path, root: Broken("worker", clock, log),
+                         helpers=FakeHelpers(log, [[server(1)]]))
+    result = sup.run(TASK)
+    assert result.end == "STALE_CEILING" and not result.arm_failure  # the worker never answered: projected, then ended
+    assert any(e["at"] == "own_poll" for e in result.errors)
+
+
+def test_a_finished_worker_never_ends_a_still_working_run_at_the_stale_ceiling(tmp_path):
+    clock, log = Clock(), Log()
+
+    class Finished(FakeMeter):
+        def poll(self) -> dict | None:  # the worker finished at once: its last sample is final, and only ages
+            self.sample = self.sample or {"source": {"id": "worker"}, "usd": 0.3, "at": self.clock(), "state": "final"}
+            return self.sample
+
+    driver = FakeDriver(clock, log)  # the Lead keeps working
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, wall_s=120.0,
+                         factory=lambda srv, path, root: Finished("worker", clock, log),
+                         helpers=FakeHelpers(log, [[server(1)]]))
+    result = sup.run(TASK)
+    assert result.end == "WALL_CAP" and result.last_check["projection"] == 0.0
+    assert spend.projection(terms(), [{"state": "final", "age_s": 500.0, "s_pot": 4}], d_min_s=None) == 0.0
+
+
+def test_a_failed_proxy_close_still_returns_the_record_and_charges_the_cap(tmp_path):
+    clock, log = Clock(), Log()
+    proxy = FakeProxy(log, usd=1.0)
+    proxy.close = _raise(ConnectionError("the proxy restarted"))  # type: ignore[method-assign]
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=True))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, proxy=proxy, layer="c")
+    result = sup.run(TASK)
+    assert result.cost["counted_usd"] is None and result.cost["counted_resolved"] is False
+    assert result.cost["charged_usd"] == 10.0 and any(e["at"] == "proxy_close" for e in result.errors)
+    assert [s["step"] for s in result.shutdown] == SHUTDOWN_STEPS
+
+
+@pytest.mark.parametrize("layer", ["b", "c"])
+def test_a_failed_settle_keeps_the_last_measured_figure_never_zero(tmp_path, layer):
+    clock, log = Clock(), Log()
+    meter = FakeMeter("own", clock, log, lambda t: {"usd": 3.0, "at": t})
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=t >= 2), meter=meter, residual=0)
+    feed = FakeFeed(log)
+    feed.settle = _raise(RuntimeError("settle failed"))  # type: ignore[method-assign]
+    proxy = FakeProxy(log, usd=3.0) if layer == "c" else None
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, feed=feed, proxy=proxy, layer=layer)
+    result = sup.run(TASK)
+    assert result.settled["completeness"] == "unknown" and result.settled["reasons"]["settle_failed"] == 1
+    assert result.cost["live_usd"] == pytest.approx(3.0)
+    if layer == "b":
+        assert result.cost["counted_usd"] == pytest.approx(3.0) and result.cost["charged_usd"] == 10.0
+    else:  # no false divergence: the live cross-check is the last measured figure, not zero
+        assert result.cost["proxy_live_divergence"]["exceeds"] is False
+
+
+def test_a_missing_kill_proof_makes_the_cost_unknown_and_charges_the_cap(tmp_path):
+    clock, log = Clock(), Log()
+    helpers = FakeHelpers(log)
+    helpers.kill = _raise(PermissionError("sudo refused"))  # type: ignore[method-assign]
+    meter = FakeMeter("own", clock, log, lambda t: {"usd": 1.0, "at": t})
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=True), meter=meter)
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, helpers=helpers)
+    result = sup.run(TASK)
+    assert result.kill == {"ended": 0, "remaining": None}
+    assert result.settled["completeness"] == "unknown" and result.settled["reasons"]["kill_unproven"] == 1
+    assert {"kind": "ARM_KILL_UNPROVEN"} in result.cf_evidence and result.cost["charged_usd"] == 10.0
+
+
+def test_a_counted_run_takes_only_a_responder_built_through_the_sealed_path(tmp_path):
+    clock, log = Clock(), Log()
+    base = dict(terms=RunTerms(run_id="demo/r1", partition="p", task_input_sha256="0" * 64, wall_s=1.0),
+                spend_terms=terms(), driver=FakeDriver(clock, log), helpers=FakeHelpers(log), feed=FakeFeed(log),
+                proxy=None, meter_factory=lambda *a: None, state_root=tmp_path, worker_s_pot=1)
+    with pytest.raises(Invalid, match="for_counted_run"):
+        RunSupervisor(**base, responder=R.Responder(R.DRAFT))  # type: ignore[arg-type]
+    sealed = json.loads(json.dumps(R.DRAFT))
+    sealed["texts"]["denial"] = {"text": "A sealed denial text (synthetic).", "sealed": True}
+    RunSupervisor(**base, responder=R.Responder.for_counted_run(sealed))  # type: ignore[arg-type]
+
+
+def test_worker_meter_state_is_run_scoped_and_never_reused(tmp_path):
+    first, *_ = supervisor(tmp_path, helpers=FakeHelpers(Log(), [[server(1)]]))
+    first.workers.observe([server(1)])
+    path = tmp_path / "state" / "runs" / "demo" / "r1" / "meters" / "worker-0"
+    assert path.is_dir()
+    again, *_ = supervisor(tmp_path)  # the same run id over the same state root: never the old state
+    with pytest.raises(Invalid, match="made fresh"):
+        again.workers.observe([server(1)])
+    other = RunSupervisor(
+        terms=RunTerms(run_id="demo/r2", partition="p", task_input_sha256="0" * 64, wall_s=1.0), spend_terms=terms(),
+        driver=FakeDriver(Clock(), Log()), helpers=FakeHelpers(Log()), feed=FakeFeed(Log()), proxy=None,
+        responder=R.Responder(R.DRAFT), meter_factory=lambda srv, p, r: FakeMeter("w", Clock(), Log()),
+        state_root=tmp_path / "state", worker_s_pot=1, unsealed_responder_for_tests=True)
+    other.workers.observe([server(1)])
+    assert (tmp_path / "state" / "runs" / "demo" / "r2" / "meters" / "worker-0").is_dir()
+
+
+def test_a_live_file_that_decreases_is_cf_evidence(tmp_path):
+    clock, log = Clock(), Log()
+
+    def factory(srv, state_path, root):
+        return FakeMeter("worker", clock, log, lambda t: {"usd": 0.1, "at": t, "tokens": {"input": 300}})
+
+    batches = [[server(1)], [TapLiveFile("runs/w1", {"tokens": {"input": 900}})],
+               [TapLiveFile("runs/w1", {"tokens": {"input": 400}})]]
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=t >= 4))
+    sup, *_ = supervisor(tmp_path, clock=clock, log=log, driver=driver, helpers=FakeHelpers(log, batches),
+                         factory=factory)
+    result = sup.run(TASK)
+    decreased = {"kind": "WORKER_LIVE_FILE_DECREASED", "worker": server(1).key, "categories": ["input"]}
+    assert decreased in result.cf_evidence
+
+
+def test_the_counted_cost_under_the_fallback_layers_is_a_lower_bound_and_layer_a_is_refused(tmp_path):
+    clock, log = Clock(), Log()
+    meter = FakeMeter("own", clock, log, lambda t: {"usd": 2.0, "at": t})
+    driver = FakeDriver(clock, log, lambda t: quiet(t, final=True), meter=meter)
+    result = supervisor(tmp_path, clock=clock, log=log, driver=driver, layer="b")[0].run(TASK)
+    assert result.cost["lower_bound"] is True and result.cost["counted_usd"] == pytest.approx(2.0)
+    assert {"kind": "COUNTED_COST_LOWER_BOUND", "layer": "b"} in result.cf_evidence
+    with pytest.raises(Invalid, match="layer \\(a\\) is not admissible"):
+        supervisor(tmp_path / "a", layer="a")
+    with pytest.raises(Invalid, match="not admissible"):
+        spend.counted(terms(layer="a"), {"usd": "1", "completeness": "complete"}, None)
+
+
+def test_the_supervisor_modules_read_no_file_but_their_own_state_checks():
+    """The static half of S8's aeweval_never_opens_an_arm_owned_path (the full test, through the helpers, is S8b's):
+    no module of the core reads or lists a file; the only filesystem calls are spend.private_dir's mkdir and
+    require_private's lstat, under the evaluator's state root."""
+    forbidden = {"open", "read_text", "read_bytes", "write_text", "write_bytes", "iterdir", "glob", "rglob", "walk",
+                 "scandir", "listdir", "readlink", "stat", "exists", "is_file", "is_dir"}
+    for module in ("supervisor", "spend", "responder", "helpers"):
+        tree = ast.parse((ROOT / "eval" / "aew_eval" / f"{module}.py").read_text(encoding="utf-8"))
+        calls = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                f = node.func
+                calls.add(f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", ""))
+        assert not calls & forbidden, (module, calls & forbidden)

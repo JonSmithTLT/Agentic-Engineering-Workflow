@@ -19,8 +19,9 @@ ledger (S18), which under layer (c) sees every provider request, generation call
 
 **The counted cost** (the lead developer's placement, 2026-10-10): under layer (c) the counted cost and the cap come
 from the proxy's ledger, which meters every provider request; F25's settled figure is a cross-check, and a
-divergence between the two above the run's reconciliation tolerance is CF evidence (:func:`divergence`). Under
-layers (b) and (a) the counted cost is F25's settled figure, charged at the cap when it is not complete.
+divergence between the two above the run's reconciliation tolerance is CF evidence (:func:`divergence`). Under the
+fallback layer (b) the counted cost is F25's settled figure, recorded as a lower bound and charged at the cap when it
+is not complete. Layer (a) is not admissible for counted runs.
 
 **State.** Every meter's state lives under the evaluator's own root, created 0700, and each file and its parents up to
 that root are checked (:func:`require_private`): owned by this uid, writable by no one else, and never a link.
@@ -42,6 +43,7 @@ from aew_eval.schemas import Invalid
 
 LAYERS = ("c", "b", "a")
 GONE = "server_gone"
+FINAL = "final"
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,8 @@ def projection(terms: SpendTerms, sources: Sequence[dict[str, Any]], *, d_min_s:
     d = d_used(terms, d_min_s)
     extra = 0.0
     for source in sources:
+        if source.get("state") == FINAL:  # finished: nothing left to spend (PR #196 review, F3)
+            continue
         age = float(source.get("age_s") or 0.0)
         if source.get("state") == GONE or age > terms.stale_after_s:
             extra += int(source.get("s_pot") or terms.s_pot_arm) * terms.k_assumed * terms.c_usd * \
@@ -154,7 +158,7 @@ def check(terms: SpendTerms, total: dict[str, Any], *, max_in_flight: int,
                                "in_flight": int(total.get("in_flight") or 0),
                                "guard": guard(terms, d_min_s=d_min, max_in_flight=max_in_flight),
                                "projection": projection(terms, sources, d_min_s=d_min), "cap_usd": terms.cap_usd}
-    oldest = max((float(s.get("age_s") or 0.0) for s in sources), default=0.0)
+    oldest = max((float(s.get("age_s") or 0.0) for s in sources if s.get("state") != FINAL), default=0.0)
     figures["oldest_age_s"] = oldest
     if proxy is not None and terms.layer == "c":
         figures["proxy_usd"], figures["proxy_open"] = proxy.run_usd(), proxy.open_requests()
@@ -182,16 +186,29 @@ def divergence(terms: SpendTerms, *, proxy_usd: float, live_usd: float, residual
 
 
 def counted(terms: SpendTerms, settled: dict[str, Any], proxy_usd: float | None) -> dict[str, Any]:
-    """The run's counted and charged cost (module docstring)."""
-    live = usd(settled["usd"])
+    """The run's counted and charged cost (module docstring). Nothing here is ever zero by default: a figure that is
+    not known is ``None``, unresolved, and charged at the cap.
+
+    * Layer (c): the proxy's ledger (``proxy_usd``; ``None`` when it could not be closed, so unresolved).
+    * Layer (b): F25's settled figure, and it is a **lower bound** (``lower_bound: true``): spend the live meter does
+      not see is bounded only by the provider's per-key limit. Charged at the cap when not complete.
+    * Layer (a) is not admissible for counted runs: refused."""
+    if terms.layer == "a":
+        raise Invalid("layer (a) is not admissible for counted runs")
+    live = None if settled.get("usd") is None else usd(settled["usd"])
+    base = {"layer": terms.layer, "live_usd": live, "live_completeness": settled["completeness"]}
     if terms.layer == "c":
         if proxy_usd is None:
-            raise Invalid("layer (c) counts the proxy's ledger, and this run has none")
-        return {"layer": "c", "counted_usd": proxy_usd, "charged_usd": proxy_usd, "source": "proxy",
-                "live_usd": live, "live_completeness": settled["completeness"]}
+            return {**base, "counted_usd": None, "counted_resolved": False, "charged_usd": terms.cap_usd,
+                    "source": "proxy", "unresolved_reason": "proxy_ledger_not_closed"}
+        return {**base, "counted_usd": proxy_usd, "counted_resolved": True, "charged_usd": proxy_usd,
+                "source": "proxy"}
+    if live is None:
+        return {**base, "counted_usd": None, "counted_resolved": False, "charged_usd": terms.cap_usd,
+                "source": "live", "lower_bound": True, "unresolved_reason": "no_live_figure"}
     complete = settled["completeness"] == "complete"
-    return {"layer": terms.layer, "counted_usd": live, "charged_usd": live if complete else max(live, terms.cap_usd),
-            "source": "live", "live_usd": live, "live_completeness": settled["completeness"]}
+    return {**base, "counted_usd": live, "counted_resolved": True, "lower_bound": True, "source": "live",
+            "charged_usd": live if complete else max(live, terms.cap_usd)}
 
 
 # ---------------------------------------------------------------------------------------------- private state
@@ -219,16 +236,19 @@ def require_private(path: Path, root: Path) -> None:
                 raise Invalid(f"{p} is writable by others (mode {stat.S_IMODE(st.st_mode):o})")
 
 
-def private_dir(root: Path, *parts: str) -> Path:
-    """``root/parts...``, created 0700 where missing, and checked with :func:`require_private`."""
+def private_dir(root: Path, *parts: str, fresh: bool = False) -> Path:
+    """``root/parts...``, created 0700 where missing, and checked with :func:`require_private`. ``fresh`` refuses a
+    last directory that already exists: a meter's state is never one another run or meter left (PR #196 review,
+    F8)."""
     root = Path(root)
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     here = root
-    for part in parts:
+    for n, part in enumerate(parts, 1):
         here = here / part
         try:
             os.mkdir(here, 0o700)
         except FileExistsError:
-            pass
+            if fresh and n == len(parts):
+                raise Invalid(f"{here} exists: a meter's state directory is made fresh for it") from None
     require_private(here, root)
     return here

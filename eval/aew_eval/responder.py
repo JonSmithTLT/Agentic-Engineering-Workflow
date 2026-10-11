@@ -64,14 +64,18 @@ class Responder:
     def __init__(self, contract: dict[str, Any]) -> None:
         validate(SCHEMA, contract, what="the responder contract")
         self.contract = copy.deepcopy(contract)
+        self.counted = False  # set only by for_counted_run: the supervisor of a counted run requires it
 
     @classmethod
     def for_counted_run(cls, contract: dict[str, Any]) -> Responder:
-        """The responder of a counted or calibration run: refused while the denial is the unsealed draft."""
+        """The responder of a counted or calibration run. The contract's own ``sealed`` flag is not proof by itself:
+        the draft denial is refused verbatim whatever the flag says, and S12 binds the sealed denial's hash."""
         responder = cls(contract)
-        if not responder.contract["texts"]["denial"]["sealed"]:
+        denial = responder.contract["texts"]["denial"]
+        if not denial["sealed"] or denial["text"] == DRAFT_DENIAL:
             raise Invalid("the responder's denial text is an unsealed draft: the pre-calibration seal (S12) fixes it "
                           "before any counted or calibration run")
+        responder.counted = True
         return responder
 
     def answer(self, request_class: str) -> Response:

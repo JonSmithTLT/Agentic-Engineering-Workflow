@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,14 @@ class RoleAdapter(FakeAdapter):
         by_role = scripts / f"role-{contract.role}-{contract.scope}.json"
         if not own.exists() and by_role.exists():
             shutil.copyfile(by_role, own)
+        pause = scripts / f"pause-launch-{contract.role}"
+        if pause.exists():  # a test's hook: the launch (a stage's dispatch step) holds until the test says go
+            pause.unlink()
+            (scripts / f"paused-{contract.run}").write_text("paused", encoding="utf-8")
+            resume = scripts / "resume-launch"
+            deadline = time.monotonic() + 600
+            while not resume.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
         return super().launch(contract, agent_env)
 
 

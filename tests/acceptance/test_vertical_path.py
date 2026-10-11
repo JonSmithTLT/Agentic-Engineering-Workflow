@@ -517,6 +517,50 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
     assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
 
 
+def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(tmp_path, world, request):
+    """V2 with the session killed while a stage is half done, every run on every platform: the implementer's launch
+    (the second step of `ticket_start`, after `work.assign` committed) is held by the fake harness's hook until the
+    test has killed the session; nothing depends on timing. Reopening then needs the takeover, which moves the
+    stage's subject: continuing it is refused, the Lead abandons it, reconciles the Ticket and dispatches a new
+    implementer attempt, and the run still goes to the end (spec §2). The chain is asserted as well as V2's zeros."""
+    op = setup_operator(tmp_path, "V2-forced-mid-stage")
+    world.append(op)
+    scripts = Path(op.lab.env["AEW_FAKE_SCRIPTS"])
+    facts: dict[str, Any] = {"how": "kill, mid-stage", "terminal": "fresh"}
+    try:
+        configure(op)
+        op.in_setup = False
+        session, _ = open_session(op, "open")
+        (scripts / "pause-launch-implementer").write_text("hold", encoding="utf-8")
+        op.say("ask", workers.REQUEST)
+        op.converse(session, stop=lambda: any(scripts.glob("paused-R-*")))  # the stage is between its steps
+        facts["held_mid_stage"] = any(scripts.glob("paused-R-*"))
+        op.end_session(session, "kill")
+        facts["lead_gone"] = lead_gone(session)
+        (scripts / "resume-launch").write_text("go", encoding="utf-8")
+        session, first = reopen(op, steering=False)
+        facts["first_words"] = first.get("words")
+        op.say("reopen:ask", "Where do things stand?")
+        op.converse(session)
+        finish(op, session)
+        facts.update(v2_facts(op))
+        gaps = [e.get("gap") for e in lead_events(op.lab) if e.get("kind") == "gap"]
+        facts["chain"] = [g for g in gaps if g in ("decision_refused", "resolve_stage", "refusal_names_a_step",
+                                                   "reconcile", "redispatch")]
+        op.ledger.observe("v2", **facts)
+    finally:
+        write_out(op, request)
+    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
+    if not facts.get("held_mid_stage"):
+        problems.append("the session was not killed mid-stage (the launch hook never held)")
+    for step in ("refusal_names_a_step", "reconcile", "redispatch"):
+        if step not in facts.get("chain", []):
+            problems.append(f"the forced path did not run its {step} step: {facts.get('chain')}")
+    if facts.get("interrupted"):
+        problems.append("the Ticket was INTERRUPTED")
+    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+
+
 def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request):
     """An extra measurement, never V2's verdict: the reopen from the same shell, where the credential exported for
     the first open is still set. It shows what that variable alone buys; the fresh terminal above decides V2."""

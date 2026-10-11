@@ -30,6 +30,10 @@ finishes; they are the only place AEW knowledge appears here:
   - ``publish_not_offered``: a prepared candidate whose post-integration verification reported, with no decision
     offered: the Lead asks the operator, then calls ``integration_publish`` (not offered) with the candidate and the
     report it read in its own wait's result;
+- ``redispatch``: after a takeover and a reconcile the interrupted implementer is gone, nothing is offered and the
+  hint's ``work transition --to RUNNING`` is refused ("no active implementer invocation"): the Lead dispatches a new
+  attempt (``invoke create --role implementer --launch``, or ``work redispatch`` for a non-mutating Ticket). A hint
+  whose command is refused is also recorded as ``stale_hint`` (evidence about the projection's guidance);
 - ``recheck``: the gate still lacks the local check after the operator's own workaround (U14): the Lead relaunches
   the implementer's invocation from its shell, so its check runs again;
 - ``decision_refused``: a decision still required after its answer was acted on is never re-asked: one
@@ -93,6 +97,7 @@ class Lead:
         self.last_projection: dict[str, Any] | None = None
         self.last_out: dict[str, Any] | None = None
         self.operator_acted = False  # the operator spoke after the Lead said it was stuck (a workaround of theirs)
+        self.last_refusal = ""  # the last refusal a hint's command met
 
     # ------------------------------------------------------------------ accounting
 
@@ -415,6 +420,8 @@ class Lead:
         hinted = self.hinted_command(proj)
         if hinted is not None and self.seen[key] == 2:
             return self.gap_hint(hinted, proj)
+        if "no active implementer invocation" in self.last_refusal and not self.seen.get(("redispatch",)):
+            return self.gap_redispatch(unit, proj)
         candidate = (unit.get("integration") or {}).get("candidate")
         if proj.get("state") == "COMMIT_READY" and candidate and self.seen[key] <= 3 and not self.seen.get(("pub",)):
             return self.gap_publish(str(candidate), proj)
@@ -444,12 +451,32 @@ class Lead:
         argv = [*argv, "--expect-rev", str(proj.get("revision"))]
         out = self.shell(argv, why="hint_command")
         message = str((out.get("error") or {}).get("message") or "")
+        if not out["ok"] and "unrecognized arguments" not in message and "--launch" not in message:
+            # The product's own hint led to a refusal: evidence for the projection's guidance, kept in the ledger.
+            self.event("stale_hint", hint=argv, refusal=out.get("error"))
+            self.last_refusal = message
         if not out["ok"] and "unrecognized arguments: --expect-rev" in message:  # a read command takes none
             self.shell(argv[:-2], why="hint_command: the usage error refused --expect-rev")
         elif not out["ok"] and "--launch" in message:
             rev = self.call("status", {"work_id": self.subject}).get("revision")
             argv = [*argv[:-2], "--launch", "--expect-rev", str(rev)]
             self.shell(argv, why="hint_command: the refusal asked for --launch")
+        return True
+
+    def gap_redispatch(self, unit: dict[str, Any], proj: dict[str, Any]) -> bool:
+        """After a takeover and a reconcile, the interrupted implementer is gone and nothing is offered: the Lead
+        dispatches a new attempt the way the quickstart's "Losing the session" documents it (`invoke create --role
+        implementer --launch` for a mutating Ticket, `work redispatch --launch` for a non-mutating one). Counted."""
+        self.seen[("redispatch",)] = 1
+        self.last_refusal = ""
+        self.event("gap", gap="redispatch", why="no active implementer invocation, and nothing offered")
+        rev = str(proj.get("revision"))
+        if unit.get("mutating", True):
+            argv = ["invoke", "create", str(self.subject), "--role", "implementer", "--launch", "--expect-rev", rev]
+        else:
+            argv = ["work", "redispatch", str(self.subject), "--reason", "the interrupted attempt is gone",
+                    "--launch", "--expect-rev", rev]
+        self.shell(argv, why="redispatch: a new attempt after the interrupted one")
         return True
 
     def gap_publish(self, candidate: str, proj: dict[str, Any]) -> bool:

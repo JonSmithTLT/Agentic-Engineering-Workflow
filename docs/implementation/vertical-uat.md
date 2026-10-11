@@ -63,6 +63,7 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and `--launch` filled in as refusals ask) |
 | A prepared candidate whose post-integration verification reported, with no decision offered | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
 | The gate still lacks the local check after the operator's own workaround (U14) | `aew harness launch` of the implementer's invocation, from the shell, so its check runs again |
+| After a takeover and a reconcile, no implementer is active and nothing is offered (the hint's transition is refused) | a new attempt: `aew invoke create --role implementer --launch` (`work redispatch` for a non-mutating Ticket); the refused hint is recorded as `stale_hint` |
 | A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete (for `RESOLVE_STAGE`, `aew stage continue` with the Lead's own rationale; when that is refused and the refusal names `abandon`, `aew stage abandon` with the Lead's rationale), then stuck |
 | Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
 
@@ -95,7 +96,9 @@ installed tool: its variables are not the operator's.
   seat over at their own terminal and hands the new credential to the session (quickstart, "Losing the session"):
   every step counted, and an INTERRUPTED Ticket or a reconcile recorded as evidence. A reopen from the same shell,
   where the first open's exported credential is still set, is an extra measurement (its own test), never V2's
-  verdict.
+  verdict. A forced variant kills the session while a stage is half done (the fake harness holds the implementer's
+  launch until the test has killed the session, so no timing decides it): reopening moves the stage's subject, and the
+  chain abandon, reconcile, new implementer attempt runs, and finishes, on every run on both platforms.
 - **Steering on.** V1 and V2 also run with steering on, in the mode that lets the loop push the stages (Run), so "the
   Lead does no stage-pushing" can be measured. Whether that mode completes a Ticket on today's `main` with the fake
   harness is recorded, not assumed: the ledger lists the stages the loop ran and where it stopped. **Raising the mode

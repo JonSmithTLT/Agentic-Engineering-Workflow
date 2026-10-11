@@ -117,7 +117,7 @@ export function Shell({
           </div>
           <div className="header-tools">
             {overview.data && caps?.overview?.state === 'AVAILABLE' && (
-              <span className="header-status project-health">
+              <span className="project-health">
                 <span className="muted">Project health</span>
                 <SemanticValue
                   value={overview.data.value.data.health.status}

@@ -613,6 +613,19 @@ dd {
   display: inline-flex;
   align-items: center;
 }
+.header-tools > .project-health {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  max-width: 100%;
+}
+.project-health > .tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+}
 .filter-bar {
   display: flex;
   gap: 12px;

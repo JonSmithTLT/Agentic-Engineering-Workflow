@@ -4,6 +4,8 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
+Overview and the shared header label the supplied health projection as project health. Its status and reasons remain backend-owned; this label neither represents U1/H1 run health nor changes the API's `health` field or vocabulary.
+
 Shared `src/styles.css` owns disclosure boundaries and table scroll frames. Native details/summary interaction, document scrolling and table semantics remain unchanged; expanded content stays visually enclosed. Map Fields owns supplied label/value grouping without reinterpreting values. Each Maps metadata disclosure names its response (overview, selected map, input page, stored maps or comparison). Borders do not imply authority, completeness or a new data scope.
 
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |

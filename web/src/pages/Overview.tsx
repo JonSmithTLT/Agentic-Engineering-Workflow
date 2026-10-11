@@ -57,7 +57,7 @@ export function OverviewPage() {
                 <SafeContent {...data.summary} />
               </div>
               <div className="health">
-                <span className="muted">Reported health</span>
+                <span className="muted">Reported project health</span>
                 <SemanticValue
                   value={data.health.status}
                   known={['HEALTHY', 'DEGRADED', 'UNHEALTHY', 'UNKNOWN']}

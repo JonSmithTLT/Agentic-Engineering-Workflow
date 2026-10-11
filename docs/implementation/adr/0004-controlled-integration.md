@@ -253,3 +253,71 @@ it; until then the rule above stands.
   any other explicit abandonment, cancels the custodian and never releases the lease as though integration succeeded.
   F31 never reruns verification automatically while holding the lease; a bounded "retry the verifier under the same
   custody" would be a separately governed recovery action.
+
+## Amendment 2026-10-10 — VALIDATE_ONLY, the custody worker and its credential (M4-E E6a)
+
+The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this amendment says otherwise.
+
+- **The custodian's credential (amends M4-D3).** "The custodian has no credential" becomes: *the integration
+  custodian holds no Lead, role, model or harness credential. It may hold one engine-issued custody credential
+  restricted to the closed integration-custody transaction family* (operator and designer, 2026-10-07).
+  - It is minted in the commit that grants the lease. Control state keeps only its hash, in `tokens` (kind `custody`),
+    and the lease names it (`lease.custody`, with the stage intent whose step granted the lease).
+  - It binds the custodian, the queue entry, the queue attempt, the grant, the Lead generation and the closed operation
+    family: validation (pin, commit and its infrastructure outcomes), routing a result, the custodian's own lease
+    release, the worker's registration, and the PIC publish. The PIC publish also needs the operator's envelope and the
+    §17 predicate in the same transaction, which come with E6b; until then it is refused.
+  - It is revoked in the transaction that ends the custody: the lease's end, the custodian's death, a new Lead
+    generation, a cancel or a reconcile.
+  - Same-uid, it stays `guarantee: dev`, like every credential before F18.6.
+- **The one admission path, `Kernel.custody_txn`.** It checks every binding on the transaction's own state, the
+  manifest and policy pins, and every finalizer, as `lead_txn` does. A Lead, invocation or handoff credential is
+  refused there, and a custody credential everywhere else. Validation's functions take a principal (the Lead or the
+  custodian) instead of a token: `aew integrate validate` is unchanged, and nothing falls back to the Lead credential.
+- **The custody worker (`aew integrate custody <IA-n>`).**
+  - The process that commits a grant starts it right after the commit: detached, with no console window, with an
+    allow-list environment (no `AEW_*` variable), and with the credential on its stdin pipe only. It starts in the
+    engine's own directory (`.aew/local/custody`) and imports only the engine and the standard library: not its working
+    directory, an inherited `PYTHONPATH` or a user site (`-P`, `-s` and its import path pinned to the engine's). A
+    run's supervisor starts the same way, in its run directory.
+  - It registers `{host_pid, started_at}` on its custodian in its own first commit. These are liveness data, never
+    authorization.
+  - In checks mode it validates a `prepared` candidate under its lease. In verifier mode it waits for the integration
+    verifier's run, launched by the Lead's `ticket_prepare`, to end, and routes the report without accepting it. A
+    run no supervisor holds any more (lost, or never confirmed past the launch's grace) is routed as one that failed.
+  - It never publishes: on a lease granted to publish, the candidate is the Lead's to publish, and the worker waits.
+  - It exits when its custody ends. It refuses to start where a Lead session's environment is present, and the Lead
+    bridge never relays it.
+- **A lost custodian (S2, `sync`'s half).** `Queue.sync` ends a custodian whose registered worker is gone, or that has
+  no worker `gates.post_integration.custody_register_s` (operational, default 60) after its grant. That marks the lease
+  `reconcile`, as any other death does. Nothing is released by time alone. The endpoint watcher's half is E7d's.
+- **VALIDATE_ONLY and the `VALIDATED` entry state.**
+  - A clean validation with no publication requested releases the lease in its own commit: checks mode's passing
+    run, or verifier mode's clean report, routed.
+  - The entry goes to `VALIDATED`. It keeps its candidate, recording `validated`: the mode, the candidate and its
+    snapshot, the head H it was built on, the acceptance binding, and the run (checks) or the report (verifier).
+  - `VALIDATED` is distinct from `AWAITING_DISPOSITION`, which still means that something needs a decision (a fail, an
+    inconclusive or unclean result, an unavailable validation).
+  - A `VALIDATED` entry holds up nobody (FIFO serves `QUEUED` entries only). The Lead may requeue it, which drops the
+    kept candidate so the next prepare replaces it, or defer it, which retires the candidate.
+- **The unleased-candidate rule** becomes "replace unless the entry is `VALIDATED`". A prepare on a `VALIDATED`
+  entry is refused, and names `integration_publish`.
+- **Publishing later.** The first commit of a publish, or of the integration verification's acceptance, on a
+  `VALIDATED` entry is granted a fresh lease: the `integrate.prepare` decision recomputed with `regrant` (FIFO among
+  runnable entries; another entry's lease refuses, naming its holder) and recorded for the new custodian.
+  - If H is unchanged and every bound input matches, the publication runs as before.
+  - If H moved, the existing single rebuild runs under the new lease. The new custodian revalidates the rebuilt
+    candidate (checks mode), or the stage launches its verifier (verifier mode). The entry returns to `VALIDATED`, never
+    published on the old call.
+- **The stages.**
+  - `ticket_prepare`: accept the Ticket-scope verification, VERIFIED → COMMIT_READY, prepare under a lease, and in
+    verifier mode the integration verifier, launched as the custodian's child.
+  - `integration_publish(verification_evidence)`: in verifier mode, accept the named report, then publish.
+  - The publish step is its intent commit (`integrate.publishing`); the CAS, the sync and DONE follow it as its effect.
+    A commit that is the publish's disposition (`integrate.superseded`, `integrate.stale`, `integrate.rebuild`) is
+    recorded on the step as such, and stops the stage unless the stage planned the rebuild. The intent's boundary is
+    `rebuilt`, and the typed result says nothing was published (`STALE_CANDIDATE`, `published: false`).
+- **Oracle rules 39a and 39b** (`tests/helpers/invariants.py`): exactly a `VALIDATED` entry records its validation,
+  holds no lease and keeps its Ticket's open candidate; a custody credential stands only for the live lease's active
+  custodian of the current generation.
+- **Tests:** `tests/integration/test_integration_stages.py`.

@@ -603,6 +603,41 @@ def test_the_equivalence_view_keeps_real_differences():
     assert named({"record_sha256": "b" * 64}) == {"record_sha256": "b" * 64}
 
 
+def test_the_equivalence_view_drops_only_the_journals_own_history_records():
+    """PR #200 review: a publication to DONE archives its unit, and a stage that ends after it records itself on the
+    unit as an annotation (`rel: stage_intent`). The view drops that annotation, its tail entry and the annotation
+    counter only: any other annotation, a history entry's fields and the bundle still compare; the chain value `h` is
+    hidden, never the entry it hashes, and `cold.unverified_since` is a time."""
+    from stage_equivalence import _clean, _Normaliser, history_record
+
+    def view(rel: str, data: Any) -> Any:
+        return history_record(rel, data, _Normaliser("/p"))
+
+    journal = {"rel": "stage_intent", "object": "SI-0001", "at": "2026-10-10T00:00:00Z"}
+    closure = {"rel": "closure", "object": None, "at": "2026-10-10T00:00:00Z"}
+    assert view("work/T-1/annotations/0001.yaml", journal) is None
+    assert view("work/T-1/annotations/0001.yaml", closure) is not None
+    assert differences(view("work/T-1/annotations/0001.yaml", closure),
+                       view("work/T-1/annotations/0001.yaml", {**closure, "object": "EV-1"})) != []
+
+    def tail(*entries: dict[str, Any]) -> Any:
+        return view("history/tail.yaml", {"seq": 1, "entries": list(entries)})
+
+    unit = {"seq": 1, "kind": "unit", "id": "T-1", "state": "DONE", "at": "2026-10-10T00:00:00Z", "h": "a" * 64}
+    mark = {"seq": 2, "kind": "annotation", "rel": "stage_intent", "id": "AN-1", "h": "b" * 64}
+    other = {"seq": 2, "kind": "annotation", "rel": "closure", "id": "AN-1", "h": "c" * 64}
+    assert differences(tail(unit, mark), tail({**unit, "at": "2026-10-11T00:00:00Z", "h": "d" * 64})) == []
+    assert differences(tail(unit, other), tail(unit)) != []  # another annotation is kept
+    assert differences(tail(unit), tail({**unit, "state": "CANCELLED"})) != []  # an entry's fields still compare
+    bundle = {"unit": {"state": "DONE"}, "tokens": {}}
+    assert differences(view("work/T-1/archive.yaml", bundle),
+                       view("work/T-1/archive.yaml", {**bundle, "unit": {"state": "CANCELLED"}})) != []
+    assert differences(_clean({"counters": {"annotation": 1}, "cold": {"unverified_since": "2026-10-10T00:00:00Z"}},
+                              "/p"),
+                       _clean({"counters": {"annotation": 2}, "cold": {"unverified_since": "2026-10-11T00:00:00Z"}},
+                              "/p")) == []
+
+
 @pytest.mark.parametrize("disposition", ["rebuild", "requeue", None])
 def test_resume_and_continue_agree_on_a_step_blocked_with_a_disposition(project, monkeypatch, disposition):
     """PR #171 re-review, finding 1: a next step whose guard is BLOCKED with a disposition passes with a stated

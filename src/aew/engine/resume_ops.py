@@ -301,7 +301,8 @@ class Resume:
                 "discarded": "integrate: `aew integrate prepare`",
                 "stale_candidate": "the candidate is stale: `aew integrate prepare` again, then revalidate",
                 "conflict": "integration conflict: return to RUNNING (rebase) or REPLAN_REQUIRED",
-                "prepared": ("validate the candidate with the policy's checks (`aew integrate validate`)" if checks_mode
+                # M4-E E6a (plan v3 §2.3): the lease's custodian validates; the Lead never does, save for recovery.
+                "prepared": (self._custodian_validates(state, wid) if checks_mode
                              else "dispatch post-integration verification (`aew invoke create --scope integration`)"),
                 "validation_unavailable": "post-integration validation could not run (infrastructure): fix the "
                                           "environment, then `aew integrate requeue`",
@@ -318,6 +319,20 @@ class Resume:
         if st == "ESCALATED":
             return ["record the escalation outcome and return the Ticket"]
         return []
+
+    @staticmethod
+    def _custodian_validates(state: dict[str, Any], wid: str) -> str:
+        """A prepared checks-mode candidate's next step (M4-E E6a; plan v3 §2.3): its lease's custodian validates it,
+        then the Lead publishes the VALIDATED candidate. `aew integrate validate` is recovery only: for a custodian
+        with no registered custody worker."""
+        lease = (state.get("queue") or {}).get("lease") or {}
+        custodian = lease.get("custodian")
+        worker = (state["invocations"].get(custodian or "") or {}).get("worker")
+        said = (f"the lease's custodian {custodian} validates the candidate with the policy's checks; once its entry "
+                "is VALIDATED, publish it with `integration_publish` (`aew integrate publish`)")
+        if worker:
+            return said
+        return said + (" (recovery, while no custody worker has registered for it: `aew integrate validate`)")
 
     @staticmethod
     def _queue_wait(state: dict[str, Any], wid: str) -> str | None:

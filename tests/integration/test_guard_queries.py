@@ -780,7 +780,8 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
     assert answer["blocking_conditions"][0]["details"]["disposition"] == "rebuild"
     explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
                                                     "arguments": {"prepared_candidate": "c"}})["result"]
-    assert explained["availability"] == BLOCKED and explained["steps"][0]["disposition"] == "rebuild"
+    # The publish is step 2 since E6a, after the acceptance of a named integration verification (unplanned here).
+    assert explained["availability"] == BLOCKED and explained["steps"][1]["disposition"] == "rebuild"
     projected = R.run_tool(engine, CTX, "status", {"work_id": wid})["projection"]
     assert any((b.get("details") or {}).get("disposition") == "rebuild" for b in projected["blockers"])
     from aew.surface import stage

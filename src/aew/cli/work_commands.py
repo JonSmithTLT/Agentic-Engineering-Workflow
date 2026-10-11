@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
@@ -549,6 +550,14 @@ def _breaker_reset(a: argparse.Namespace) -> Any:
                                               authorization=authorization)
 
 
+def _custody(a: argparse.Namespace) -> Any:
+    from aew.engine import custody_ops
+
+    custody_ops.refuse_lead_session()  # S3: keyed on the environment; the real guard is custody_txn's admission
+    credential = custody_ops.read_credential(sys.stdin)  # read, and the pipe closed, before anything else starts (V2)
+    return _engine(a).custody_run(a.custodian, credential)
+
+
 def _register_integration(sub: argparse._SubParsersAction) -> Any:
     p = sub.add_parser("integrate", help="Lead-controlled integration: validate, then publish by ref CAS")
     isub = p.add_subparsers(dest="integrate_cmd", required=True)
@@ -574,6 +583,13 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).integrate_validate(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, wait=a.wait, diagnostic=a.diagnostic))
+    # The integration custodian's own process (M4-E E6a; plan v3 §2.3): started by the engine right after a lease grant,
+    # with its custody credential on stdin. It takes no Lead credential (never relayed: the Lead bridge runs only
+    # Lead-authenticated commands) and refuses to run where a Lead session's environment is present (S3).
+    q = isub.add_parser("custody", help="the integration custodian's custody worker: started by the engine when it "
+                                        "grants a lease, never a Lead's command")
+    q.add_argument("custodian", help="the integration-attempt invocation (IA-n)")
+    q.set_defaults(handler=_custody)
     q = isub.add_parser("breaker", help="the validation infrastructure circuit breaker")
     bsub = q.add_subparsers(dest="breaker_cmd", required=True)
     b = bsub.add_parser("status", help="whether automatic infrastructure retries are stopped, and why")

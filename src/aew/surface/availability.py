@@ -80,8 +80,47 @@ def _verifier_mode(engine: Any, state: dict[str, Any], a: dict[str, Any]) -> boo
     return engine.validation_mode(a.get("work_id"), state=state) == "verifier"
 
 
+def _integration_ingest(a: dict[str, Any]) -> dict[str, Any] | None:
+    """``integration_publish``'s acceptance of the integration verifier's report: only when it names one."""
+    if a.get("verification_evidence") is None:
+        return None
+    return {"work_id": a.get("work_id"), "evidence": a.get("verification_evidence")}
+
+
+PUBLISH, REBUILD, RELAUNCH = "publish", "rebuild", "relaunch"
+
+
+def publish_case(engine: Any, state: dict[str, Any], a: dict[str, Any]) -> str:
+    """What `integration_publish` does for its Ticket now (M4-E E6a; plan v3 §2.3, T3): ``rebuild`` when the
+    authoritative head moved under the open candidate (the publish commits the one rebuild; in verifier mode the
+    rebuilt candidate's verifier is launched); ``relaunch`` in verifier mode when the Ticket's lease holds a candidate
+    with no verification and no verifier (a rebuild the stage stopped after: only the verifier is launched); else
+    ``publish``."""
+    wid = a.get("work_id") or ""
+    unit = state.get("work", {}).get(wid) or {}
+    integ = unit.get("integration") or {}
+    if integ.get("status") not in ("prepared", "validated"):
+        return PUBLISH
+    if integ.get("base") and engine.authoritative_commit() != integ["base"]:
+        return REBUILD
+    lease = (state.get("queue") or {}).get("lease") or {}
+    entry = ((state.get("queue") or {}).get("entries") or {}).get(lease.get("entry") or "") or {}
+    if (integ["status"] == "prepared" and entry.get("work") == wid and lease.get("reconcile") is None
+            and _verifier_mode(engine, state, a)
+            and not any(i.get("custodian") == lease.get("custodian") and i.get("scope") == "integration"
+                        and i.get("status") == "active" for i in state["invocations"].values())):
+        return RELAUNCH
+    return PUBLISH
+
+
+def _publish_applies(*cases: str, verifier: bool = False) -> Callable[[Any, dict[str, Any], dict[str, Any]], bool]:
+    return lambda engine, state, a: publish_case(engine, state, a) in cases and (
+        not verifier or _verifier_mode(engine, state, a))
+
+
 # The migrated stage table (plan v3 E4, M4): per stage, each step's guard arguments, in ``expands_to`` order. Its
-# ``produced_by`` is the catalog row's. E4b adds `ticket_prepare` and `integration_publish`.
+# ``produced_by`` is the catalog row's. E4b adds `ticket_prepare` and `integration_publish`; E6a the acceptance of the
+# integration verification and the rebuilt candidate's verifier (plan v3 §2.3, B2.5 and T3).
 STAGES: dict[str, tuple[StepArgs, ...]] = {
     "ticket_draft": (_create, _propose),
     "ticket_start": (_same_unit(launch=True), _same_unit(), _same_unit(to="RUNNING")),
@@ -90,13 +129,25 @@ STAGES: dict[str, tuple[StepArgs, ...]] = {
                                     _same_unit()),
     "ticket_prepare": (_verification_ingest, _same_unit(to="COMMIT_READY"), _same_unit(),
                        _same_unit(role="verifier", scope="integration"), _same_unit()),
-    # E6a adds the acceptance of the integration verification (`verification_evidence`) as its first step.
-    "integration_publish": (_same_unit(),),
+    "integration_publish": (_integration_ingest, _same_unit(), _same_unit(role="verifier", scope="integration"),
+                            _same_unit()),
 }
-# Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step.
+# Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step. A
+# stage's planner is given the same answers (``planned_shape``), and a continue keeps the shape its intent recorded.
 APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], bool]]] = {
     "ticket_prepare": {4: _verifier_mode, 5: _verifier_mode},
+    "integration_publish": {1: _publish_applies(PUBLISH), 2: _publish_applies(PUBLISH, REBUILD),
+                            3: _publish_applies(REBUILD, RELAUNCH, verifier=True),
+                            4: _publish_applies(REBUILD, RELAUNCH, verifier=True)},
 }
+
+
+def planned_shape(engine: Any, stage: str, arguments: dict[str, Any], *,
+                  state: dict[str, Any] | None = None) -> dict[int, bool]:
+    """Whether each state-dependent step of ``stage`` is planned for ``arguments`` now (``APPLIES``): the stage's
+    planner and its availability ask the same functions on the same kind of read."""
+    current = engine.store.read() if state is None else state
+    return {n: bool(applies(engine, current, arguments)) for n, applies in APPLIES.get(stage, {}).items()}
 # The request stages launch every card the effective gates require (plan v3 E5): their dispatch step (and the launch
 # after it) repeats once per card, by stage: (that step, the role slot). The cards are the policy's now
 # (:func:`stage_cards`); each card's dispatch is asked its own decision, and the step answers for all of them.
@@ -150,8 +201,10 @@ def _product(name: str, primitive: str, args: dict[str, Any]) -> Any:
         if primitive != "work.transition" or args.get("to") != "COMMIT_READY" or not gc:
             return None
         return {"snapshot": gc["snapshot"], "gates": {g: v["status"] for g, v in gc["gates"].items()}}
-    if name == contract.CANDIDATE:
-        return (primitive == "integrate.prepare") or None
+    if name == contract.CANDIDATE:  # a prepare's, or a publish's one rebuild on a moved head (M4-E E6a)
+        return (primitive == "integrate.prepare" or found.get("outcome") == "moved_head") or None
+    if name == contract.VALIDATION:  # the integration verification an earlier ingest accepts (M4-E E6a)
+        return (found.get("ref") or {}).get("id") if found.get("integration_status") == "validated" else None
     return None
 
 
@@ -173,6 +226,12 @@ def _overlay(engine: Any, state: dict[str, Any], work_id: str | None,
         if name == contract.UNIT:
             wid, unit = value
             scratch["work"][wid] = copy.deepcopy(unit)
+            continue
+        if name == contract.VALIDATION:
+            produced = engine.validation_overlay(scratch, work_id or "", value)
+            if produced is None:
+                return None
+            scratch = produced
             continue
         unit = scratch["work"].get(work_id or "")
         if unit is None:
@@ -262,8 +321,11 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
                           "reason_codes": [], "blocking_conditions": []})
             done[n] = (primitive, args)
             continue
+        # An input whose producing step is not planned for this call is not produced by it: the current state answers
+        # (M4-E E6a: `integration_publish` accepts a report only when it names one).
+        unplanned = {s["n"] for s in steps if s.get("planned") is False}
         inputs = [(name, m, _product(name, *done[m])) if m in done else (name, m, None)
-                  for name, m in produced.items()]
+                  for name, m in produced.items() if m not in unplanned]
         missing = [name for name, _m, value in inputs if value is None]
         work_id = args.get("work_id")
         unit_from = next((value for name, _m, value in inputs if name == contract.UNIT and value), None)

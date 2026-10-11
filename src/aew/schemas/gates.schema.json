@@ -86,6 +86,12 @@
           "description": "M4-D5: the hard deadline of one checks-mode validation run, executor included. Default: the checks' timeouts plus an orchestration allowance, capped at six hours.",
           "type": "integer",
           "minimum": 1
+        },
+        "custody_register_s": {
+          "x-aew-class": "operational",
+          "description": "M4-E E6a (plan v3 §2.3, S2): how long a lease's custodian may go without a registered custody worker before `sync` ends it, which marks the lease for reconciliation. A liveness bound only: nothing is released by it. Default 60.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

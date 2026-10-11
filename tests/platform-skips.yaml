@@ -4,6 +4,15 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-none]: >-
+      the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
+      every platform. Covered on Linux.
+    tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-absolute]: >-
+      the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
+      every platform. Covered on Linux.
+    tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-relative]: >-
+      the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
+      every platform. Covered on Linux.
     tests/unit/test_eval_hidden.py::test_on_linux_a_worktree_roots_object_store_is_masked_too: >-
       the scoring sandbox is Linux bubblewrap only (F19 slice 3); what it masks for a worktree root is
       computed and tested on every platform (test_a_worktree_root_masks_its_object_store_and_every_checkout).

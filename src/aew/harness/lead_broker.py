@@ -464,7 +464,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
     adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
     """
-    from aew.engine.harness_ops import supervisor_env
+    from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
 
     if not command:
@@ -481,7 +481,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                                     "--acquire (the credential then exists only inside this session)")
     broker = LeadBroker(engine, token)
     broker.start()
-    child_env = {**(supervisor_env() if env is None else supervisor_env(env)), **broker.env}
+    child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
     try:
         code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
     finally:

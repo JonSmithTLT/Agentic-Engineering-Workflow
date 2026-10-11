@@ -18,7 +18,8 @@ confirmation) are recorded with their rationale and grant nothing.
 **Records.** Every mode change and every closed request is a line in ``records/steering/<date>.jsonl``, append-only,
 naming who changed it (with the operator principal's guarantee label), the previous and new mode, the Lead
 generation, both policy digests and the revision at which it took effect (A1 §1.3). Nothing reads the mode to act on
-it until the steering loop (M4-E E7).
+it until the steering loop (M4-E E7b; plan v3 amendment 1). The operator endpoint's notifier (M4-E E7a) reads it only to
+say whether Run is effective when the broker is gone.
 
 **The guarantee label.** Every operator record is ``guarantee: dev``: the operator principal cannot yet be shown
 distinct from the Lead host's (F18.6 has not built the protected-set ownership check), so none of this is A1/F18
@@ -108,7 +109,8 @@ def effective(state: dict[str, Any]) -> dict[str, Any]:
 
 def notifier_problem(policy: dict[str, Any] | None) -> str | None:
     """Why the adopted notifier cannot deliver, or ``None``: unattended Run needs a configured notifier whose
-    ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). E7 delivers through it."""
+    ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). The operator endpoint delivers
+    through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery."""
     command = ((policy or {}).get("notify") or {}).get("command") or []
     if not command:
         return "no notifier is configured (execution policy `notify.command`)"

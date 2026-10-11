@@ -6,7 +6,7 @@
   "repository": "sst/opencode",
   "tag": "v2.0.18",
   "commit": "cd9a14a6b688d4021bee381dfd39d2cef9c0f862",
-  "read_from": "the bundled JavaScript of the pinned 2.0.18 release CLI (OpenCode Desktop's version-specific copy, which reports version 2.0.18 from /api/info), and the pinned OpenAPI fixture. The source tree was not fetched: the bundle is minified, so each citation is a searchable identifier, not a line, and the release's tie to the tag's commit is the tag, not a byte comparison.",
+  "read_from": "the bundled JavaScript of the pinned 2.0.18 release CLI (OpenCode Desktop's version-specific copy, which reports version 2.0.18 from /api/info), and the pinned OpenAPI fixture. For items (a) to (f) the source tree was not fetched: the bundle is minified, so each of those citations is a searchable identifier, not a line, and the release's tie to the tag's commit is the tag, not a byte comparison. Afterwards, with the operator's approval, the summary agent's use and the model calls that record no usage (item b) were read in the tag's own source, cited as sst/opencode tag v2.0.18 with file and line (E23 to E35).",
   "binary_sha256": "78f454c0a1581b66ce4f264f42bfaee6207c887053d8e4b02c4c9cfb74e90668",
   "evidence": [
    {
@@ -201,7 +201,7 @@
     ],
     "file": "opencode-cli 2.0.18 (bundled JavaScript)",
     "identifier": "a.update(us.make(\"summary\"),(i)=>{i.name=Y1.make(\"Summary\"),i.mode=\"primary\",i.hidden=!0",
-    "says": "the summary agent is defined (hidden, no default model) and nothing else in the bundle names it; and the compaction call runs on the context's model (SessionContext.load resolves the session's model)"
+    "says": "the summary agent is defined (hidden, no default model) and nothing else in the bundle names it; the tag's source confirms it (E23 to E27); and the compaction call runs on the context's model (SessionContext.load resolves the session's model)"
    },
    {
     "id": "E20",
@@ -220,6 +220,136 @@
     "file": "opencode-cli 2.0.18 (bundled JavaScript)",
     "identifier": ".handle(\"session.active\",u(function*(){let l=yield*a.active;",
     "says": "session.active lists the sessions with an execution running"
+   },
+   {
+    "id": "E23",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/agent.ts",
+    "lines": "71, 147-153",
+    "identifier": "editor.update(Agent.ID.make(\"summary\"), (item) => {",
+    "says": "the summary agent is defined here (hidden, primary, the PROMPT_SUMMARY system text, every action denied, no model); in the tag's source, outside tests, nothing else names the agent or its prompt"
+   },
+   {
+    "id": "E24",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/agent.ts",
+    "lines": "92-104",
+    "identifier": "agent && agent.mode !== \"subagent\" && !agent.hidden ? agent : undefined",
+    "says": "a hidden agent is never selected as a session's default or fallback agent"
+   },
+   {
+    "id": "E25",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/tool/plugin/subagent.ts",
+    "lines": "288-295",
+    "identifier": "agent.mode !== \"primary\" &&",
+    "says": "the subagent tool offers the model only agents that are neither primary nor hidden, so a model cannot start the summary agent as a subagent"
+   },
+   {
+    "id": "E26",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/agent.ts",
+    "lines": "112-119",
+    "identifier": "if (id !== undefined) return state.get().agents.get(ID.make(id))",
+    "says": "an agent named explicitly (a session created with it, or switched to it) is returned even when hidden: the summary agent runs only when a client names it, or a configured command does (E32)"
+   },
+   {
+    "id": "E27",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/session/runner/model.ts",
+    "lines": "88-103",
+    "identifier": "return yield* resolver.resolveModel(selected, session.model.variant)",
+    "says": "a session's steps run on the session's own model, whatever its agent; so a session running the summary agent records ordinary steps (assistant messages with time.completed and tokens, added to the totals, E1 and E4), which the meter counts"
+   },
+   {
+    "id": "E28",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/session/generate.ts",
+    "lines": "19-66",
+    "identifier": "const response = yield* llm.generate(prepared.request, prepared.options)",
+    "says": "session generation runs one model call from the session's context with the session's agent and model, writes no message and publishes no session.usage.recorded: its usage goes only to a log line (\"session generation usage diagnostic\"), so it reaches neither a message nor Session.Info.tokens"
+   },
+   {
+    "id": "E29",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/protocol/src/groups/session.ts",
+    "lines": "706-717",
+    "identifier": "HttpApiEndpoint.post(\"session.generate\", \"/api/session/:sessionID/generate\", {",
+    "says": "session generation is served as POST /api/session/:sessionID/generate (handler: packages/server/src/handlers/session.ts:587-590); its callers are listed in E34 and E35"
+   },
+   {
+    "id": "E30",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/generate.ts",
+    "lines": "38-73",
+    "identifier": "const response = yield* llm.generate(LLM.request({ model: resolved.model, prompt: input.prompt })).pipe(",
+    "says": "a stateless generation on the requested or the default model, outside any session, served as POST /api/experimental/generate (packages/protocol/src/groups/generate.ts:8; handler packages/server/src/handlers/generate.ts:17-19) and to plugins (E35); it records no usage anywhere"
+   },
+   {
+    "id": "E31",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/warming.ts",
+    "lines": "15-55",
+    "identifier": "const warming = Config.latest(yield* config.entries(), \"warming\")",
+    "says": "the internal plugin opencode.warming (registered at packages/core/src/plugin/internal.ts:249) calls session generation (:49-50) only when the configuration sets `warming` (off by default, :20-21), and only for root sessions (a session with a parentID is skipped, :61); by default every 4 minutes for 30 minutes after a turn, both configurable (`interval`, `duration`, :9-13, :22); those calls record no usage (E28)"
+   },
+   {
+    "id": "E32",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/config/plugin/command.ts",
+    "lines": "74-134",
+    "identifier": "const subagent = command.subagent ?? command.subtask",
+    "says": "a configured command that names an agent runs it either as a subtask in a new child session (:98-106) or by switching the invoking session's agent, and its model when one is given (:124-128); either way its calls are ordinary steps on that session's model"
+   },
+   {
+    "id": "E33",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/provider/github-copilot.ts",
+    "lines": "280-300, 401-429",
+    "identifier": "evt.result = yield* utilityTitle(",
+    "says": "for the github-copilot provider, when the title agent has no model, the title is made by the plugin's own /chat/completions call, and the title path returns that result before recording usage (packages/core/src/session/title.ts:73); title and compaction usage is recorded only when the provider reported it (title.ts:57-64; packages/core/src/session/compaction.ts:435-443, 556-563, 610-618)"
+   },
+   {
+    "id": "E34",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/tui/src/feature-plugins/prompt/btw.tsx",
+    "lines": "57, 69",
+    "identifier": ".generate({ sessionID: route.sessionID, prompt: [instructions, question].join(\"\\n\\n\") })",
+    "says": "the first-party `/btw` side question calls session generation over HTTP: in the TUI, a built-in plugin (packages/tui/src/plugin/builtins.ts:2) with the slash command `btw`, and in the app (packages/app/src/session/btw/model.ts:67); it is on by default and user-initiated"
+   },
+   {
+    "id": "E35",
+    "items": [
+     "b"
+    ],
+    "file": "sst/opencode tag v2.0.18: packages/core/src/plugin/host.ts",
+    "lines": "272, 535",
+    "identifier": "generate: (input) => sessions.generate(input).pipe(Effect.map((text) => ({ text }))),",
+    "says": "the plugin host gives every plugin session generation (:535) and the stateless generation (:272), also through the promise adapter (packages/plugin/src/promise/adapter.ts:340, :586); with the server handlers (E29, E30), the warming plugin (E31) and `/btw` (E34), these are all the callers of both entry points in the tag"
    }
   ]
  },
@@ -253,11 +383,32 @@
   },
   {
    "item": "b-summary",
-   "status": "unverified",
+   "status": "verified",
    "evidence": [
-    "E19"
+    "E19",
+    "E23",
+    "E24",
+    "E25",
+    "E26",
+    "E27",
+    "E32"
    ],
-   "says": "No call site of the summary agent was found in the bundle, so whether 2.0.18 ever calls it, and where its usage would go, is not established. session.usage.recorded's sources are title and compaction only, so such usage would be on no message and in no total. The meter fails closed by design: any total on no counted message is priced only on the proven pinned model, and usage OpenCode never records is outside every figure (the provider reconciliation is the backstop)."
+   "says": "2.0.18 never calls the summary agent by itself: it is defined (hidden, primary, no model) and nothing outside tests names it; a hidden agent is never a default and is never offered to the model as a subagent. It runs only when a client names it (creating or switching a session to it) or a configured command names it (as a subtask in a child session, or by switching the session). Its steps are then ordinary steps on that session's model, on assistant messages the meter counts and in the session's totals. AEW's projection pins it to the run's model. Session generation, with any agent, records nothing (b-unrecorded)."
+  },
+  {
+   "item": "b-unrecorded",
+   "status": "verified",
+   "evidence": [
+    "E28",
+    "E29",
+    "E30",
+    "E31",
+    "E33",
+    "E34",
+    "E35",
+    "E10"
+   ],
+   "says": "Some model calls record no usage in 2.0.18, so no message and no total carries them and the meter cannot see them: session generation, whose callers are POST /api/session/:sessionID/generate, the first-party `/btw` side question in the TUI and the app (on by default, user-initiated), the plugin host's session.generate, and the `warming` plugin (when the configuration sets `warming`, off by default, root sessions only); the stateless generation, whose callers are POST /api/experimental/generate and the plugin host's generate.text; the github-copilot utility title (only when the title agent has no model); title and compaction calls whose provider reported no usage; and an interrupted step before the provider's finish (E10). Their usage is outside every live figure; the provider reconciliation (Q7 v0.3.1 \u00a79.1) is the backstop."
   },
   {
    "item": "c",

@@ -62,6 +62,11 @@ skipped:
       needs POSIX symlinks and FIFOs. Windows beats only a heartbeat lstat shows is a regular file, and a beat on a
       directory never raises on any platform (test_a_beat_on_a_heartbeat_that_is_a_directory_never_raises). Covered
       on Linux.
+    tests/integration/test_dashboard_maps.py::test_on_posix_a_history_tail_that_cannot_be_read_is_damage_not_busy: >-
+      POSIX's case of review finding H (register F20.8, S1): chmod 000 does not stop a read on Windows, where an
+      unreadable tail is a sharing violation and busy by design
+      (test_a_history_tail_the_os_will_not_let_a_lock_free_reader_read_is_busy_not_damage, which runs everywhere).
+      Covered on Linux.
     tests/integration/test_dashboard_maps.py::test_a_fifo_artifact_or_registry_is_never_opened_and_a_swap_race_does_not_block: >-
       needs POSIX FIFOs (register F20.8, S1). Windows has none; the same bounded read refuses a directory registry and
       an oversized artifact before any read on every platform

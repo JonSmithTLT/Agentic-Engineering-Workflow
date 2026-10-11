@@ -49,6 +49,7 @@ from aew.errors import HistoryMoved, IntegrityError, LockTimeout  # noqa: E402
 from aew.harness.contract import CREDENTIAL_RE  # noqa: E402
 from aew.history import index as HI  # noqa: E402
 from aew.history import manifest as HM  # noqa: E402
+from aew.history import store as HS  # noqa: E402
 from aew.maps import freshness as MF  # noqa: E402
 from aew.maps import rules as MR  # noqa: E402
 from aew.maps import store as MS  # noqa: E402
@@ -931,16 +932,23 @@ def test_a_lock_free_sync_that_meets_a_later_commit_is_history_moved_and_damage_
     assert not isinstance(raised.value, HistoryMoved)
 
 
-def _apply_window(p: Project, tmp: Path) -> str:
+def _apply_window(p: Project, tmp: Path, *, applied: bool = False) -> str:
     """A commit's apply window, built on disk: the later commit's control file (its commit point, replaced first) with
-    the earlier commit's tail, which the later commit's apply would replace next (``ControlStore._commit``); the
-    derived index removed so the next sync walks the history. The selected architecture evidence is archived."""
+    the earlier commit's tail, which the later commit's apply would replace next (``ControlStore._commit``), and no
+    ``txn/<revision>.applied`` marker, as a pending apply has none; the derived index removed so the next sync walks
+    the history. The selected architecture evidence is archived. With ``applied``, the marker stays: the same bytes
+    are then a rollback of the tail after the apply finished (review of #178, finding G)."""
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
     p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
     tail = p.root / ".aew" / HM.TAIL_REL
     earlier = tail.read_bytes()
     complete_investigation(p, create_investigation(p, tmp, title="Survey again"))
     tail.write_bytes(earlier)
+    revision = Engine.discover(p.root).store.read_committed()["last_transition"]["revision"]
+    marker = p.root / ".aew" / "state" / "txn" / f"{revision:06d}.applied"
+    assert marker.is_file(), marker  # the CLI's commit finished its apply
+    if not applied:
+        marker.unlink()
     (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
     return discovery
 
@@ -972,10 +980,85 @@ def test_a_lock_free_read_in_a_commits_apply_window_is_history_moved(lab):
     assert not isinstance(raised.value, HistoryMoved)
 
 
+def test_a_tail_rolled_back_after_its_commits_apply_finished_is_damage_not_history_moved(lab):
+    """Review of #178, finding G: once a commit's apply has finished (its ``txn/<revision>.applied`` marker exists),
+    a tail put back to its exact pre-commit bytes is a rollback made outside AEW, which recovery would not repair: the
+    lock-free read raises it as damage and ``/maps`` reports the reference ``UNAVAILABLE``, not "read again later"."""
+    p, tmp = lab
+    discovery = _apply_window(p, tmp, applied=True)
+    engine = Engine.discover(p.root)
+    now = engine.store.read_committed()
+    engine.archive._synced = None
+    with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
+        engine.archive.index(now)
+    assert not isinstance(raised.value, HistoryMoved)
+    with served(p) as client:
+        client.server.engine.archive._synced = None
+        arch = client.data("/maps")["architecture"]
+        assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNAVAILABLE"
+        assert "read again later" not in json.dumps(arch)
+
+
+@pytest.mark.skipif(not POSIX, reason="chmod 000 does not stop a read on Windows; finding H is POSIX's case")
+@pytest.mark.skipif(POSIX and os.geteuid() == 0, reason="root reads a mode-000 file")
+def test_on_posix_a_history_tail_that_cannot_be_read_is_damage_not_busy(lab):
+    """Review of #178, finding H: on POSIX a replace is an atomic rename, so a history read is never refused for a
+    moment; ``EACCES`` (and ``EIO`` and the like) persist, and are damage: ``UNAVAILABLE``, never "read again later"."""
+    p, tmp = lab
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    tail = p.root / ".aew" / HM.TAIL_REL
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+    tail.chmod(0)
+    try:
+        with pytest.raises(PermissionError):
+            tail.read_bytes()  # not running with the privilege to read it anyway
+        engine = Engine.discover(p.root)
+        state = engine.store.read_committed()
+        engine.archive._synced = None
+        with engine.archive.lockfree_reads(P.ARCHIVE_WAIT_S), pytest.raises(IntegrityError) as raised:
+            engine.archive.index(state)
+        assert not isinstance(raised.value, HistoryMoved)
+        with served(p) as client:
+            client.server.engine.archive._synced = None
+            arch = client.data("/maps")["architecture"]
+            assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNAVAILABLE"
+            assert "read again later" not in json.dumps(arch)
+    finally:
+        tail.chmod(0o644)
+
+
+def test_a_failed_sync_over_a_history_that_has_since_caught_up_is_history_moved_not_damage(lab, monkeypatch):
+    """Review of #192, nit I: the sync's walk fails in a commit's apply window, and the apply (marker included)
+    finishes before the read is classified, so the history now walks exactly to the snapshot's root. That was a race:
+    ``/maps`` says "read again later", never ``UNAVAILABLE``, and the next poll answers ``CURRENT``."""
+    p, tmp = lab
+    discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
+    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
+    real = HI.HistoryIndex.sync
+    calls = {"sync": 0}
+
+    def failing_once(self: Any, root: Any, **kwargs: Any) -> Any:
+        calls["sync"] += 1
+        if calls["sync"] == 1:  # what the walk met a moment ago, before the apply finished
+            raise IntegrityError("history/tail.yaml does not end at the hot root")
+        return real(self, root, **kwargs)
+
+    with served(p) as client:
+        client.server.engine.archive._synced = None
+        monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
+        arch = client.data("/maps")["architecture"]
+        assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
+        assert "read again later" in arch["freshness"]["reasons"][0]["message"]
+        assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"
+
+
 def test_a_history_tail_the_os_will_not_let_a_lock_free_reader_read_is_busy_not_damage(lab, monkeypatch):
     """Finding F: on Windows a read of the tail during the writer's replace is a sharing violation (a
     ``PermissionError``). A lock-free reader reports it as busy (``LockTimeout``, "read again later"), never as damage;
-    a tail that is missing is still damage."""
+    a tail that is missing is still damage. The Windows rule is set explicitly, so this runs on every platform."""
+    monkeypatch.setattr(HS, "TRANSIENT_READ_ERRORS", True)
     p, tmp = lab
     complete_investigation(p, create_investigation(p, tmp, title="Survey"))
     engine = Engine.discover(p.root)

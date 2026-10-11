@@ -376,6 +376,9 @@ footer {
 .table-scroll {
   width: 100%;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-block: 12px;
 }
 table {
   width: 100%;
@@ -854,6 +857,16 @@ section.panel > .muted {
 }
 details {
   margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  min-width: 0;
+  background: var(--surface);
+}
+details[open] > summary {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
 }
 summary {
   cursor: pointer;
@@ -1708,6 +1721,22 @@ summary {
 .maps-panel table { white-space: normal; }
 .maps-panel td { height: auto; overflow-wrap: anywhere; }
 .maps-panel dd { margin-left: 0; min-width: 0; }
-.maps-panel dl > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px; }
+.map-fields > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 16px; padding-block: 12px; border-bottom: 1px solid var(--border); }
+.map-fields > div:last-child { border-bottom: 0; }
+.map-fields > div > dt { margin: 0; font-weight: 600; }
+.map-fields > div > dd { margin: 0; }
+.map-fields > .map-table-field { display: block; }
+.map-fields > .map-table-field > dd { margin-top: 8px; }
+.map-fields p, .map-fields ul { margin: 0; }
+.map-fields .table-scroll { margin-block: 0; }
+.maps-panel td ul { padding-inline-start: 16px; }
+.work-record .detail-grid { align-items: start; }
+.work-record-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.work-blockers { padding: 16px; }
+.work-blockers h3 { margin-block: 0 8px; }
+.work-blockers h3:not(:first-child) { margin-top: 16px; }
+.work-blockers .reason-list { margin-bottom: 0; }
+.facts dl { display: grid; grid-template-columns: minmax(100px, 0.85fr) minmax(0, 1.4fr); gap: 12px 16px; }
+.facts dt, .facts dd { margin: 0; }
 .map-architecture > span { margin-right: 12px; }
-@media (max-width: 1023px) { .maps-panel dl > div { display: block; } }
+@media (max-width: 1023px) { .map-fields > div { display: block; } .map-fields > div > dd { margin-top: 6px; } }

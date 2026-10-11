@@ -4,6 +4,6 @@
 (`interface_digest_current`, defined in the
 [interface-dependency amendment](../../../design/wc8-e19b-interface-dependency-amendment-v0.1.md) §7;
 `overlap_set_empty`; `dependency_state`), the deterministic lint at parent-plan acceptance and the composition rule
-(PPA-13 to PPA-20). Refs are in plan terms, lint resolves them within the plan, and the engine
+(PPA-13 to PPA-20). Refs are in plan terms, lint resolves them in plan terms, and the engine
 resolves them at dispatch, failing closed (the Lead's proposal, for adoption: P8, PPA-35). Open questions on this row: the direction of `SERIAL_REQUIRED` (P1), how it follows plan revisions
 (P2), a condition failing mid-flight (P3), scope on decomposition entries (P6) and the closed condition set (P7).

@@ -226,7 +226,7 @@ material (§7 check 6, §8) is a separate plan-level record that names the pair 
   rules, every dependency and every gate still apply.
 - **`CONDITIONAL`** permits concurrency only while its named conditions hold (§6.3).
 
-A pair of entries with no `interactions[]` entry keeps today's behaviour: the Lead may run them concurrently when the
+A pair of sibling units (entries or existing children) with no `interactions[]` entry keeps today's behaviour: the Lead may run them concurrently when the
 dependency graph and WC §8.1 allow it.
 
 ### 6.3 Closed conditions

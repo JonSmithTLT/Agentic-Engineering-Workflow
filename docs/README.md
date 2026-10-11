@@ -130,6 +130,7 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`implementation-status.md`](implementation/implementation-status.md) | Implemented, staged or designed, capability by capability |
 | [`future-work.md`](implementation/future-work.md) | The register: every deferred item, its gate and its milestone. The one place work is tracked; the ledger points into it |
 | [`future-work.yaml`](implementation/future-work.yaml) | The register's source (E30): the same preamble, sections and rows as structured data. `future-work.md` is rendered from it by `tools/register.py`; `tests/unit/test_register.py` keeps the two identical |
+| [`notes.d/`](implementation/notes.d/README.md) | **Later notes on register rows**, one file per note (`notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`, created by `python tools/register.py note <id>`), so branches noting the same row do not conflict; `python tools/register.py show <id>` prints a row with its notes, and `check` validates them |
 | [`decisions-due.md`](implementation/decisions-due.md) | **What the operator and designer owe, soonest first**, and the work blocked until then; rendered from [`decisions-due.yaml`](implementation/decisions-due.yaml) by `tools/register.py`, which fails CI when an item goes stale |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
 | [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) | The M4-E plan: governed stages on the typed Lead surface, its cross-cutting designs, the operator's decisions of 2026-10-07 and slices E1 to E9 |
@@ -139,25 +140,43 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 
-**ADRs:**
-[0001](implementation/adr/0001-control-state-persistence.md) control-state persistence ·
-[0002](implementation/adr/0002-evaluated-snapshot-fingerprint.md) evaluated-snapshot fingerprint ·
-[0003](implementation/adr/0003-ticket-state-machine.md) Ticket state machine ·
-[0004](implementation/adr/0004-controlled-integration.md) controlled integration ·
-[0005](implementation/adr/0005-authority-credentials-operator.md) authority, credentials and the operator ·
-[0006](implementation/adr/0006-role-archetypes-and-cards.md) role archetypes and cards ·
-[0007](implementation/adr/0007-epic-story-hierarchy.md) Epic and Story hierarchy ·
-[0008](implementation/adr/0008-non-mutating-tickets.md) non-mutating Tickets ·
-[0009](implementation/adr/0009-harness-boundary-and-opencode-v2.md) the harness boundary and OpenCode V2 (and containment) ·
-[0010](implementation/adr/0010-execution-profiles.md) execution profiles ·
-[0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state ·
-[0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted; M4-D, first slice PR #53) ·
-[0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted 2026-10-04; adopted with the knowledge set 2026-10-09; M6b) ·
-[0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (adopted 2026-10-07: three side-by-side artifacts, the signed manifest authenticating the archive before it is parsed; F18.3) ·
-[0015](implementation/adr/0015-project-map-storage-and-registry.md) project-map storage, identity and the map registry (accepted 2026-10-07, amended the same day for the architecture reference and the map in context; F22.1) ·
-[0016](implementation/adr/0016-ticket-revisions.md) Ticket revisions (accepted 2026-10-09 with the F4 plan v8; written slice by slice, §1 the field-group registry and digests with S1) ·
-[0017](implementation/adr/0017-coordination-messages.md) coordination messages: first-class Lead-worker messaging (accepted 2026-10-10 with the F9-A plan v4; MS1, the coordination store, and MS2, thread sealing, built; MS0's probe decided D8's transport, `steer`; F9) ·
-[0018](implementation/adr/0018-evaluator-arm-host-split.md) the evaluator/arm-host split: one task released to a corpus-free arm host (accepted 2026-10-10 with the F19 M4-H instrument plan v5; S4 built: the protocol, bundles with hostile receive, the release ledger and the run manifest, on the scripted arm; F19)
+**ADRs** (one entry per ADR with a blank line between, so a change to one entry and an ADR added after it merge; an entry says what the ADR decides and when it was accepted or amended, and build progress goes in [`implementation-status.md`](implementation/implementation-status.md) or a [register note](implementation/notes.d/README.md)):
+
+- [0001](implementation/adr/0001-control-state-persistence.md) control-state persistence
+
+- [0002](implementation/adr/0002-evaluated-snapshot-fingerprint.md) evaluated-snapshot fingerprint
+
+- [0003](implementation/adr/0003-ticket-state-machine.md) Ticket state machine
+
+- [0004](implementation/adr/0004-controlled-integration.md) controlled integration
+
+- [0005](implementation/adr/0005-authority-credentials-operator.md) authority, credentials and the operator
+
+- [0006](implementation/adr/0006-role-archetypes-and-cards.md) role archetypes and cards
+
+- [0007](implementation/adr/0007-epic-story-hierarchy.md) Epic and Story hierarchy
+
+- [0008](implementation/adr/0008-non-mutating-tickets.md) non-mutating Tickets
+
+- [0009](implementation/adr/0009-harness-boundary-and-opencode-v2.md) the harness boundary and OpenCode V2 (and containment)
+
+- [0010](implementation/adr/0010-execution-profiles.md) execution profiles
+
+- [0011](implementation/adr/0011-hot-cold-control-state.md) hot and cold control state
+
+- [0012](implementation/adr/0012-transaction-outbox.md) the transaction outbox (accepted 2026-10-04; M4-D)
+
+- [0013](implementation/adr/0013-knowledge-storage-placement.md) knowledge storage placement (accepted 2026-10-04; adopted with the knowledge set 2026-10-09; M6b)
+
+- [0014](implementation/adr/0014-release-signing-air-gap-bundle.md) release signing for the air-gap bundle (adopted 2026-10-07: three side-by-side artifacts, the signed manifest authenticating the archive before it is parsed; F18.3)
+
+- [0015](implementation/adr/0015-project-map-storage-and-registry.md) project-map storage, identity and the map registry (accepted 2026-10-07, amended the same day for the architecture reference and the map in context; F22.1)
+
+- [0016](implementation/adr/0016-ticket-revisions.md) Ticket revisions (accepted 2026-10-09 with the F4 plan v8)
+
+- [0017](implementation/adr/0017-coordination-messages.md) coordination messages: first-class Lead-worker messaging (accepted 2026-10-10 with the F9-A plan v4; D8's transport is `steer`, decided by the MS0 probe; F9)
+
+- [0018](implementation/adr/0018-evaluator-arm-host-split.md) the evaluator/arm-host split: one task released to a corpus-free arm host (accepted 2026-10-10 with the F19 M4-H instrument plan v5; F19)
 
 **ADR-0017 D8's evidence** (the F9-A MS0 live-delivery probe of OpenCode 2.0.18, 2026-10-10; summaries only, sanitized): [what is there](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/README.md), [the results](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md), and the per-run tables for [Windows](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-windows.md) and [Rocky 8](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-rocky8.md).
 
@@ -269,6 +288,15 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
 - The register is edited as data: change [`future-work.yaml`](implementation/future-work.yaml), then run
   `python tools/register.py render`; the markdown is the view and `tests/unit/test_register.py` fails when it drifts.
   Every open row's target column starts with one bold target from the register's own table.
+- **A note on an existing row is a file, never an edit of its Notes cell:** `python tools/register.py note <id>`
+  creates `implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` to write ([the convention, the slug rule
+  and what is guaranteed](implementation/notes.d/README.md)). Appending to a shared cell is the one change the
+  register cannot merge: two pull requests that both append to F19's Notes conflict on GitHub whatever the layout. A
+  row's cells change only when what they state changes. The same goes for a decisions-due item's `what` and for a
+  capability's paragraphs in `implementation-status.md`: progress and evidence go in a note on the register row. A
+  capability built in slices has a Status that names no slice and one paragraph per slice, which only that slice's
+  change edits (a convention review keeps; `tests/unit/test_docs_merge.py` refuses the known shapes, not every
+  wording); a slice with no paragraph there adds a note on the row its **Later slices** paragraph names.
 - The register merges: its preamble carries no per-change log (the history is `git log` on the YAML and each row's
   own dates; the log to 2026-10-05 is [archived](archive/register-changelog-to-2026-10-05.md)), and §9 *Closed* is kept in id
   order, which `render` applies and `check` enforces, so append a closed row anywhere. After every sync with main,

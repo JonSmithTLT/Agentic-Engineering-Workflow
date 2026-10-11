@@ -87,7 +87,7 @@ ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
 STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
-COARSE_S = 5.0  # the look that covers a wake lost by a failed bump (``outbox.bump_wake``): one projection per period
+COARSE_S = 30.0  # the look that covers a wake lost by a failed bump (``outbox.bump_wake``): one projection per period
 TERMINAL_STATES = frozenset({"DONE", "CANCELLED"})
 
 

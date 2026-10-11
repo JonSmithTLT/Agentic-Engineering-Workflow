@@ -613,6 +613,9 @@ dd {
   display: inline-flex;
   align-items: center;
 }
+.project-health {
+  gap: 8px;
+}
 .filter-bar {
   display: flex;
   gap: 12px;

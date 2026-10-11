@@ -130,9 +130,29 @@ class Spy:
         return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
 
 
-def loop(project: Any, projector: Any = None, *, executor: Any = None, clock: Any = None) -> L.SteeringLoop:
+class Acted:
+    """The real stage runner, and an event set once a step returned: a test waits on what the loop did, never on how
+    long it took (``HANG_S`` only bounds a hang)."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+
+    def __call__(self, *args: Any, **kw: Any) -> dict[str, Any]:
+        try:
+            return L._run(*args, **kw)
+        finally:
+            self.done.set()
+
+
+HANG_S = 60.0  # a guard against a hang on an event, never a timing expectation
+
+NO_LOOK = 3600.0  # the coarse look out of the way: what a test waits on can only come from a wake or a commit
+
+
+def loop(project: Any, projector: Any = None, *, executor: Any = None, clock: Any = None,
+         coarse_s: float = NO_LOOK) -> L.SteeringLoop:
     e = Engine.discover(project.root)
-    kw: dict[str, Any] = {"projector": projector or L._project_all}
+    kw: dict[str, Any] = {"projector": projector or L._project_all, "coarse_s": coarse_s}
     if executor is not None:
         kw["executor"] = executor
     if clock is not None:
@@ -683,25 +703,88 @@ def test_a_quiet_stop_never_resets_what_was_notified(p):
 def test_a_change_after_the_last_read_is_never_lost(p):
     """F3: a change made by another actor after the loop's last read in an activation (a run record's wake mark,
     moved while the final tick projects) is looked at: only what a tick has read counts as seen, so the loop acts on
-    the action that change made eligible."""
+    the action that change made eligible. The coarse look is off, so the wake is the only way in, and the projector
+    bumps until the mark has moved: a bump can fail on Windows (``outbox.bump_wake``), which is the next test's case."""
     mode(p, "walk")
     root = p.root / ".aew"
-    calls = {"n": 0}
+    calls, moved = {"n": 0}, []
 
     def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
         calls["n"] += 1
         rev = int(s["revision"])
         if calls["n"] == 1:  # the activation's only tick: nothing to do as of its read ...
-            outbox.bump_wake(root)  # ... then a run record moves
+            before = outbox.wake_mark(root)
+            for _ in range(100):  # ... then a run record moves, and its wake with it
+                outbox.bump_wake(root)
+                if outbox.wake_mark(root) != before:
+                    moved.append(True)
+                    break
             return projection("project", rev), [projection("T-0001", rev)]
         return projection("project", rev), [projection("T-0001", rev, actions=notes(rev))]
 
-    lp = loop(p, projector)
+    acted = Acted()
+    lp = loop(p, projector, executor=acted)
     lp.start()
     try:
-        until(lambda: lp.executed, 10, "the change after the last read to be acted on")
+        assert acted.done.wait(HANG_S), "the change after the last read was never acted on"
     finally:
         lp.close()
+    assert moved and lp.executed[0]["action"] == "probe_notes", (moved, lp.executed)
+
+
+@pytest.mark.parametrize("case", ["bump_failed", "mark_cannot_see_it"])
+def test_a_change_whose_wake_is_lost_is_still_acted_on(p, monkeypatch, case):
+    """The wake is advisory (PR #199's Windows CI failure): on Windows a bump fails while another handle is open on
+    the wake file, and the mark does not move; and a mark can only see what changes it (a change landing in the same
+    timestamp tick as the tick's snapshot, were the mark a timestamp). Either way the loop's coarse look projects,
+    sees it would select something else, and acts on what the change made eligible."""
+    mode(p, "walk")
+    root = p.root / ".aew"
+    if case == "mark_cannot_see_it":
+        monkeypatch.setattr(outbox, "wake_mark", lambda aew_root: (0, 0, 0))  # every bump in the snapshot's tick
+    calls = {"n": 0}
+
+    def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
+        calls["n"] += 1
+        rev = int(s["revision"])
+        if calls["n"] == 1:  # the activation's only tick reads nothing to do; then a run record moves ...
+            if case == "mark_cannot_see_it":
+                outbox.bump_wake(root)  # ... and bumps a wake the mark cannot see
+            return projection("project", rev), [projection("T-0001", rev)]  # (bump_failed: no wake at all)
+        return projection("project", rev), [projection("T-0001", rev, actions=notes(rev))]
+
+    acted = Acted()
+    lp = loop(p, projector, executor=acted, coarse_s=0.05)
+    lp.start()
+    try:
+        assert acted.done.wait(HANG_S), "a change whose wake was lost was never acted on"
+    finally:
+        lp.close()
+    assert lp.executed[0]["action"] == "probe_notes", lp.executed
+
+
+def test_a_coarse_look_that_finds_nothing_new_never_restarts_the_envelope(p):
+    """The coarse look starts an activation only when the projection selects something other than the last tick
+    did. After a repetition stop it selects the same action, so many looks later that action has still run only
+    repetition_n times, in one activation (A1 §3.1): a look is never a wake."""
+    mode(p, "walk")
+    looks = threading.Semaphore(0)
+    scripted = Scripted(notes)
+
+    def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
+        looks.release()
+        return scripted(e, c, s)
+
+    lp = loop(p, projector, coarse_s=0.01)
+    lp.start()
+    try:
+        for _ in range(3 + 20):  # the activation's three ticks, then twenty coarse looks
+            assert looks.acquire(timeout=HANG_S), "the loop stopped looking"
+    finally:
+        lp.close()
+    assert [x["action"] for x in lp.executed] == ["probe_notes"] * 2, lp.executed
+    assert lp._activations == 1
+    assert json.loads((p.root / ".aew/local/steering/loop.json").read_text())["stop"]["code"] == L.REPETITION
 
 
 def test_no_new_action_starts_once_the_broker_is_closing(p):

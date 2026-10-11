@@ -7,8 +7,12 @@ it never decides what is legal (CWR §2): nothing here is read by a guard, a gat
 (``test_legality_modules_never_import_steering``).
 
 **When it runs.** On its own thread, woken by a committed Lead tool call and by a change it sees within ``POLL_S`` (a
-commit's control file, or the wake file a run record changes). With no steering mode in force (legacy/manual, decision
-3) it does nothing. An **activation** is the run of ticks from a wake to a stop; the envelope is counted per activation.
+commit's control file, or the wake file a run record changes). The wake file is advisory: a bump can fail (on Windows,
+while another handle is open on the file) and leave its mark unmoved. So every ``COARSE_S`` the loop also re-projects
+and compares what it would select with what its last tick selected; only a different selection starts an activation,
+so a look that finds nothing new never restarts the envelope (review of PR #199: the Windows CI failure). With no
+steering mode in force (legacy/manual, decision 3) it does nothing. An **activation** is the run of ticks from a wake
+to a stop; the envelope is counted per activation.
 
 **One tick** (CWR §7):
 
@@ -83,6 +87,7 @@ ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
 STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
+COARSE_S = 5.0  # the look that covers a wake lost by a failed bump (``outbox.bump_wake``): one projection per period
 TERMINAL_STATES = frozenset({"DONE", "CANCELLED"})
 
 
@@ -182,6 +187,14 @@ def repetition_key(choice: Choice) -> str:
                                    default=str).encode("utf-8"))[:32]
 
 
+def selection(picked: Choice | Stop) -> tuple[Any, ...]:
+    """What a tick's selection was, for the coarse look: the stop's condition, or the chosen action's repetition key.
+    Neither names a revision, a time or a run's age, so an unchanged workflow selects the same thing."""
+    if isinstance(picked, Stop):
+        return ("stop", *picked.condition)
+    return ("choice", repetition_key(picked))
+
+
 def about(choice: Choice, code: str, message: str) -> Stop:
     """A stop about the chosen action: its condition is the action and its arguments (``Stop.condition``)."""
     return Stop(code, message, choice.subject, choice.action["action"], arguments_digest(choice.action))
@@ -232,7 +245,7 @@ class SteeringLoop:
     projection and the runner (tests may pass their own); ``clock`` is monotonic."""
 
     def __init__(self, engine: Any, *, generation: int, session_label: str | None, token: Callable[[], str],
-                 poll_s: float, projector: Projector | None = None,
+                 poll_s: float, coarse_s: float = COARSE_S, projector: Projector | None = None,
                  executor: Executor | None = None, clock: Callable[[], float] = time.monotonic) -> None:
         self.engine = engine
         self.aew_root = Path(engine.aew_root)
@@ -240,6 +253,7 @@ class SteeringLoop:
         self.session_label = session_label
         self._token = token
         self.poll_s = poll_s
+        self.coarse_s = coarse_s
         self._project = projector or _project_all
         self._execute = executor or _run
         self._clock = clock
@@ -247,6 +261,7 @@ class SteeringLoop:
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         self._seen: Any = None  # what the last tick started from: the control file's identity and the wake mark
+        self._selected: tuple[Any, ...] | None = None  # what the last tick selected (``selection``); None: it did not
         # The conditions already notified (review of PR #199, F1, F2, R2): kept across quiet stops and activations,
         # bounded, the least recently met forgotten first.
         self._notified: OrderedDict[tuple[Any, ...], None] = OrderedDict()
@@ -286,13 +301,35 @@ class SteeringLoop:
         with the snapshot it takes before its own reads (review of PR #199, F3)."""
         return self._snapshot() != self._seen
 
+    def _moved_unseen(self) -> bool:
+        """The coarse look: whether a projection now selects something other than the last tick did, a change whose
+        wake was lost (``outbox.bump_wake``: advisory, and on Windows a bump can fail). Only a different selection
+        counts: a look that finds the same stop, or the same action a stop was about, starts nothing, so the
+        envelope is never restarted by a look (A1 §3). After a tick that stopped before selecting (the envelope
+        exhausted, stale policy, steering off), it looks at nothing: only a wake or a commit starts the next one."""
+        if self._selected is None:
+            return False
+        try:
+            state = self.engine.store.read()
+            if S.effective(state)["mode"] is None:
+                return False
+            project, units = self._project(self.engine, self._ctx(), state)
+            return selection(select(project, units)) != self._selected
+        except Exception:  # noqa: BLE001  a look that fails is no change: the next look, wake or commit retries
+            return False
+
     def _run_forever(self) -> None:
+        looked = time.monotonic()  # never the injected clock: that one is the envelope's
         while not self._closed.is_set():
             woken = self._wake.wait(self.poll_s)
             if self._closed.is_set():
                 return
             if not (woken or self._changed()):
-                continue
+                if time.monotonic() - looked < self.coarse_s:
+                    continue
+                looked = time.monotonic()
+                if not self._moved_unseen():
+                    continue
             self._wake.clear()  # cleared only when an activation follows: a wake set from now on is a new one
             try:
                 stop = self.activate()
@@ -303,6 +340,7 @@ class SteeringLoop:
                 self._record(stop, None, None)
             if stop.code == STALE_AUTHORITY:
                 return
+            looked = time.monotonic()
 
     # ------------------------------------------------------------------ one activation
 
@@ -354,6 +392,7 @@ class SteeringLoop:
         if self._closed.is_set():
             return Stop(OFF, "the broker is closing")  # recorded as nothing: the session ended, not the loop
         self._seen = self._snapshot()  # before any read: a change after it is one this tick did not see (F3)
+        self._selected = None  # set below once this tick has selected: until then a coarse look has nothing to compare
         # Only a tick that commits (its action, or SAE-07's anomaly) leaves ``own_rev`` set, so only an activation whose
         # final tick committed can be resumed; one that returned control quietly never is (review of PR #199, R1).
         act.own_rev = None
@@ -383,6 +422,7 @@ class SteeringLoop:
         ctx = self._ctx()
         project, units = self._project(self.engine, ctx, state)
         picked = select(project, units)
+        self._selected = selection(picked)
         if isinstance(picked, Stop):
             return picked
         from aew.surface import contract

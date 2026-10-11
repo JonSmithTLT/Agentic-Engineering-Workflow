@@ -93,3 +93,44 @@ def test_pr60_item4_a_crash_mid_bump_leaves_at_most_one_temp_file_per_process(tm
     outbox.bump_wake(tmp_path, 2)  # the next bump reuses it and leaves none
     assert not list((tmp_path / "local").glob(".wake.*.tmp"))
     assert (tmp_path / "local/wake").read_text(encoding="utf-8").startswith("2 ")
+
+
+@pytest.mark.parametrize("windows", [True, False])
+def test_a_refused_wake_rename_is_retried_briefly_on_windows(tmp_path, monkeypatch, windows):
+    """PR #199's Windows CI failure: Windows refuses a rename over a file while another handle is open on it (a
+    waiter's stat, an indexer, a scanner), and the bump swallowed that, so the mark did not move and a waiter with no
+    coarse look lost the wake. A refused rename is now retried a few times (bounded: it is on the commit path); one
+    refused every time is still swallowed, and leaves no temp file. On POSIX a refusal is not transient: no retry."""
+    import os
+
+    from aew.engine import outbox
+
+    real, tries = os.replace, {"n": 0}
+
+    def refused_twice(src, dst):
+        tries["n"] += 1
+        if tries["n"] <= 2:
+            raise PermissionError(13, "Access is denied", str(dst))
+        real(src, dst)
+
+    outbox.bump_wake(tmp_path, 1)
+    before = outbox.wake_mark(tmp_path)
+    monkeypatch.setattr(outbox, "IS_WINDOWS", windows)
+    monkeypatch.setattr(os, "replace", refused_twice)
+    outbox.bump_wake(tmp_path, 2)
+    monkeypatch.setattr(os, "replace", real)
+    assert (outbox.wake_mark(tmp_path) != before) is windows
+    assert tries["n"] == (3 if windows else 1)
+
+    def refused(src, dst):
+        tries["n"] += 1
+        raise PermissionError(13, "Access is denied", str(dst))
+
+    tries["n"] = 0
+    before = outbox.wake_mark(tmp_path)
+    monkeypatch.setattr(os, "replace", refused)
+    outbox.bump_wake(tmp_path, 3)  # swallowed: the wake is advisory
+    monkeypatch.setattr(os, "replace", real)
+    assert outbox.wake_mark(tmp_path) == before
+    assert tries["n"] == (outbox.WAKE_REPLACE_TRIES if windows else 1)
+    assert not list((tmp_path / "local").glob(".wake.*.tmp"))

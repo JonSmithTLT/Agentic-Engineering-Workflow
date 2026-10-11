@@ -82,6 +82,7 @@ OK, NOT_APPLICABLE = "ok", "not_applicable"
 CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
 OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, and what a later step may name
 REFERENCE = "$from"  # a planned argument {"$from": [m, field]}: the one id step m recorded under field
+ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # judgments that accept a report
 
 
 def cold_rel(intent_id: str, work_id: str | None) -> str:
@@ -145,9 +146,11 @@ def unit_state(unit: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class StageIntents:
-    def __init__(self, k: Any, *, archive: Any) -> None:
+    def __init__(self, k: Any, *, archive: Any, obligations: Any = None) -> None:
         self.k = k
         self.archive = archive
+        # (state, work_id) -> the unit's effective obligations: what a stage that accepts evidence binds (E5b)
+        self.obligations = obligations
 
     # ------------------------------------------------------------------ opening and closing (Lead transactions)
 
@@ -207,6 +210,11 @@ class StageIntents:
                     f"a stage's effective class is at least its base class and each step's; {effective_class} is "
                     f"below {P.OPERATION_CLASSES[floor]}", reason="class_understated")
             d = self.k.policy_digests()
+            # A stage that accepts evidence binds the obligations the evidence is judged against (plan v3 E3; M4-E E5b),
+            # recorded for attribution like the operational digest.
+            obligations = None
+            if ACCEPTANCES & set(judgment_inputs) and subject is not None and self.obligations is not None:
+                obligations = "sha256:" + digest(self.obligations(state, subject))
             intent = {
                 "schema": SCHEMA, "id": sid, "tool": tool, "status": ACTIVE, "contract_digest": contract_digest,
                 "arguments": arguments, "arguments_digest": digest(arguments), "judgment_inputs": list(judgment_inputs),
@@ -214,7 +222,7 @@ class StageIntents:
                 "caller": dict(ctx.actor), "generation": state["lead"]["generation"],
                 "opened": {"expect_rev": expect_rev, "rev": ctx.session.revision + 1, "at": utc_now()},
                 "binding": {"legality_digest": d["legality_digest"], "operational_digest": d["operational_digest"],
-                            "authorization_digest": None, "obligations_digest": None, "lease": None},
+                            "authorization_digest": None, "obligations_digest": obligations, "lease": None},
                 "subject": {"kind": "unit" if subject else "project", "id": subject,
                             "start": unit_state(state["work"].get(subject)) if subject else None},
                 "plan": steps, "steps": [], "retried_after_stale_revision": False, "stopped": None, "rebound": [],

@@ -1,0 +1,14 @@
+case: high_anomaly
+slice: E5b
+description: >-
+  an open high anomaly about the Ticket: its start stays AVAILABLE (an anomaly adds no guard, n6) but is never offered
+  auto-runnable; the Lead's explicit call still runs
+seed: high_anomaly
+stage: ticket_start
+arguments: {work_id: $work_id}
+expect:
+  availability: AVAILABLE
+  auto_runnable: false
+  boundary: null
+  steps: [work.assign, dispatch.launch, work.transition]
+  unit_state: RUNNING

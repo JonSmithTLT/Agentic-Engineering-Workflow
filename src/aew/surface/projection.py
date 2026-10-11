@@ -110,8 +110,9 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     part: dict[str, Any] = {"revision": state["revision"],
                             "generation": int((state.get("lead") or {}).get("generation") or 0),
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
-                            "blockers": []}
+                            "blockers": [], "anomalies": _anomalies(state, subject)}
     _stage_decisions(part, state, subject)
+    _anomaly_decisions(part)
     if subject == "project":
         return part
     unit = engine.status(subject)["work_unit"]  # hot, or archived as it stands now
@@ -124,7 +125,52 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                                          {k: v for k, v in b.items() if k != "kind"}))
     if unit.get("kind") == "ticket":
         _ticket_actions(part, subject, int(part["revision"]))
+        if subject in state["work"]:  # the marked findings the Ticket records and the Lead has not disposed of (E5b)
+            part["decisions"].extend(_dispose(item, int(part["revision"]))
+                                     for item in _items(engine, subject, state=state))
     return part
+
+
+def _items(engine: Any, subject: str, **kw: Any) -> list[dict[str, Any]]:
+    """The marked items not disposed of, or none when they cannot be read now (a policy edit awaiting adoption, an
+    evidence integrity problem): the projection never fails on them, and the ingest's own guard still decides."""
+    try:
+        return list(engine.disposition_items(subject, **kw))
+    except AEWError:
+        return []
+
+
+def _disposal_refusal(engine: Any, anomaly: str) -> dict[str, Any] | None:
+    try:
+        return engine.anomaly_disposal_refusal(anomaly)
+    except AEWError as exc:  # it could not be asked now: say so, never AVAILABLE
+        return {"code": exc.code, "message": exc.message, "details": dict(exc.details)}
+
+
+def _anomalies(state: dict[str, Any], subject: str) -> list[dict[str, Any]]:
+    """The open anomalies that concern the subject (every one, for the project), committed facts (M4-E E5b)."""
+    return [dict(a) for _, a in sorted((state.get("anomalies") or {}).items())
+            if subject == "project" or a.get("subject") in (subject, None)]
+
+
+def _anomaly_decisions(part: dict[str, Any]) -> None:
+    """An open anomaly is the Lead's to dispose of (plan v3 §2.4): a decision with no default."""
+    r = str(part["revision"])
+    for a in part["anomalies"]:
+        part["decisions"].append({"decision": "DISPOSE_ANOMALY", "tool": "resolve", "evidence": [a["id"]],
+                                  "arguments": {"expect_rev": part["revision"], "subject": a["id"]},
+                                  "cli": ["work", "dispose", a["id"], "--choice",
+                                          "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
+                                          "--expect-rev", r]})
+
+
+def _dispose(item: dict[str, Any], rev: int) -> dict[str, Any]:
+    """A finding or claim policy marks ``requires_disposition``, not disposed of yet: the Lead's decision (§2.4)."""
+    return {"decision": "DISPOSE_FINDING" if item["kind"] == "finding" else "DISPOSE_CLAIM", "tool": "resolve",
+            "evidence": [item["id"]], "arguments": {"expect_rev": rev, "subject": item["id"]},
+            "availability": AVAILABLE,
+            "cli": ["work", "dispose", item["id"], "--choice", "<accept_risk|follow_up|not_applicable>", "--rationale",
+                    "<why>", "--expect-rev", str(rev)]}
 
 
 def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) -> None:
@@ -292,10 +338,16 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     that is blocked adds its blockers (with any ``disposition`` its call would commit instead, PR #171 review) to
     ``blockers``."""
     out = []
+    listed = {e for d in part["decisions"] for e in d.get("evidence") or [] if d["decision"].startswith("DISPOSE")}
     for d in part["decisions"]:
         if "role" not in d:
             arguments = d.get("arguments")
-            found = UNKNOWN
+            found = d.get("availability", UNKNOWN)
+            if d["decision"] == "DISPOSE_ANOMALY":  # the disposal's own query, read now: a live contradiction (m4)
+                refused = _disposal_refusal(engine, d["evidence"][0])
+                found = BLOCKED if refused else AVAILABLE
+                if refused:
+                    blockers.append(_blocker(refused["code"], refused["message"], refused["details"]))
             if arguments is not None and d["tool"] and SA.migrated(d["tool"]):  # PUBLISH: its stage's (M4-E E4b)
                 composed = SA.stage_availability(engine, d["tool"], {k: v for k, v in arguments.items()
                                                                      if k != "expect_rev"})
@@ -313,6 +365,13 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                                                                   if k != "expect_rev"})["availability"]
             out.append(_decision(d["decision"], subject, tool=d["tool"], evidence=[e], arguments=arguments,
                                  cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]], availability=found))
+            # The report's own marked items, which its acceptance would refuse to advance past (M4-E E5b, §2.4).
+            for item in _items(engine, subject, evidence=[e]):
+                if item["evidence"] == e and item["id"] not in listed:
+                    listed.add(item["id"])
+                    x = _dispose(item, int(part["revision"]))
+                    out.append(_decision(x["decision"], subject, tool=x["tool"], evidence=x["evidence"],
+                                         arguments=x["arguments"], cli_fallback=x["cli"], availability=AVAILABLE))
     return out
 
 
@@ -341,9 +400,20 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         actions.append(_action("harness_wait", {"runs": live}, kind=contract.WAIT, availability=AVAILABLE,
                                reason_codes=[], cli_fallback=["harness", "wait", *live,
                                                               *(["--any"] if len(live) > 1 else [])]))
+    # A high anomaly about the subject (or the project) is an open obligation: no action of it auto-runs, its
+    # availability unchanged (plan v3 §2.4, n6). The steering loop stops on it too (E7).
+    held = any(a["severity"] == "high" for a in part["anomalies"])
     for a in actions:
         a["callable"] = contract.callable_on(contract.tool(a["action"]), ctx.profile)
+        if held:
+            a["auto_runnable"] = False
     return {"revision": part["revision"], "generation": part["generation"], "subject": subject,
             "state": part["state"], "actions": actions,
             "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
-            "anomalies": [], "hints": hints, "runs": runs}
+            "anomalies": [_anomaly(a) for a in part["anomalies"]], "hints": hints, "runs": runs}
+
+
+def _anomaly(a: dict[str, Any]) -> dict[str, Any]:
+    """An open anomaly as the projection lists it (a blocker's shape: its source is the code)."""
+    return _blocker(str(a["source"]), str(a["detail"]), {"anomaly": a["id"], "severity": a["severity"],
+                                                          "subject": a["subject"], "opened_rev": a["rev"]})

@@ -36,6 +36,52 @@ LOST = "lost"                # a supervisor took custody and stopped reporting (
 # Why a run ended, where an adapter can tell more than its status says: the record's `reason_code`, beside `status`
 # and `reason`. Telemetry like the rest of the record, so it never decides anything.
 PROVIDER_AUTH_FAILED = "provider_auth_failed"  # the model provider rejected the credential (register V1)
+ADAPTER_REASON_CODES = frozenset({PROVIDER_AUTH_FAILED})  # what an adapter reports; never on a `launch_failed` record
+
+# Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
+# record, and of the supervisor's acknowledgement and `HarnessLaunchFailed`'s details. A closed set in the same
+# lowercase as the adapter codes above, and disjoint from them: the vocabulary follows the status, so a comparison to
+# `provider_auth_failed` never meets a launch failure. `reason` stays the free-text detail. A failure is mapped only
+# where a test reproduces it (`launch_failure_code`); everything else is `unknown`, which fails closed.
+SPAWN_RACE, SERVER_START_TRANSPORT = "spawn_race", "server_start_transport"
+CONTAINMENT_REFUSED, CREDENTIAL_DENIED, CONFIG_ERROR = "containment_refused", "credential_denied", "config_error"
+QUOTA_EXHAUSTED, AUTH_FAILED, PROVIDER_OUTAGE = "quota_exhausted", "auth_failed", "provider_outage"
+INCOMPATIBLE_CONFIG, UNKNOWN_LAUNCH_FAILURE = "incompatible_config", "unknown"
+LAUNCH_FAILURE_CODES = frozenset({SPAWN_RACE, SERVER_START_TRANSPORT, CONTAINMENT_REFUSED, CREDENTIAL_DENIED,
+                                  CONFIG_ERROR, QUOTA_EXHAUSTED, AUTH_FAILED, PROVIDER_OUTAGE, INCOMPATIBLE_CONFIG,
+                                  UNKNOWN_LAUNCH_FAILURE})
+# Where a launch fails: (1) the supervisor refuses custody; (2) the harness does not start; (3) the supervisor gets no
+# usable credential handoff; (4) the launcher: no supervisor process, no custody acknowledgement, or no started message.
+CUSTODY, START, HANDOFF, LAUNCHER = "custody", "start", "handoff", "launcher"
+# An `AEWError` detail naming a cause its code does not tell apart (`launch_failure_code`'s ``cause``). A failure that
+# carries one is never mapped by its code alone.
+LAUNCH_CAUSE = "launch_cause"
+CATALOG_TIMEOUT = "catalog_timeout"  # the pinned model never appeared in the harness's catalog within its wait
+AGENT_LOAD_TIMEOUT = "agent_load_timeout"  # the harness never listed AEW's agent within its wait
+# (site, AEW error code) -> launch-failure code, keyed by the error code at that site: every failure raised there with
+# that code gets it, unless it names a `launch_cause`. A pair is mapped only where tests reproduce it at that site:
+# a cancelled or rotated invocation's credential presented at custody (tests/integration/test_launch_failure_codes.py),
+# and a harness that lacks what AEW needs at start (that file, the conformance `incompatible` scenario, and OpenCode's
+# refused launches in tests/integration/test_opencode_adapter.py: a missing variant, a V1 server, a doctored
+# OpenAPI, an agent loaded with a different system text, model, step limit or rules, stored credentials). The two waits
+# are timing-dependent, so they name a cause and stay `unknown`: a model the catalog never offered within its wait
+# (`catalog_timeout`; PR #185 review, F1) and AEW's agent never listed within its wait (`agent_load_timeout`, which
+# also covers a server that ignored the configuration, since a wait cannot tell that from a slow one; F3). A new entry
+# comes with the test that produces it.
+_LAUNCH_FAILURES = {
+    (CUSTODY, "STALE_AUTHORITY"): CREDENTIAL_DENIED,
+    (START, "HARNESS_INCOMPATIBLE"): INCOMPATIBLE_CONFIG,
+}
+
+
+def launch_failure_code(site: str, error_code: str | None = None, cause: str | None = None) -> str:
+    """The closed launch-failure code for a failure at ``site`` raised as ``error_code`` (an ``AEWError``'s code, or
+    None for anything else): ``unknown`` unless that pair is mapped, or when the error names a ``cause`` (its
+    `launch_cause` detail), since no cause is mapped yet."""
+    if cause is not None:
+        return UNKNOWN_LAUNCH_FAILURE
+    return _LAUNCH_FAILURES.get((site, error_code or ""), UNKNOWN_LAUNCH_FAILURE)
+
 
 # Any AEW credential string. Custody scans look for it in every file a run leaves behind.
 CREDENTIAL_RE = re.compile(r"aew1\.tk_[0-9a-f]{16}\.[A-Za-z0-9_-]{20,}")

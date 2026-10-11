@@ -180,7 +180,8 @@ class Harness:
                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                          "with `aew harness launch` (the credential rotates)", **base) from None
+                                          "with `aew harness launch` (the credential rotates)", **base,
+                                          **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
         handoff = {"credential": credential, "run": run, "invocation": inv_id,
                    "repo_root": str(self.k.repo_root), "aew_root": str(self.k.aew_root)}
@@ -197,22 +198,27 @@ class Harness:
         custody = next((a for a in acks if "custody" in a), None)
         started = next((a for a in acks if "started" in a), None)
         out = {**base, "supervisor_pid": proc.pid}
+        # Each failure carries a closed `reason_code` (M4-E E8a; plan v3 n8) and where it came from: the supervisor's
+        # acknowledgement, over this pipe, or this launcher's own. Never the run record's code: the run directory is
+        # model-writable (amendment 1, R2-m2 and R3-n1).
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      "with `aew harness launch` (the credential rotates)", **out)
+                                      "with `aew harness launch` (the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
-                                      reason=custody.get("reason"))
+                                      reason=custody.get("reason"), **_acknowledged_code(custody))
         if started is None:  # still starting, or the supervisor ended without a final word: its record says which
             status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
-            if status in K.TERMINAL:
+            if status in K.TERMINAL:  # the reason is the record's, for reading; its code is never taken from there
                 raise HarnessLaunchFailed(f"{run} failed to start: {(record or {}).get('reason')}", **out,
-                                          status=status, reason=(record or {}).get("reason"))
+                                          status=status, reason=(record or {}).get("reason"),
+                                          reason_code=K.UNKNOWN_LAUNCH_FAILURE, reason_code_source="run_record")
             return {**out, "status": K.STARTING}
         if not started["started"]:
             raise HarnessLaunchFailed(f"{run} failed to start: {started.get('reason')}", **out,
-                                      status=started.get("status"), reason=started.get("reason"))
+                                      status=started.get("status"), reason=started.get("reason"),
+                                      **_acknowledged_code(started))
         return {**out, "status": K.RUNNING, **{k: v for k, v in started.items() if k in {"harness", "session"}}}
 
     def _regenerated_pack(self, state: dict[str, Any], inv_id: str) -> dict[str, Any]:
@@ -715,6 +721,20 @@ class Harness:
             return None
         return f"{wid} cannot move on yet: {'; '.join(reasons)}. `aew gate show {wid}` shows what blocks it"
 
+
+
+def _launcher_code() -> dict[str, str]:
+    """``HarnessLaunchFailed``'s code when no supervisor acknowledged custody: none is known, so ``unknown``."""
+    return {"reason_code": K.launch_failure_code(K.LAUNCHER), "reason_code_source": "launcher"}
+
+
+def _acknowledged_code(ack: dict[str, Any]) -> dict[str, str]:
+    """``HarnessLaunchFailed``'s code from the supervisor's acknowledgement: ``unknown`` unless it is one of the
+    closed launch-failure codes."""
+    code = ack.get("reason_code")
+    if not isinstance(code, str) or code not in K.LAUNCH_FAILURE_CODES:
+        code = K.UNKNOWN_LAUNCH_FAILURE
+    return {"reason_code": code, "reason_code_source": "acknowledgement"}
 
 
 def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, Any]]:

@@ -175,7 +175,9 @@ def _main(argv: list[str]) -> int:
     try:
         result, as_json = _run(args, argv, handler)
     except AEWError as exc:
-        sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
+        # A refusal that moved the revision by recording itself (an anomaly, M4-E E5b) says so beside the error.
+        recorded = {"recorded": exc.recorded} if exc.recorded else {}
+        sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict(), **recorded}, indent=2, default=str) + "\n")
         return exc.exit_code
     except KeyboardInterrupt:
         return 130

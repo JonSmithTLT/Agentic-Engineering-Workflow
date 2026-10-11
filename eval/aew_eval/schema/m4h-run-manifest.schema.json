@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-run-manifest/v1",
+  "title": "One released M4-H run's terms (F19 plan v5 §2.8, interface I2; ADR-0018 D4)",
+  "description": "Written by the evaluator at release and carried in the release bundle. M4-E's `aew operator grant-publication --manifest` verifies its SHA-256 and reads `task_input_sha256`; the pre-grant bounds (`max_publications`, the envelope duration) are the ones the ceremony grants. It names no oracle, no other case and no preregistration content beyond the seal's hash.",
+  "type": "object",
+  "required": ["schema", "seal_sha256", "run_id", "cell", "task_input_sha256", "caps", "treatment_sha256",
+               "max_publications", "envelope_duration_s"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/m4h-run-manifest/v1"},
+    "seal_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "run_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "cell": {"type": "string", "minLength": 1},
+    "task_input_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "caps": {
+      "type": "object", "required": ["usd", "wall_s"], "additionalProperties": false,
+      "properties": {
+        "usd": {"type": "number", "exclusiveMinimum": 0},
+        "wall_s": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "treatment_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "max_publications": {"type": "integer", "minimum": 1},
+    "envelope_duration_s": {"type": "integer", "minimum": 1}
+  }
+}

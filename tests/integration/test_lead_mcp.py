@@ -61,6 +61,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
         {"server_env": str(env_file)},
         {"call": "status", "arguments": {"work_id": wid}},
+        # M4-E E5b: a request stage through the MCP ingress, on a READY Ticket: its first step refuses
+        {"call": "ticket_request_review", "arguments": {"expect_rev": "$revision", "work_id": wid}},
     ])
     res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
     assert res.returncode == 0, res.stderr
@@ -69,14 +71,19 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert init["serverInfo"]["name"] == "aew-lead"
     assert [t["name"] for t in listed["tools"]] == [  # no cli, no designed stage
         "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
-        "resolve", "ticket_draft", "ticket_start"]
+        "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification"]
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])
     assert explained["result"]["channel"] == "lead_mcp" and explained["result"]["entrypoint"] == "work.assign"
     codes = [r[i]["reply"]["error"]["data"]["adapter_input_error"]["code"] for i in (6, 7, 8, 9)]
     assert codes == ["UNKNOWN_TOOL", "TOOL_NOT_BUILT", "TOOL_NOT_EXPOSED", "INVALID_ARGUMENTS"]
-    assert _rev(p) == rev + 1  # the refused calls committed nothing
+    refused = _content(r[12])  # opened and stopped its intent (two commits), committing no step of its own
+    assert not refused["ok"] and refused["stopped"]["at"] == "work.transition" and refused["completed_steps"] == []
+    from aew.engine.api import Engine
+
+    assert Engine.discover(p.root).stage_intent(refused["stage_intent_id"])["ingress"] == "mcp"
+    assert _rev(p) == rev + 3  # the refused calls committed nothing; the stage only its journal
     start = next(a for a in _content(r[11])["projection"]["actions"] if a["action"] == "ticket_start")
     assert start["callable"] is True and start["cli_fallback"][:2] == ["work", "assign"]  # built (M4-E E5a)
     # Custody: the server's environment, the transcript, the session's output and every file.

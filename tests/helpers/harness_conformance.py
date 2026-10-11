@@ -529,8 +529,10 @@ def an_incompatible_harness_fails_closed(lab, driver, tmp_path):
     driver.script(lab, "R-INV-0001-1", [], health="incompatible")
     res = lab.lead_res("work", "assign", wid, "--launch")
     assert res.error["code"] == "HARNESS_LAUNCH_FAILED" and "HARNESS_INCOMPATIBLE" in res.error["message"]
+    assert res.error["details"]["reason_code"] == "incompatible_config", res.error  # M4-E E8a, from the ack
     record = lab.record("R-INV-0001-1")
     assert record["status"] == "launch_failed" and not record.get("harness_pids")
+    assert record["reason_code"] == "incompatible_config", record
     lab.until(lambda: supervisor_gone(record), 30, "the supervisor to exit")
     assert lab.ok("harness", "status")["runs"][0]["status"] == "launch_failed"
 

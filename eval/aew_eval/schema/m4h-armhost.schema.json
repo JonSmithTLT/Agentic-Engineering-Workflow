@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/m4h-armhost/v1",
+  "title": "One JSON frame of the evaluator/arm-host protocol (F19 plan v5 §2.2, §2.3; ADR-0018 D2)",
+  "description": "Every call is one request and one reply, each a single line of JSON (at most 1 MiB) followed by exactly `payload_bytes` of payload (a tar for `release` and `collect`, nothing otherwise). The evaluator initiates every call; the arm host runs no listener.",
+  "type": "object",
+  "required": ["schema", "kind", "verb", "payload_bytes"],
+  "properties": {
+    "schema": {"const": "aew/m4h-armhost/v1"},
+    "kind": {"enum": ["request", "reply"]},
+    "verb": {"enum": ["hello", "preflight", "release", "run", "collect"]},
+    "payload_bytes": {"type": "integer", "minimum": 0}
+  },
+  "allOf": [
+    {"if": {"properties": {"kind": {"const": "request"}}},
+     "then": {
+       "required": ["run_id", "args"],
+       "additionalProperties": false,
+       "properties": {
+         "schema": true, "kind": true, "verb": true, "payload_bytes": true,
+         "run_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"},
+         "args": {"type": "object"}
+       }
+     }},
+    {"if": {"properties": {"kind": {"const": "reply"}}},
+     "then": {
+       "required": ["ok", "error", "result"],
+       "additionalProperties": false,
+       "properties": {
+         "schema": true, "kind": true, "verb": true, "payload_bytes": true,
+         "ok": {"type": "boolean"},
+         "error": {"oneOf": [
+           {"type": "null"},
+           {"type": "object", "required": ["code", "message"], "additionalProperties": false,
+            "properties": {"code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+                           "message": {"type": "string", "maxLength": 2000}}}
+         ]},
+         "result": {"type": "object"}
+       }
+     }},
+    {"if": {"properties": {"kind": {"const": "reply"}, "ok": {"const": true}, "verb": {"const": "preflight"}},
+            "required": ["kind", "ok", "verb"]},
+     "then": {"properties": {"result": {
+       "required": ["binding", "established", "checks", "facts"],
+       "properties": {"binding": {"type": "object"}, "established": {"type": "boolean"},
+                      "checks": {"type": "array", "items": {
+                        "type": "object", "required": ["name", "ok", "detail"],
+                        "properties": {"name": {"type": "string"}, "ok": {"type": "boolean"},
+                                       "detail": {"type": "string"}}}},
+                      "facts": {"type": "object"}}}}}},
+    {"if": {"properties": {"kind": {"const": "reply"}, "ok": {"const": true}, "verb": {"const": "release"}},
+            "required": ["kind", "ok", "verb"]},
+     "then": {"properties": {"result": {
+       "required": ["bundle_sha256"],
+       "properties": {"bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}}},
+    {"if": {"properties": {"kind": {"const": "reply"}, "ok": {"const": true}, "verb": {"const": "run"}},
+            "required": ["kind", "ok", "verb"]},
+     "then": {"properties": {"result": {
+       "required": ["started_at", "ended_at", "wall_s", "base_commit", "outcome", "harness", "environment", "error"],
+       "properties": {"started_at": {"type": "string"}, "ended_at": {"type": "string"}, "wall_s": {"type": "number"},
+                      "base_commit": {"type": ["string", "null"]}, "outcome": {"type": "object"},
+                      "harness": {"type": "object"}, "environment": {"type": "object"},
+                      "error": {"type": ["string", "null"]}}}}}},
+    {"if": {"properties": {"kind": {"const": "reply"}, "ok": {"const": true}, "verb": {"const": "collect"}},
+            "required": ["kind", "ok", "verb"]},
+     "then": {"properties": {"result": {
+       "required": ["manifest_sha256", "other", "other_omitted"],
+       "properties": {"manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                      "other": {"type": "object", "additionalProperties": {"enum": ["special", "unsafe-name", "unreadable"]}},
+                      "other_omitted": {"type": "integer", "minimum": 0}}}}}}
+  ]
+}

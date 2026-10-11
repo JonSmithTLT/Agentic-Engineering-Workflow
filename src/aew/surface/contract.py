@@ -9,9 +9,9 @@ tests enumerate it against the dispatch registry.
 
 F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. F15.2 builds
 the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``, E5b
-``ticket_request_review`` and ``ticket_request_verification``. The other stages and the publication decision tool are
-``DESIGNED``: their full contract is here so the tests pin it today, they are never listed, and a call is refused
-before the runner.
+``ticket_request_review`` and ``ticket_request_verification``, E6a ``ticket_prepare`` and the publication decision,
+``integration_publish``, as a stage (plan v3 §2.3). A row still ``DESIGNED`` has its full contract here so the tests
+pin it, is never listed, and a call to it is refused before the runner.
 """
 
 from __future__ import annotations
@@ -47,7 +47,8 @@ EVIDENCE = "evidence"  # the report an earlier step ingested, as the unit's evid
 ACCEPTANCE = "acceptance"  # the COMMIT_READY acceptance an earlier transition records (its gated snapshot, its seq)
 CANDIDATE = "candidate"  # the prepared integration candidate and the lease an earlier `integrate.prepare` produces
 DISPATCH = "dispatch"  # an earlier step's dispatch decision, which covers this step (a launch): it has no query
-STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, ACCEPTANCE, CANDIDATE, DISPATCH)
+VALIDATION = "validation"  # the integration verification an earlier ingest accepted, under its lease (M4-E E6a)
+STEP_INPUTS = (UNIT, STATE, IMPLEMENTER, EVIDENCE, ACCEPTANCE, CANDIDATE, DISPATCH, VALIDATION)
 
 
 class Tool(NamedTuple):
@@ -232,9 +233,9 @@ TOOLS: dict[str, Tool] = _catalog(
               ("argv",)),
          required_judgments=("undeclared",), mutates=True, profiles=(RECOVERY,)),
     # ---- designed in F15.1, built by F15.2 over the StageIntent journal: M4-E E5a builds `ticket_draft` and
-    # `ticket_start`, E5b the two request stages; the others stay DESIGNED until E6a. A request stage launches one
-    # invocation per card the effective gates require: its `invoke.create.mutating` and `dispatch.launch` steps repeat
-    # per card, in order (aew.surface.availability.CARDS)
+    # `ticket_start`, E5b the two request stages, E6a `ticket_prepare` and `integration_publish`. A request stage
+    # launches one invocation per card the effective gates require: its `invoke.create.mutating` and `dispatch.launch`
+    # steps repeat per card, in order (aew.surface.availability.CARDS)
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
          _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
@@ -274,17 +275,23 @@ TOOLS: dict[str, Tool] = _catalog(
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
          required_judgments=("accept_verification",), promotes=("execution",),
-         dispatches=True, mutates=True, progression=True, status=DESIGNED,
+         dispatches=True, mutates=True, progression=True,
          # Steps 4 and 5 (the integration verifier and its launch) are planned in verifier mode only (plan v3 §2.3).
          produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2)),
                       ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2), (CANDIDATE, 3)), ((DISPATCH, 4),))),
+    # The publication decision, run as a stage over the journal (M4-E E6a; plan v3 §2.3, B2.5): in verifier mode it
+    # first accepts the named integration verification; on a VALIDATED entry its first commit is granted a fresh lease.
+    # Steps 3 and 4 (the rebuilt candidate's verifier and its launch) are planned in verifier mode on a moved head only,
+    # and step 1 only when a report is named and no rebuild is due (``availability.APPLIES``).
     Tool("integration_publish", DECISION, JUDGMENT_BEARING,
          "Publish the prepared integration candidate: calling this is your publication decision.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
-               "prepared_candidate": {"type": "string", "minLength": 1}},
+               "prepared_candidate": {"type": "string", "minLength": 1},
+               "verification_evidence": EVIDENCE_ID},  # verifier mode: the report accepted (plan v3 B2.5)
               ("expect_rev", "work_id", "prepared_candidate")),
-         expands_to=("integrate.publish",), required_judgments=("publish_candidate",),
-         mutates=True, progression=True, status=DESIGNED, produced_by=((),)),
+         expands_to=("verify.ingest.integration", "integrate.publish", "invoke.create.mutating", "dispatch.launch"),
+         required_judgments=("publish_candidate",), dispatches=True, mutates=True, progression=True,
+         produced_by=((), ((VALIDATION, 1),), ((CANDIDATE, 2),), ((DISPATCH, 3),))),
 )
 
 

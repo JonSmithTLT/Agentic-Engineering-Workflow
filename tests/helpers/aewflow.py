@@ -13,7 +13,7 @@ from typing import Any
 
 from conftest import Project, make_git_repo, run_aew
 
-from aew.util import dump_yaml, glob_any
+from aew.util import dump_yaml, glob_any, load_yaml
 
 SAMPLE_FILES = {
     ".gitignore": "__pycache__/\n.pytest_cache/\n*.pyc\n",
@@ -59,6 +59,11 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
     }), encoding="utf-8", newline="\n")
     if gates:
         (policy / "gates.yaml").write_text(dump_yaml(gates), encoding="utf-8", newline="\n")
+    # M4-E E6a: the suite starts no custody worker (conftest), so S2's bound would end any custodian a test holds
+    # longer than its default; the tests of S2 lower it themselves.
+    current = load_yaml((policy / "gates.yaml").read_text(encoding="utf-8"))
+    current.setdefault("post_integration", {})["custody_register_s"] = 3600
+    (policy / "gates.yaml").write_text(dump_yaml(current), encoding="utf-8", newline="\n")
     p.pin_policy()
     p.token =p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
     return p

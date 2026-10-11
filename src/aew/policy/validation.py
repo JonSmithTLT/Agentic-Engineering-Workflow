@@ -44,6 +44,9 @@ MAX_INFRA_ATTEMPTS = 2  # per run identity: the first run and one retry
 BACKOFF_S = 30.0
 BREAKER_THRESHOLD = 3  # infrastructure failures, project-wide ...
 BREAKER_WINDOW_S = 600  # ... within this window, trip the breaker
+# M4-E E6a (plan v3 §2.3, S2): a lease's custodian with no registered custody worker this long after its grant is
+# ended by `sync` (its lease marked for reconciliation; nothing released). Operational: `custody_register_s`.
+CUSTODY_REGISTER_S = 60
 
 
 def _digest(value: Any) -> str:
@@ -96,6 +99,11 @@ def check_set(post: dict[str, Any], checks_policy: dict[str, Any], guardrails: d
     definitions = C.current_definitions(checks_policy, guardrails)
     entries = [{"check_id": c, "definition_sha256": definitions.get(c)} for c in post.get("checks") or []]
     return {"checks": entries, "digest": _digest(entries)}
+
+
+def custody_register_s(post: dict[str, Any]) -> int:
+    """How long a custodian may go without a registered custody worker (S2): ``custody_register_s``, default 60."""
+    return int(post.get("custody_register_s") or CUSTODY_REGISTER_S)
 
 
 def deadline_s(post: dict[str, Any], checks_policy: dict[str, Any]) -> int:

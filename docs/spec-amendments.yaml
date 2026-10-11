@@ -253,8 +253,14 @@ considered:
   - path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
     reason: >-
       decision record (F41, 2026-10-10); the freeze of the cross-feature integration design v0.5, V-1(b), freeze
-      versus activation, the 26 acceptance checks and the nit-rule divergence pending the operator (Q15); replaces
+      versus activation, the 26 acceptance checks and the nit-rule divergence (Q15, since closed by PR #193); replaces
       no WC/KC text
+  - path: docs/design/decisions-2026-10-11-architecture-integration.md
+    reason: >-
+      decision record (F42 to F46, F9.1, F9.2, F14.1, F18.15, E56 to E70, 2026-10-11); the designer's architecture
+      integration decisions: Observability and Feedback, the attention spine, the owner registry, base-drift
+      validation before v0.5 activation, parent-plan interactions, the F9 kinds, Lead instructions in review packs and
+      the operator settings surface; the v0.5 activation amendments are owed, not written; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

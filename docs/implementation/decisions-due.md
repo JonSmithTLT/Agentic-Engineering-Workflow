@@ -17,19 +17,27 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### F41.1
+
+**Due by:** M4-E · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
+
+**Blocks:** F14.1, F41, F41.2
+
+### F41.5
+
+**Due by:** M4-E · **Owner:** designer · **Needs:** design
+
+**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
+
+**Blocks:** F41, F41.6
+
 ### F25
 
 **Due by:** M4-G · **Owner:** designer · **Needs:** decision
 
 **What:** Before F25's Lead part is built (its run usage does not wait): the Lead usage segment's boundary while F31's attachments do not exist yet (the lead developer proposes one broker's tenure of one generation's credential, close to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted by takeover or host loss, when the old broker's credential is stale (F25 v0.2 §5.7)
-
-**Blocks:** -
-
-### F15.2
-
-**Due by:** M4-H · **Owner:** designer · **Needs:** design
-
-**What:** Before any project or M4-H's sealed manifest lists a verification result in `gates.requires_disposition`: the claim model the designer's D4 of 2026-10-10 needs (decision record `decisions-2026-10-10-m4h-instrument-and-claude-code.md`, MIC-07, MIC-08, MIC-16), which neither the code nor the documents have: (a) a way to mark a claim unrequired, and what makes it so (a card's claim list, policy or the verifier); (b) a `not_run` claim result; (c) report-outcome and gate rules that do not fail on such a claim, for unrequired claims only; (d) the key's `unrequired_verification_results` enum changed to `inconclusive` and `not_run`; (e) whether such a claim gates when the key does not list its result, as with the default, empty key. Until then the verification half marks nothing (M4-E E5b, pull request 182)
 
 **Blocks:** -
 
@@ -121,21 +129,21 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
-### F41.1
+### F42
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** design
 
-**What:** Before the cross-feature integration design v0.5 is activated (it was frozen 2026-10-10; decision record `decisions-2026-10-10-cross-feature-integration-freeze.md`): the Workflow Contract / F14 amendment for mandatory reviewed Story/Epic plans, Class 0 included, which changes `parent_paths["0"]` (the Class-0 parent path), with the reviewed-plan record contract and the parent-plan guard as an input to the single `DispatchDecision` (§2, §4, §19; CFI-04, CFI-70)
+**What:** The Observability and Feedback design, the first cross-cutting integration note (designer, 2026-10-11, Q1 and Q2; decision record `decisions-2026-10-11-architecture-integration.md`, AIR-01 to AIR-03, AIR-40): starting from the map of existing owners, the detectors and their advisory candidates, the triage intake, and the verification of an accepted improvement on the same metric, over F42.1's read-time process-event model
 
-**Blocks:** F41, F41.2
+**Blocks:** F42.1, F42.2
 
-### F41.5
+### F46
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** design
 
-**What:** Before the cross-feature integration design v0.5 is activated: the Workflow Contract §8 amendment adding the non-blocking `interface_dependency` edge kind (V-1(b)), which also extends E19-B §7.5's `revision_impact_hold` trigger to accepted interface revisions on such edges (§7, §19; CFI-34, CFI-35)
+**What:** The security design for the first write-capable dashboard flow, which gates the Operator Settings Surface (decision record `decisions-2026-10-11-architecture-integration.md` §3.16, AIR-68): how a proposed setting travels from the site to the operator endpoint and `adopt` without the dashboard writing control state or becoming a model-visible channel
 
-**Blocks:** F41, F41.6
+**Blocks:** -
 
 ### Q4
 
@@ -158,14 +166,6 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
 
 **What:** Deferred by the operator's F23 decision (2026-10-07), no longer an internal-alpha gate; reopened when remote PR or merge integration becomes a product requirement: the remote (pull-request) integration target's scope, whether `DONE` needs a second verification on a provider's merge commit, the first provider
-
-**Blocks:** -
-
-### Q15
-
-**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
-
-**What:** When the product's nit/observation fast path ships (F41.11): align AGENTS.md's nit rule (PR #181, no re-review) to the product's one bounded delta review, or keep the difference as an explicit, documented project-policy exception (cross-feature integration v0.5 §21; CFI-97, CFI-98). Recorded as a deliberate divergence until then
 
 **Blocks:** -
 
@@ -193,14 +193,20 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 - **F13** waits for Q8 (decision, designer, by M6); Q11 (decision, designer, by M6)
 
+- **F14.1** waits for F41.1 (design, designer, by M4-E)
+
 - **F39** waits for F38 (adoption, operator, by M6)
 
 - **F40** waits for F38 (adoption, operator, by M6)
 
-- **F41** waits for F41.1 (design, designer, by Unscheduled); F41.5 (design, designer, by Unscheduled)
+- **F41** waits for F41.1 (design, designer, by M4-E); F41.5 (design, designer, by M4-E)
 
-- **F41.2** waits for F41.1 (design, designer, by Unscheduled)
+- **F41.2** waits for F41.1 (design, designer, by M4-E)
 
-- **F41.6** waits for F41.5 (design, designer, by Unscheduled)
+- **F41.6** waits for F41.5 (design, designer, by M4-E)
+
+- **F42.1** waits for F42 (design, designer, by Unscheduled)
+
+- **F42.2** waits for F42 (design, designer, by Unscheduled)
 
 - **U9** waits for F26 (design, designer, by M6)

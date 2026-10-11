@@ -138,7 +138,7 @@ class Integration:
         return [DispatchGuard("integrate.ticket", self._g_ticket), DispatchGuard("integrate.gates", self._g_gates)]
 
     def _g_ticket(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
-        return checked(lambda: self._require_integrable(state, work_id))
+        return checked(lambda: self._require_integrable(state, work_id, regrant=bool(facts.get("regrant"))))
 
     def _g_gates(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         return checked(lambda: self._require_gated(state, work_id))
@@ -186,6 +186,23 @@ class Integration:
                                "workspace": PRODUCED_CANDIDATE, "workspace_id": PRODUCED_CANDIDATE}
         return scratch
 
+    def validation_overlay(self, state: dict[str, Any], work_id: str, evidence_id: str) -> dict[str, Any] | None:
+        """A deep copy of ``state`` with ``work_id``'s integration verification ``evidence_id`` accepted as
+        ``verify.ingest.integration`` would leave it: a VALIDATED entry leased afresh, and the candidate ``validated``
+        on that report (M4-E E6a). The publish step of `integration_publish` is asked on it. None when no lease could
+        be granted (the ingest step is BLOCKED there anyway)."""
+        scratch = copy.deepcopy(state)
+        self.queue.sync(scratch)
+        unit = scratch["work"].get(work_id)
+        if unit is None or not unit.get("integration"):
+            return None
+        try:
+            self.queue.regrant_view(scratch, work_id)
+        except AEWError:
+            return None
+        unit["integration"].update(status="validated", post_integration_evidence=evidence_id)
+        return scratch
+
     def validation_mode(self, state: dict[str, Any], work_id: str) -> str | None:
         """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None for no unit."""
         if work_id not in state.get("work", {}):
@@ -197,7 +214,9 @@ class Integration:
         self._require_integrable(state, work_id)
         self._require_gated(state, work_id)
 
-    def _require_integrable(self, state: dict[str, Any], work_id: str) -> None:
+    def _require_integrable(self, state: dict[str, Any], work_id: str, *, regrant: bool = False) -> None:
+        """Whether ``work_id``'s integration may be prepared now. With ``regrant`` (M4-E E6a), whether its VALIDATED
+        entry's kept candidate may be leased afresh to publish it: still open and its worktree still there."""
         unit = self.units.unit(state, work_id)
         if unit["state"] != "COMMIT_READY":
             raise IllegalTransition(f"{work_id} is {unit['state']}; only COMMIT_READY candidates are integrated")
@@ -208,9 +227,21 @@ class Integration:
         if integ.get("status") == "publishing":
             raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile`")
         lost = bool(integ.get("workspace")) and not Path(integ["workspace"]).is_dir()
+        entry = Q.entry_of(state, work_id)[1] if Q.queued(state) else None
+        if regrant:
+            if (entry or {}).get("state") != "VALIDATED" or integ.get("status") not in {"prepared", "validated"}:
+                raise IllegalTransition(f"{work_id} has no VALIDATED candidate to lease afresh",
+                                        entry=(entry or {}).get("state"), integration=integ.get("status"))
+            if lost:
+                raise IllegalTransition(f"{work_id}'s VALIDATED candidate lost its integration worktree "
+                                        f"({integ['workspace']}): requeue it (`aew integrate requeue {work_id}`) to "
+                                        "build a new candidate", workspace=integ["workspace"])
+            return
         # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the
         # queue existed (an upgraded project): prepare replaces it under fresh checks and custody, never adopts it.
-        unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
+        # A VALIDATED entry's candidate is the exception: it is kept for publication (M4-E E6a, plan v3 §2.3).
+        unleased = (Q.queued(state) and Q.lease_of(state, work_id) is None
+                    and (entry or {}).get("state") != "VALIDATED")
         if (integ.get("status") in {"prepared", "validated"} and self.gates.binding_problem(unit) is None
                 and not lost and not unleased):
             raise IllegalTransition(f"{work_id} already has an integration in state {integ['status']}")
@@ -372,7 +403,9 @@ class Integration:
             integ = unit.get("integration") or {}
             if integ.get("status") == "publishing":
                 raise IllegalTransition(f"{work_id} is publishing; run `aew integrate reconcile` first")
-            if Q.lease_of(ctx.state, work_id) is not None and integ.get("status") in OPEN_INTEGRATION:
+            held = Q.lease_of(ctx.state, work_id) is not None or \
+                (Q.entry_of(ctx.state, work_id)[1] or {}).get("state") == "VALIDATED"  # a kept candidate (E6a)
+            if held and integ.get("status") in OPEN_INTEGRATION:
                 self._retire_integration(ctx.state, unit, f"deferred by the Lead: {reason}")
             moved = self.queue.defer(ctx.state, work_id, reason=reason)
             ctx.summary = f"{work_id} queue entry {moved['entry']} deferred ({moved['from']}): {reason}"
@@ -511,8 +544,9 @@ class Integration:
         pinned = validation["identity"]
         if {"candidate": pinned["candidate"], "snapshot": pinned["snapshot"], "check_set": pinned["check_set"],
                 "binding": pinned["obligation"]["binding"]} != current:
-            raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: run "
-                                  f"`aew integrate validate {work_id}` again", validated=pinned, current=current)
+            raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: it "
+                                  f"must be validated again (recovery: `aew integrate validate {work_id}`)",
+                                  validated=pinned, current=current)
         run = integ.get("current_validation_run") or {}
         if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":
             raise GateUnsatisfied("the checks-mode validation run did not commit a pass", run=validation["run"])
@@ -607,9 +641,10 @@ class Integration:
                     "queue": queue, "revision": revision,
                     "next": "the authoritative head moved, so the candidate was rebuilt on it under the same lease "
                             "(the one automatic rebuild): " + (
-                                f"run `aew integrate validate {work_id}` on it" if V.obligation(
+                                "the lease's custodian validates it, and its entry returns to VALIDATED for you to "
+                                "publish (M4-E E6a)" if V.obligation(
                                     ctx.state, work_id, self.k.policy("gates"))["mode"] == V.CHECKS
-                                else "rerun post-integration verification on it") + ", then publish"}
+                                else "rerun post-integration verification on it, then publish")}
         if moved["outcome"] == "stale":
             raise StaleCandidate("the authoritative ref moved since the candidate was built; rebuild and revalidate",
                                  revision=revision, **{k: v for k, v in moved.items() if k != "outcome"})
@@ -648,6 +683,9 @@ class Integration:
                                         state=unit["state"], integration=integ.get("status"))
             scratch = copy.deepcopy(state)
             self.queue.sync(scratch)
+            # A VALIDATED entry is published under a fresh lease, granted in the publish's own first commit (M4-E
+            # E6a): asked here as that grant would decide it.
+            self.queue.regrant_view(scratch, work_id)
             self.queue.require_live_lease(scratch, work_id, "publishing")
             superseded = self.gates.binding_problem(unit)
             current = self.k.authoritative_commit()
@@ -673,12 +711,26 @@ class Integration:
 
         return guard_checked(check)
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str,
+                          candidate: str | None = None) -> dict[str, Any]:
+        """Publish ``work_id``'s candidate (``candidate``, when given: the one the Lead named, M4-E E6a; any other is
+        refused before anything commits)."""
         # Phase 1: record intent (publishing H -> M) after re-validating everything: the guard's query first (M4-E
         # E4b), whose refusal is raised unchanged, except the two it answers with a committed disposition.
         stale = None
         moved: dict[str, Any] | None = None
         with self.k.lead_txn(token, expect_rev, "integrate.publishing") as ctx:
+            # A VALIDATED entry first gets its fresh lease, in this same commit (M4-E E6a; plan v3 §2.3): the
+            # `integrate.prepare` decision recomputed and recorded for the custodian it admits. A refusal below rolls
+            # the grant back with everything else.
+            self.queue.regrant(ctx, work_id, lambda state, entrypoint, wid, **kw: self.dispatch.decide_in(
+                ctx, entrypoint, wid, **kw))
+            named = (ctx.state["work"].get(work_id) or {}).get("integration") or {}
+            if candidate is not None and named.get("candidate") != candidate:
+                raise IllegalTransition(f"{work_id}'s integration candidate is {named.get('candidate')}, not the "
+                                        f"{candidate} named: read its projection and decide on the current one",
+                                        reason="candidate_mismatch", named=candidate,
+                                        current=named.get("candidate"))
             args: dict[str, Any] = {}
             refused = self.publish_query(ctx.state, work_id, args)
             outcome = (args.get("found") or {}).get("outcome")
@@ -713,7 +765,11 @@ class Integration:
         faults.hit("integrate.after_publishing_record")
         committed = ctx.session.committed_revision
         assert committed is not None  # the transaction above committed
-        return self._finish_publish(token, committed, work_id)
+        # The publish's effect after its intent commit: never a stage step's commit (M4-E E6a; `SI.unarmed`).
+        from aew.engine.stage_intents import unarmed
+
+        with unarmed():
+            return self._finish_publish(token, committed, work_id)
 
     def _finish_publish(self, token: str, expect_rev: int, work_id: str, *,
                         reconciling: bool = False) -> dict[str, Any]:

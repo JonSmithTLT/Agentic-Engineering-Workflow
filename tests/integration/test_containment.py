@@ -149,6 +149,20 @@ def test_the_role_can_still_write_its_own_roots(lab):
     assert (lab.ws / "new.txt").read_text() == "ok" and (lab.run / "scratch" / "report.md").read_text() == "ok"
 
 
+def test_the_agent_cannot_write_its_live_usage(lab):
+    """The run's live usage file sits at the run root, outside what the sandbox binds back (scratch, harness, git):
+    the agent can neither replace nor remove the host's copy (F25 for M4-H, slice L2)."""
+    layout = lab.layout()
+    lab.run.mkdir(parents=True, exist_ok=True)
+    live = lab.run / "usage.live.json"
+    live.write_text('{"schema": "aew/usage-live/v1", "seq": 3}')
+    before = live.read_bytes()
+    done = lab.sh(layout, f"printf x > {live}; rm -f {live}; printf x > {lab.run}/usage.live.state.json; true")
+    assert done.returncode == 0, done.stderr
+    assert live.read_bytes() == before
+    assert not (lab.run / "usage.live.state.json").exists()
+
+
 def test_secrets_are_hidden_and_a_masked_file_is_still_a_file(lab):
     done = lab.sh(lab.layout(), f"ls -A {lab.home}/.ssh; cat {lab.home}/.netrc; test -f {lab.home}/.netrc && echo FILE")
     assert done.returncode == 0, done.stderr

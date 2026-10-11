@@ -228,7 +228,8 @@ CALLS = {
     "ticket_request_review": [{"work_id": "T-0001"}],
     "ticket_request_verification": [{"work_id": "T-0001", "review_evidence": "EV-0003"}],
     "ticket_prepare": [{"work_id": "T-0001", "verification_evidence": "EV-0004"}],
-    "integration_publish": [{"work_id": "T-0001", "prepared_candidate": "c0ffee"}],
+    "integration_publish": [{"work_id": "T-0001", "prepared_candidate": "c0ffee"},
+                            {"work_id": "T-0001", "prepared_candidate": "c0ffee", "verification_evidence": "EV-0005"}],
 }
 
 
@@ -241,7 +242,9 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
     for name in sorted(set(SA.STAGES) & set(stage_planners)):
         t = contract.tool(name)
         for call in CALLS[name]:
-            plan = stage_planners[name](dict(call, expect_rev=1))
+            # A stage whose steps depend on the state (M4-E E6a, `SA.APPLIES`) is planned with every such step in.
+            shape = {"shape": {n: True for n in SA.APPLIES[name]}} if name in SA.APPLIES else {}
+            plan = stage_planners[name](dict(call, expect_rev=1), **shape)
             # A step availability leaves unplanned for this call (its builder answers None: `ticket_draft` without a
             # plan) is one the planner leaves out too (M4-E E5a); every other step is planned, in contract order.
             planned = [n for n, build in enumerate(SA.STAGES[name], start=1) if build(call) is not None]

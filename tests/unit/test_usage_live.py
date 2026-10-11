@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from aew.harness import usage as U
 from aew.harness import usage_live as L
 from aew.harness.opencode.adapter import OpenCodeAdapter, _effective
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
-from aew.harness.opencode.client import OpenCodeError
+from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
 P1 = json.loads((FIXTURES / "live-usage-2.0.18.json").read_text(encoding="utf-8"))
@@ -506,6 +507,114 @@ def test_a_server_gone_before_the_final_sample_keeps_the_last_figures(lab: Lab):
     gone = valid(meter.final())
     assert gone["state"] == "server_gone" and gone["tokens"] == flat(300, 30) and gone["seq"] == live["seq"] + 1
     assert gone["observed_at"] == live["observed_at"]
+
+
+
+class HeldPoll:
+    """A poll on its own thread whose requests have all returned, and whose commit waits for ``release()``."""
+
+    def __init__(self, meter: L.Meter) -> None:
+        self.meter: L.Meter = meter
+        self.result: dict[str, Any] | None = None
+        self.read_done, self.go = threading.Event(), threading.Event()
+        self.thread = threading.Thread(target=self._run, name="held-poll", daemon=True)
+        real = meter._read_server
+
+        def read_then_hold(state: dict[str, Any]) -> dict[str, Any]:
+            out = real(state)
+            if threading.current_thread() is self.thread:
+                self.read_done.set()
+                self.go.wait(10)
+            return out
+
+        meter._read_server = read_then_hold  # type: ignore[method-assign]
+
+    def _run(self) -> None:
+        self.result = self.meter.poll()
+
+    def start(self) -> None:
+        self.thread.start()
+        assert self.read_done.wait(10), "the poll's read never finished"
+
+    def release(self) -> None:
+        self.go.set()
+        self.thread.join(10)
+        assert not self.thread.is_alive(), "the poll never returned"
+
+
+def published_by(meter: L.Meter) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    real = meter._publish
+
+    def record(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        out.append(real(*args, **kwargs))
+        return out[-1]
+
+    meter._publish = record  # type: ignore[method-assign]
+    return out
+
+
+def persisted_hw(lab: Lab, sid: str) -> int:
+    return json.loads((lab.root / "state.json").read_text(encoding="utf-8"))["sessions"][sid]["hw"]["input"]
+
+
+def two_calls_one_unpolled(lab: Lab) -> tuple[str, L.Meter, dict[str, Any]]:
+    """A meter that published the first call; the second has completed since, so the next poll reads 1000."""
+    sid = lab.app.add_session(model=GPT)
+    lab.call(sid, tok(100, 10))
+    meter = lab.meter(sid)
+    first = meter.poll()
+    assert first is not None and first["tokens"]["input"] == 100
+    lab.call(sid, tok(900, 90))
+    return sid, meter, first
+
+
+def test_a_server_gone_final_sample_never_lowers_a_figure_committed_before_the_cancel(lab: Lab):
+    """A poll commits between final()'s start and its cancelling of polls; final()'s read then fails. The
+    ``server_gone`` sample carries the committed figure, observed_at and in-flight count, never an older copy, and
+    the persisted high-water marks stay where the poll left them (plan v4 §2.4; PR #197 review, N1)."""
+    sid, meter, _ = two_calls_one_unpolled(lab)
+    held = HeldPoll(meter)
+    held.start()
+    published = published_by(meter)
+    real_cancel = meter.cancel_polls
+
+    def commit_then_cancel() -> None:
+        held.release()  # its requests were done before the cancel: it commits
+        real_cancel()
+
+    meter.cancel_polls = commit_then_cancel  # type: ignore[method-assign]
+    lab.client.down = True
+    gone = valid(meter.final())
+    assert [(s["state"], s["tokens"]["input"]) for s in published] == [("live", 1000), ("server_gone", 1000)]
+    committed = published[0]
+    assert gone["tokens"] == committed["tokens"] == flat(1000, 100)
+    assert (gone["observed_at"], gone["in_flight"]) == (committed["observed_at"], committed["in_flight"])
+    assert persisted_hw(lab, sid) == 1000
+
+
+def test_a_poll_held_across_a_failed_final_read_never_lowers_the_figure(lab: Lab):
+    """A poll's requests are done, its commit is held across final()'s failing read, then it tries to commit: it is
+    dropped (polls were cancelled), so the final sample is at least every sample published before it, and the
+    persisted high-water marks never go down (plan v4 §2.4; PR #197 review, N1)."""
+    sid, meter, first = two_calls_one_unpolled(lab)
+    held = HeldPoll(meter)
+    held.start()
+    published = published_by(meter)
+
+    class GoneAfterThePoll:
+        def get(self, path: str, params: Any = None, timeout: float = 30.0) -> Any:
+            held.release()  # the poll reaches its commit while final()'s read is failing
+            raise OpenCodeUnavailable(f"GET {path}: gone")
+
+    meter.client = GoneAfterThePoll()
+    gone = valid(meter.final())
+    assert held.result is first  # the poll committed nothing: it returned the last sample
+    assert [s["state"] for s in published] == ["server_gone"] and published[-1] is gone
+    for sample in (first, *published):
+        assert all(gone["tokens"][c] >= sample["tokens"][c] for c in gone["tokens"])
+    assert persisted_hw(lab, sid) >= max(s["tokens"]["input"] for s in (first, *published))
+    assert gone["tokens"] == first["tokens"] and gone["seq"] == first["seq"] + 1
 
 
 def test_the_final_sample_equals_the_run_record_for_a_run_without_foreign_sessions(lab: Lab):

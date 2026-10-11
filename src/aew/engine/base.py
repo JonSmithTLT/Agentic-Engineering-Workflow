@@ -10,11 +10,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from aew.engine.authority import require_lead
+from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import (
     AEWError,
+    IllegalTransition,
     IntegrityError,
     MigrationRequired,
     ProjectNotFound,
@@ -400,6 +401,41 @@ class Kernel:
                 for hook in self.refusal_hooks:
                     hook(token, refusal)
             raise
+
+    @contextmanager
+    def custody_txn(self, credential: str, op: str, *, reason: str | None = None) -> Iterator[TxnContext]:
+        """A control transition made by the lease's custodian, never the Lead (M4-E E6a; plan v3 §2.3, S1).
+
+        The one admission path for integration custody: the custodian's custody credential, checked with every binding
+        on this transaction's state (``authority.require_custodian``: the custodian is active, holds the lease, is of
+        the current Lead generation, and ``op`` is in the closed family), then the manifest and policy pins and every
+        finalizer, as a Lead transaction. There is no expected revision: a custody commit is mechanical, and each one
+        re-verifies what it relies on (the validation's transaction 2 does, the routing does). No Lead token is held or
+        used. A publication under custody needs the operator's envelope and the §17 predicate (E6b): it is refused."""
+        with self.store.session() as s:
+            if op == CUSTODY_PUBLISH:
+                raise IllegalTransition("a custodian publishes only under the operator's publication envelope and the "
+                                        "§17 predicate, evaluated in the same transaction; no envelope exists, so "
+                                        "nothing is published under custody", reason="no_publication_envelope")
+            actor = require_custodian(s.state, credential, op)
+            if s.state.get("schema") != V2:
+                raise MigrationRequired("integration custody runs under the v2 queue: migrate this project first",
+                                        schema=s.state.get("schema"))
+            self.check_manifest_pin(s.state)
+            self._txn_pins = s.state.get(POLICY_PINS)
+            try:
+                ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                yield ctx
+                self.finalizers.run(ctx)
+                s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
+                                    events=ctx.events), expect_rev=s.revision, state=ctx.commit_state)
+            finally:
+                self._txn_pins = _NOT_IN_TXN
+            for effect in ctx.after_commit:  # best effort, as in a Lead transaction
+                try:
+                    effect()
+                except (AEWError, OSError):
+                    pass
 
     def new_decision(
         self,

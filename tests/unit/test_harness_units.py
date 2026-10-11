@@ -147,7 +147,9 @@ def test_agent_environment_is_an_allowlist():
 def test_supervisor_environment_drops_every_credential_bearing_variable():
     env = supervisor_env({"AEW_LEAD_TOKEN": CRED, "AEW_INVOCATION_TOKEN": CRED, "MY_SAVED_TOKEN": f"x {CRED}",
                           "AEW_AGENT_KEY": "k", "OPENAI_API_KEY": "sk", "PATH": "/bin"})
-    assert env == {"OPENAI_API_KEY": "sk", "PATH": "/bin"}  # provider keys stay with the harness server side
+    pinned = {"PYTHONPATH", "PYTHONSAFEPATH"}  # the supervisor imports the engine only (procs.engine_imports)
+    assert {k: v for k, v in env.items() if k not in pinned} == {"OPENAI_API_KEY": "sk", "PATH": "/bin"}
+    assert env["PYTHONSAFEPATH"] == "1"  # provider keys stay with the harness server side
 
 
 # ------------------------------------------------------------------ registry

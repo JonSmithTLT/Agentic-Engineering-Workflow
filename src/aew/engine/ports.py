@@ -9,6 +9,7 @@ implementation provides each member with the same signature.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -253,7 +254,12 @@ class QueuePort(Protocol):
     def record_attempt(self, state: dict[str, Any], work_id: str, integration: dict[str, Any]) -> None: ...
 
     def release(self, state: dict[str, Any], work_id: str, *, to: str, result: str,
-                detail: dict[str, Any] | None = None, custodian_status: str = "completed") -> None: ...
+                detail: dict[str, Any] | None = None, custodian_status: str = "completed",
+                validated: dict[str, Any] | None = None) -> None: ...
+
+    def regrant(self, ctx: Any, work_id: str, decide: Callable[..., Any]) -> str | None: ...
+
+    def regrant_view(self, state: dict[str, Any], work_id: str) -> None: ...
 
     def require_live_lease(self, state: dict[str, Any], work_id: str, what: str) -> dict[str, Any] | None: ...
 

@@ -39,9 +39,10 @@ import socket
 import sys
 import threading
 import time
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
@@ -98,6 +99,23 @@ def _parse(stamp: str) -> datetime:
 
 def _past(stamp: str | None) -> bool:
     return bool(stamp) and _now() >= _parse(str(stamp))
+
+
+LEAD, CUSTODIAN = "lead", "custodian"
+
+
+class Principal(NamedTuple):
+    """Who commits a validation's transactions (M4-E E6a; plan v3 §2.3, S1): the Lead with its credential (`aew
+    integrate validate`, unchanged), or the lease's custodian with its custody credential (``custody_txn``). The
+    functions take a principal instead of a token; no path falls back from one to the other."""
+
+    kind: str
+    secret: str
+
+    def txn(self, k: Kernel, expect_rev: int, op: str) -> AbstractContextManager[Any]:
+        if self.kind == LEAD:
+            return k.lead_txn(self.secret, expect_rev, op)
+        return k.custody_txn(self.secret, op)
 
 
 CURRENT, DIAGNOSTIC = "current_validation_run", "diagnostic_run"
@@ -211,6 +229,34 @@ class Validation:
 
     def integrate_validate(self, *, token: str, expect_rev: int, work_id: str, wait: bool = False,
                            diagnostic: bool = False) -> dict[str, Any]:
+        """`aew integrate validate`: the Lead's (recovery and the operator's) run of checks-mode validation, under the
+        Ticket's live lease. A pass leaves the candidate ``validated`` under the lease, as M4-D5 built it."""
+        return self._validate(Principal(LEAD, token), expect_rev, work_id, wait=wait, diagnostic=diagnostic)
+
+    def custody_validate(self, *, credential: str, work_id: str) -> dict[str, Any]:
+        """The custodian's checks-mode validation (M4-E E6a; plan v3 §2.3, N2): the same pin, execution and commit,
+        each committed through ``custody_txn`` under the lease's custody credential, never the Lead's. A pass routes
+        the result in its commit: the candidate is kept and the entry released to VALIDATED (VALIDATE_ONLY; the PIC
+        publish is E6b's). A fail or an inconclusive result takes M4-D5's paths. Where containment cannot keep the
+        candidate immutable, nothing is pinned: the lease is released to AWAITING_DISPOSITION, for the Lead."""
+        who = Principal(CUSTODIAN, credential)
+        state = self.k.store.read()
+        self._require_validatable(state, work_id)
+        current = ((state["work"][work_id].get("integration") or {}).get(CURRENT))
+        try:
+            self._require_checks_mode(self.obligation(state, work_id), work_id)
+        except GateUnsatisfied as exc:  # a policy that cannot validate this candidate by checks: the Lead's to settle
+            return self._release_unavailable(who, None, work_id, current,
+                                             why=f"{exc.details.get('code_reason') or exc.code}: {exc.message}")
+        if not self.containment_available():
+            label = containment.label(contained=False)
+            return self._release_unavailable(who, None, work_id, current, why=(
+                f"VALIDATION_CONTAINMENT_UNAVAILABLE: this host has {label['filesystem']}, which cannot keep the "
+                "candidate immutable while the checks run; validate it with the post-integration verifier"))
+        return self._validate(who, self._rev(), work_id, wait=True, diagnostic=False)
+
+    def _validate(self, who: Principal, expect_rev: int, work_id: str, *, wait: bool,
+                  diagnostic: bool) -> dict[str, Any]:
         state = self.k.store.read()
         self._require_validatable(state, work_id)
         ob = self.obligation(state, work_id)
@@ -233,7 +279,7 @@ class Validation:
             running = next((r for r in ((unit["integration"] or {}).get(s) for s in SLOTS)
                             if r and r["state"] == "running"), None)
             if running is not None:
-                settled = self._settle_running(token, rev, work_id, running, identity, wait=wait)
+                settled = self._settle_running(who, rev, work_id, running, identity, wait=wait)
                 if settled is not None:
                     return settled
                 rev = self._rev()  # the run we waited for ended: look again, under the revision it left
@@ -246,9 +292,9 @@ class Validation:
             # release the lease or change the candidate's status (PR #91 re-review, finding 2).
             attempts = 0 if diagnostic else self._infra_attempts(current, identity)
             if attempts >= V.MAX_INFRA_ATTEMPTS:
-                return self._release_unavailable(token, rev, work_id, current, why="the infrastructure attempt "
+                return self._release_unavailable(who, rev, work_id, current, why="the infrastructure attempt "
                                                  "bound for this candidate is used up")
-            return self._run(token, rev, work_id, attempt=attempts + 1, diagnostic=diagnostic)
+            return self._run(who, rev, work_id, attempt=attempts + 1, diagnostic=diagnostic)
 
     def _rev(self) -> int:
         return int(self.k.store.read()["revision"])
@@ -261,7 +307,7 @@ class Validation:
             return int(current.get("infra_attempt") or 1)
         return 0
 
-    def _settle_running(self, token: str, rev: int, work_id: str, run: dict[str, Any], identity: dict[str, Any], *,
+    def _settle_running(self, who: Principal, rev: int, work_id: str, run: dict[str, Any], identity: dict[str, Any], *,
                         wait: bool) -> dict[str, Any] | None:
         """A run recorded ``running`` when this command starts: wait for it, end it at its deadline, ingest what it
         finished, or abandon it. Returns the command's result, or None to look again."""
@@ -284,16 +330,16 @@ class Validation:
             return None
         if alive:  # past its deadline: an authority-reducing action, never a lease release
             procs.kill_pid(run["executor"].get("host_pid"))
-            return self._abandon(token, rev, work_id, run["id"], "VALIDATION_DEADLINE_EXPIRED",
+            return self._abandon(who, rev, work_id, run["id"], "VALIDATION_DEADLINE_EXPIRED",
                                  "the run passed its hard deadline; its executor was terminated")
         staged = self._staged(run)
         if staged is not None and (run["identity"] == identity or run.get("diagnostic")):
-            return self._commit_txn(token, rev, work_id, run, staged)  # finished, never committed: no re-run
+            return self._commit_txn(who, rev, work_id, run, staged)  # finished, never committed: no re-run
         if staged is not None:
-            return self._abandon(token, rev, work_id, run["id"], self._moved_reason(run["identity"], identity),
+            return self._abandon(who, rev, work_id, run["id"], self._moved_reason(run["identity"], identity),
                                  "the run finished, but its identity is no longer current")
         reason = "VALIDATION_DEADLINE_EXPIRED" if _past(run["deadline_at"]) else "VALIDATION_INTERRUPTED"
-        return self._abandon(token, rev, work_id, run["id"], reason, "the executor died before the run finished")
+        return self._abandon(who, rev, work_id, run["id"], reason, "the executor died before the run finished")
 
     @staticmethod
     def _moved_reason(pinned: dict[str, Any], now: dict[str, Any]) -> str:
@@ -305,15 +351,15 @@ class Validation:
 
     # ------------------------------------------------------------------ transaction 1, the checks, transaction 2
 
-    def _run(self, token: str, expect_rev: int, work_id: str, *, attempt: int, diagnostic: bool) -> dict[str, Any]:
+    def _run(self, who: Principal, expect_rev: int, work_id: str, *, attempt: int, diagnostic: bool) -> dict[str, Any]:
         while True:
-            run = self._pin(token, expect_rev, work_id, attempt=attempt, diagnostic=diagnostic)
+            run = self._pin(who, expect_rev, work_id, attempt=attempt, diagnostic=diagnostic)
             faults.hit("validate.after_pin")
             outcome = self._execute(work_id, run)
             if outcome.get("infra") is None:
-                return self._commit(token, work_id, run, outcome)
+                return self._commit(who, work_id, run, outcome)
             code = outcome["infra"]
-            breaker_open = self._end_infra(token, work_id, run["id"], code, outcome.get("detail") or "")
+            breaker_open = self._end_infra(who, work_id, run["id"], code, outcome.get("detail") or "")
             if code in V.TRANSIENT and attempt < V.MAX_INFRA_ATTEMPTS and not breaker_open and not diagnostic:
                 time.sleep(self.backoff_s)  # never immediately: a second expensive run under the same pressure
                 attempt += 1
@@ -323,14 +369,14 @@ class Validation:
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
                         "revision": self._rev()}
             current = (self.k.store.read()["work"][work_id].get("integration") or {}).get(CURRENT)
-            return self._release_unavailable(token, None, work_id, current, why=f"{code}: "
+            return self._release_unavailable(who, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
                                                 else "not an allow-listed transient reason" if code not in V.TRANSIENT
                                                 else "the retry is used up"))
 
-    def _pin(self, token: str, expect_rev: int, work_id: str, *, attempt: int, diagnostic: bool) -> dict[str, Any]:
+    def _pin(self, who: Principal, expect_rev: int, work_id: str, *, attempt: int, diagnostic: bool) -> dict[str, Any]:
         """Transaction 1: the run, recorded ``running`` under the custodian, with everything it will re-verify."""
-        with self.k.lead_txn(token, expect_rev, "integrate.validate") as ctx:
+        with who.txn(self.k, expect_rev, "integrate.validate") as ctx:
             state = ctx.state
             unit = self._require_validatable(state, work_id)
             ob = self.obligation(state, work_id)
@@ -501,20 +547,20 @@ class Validation:
         return {"results": results, "mutated": finished["mutated"], "before": finished["before"],
                 "containment": finished.get("containment")}
 
-    def _commit(self, token: str, work_id: str, run: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:
+    def _commit(self, who: Principal, work_id: str, run: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:
         """Transaction 2, in the same command as transaction 1: it re-verifies everything pinned rather than relying
         on the revision, because the Lead may commit other work while the checks run."""
         try:
-            return self._commit_txn(token, self._rev(), work_id, run, staged)
+            return self._commit_txn(who, self._rev(), work_id, run, staged)
         except StaleRevision:  # another writer committed between the read and the lock: re-verify on the new state
-            return self._commit_txn(token, self._rev(), work_id, run, staged)
+            return self._commit_txn(who, self._rev(), work_id, run, staged)
 
-    def _commit_txn(self, token: str, rev: int, work_id: str, run: dict[str, Any],
+    def _commit_txn(self, who: Principal, rev: int, work_id: str, run: dict[str, Any],
                     staged: dict[str, Any]) -> dict[str, Any]:
         abandoned: tuple[str, str] | None = None
         change = None
         evidence_ids: list[str] = []
-        with self.k.lead_txn(token, rev, "integrate.validated") as ctx:
+        with who.txn(self.k, rev, "integrate.validated") as ctx:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
@@ -547,7 +593,7 @@ class Validation:
                     ctx.refs.append(f"evidence/{work_id}/{eid}.md")
                 ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "check_result",
                                    "ids": evidence_ids})
-                change = self._apply_result(state, work_id, unit, run, overall, results)
+                change = self._apply_result(state, work_id, unit, run, overall, results, who=who)
                 ctx.summary = f"{work_id} validation run {run['id']} committed: {overall}"
             self.units.before_commit(ctx)
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
@@ -563,7 +609,9 @@ class Validation:
         out.update(result=current["result"], evidence=evidence_ids, transition=change,
                    integration=integ.get("status"), queue=Q.entry_of(ctx.state, work_id)[1])
         out["ok"] = current["result"] == "pass"
-        out["next"] = {"pass": f"`aew integrate publish {work_id}`",
+        out["next"] = {"pass": (f"the candidate is kept, VALIDATED and unleased: publish it with `integration_publish` "
+                                f"(`aew integrate publish {work_id}`)" if who.kind == CUSTODIAN
+                                else f"`aew integrate publish {work_id}`"),
                        "fail": f"classify the failure (`aew verify classify {work_id}`)",
                        "inconclusive": "the entry waits for your disposition (`aew integrate requeue` once settled)"
                        }[current["result"]]
@@ -638,7 +686,7 @@ class Validation:
         return out
 
     def _apply_result(self, state: dict[str, Any], work_id: str, unit: dict[str, Any], run: dict[str, Any],
-                      overall: str, results: list[dict[str, Any]]) -> dict[str, str] | None:
+                      overall: str, results: list[dict[str, Any]], *, who: Principal) -> dict[str, str] | None:
         evidence_ids = [r["id"] for r in results]
         integ = unit["integration"]
         integ["validation"] = {"mode": V.CHECKS, "run": run["id"], "evidence": evidence_ids,
@@ -647,6 +695,14 @@ class Validation:
                                      "scope": "integration", "run": run["id"]}
         if overall == "pass":
             integ["status"] = "validated"
+            if who.kind == CUSTODIAN:
+                # VALIDATE_ONLY (M4-E E6a; plan v3 §2.3), in the commit transaction: no publication is requested (the
+                # PIC envelope is E6b's), so the custodian ends its own lease and the entry keeps its candidate,
+                # VALIDATED, for the Lead's later `integration_publish` under a fresh lease.
+                identity = run["identity"]
+                self.queue.release(state, work_id, to="VALIDATED", result="validated", validated=Q.validated_record(
+                    integ, mode=V.CHECKS, custodian=run["custodian"], run=run["id"],
+                    check_set=identity["check_set"], obligation_binding=identity["obligation"]["binding"]))
             return None
         if overall == "fail":
             # The existing COMMIT_READY -> VERIFICATION_FAILED edge, taken from the engine's own check evidence. No
@@ -718,8 +774,8 @@ class Validation:
         integ = unit.get("integration") or {}
         return next((r for r in (integ.get(s) for s in SLOTS) if r and r.get("id") == run_id), {})
 
-    def _abandon(self, token: str, rev: int, work_id: str, run_id: str, reason: str, detail: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, rev, "integrate.validation_abandoned") as ctx:
+    def _abandon(self, who: Principal, rev: int, work_id: str, run_id: str, reason: str, detail: str) -> dict[str, Any]:
+        with who.txn(self.k, rev, "integrate.validation_abandoned") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             current = self._find(unit, run_id)
             if current.get("state") != "running":
@@ -732,10 +788,10 @@ class Validation:
                 "revision": ctx.session.committed_revision,
                 "next": f"`aew integrate validate {work_id}` starts a new run within the attempt bound"}
 
-    def _end_infra(self, token: str, work_id: str, run_id: str, code: str, detail: str) -> bool:
+    def _end_infra(self, who: Principal, work_id: str, run_id: str, code: str, detail: str) -> bool:
         """Record an infrastructure failure: the run ``unavailable``, the breaker updated. Returns whether the breaker
         is open."""
-        with self.k.lead_txn(token, self._rev(), "integrate.validation_unavailable") as ctx:
+        with who.txn(self.k, self._rev(), "integrate.validation_unavailable") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             current = self._find(unit, run_id)
             is_open = (self._breaker_record(ctx.state, work_id, run_id, code) if not current.get("diagnostic")
@@ -747,10 +803,10 @@ class Validation:
             ctx.summary = f"{work_id} validation run {run_id} unavailable: {code}"
         return is_open
 
-    def _release_unavailable(self, token: str, rev: int | None, work_id: str, run: dict[str, Any] | None, *,
+    def _release_unavailable(self, who: Principal, rev: int | None, work_id: str, run: dict[str, Any] | None, *,
                              why: str) -> dict[str, Any]:
         """The bound reached: prove nothing was published, park the candidate, release the lease to disposition."""
-        with self.k.lead_txn(token, self._rev() if rev is None else rev, "integrate.validation_released") as ctx:
+        with who.txn(self.k, self._rev() if rev is None else rev, "integrate.validation_released") as ctx:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             integ = unit["integration"]

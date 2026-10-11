@@ -55,8 +55,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "note": "paused", "next": "start T-0001"}},
         {"call": "explain", "arguments": {"work_id": wid}},
         {"call": "nope", "arguments": {}},
-        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision", "work_id": wid,
-                                                 "verification_evidence": "EV-0001"}},
+        # every catalog row is built since E6a: a stage call missing its required report instead
+        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision", "work_id": wid}},
         {"call": "cli", "arguments": {"argv": ["status"]}},
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
         {"server_env": str(env_file)},
@@ -69,15 +69,16 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     r = _records(transcript)
     init, listed = r[0]["reply"]["result"], r[2]["reply"]["result"]
     assert init["serverInfo"]["name"] == "aew-lead"
-    assert [t["name"] for t in listed["tools"]] == [  # no cli, no designed stage
+    assert [t["name"] for t in listed["tools"]] == [  # no cli
         "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
-        "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification"]
+        "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+        "ticket_prepare", "integration_publish"]
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])
     assert explained["result"]["channel"] == "lead_mcp" and explained["result"]["entrypoint"] == "work.assign"
     codes = [r[i]["reply"]["error"]["data"]["adapter_input_error"]["code"] for i in (6, 7, 8, 9)]
-    assert codes == ["UNKNOWN_TOOL", "TOOL_NOT_BUILT", "TOOL_NOT_EXPOSED", "INVALID_ARGUMENTS"]
+    assert codes == ["UNKNOWN_TOOL", "INVALID_ARGUMENTS", "TOOL_NOT_EXPOSED", "INVALID_ARGUMENTS"]
     refused = _content(r[12])  # opened and stopped its intent (two commits), committing no step of its own
     assert not refused["ok"] and refused["stopped"]["at"] == "work.transition" and refused["completed_steps"] == []
     from aew.engine.api import Engine

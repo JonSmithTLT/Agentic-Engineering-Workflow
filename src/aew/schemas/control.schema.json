@@ -139,7 +139,8 @@
             "enum": [
               "lead",
               "invocation",
-              "handoff_offer"
+              "handoff_offer",
+              "custody"
             ]
           },
           "verifier": {
@@ -227,6 +228,14 @@
           "custodian": {
             "description": "A role invocation dispatched under a queue lease (the post-integration verifier): the integration-attempt invocation it is a child of (M4-D).",
             "type": "string"
+          },
+          "worker": {
+            "description": "M4-E E6a (plan v3 §2.3, S2): an integration-attempt custodian's custody worker, as it registered itself in its own first commit: lifecycle identity (liveness), never authorization.",
+            "type": "object",
+            "required": ["host_pid", "started_at", "host", "registered_at"],
+            "additionalProperties": false,
+            "properties": {"host_pid": {"type": "integer"}, "started_at": {"type": "number"}, "host": {"type": "string"},
+                           "registered_at": {"type": "string"}}
           },
           "role": {
             "enum": [
@@ -619,6 +628,13 @@
         "custodian": {"type": "string"},
         "generation": {"type": "integer"},
         "granted_at": {"type": "string"},
+        "custody": {
+          "description": "M4-E E6a (plan v3 §2.3, S1): the custodian's custody credential (`tokens`, kind `custody`, its hash only), minted in the granting commit and revoked when the lease ends, the custodian dies, the generation changes or the lease is reconciled; and the stage intent whose step granted the lease (null when none did).",
+          "type": "object",
+          "required": ["token_id", "requested_by"],
+          "additionalProperties": false,
+          "properties": {"token_id": {"type": "string"}, "requested_by": {"type": ["string", "null"]}}
+        },
         "reconcile": {
           "description": "Set when the custodian died (a takeover, an uncarried handoff, a cancel): the lease is reconciled by `aew integrate reconcile`, never released by a timeout.",
           "oneOf": [
@@ -641,6 +657,10 @@
         "candidate": {"type": ["string", "null"]},
         "result": {"type": ["string", "null"]},
         "ended_at": {"type": ["string", "null"]},
+        "from_validated": {
+          "type": "object",
+          "description": "M4-E E6a (plan v3 §2.3): a lease granted afresh to a VALIDATED entry; what that entry had validated (its kept candidate)."
+        },
         "rebuild_admission": {
           "type": "object",
           "description": "M4-D4: the fresh integrate.prepare decision that admitted this attempt's one automatic rebuild (its provenance, dependency and policy digests, and the move it answered). The custodian keeps the grant's decision.",
@@ -655,7 +675,26 @@
       "properties": {
         "work": {"type": "string"},
         "seq": {"type": "integer", "minimum": 1},
-        "state": {"enum": ["QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION"]},
+        "state": {"enum": ["QUEUED", "LEASED", "DEFERRED", "AWAITING_DISPOSITION", "VALIDATED"]},
+        "validated": {
+          "description": "M4-E E6a (plan v3 §2.3, VALIDATE_ONLY): present only on a VALIDATED entry. Its candidate validated clean and is kept, with the validation's identity; it holds no lease, and the Lead publishes it later with `integration_publish`, under a fresh lease.",
+          "type": "object",
+          "required": ["mode", "candidate", "snapshot", "base", "binding", "at", "custodian"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {"enum": ["checks", "verifier"]},
+            "candidate": {"type": "string"},
+            "snapshot": {"type": "string"},
+            "base": {"type": "string"},
+            "binding": {"type": "object"},
+            "check_set": {"type": ["string", "null"]},
+            "obligation_binding": {"type": ["string", "null"]},
+            "run": {"type": "string"},
+            "report": {"type": "string"},
+            "at": {"type": "string"},
+            "custodian": {"type": "string"}
+          }
+        },
         "commit_ready_seq": {"type": "integer", "minimum": 0},
         "enqueued_at": {"type": "string"},
         "attempts": {"type": "array", "items": {"$ref": "#/$defs/queue_attempt"}},

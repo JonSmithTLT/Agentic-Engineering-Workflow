@@ -694,6 +694,28 @@ def queue_violations(root: Path, state: dict[str, Any]) -> list[str]:
             problems.append(f"{qid} used {e['rebuilds_used']} automatic rebuilds; one is allowed")
         if (e["disposition"] is not None) != (e["state"] in ("DEFERRED", "AWAITING_DISPOSITION")):
             problems.append(f"{qid} is {e['state']} with disposition {e['disposition']}")
+    # 39a. M4-E E6a (VALIDATE_ONLY): exactly a VALIDATED entry records what its kept candidate validated; it holds no
+    #      lease, and its Ticket's open candidate is that candidate.
+    for qid, e in sorted(entries.items()):
+        if ("validated" in e) != (e["state"] == "VALIDATED"):
+            problems.append(f"{qid} is {e['state']} and {'has' if 'validated' in e else 'lacks'} a validation record")
+        if e["state"] == "VALIDATED":
+            integ = (work.get(e["work"]) or {}).get("integration") or {}
+            if lease is not None and lease["entry"] == qid:
+                problems.append(f"{qid} is VALIDATED and holds the lease")
+            if integ.get("status") not in ("prepared", "validated") or integ.get("candidate") != (
+                    e.get("validated") or {}).get("candidate"):
+                problems.append(f"{qid} is VALIDATED, but {e['work']}'s open candidate is not the one it validated")
+    # 39b. M4-E E6a (plan v3 §2.3): a custody credential stands only for the live lease's active custodian of the
+    #      current generation; every other one is revoked.
+    live = ((lease or {}).get("custody") or {}).get("token_id") if lease is not None and lease["reconcile"] is None \
+        and (invocations.get(lease["custodian"]) or {}).get("status") == "active" \
+        and lease["generation"] == state["lead"]["generation"] else None
+    for token_id, record in sorted((state.get("tokens") or {}).items()):
+        if record.get("kind") == "custody" and record.get("revoked_at") is None and token_id != live:
+            problems.append(f"custody credential {token_id} is not revoked, but it is not the live custody's")
+    if lease is not None and (lease.get("custody") or {}).get("token_id") not in (None, *(state.get("tokens") or {})):
+        problems.append(f"the lease's custody credential {lease['custody']['token_id']} is not in the token table")
     return problems
 
 

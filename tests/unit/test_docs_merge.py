@@ -56,6 +56,8 @@ DUE_YAML, DUE_MD = "docs/implementation/decisions-due.yaml", "docs/implementatio
 NOTES = "docs/implementation/notes.d"
 STATUS = "docs/implementation/implementation-status.md"
 STATUS_TEXT = (ROOT / STATUS).read_text(encoding="utf-8")
+# A slice named as the plans name them (E3a, S2a, MS2, D2, L1, P2b), or as "slice 1" / "slices S1".
+SLICE_TOKEN = re.compile(r"\b(?:E|S|MS|D|L|P)\d+[a-z]?\b|\bslices? [A-Z]*\d")
 DATA = yaml.safe_load((ROOT / REG_YAML).read_text(encoding="utf-8"))
 DUE = yaml.safe_load((ROOT / DUE_YAML).read_text(encoding="utf-8"))
 # PR #142's merge of main (d40d802): its two parents, and their merge base.
@@ -585,5 +587,20 @@ def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices(
     named = re.findall(r"^\*\*Later slices:\*\* .*? register row (\S+) ", STATUS_TEXT, re.M)
     assert len(named) >= 6, "the slice-built capabilities (outbox, F4, dashboard, M4-E, F25, F9) each name a row"
     assert [rid for rid in named if rid not in ids] == []
-    m4e = next(p for name, p in capabilities(STATUS_TEXT).items() if name.startswith("Governed stages"))
-    assert not re.search(r"\bE\d[a-z]\b", m4e[0]), "M4-E's Status lists no slice: each slice has its own paragraph"
+    sliced = {name: paragraphs for name, paragraphs in capabilities(STATUS_TEXT).items()
+              if any(p.startswith("**Later slices:**") for p in paragraphs)}
+    assert len(sliced) == len(named)
+    naming = {name: SLICE_TOKEN.findall(paragraphs[0]) for name, paragraphs in sliced.items()}
+    assert {name: found for name, found in naming.items() if found} == {}, (
+        "a slice-built capability's Status names no slice, built or next: each has its own paragraph or a note")
+
+
+def test_the_slice_token_pattern_sees_the_slice_names_in_use():
+    """The control for the test above: every way a Status has named a slice is caught (review of PR #195, R2-F1),
+    and capability-level words (milestones, register rows, the **Later slices** heading) are not."""
+    for text in ("E3a", "the stage tools are E5 and E6", "S1", "S2a", "MS2", "sealing and compaction are D2", "L1",
+                 "P2b", "slice 1", "slices S1 to S12", "slice 2a", "slice L1"):
+        assert SLICE_TOKEN.search(text), text
+    for text in ("M4-D", "M4-H's live usage", "F20.2 to F20.6", "the F9-A plan v4", "ADR-0016", "§7",
+                 "what each slice built is in its paragraph", "the row named under **Later slices**"):
+        assert not SLICE_TOKEN.search(text), text

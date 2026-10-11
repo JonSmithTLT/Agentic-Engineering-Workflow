@@ -50,11 +50,13 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### The transaction outbox: the transition log as a typed, complete, chained event source
 
-**Status:** **Partly built (M4-D)**: one paragraph per built slice below; sealing and compaction are D2
+**Status:** **Partly built (M4-D)**: what each slice built is in its paragraph below or, for later slices, in a note on the register row named under **Later slices**
 
 **Acceptance evidence / next action:** ADR-0012; ADR-0001 amendment 2026-10-04; oracle rules 24 to 26 (`tests/helpers/invariants.py`, `tests/helpers/store_model.py`); `tests/unit/test_outbox.py`, `tests/integration/test_transition_log.py`
 
 **D1:** typed events derived in the store, the 64-event hot bound with an overflow sidecar, the hash chain, `aew history log --since R [--kind] [--follow]`, the `local/wake` signal.
+
+**D2, next:** sealing and compaction.
 
 **Later slices:** each records what it built, and its evidence, as a note on register row E18 ([`notes.d/E18/`](notes.d/README.md); `python tools/register.py show E18`), never by editing a paragraph here.
 
@@ -78,7 +80,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### Ticket revisions (register F4)
 
-**Status:** **Partly built ([the F4 plan v8](f4-ticket-revisions-plan.md), slices S1 to S12)**: one paragraph per built slice below
+**Status:** **Partly built ([the F4 plan v8](f4-ticket-revisions-plan.md))**: what each slice built is in its paragraph below or, for later slices, in a note on the register row named under **Later slices**
 
 **Acceptance evidence / next action:** [the F4 plan v8](f4-ticket-revisions-plan.md), ADR-0016; each slice's evidence is in its paragraph below.
 
@@ -120,7 +122,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### The read-only dashboard's server (register F20.2 to F20.6)
 
-**Status:** **Partly built (F20.2 to F20.6)**: one paragraph per part below; F20.6's browser gate is open
+**Status:** **Partly built (F20.2 to F20.6)**: what each part built is in its paragraph below or, for later work, in a note on the register row named under **Later slices**; F20.6's browser gate is open
 
 **Acceptance evidence / next action:** [design note](../design/proposals/dashboard-main-line-api-design-v0.1.md) §4, §5; `src/aew/dashboard/`; `tests/integration/test_dashboard_api.py`, `tests/integration/test_dashboard_session.py`, `tests/integration/test_dashboard_conditional.py`, `tests/integration/test_dashboard_security.py`, `tests/integration/test_dashboard_acceptance.py`
 
@@ -174,7 +176,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### Governed stages on the typed Lead surface: the StageIntent journal (M4-E E3, register F15.2)
 
-**Status:** **Partly built ([the M4-E plan v3](m4-e-plan-v3.md), slices E1 to E9)**: one paragraph per built slice below; the stage tools are E5 and E6
+**Status:** **Partly built ([the M4-E plan v3](m4-e-plan-v3.md))**: what each slice built is in its paragraph below or, for later slices, in a note on the register row named under **Later slices**
 
 **Acceptance evidence / next action:** [the M4-E plan v3](m4-e-plan-v3.md); each slice's evidence and tests are in its paragraph below.
 
@@ -190,11 +192,13 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **E5a, the first Ticket stages** (`surface/stage.py`, `engine/primitives.py`, `engine/stage_intents.py`, `harness/tool_calls.py`; plan v3 E5). `ticket_draft` (create the Ticket from the Lead's proposition, then propose its plan when one is given; never accepted) and `ticket_start` (assign a READY mutating Ticket by policy with `launch`, then ASSIGNED -> RUNNING) are built and on the normal surface. Their planners take each step's guard arguments from `availability.STAGES`, so `resume`'s recheck and R5-1 ask each guard what `explain` and the projection ask (PR #170 review, finding 3: the agreement test now binds); a stage leaves out a step only where availability leaves it unplanned (`ticket_draft` without a plan), never reordered. `work.create`, `plan.propose` (judgment-bearing, with the judgment each carries), `work.transition` (mechanical; a cancellation revokes credentials, removes its ended observations' worktrees and ends a live run's harness, all declared) and `dispatch.launch` (mechanical, `control_state+credential+harness_process`, its guard the dispatch's decision) have full `PrimitiveSpec`s, and the projection now offers `ticket_start` as callable and, while legal and without an execution override, auto-runnable. A stage whose subject (the unit, or the project for `ticket_draft`) an unfinished stage holds is BLOCKED with `RESOLVE_STAGE`, pointing at `resolve`, so it is never offered as auto-runnable while its opening would be refused (`open_intent`; PR #177 review). **The #142 obligation, discharged:** `dispatch.launch` has no transaction of its own (run 1 of a dispatch made with `launch`, covered by its decision; the provenance on the run is unchanged), so a stage plans it right after that dispatch (`COVERED_BY_PREVIOUS`; opening refuses it anywhere else, `not_covered`), and the dispatch's step, armed with `covers`, records both steps in its one commit: the dispatch with its invocation, the launch with the run (`covered_by`; invariant 47 extended). The run then goes to its supervisor; a launch that fails stops the stage at the next step as `launch_failed`, and a continue after a crash there stops the same way, so a Ticket is never moved to RUNNING over a run that never started. **The per-call typed-tool log (n7):** the broker appends one line per `lead.tool` call, input errors and refusals included, to `.aew/local/lead/tool-calls.jsonl` (tool, arguments digest, effective class, ok, boundary and error code, revisions before and after, stage intent, duration); every field the caller controls is cut to 128 characters, so a line stays under 2 KiB, and the file is bounded (1 MiB, four rotated files); building or writing a line never fails or changes the call, and its revision before is read in the broker's serialized section the call runs in; M4-H computes TLS-27 and VGX-21 from it. The normal advertised surface is 7,996 bytes, 11 tools (the two rows exactly as catalogued, so with every M4-E tool built it stays at 11,805 of 11,900). Tests: `tests/integration/test_stages_ticket.py` (`test_stage_matches_primitives[ticket_draft,ticket_start]` on two copies of one project with a real launch, `test_declared_effects_cover_observed_effects[work.create,plan.propose,work.transition,dispatch.launch]`, `test_a_cancellations_effects_are_declared[observation,live_run]`, the launch stops, `test_a_launch_is_planned_only_after_a_dispatch_made_with_launch`), `tests/unit/test_surface_contract.py::test_every_staged_primitive_is_declared`, the seeded corpus `tests/corpus/false_advance/` with `tests/integration/test_no_false_advance.py` (`test_no_false_advance[<case>]`, eight E5a cases, `unresolved_intent` among them), `tests/integration/test_lead_tool.py` (`lead_mcp` channel conformance of `ticket_start`, the tool-call log), `tests/unit/test_tool_calls.py`. Next: E5b, the two request stages, `review.ingest` and `verify.ingest`, dispositions and anomalies.
 
+**E5 and E6, the stage tools:** E5a is above; the rest of E5 and E6 are next.
+
 **Later slices:** each records what it built, and its evidence, as a note on register row F15.2 ([`notes.d/F15.2/`](notes.d/README.md); `python tools/register.py show F15.2`), never by editing a paragraph here.
 
 ### The run cost and usage ledger (register F25)
 
-**Status:** **Partly built ([the design v0.2](../design/cost-usage-ledger-design-v0.2.md) §7, and the live usage slices for M4-H)**: one paragraph per built slice below
+**Status:** **Partly built ([the design v0.2](../design/cost-usage-ledger-design-v0.2.md) §7, and M4-H's live usage)**: what each slice built is in its paragraph below or, for later slices, in a note on the register row named under **Later slices**
 
 **Acceptance evidence / next action:** [the design v0.2](../design/cost-usage-ledger-design-v0.2.md) §7; each slice's evidence is in its paragraph below.
 
@@ -212,7 +216,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### Lead-worker coordination messages (register F9, F9-A)
 
-**Status:** **Partly built (the slices of the F9-A plan v4)**: one paragraph per built slice below; off by default and absent while off
+**Status:** **Partly built (the F9-A plan v4)**: what each slice built is in its paragraph below or, for later slices, in a note on the register row named under **Later slices**; off by default and absent while off
 
 **Acceptance evidence / next action:** [ADR-0017](adr/0017-coordination-messages.md); each slice's evidence is in its paragraph below.
 

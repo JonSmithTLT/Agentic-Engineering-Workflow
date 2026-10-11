@@ -19,6 +19,7 @@ import { WorkTable } from '../components/WorkTable';
 import { SinceViewed } from '../components/SinceViewed';
 import { CopyCli } from '../components/CopyCli';
 import { WorkGraph } from '../components/WorkGraph';
+import { WorkInvocations } from '../components/WorkInvocations';
 import { workRoute } from './work-model';
 export function WorkPage() {
   return (
@@ -262,7 +263,7 @@ export function WorkDetailPage({
       displayed={displayed}
       presentation="work-summary"
     >
-      {(work) => (
+      {(work, source) => (
         <div className="work-record">
           <div className="page-heading">
             <div>
@@ -292,6 +293,7 @@ export function WorkDetailPage({
                 <h2>Intent and context</h2>
               </div>
               <SafeContent {...work.summary} />
+              <WorkInvocations record={work} project={source.value.project_id} />
               <div className="panel-heading">
                 <h2>Backend blockers and reasons</h2>
               </div>
@@ -304,14 +306,14 @@ export function WorkDetailPage({
               <div className="panel-heading">
                 <h2>Related records</h2>
               </div>
-              {work.related.length ? (
-                work.related.map((r, i) => (
+              {work.related.some(r => r.kind !== 'invocation') ? (
+                work.related.filter(r => r.kind !== 'invocation').map((r, i) => (
                   <p key={i}>
                     <EntityAnchor entity={r} />
                   </p>
                 ))
               ) : (
-                <p className="muted">No related records supplied.</p>
+                <p className="muted">No other related records supplied.</p>
               )}
               {!!work.children.length && (
                 <>

@@ -4,6 +4,10 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
+Overview panel bodies use the shared `overview-scroll` geometry: desktop max-height with keyboard-focusable named regions, visible native scrollbars, and headings outside the scroll body; below1024px content keeps natural document scrolling. It bounds presentation height, not supplied rows or completeness. Short panels do not acquire a fixed empty height.
+
+Work's Invocations section renders explicit Work references and exact work-kind/ID matches from the already loaded, same-project Overview summary. It labels that summary as bounded and incomplete, discloses its revision/time, and marks retained data after refresh failure. Missing/withdrawn summaries establish no absence. It adds no Runs scans, filters, polling or inferred current/latest attempt. Complete invocation history still requires an accepted backend projection. Shared inspection buttons wrap long raw values without changing their meaning.
+
 Overview and the shared header label the supplied health projection as project health. Its status and reasons remain backend-owned; this label neither represents U1/H1 run health nor changes the API's `health` field or vocabulary.
 
 Shared `src/styles.css` owns disclosure boundaries and table scroll frames. Native details/summary interaction, document scrolling and table semantics remain unchanged; expanded content stays visually enclosed. Map Fields owns supplied label/value grouping without reinterpreting values. Each Maps metadata disclosure names its response (overview, selected map, input page, stored maps or comparison). Borders do not imply authority, completeness or a new data scope.

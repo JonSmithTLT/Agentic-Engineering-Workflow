@@ -599,13 +599,13 @@ sections:
       `authenticated: false`. The broker''s beat thread writes the liveness record every `POLL_S`, with its watchdog''s
       last iteration and the wedge threshold `store.lock_timeout + 2 × POLL_S`, and `closed_at` on a clean close or a supersession.
       A delivery failure shows in `status` and the dashboard''s attention and has no workflow effect. Open: `confirm` (M4-E
-      E7c), the publication grants (M4-E E6b), the loop (M4-E E7b), the E6 events (M4-E E7d). **Designer decisions of 2026-10-10,
-      evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D2, M4-H''s
-      per-run ceremony through the constrained evaluator relay is an acceptable human-intent channel for this row''s endpoint
-      challenge under `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention disposition table, drafted
-      from E7''s event vocabulary, is exhaustive and sealed before calibration; a confirmation is never pre-granted (MIC-04
-      to MIC-06; F19). D5, E7''s notifier stays the operator''s; the Lead''s wake for worker replies is F9''s lane in `wait
-      --any`, not a second notifier (MIC-09, MIC-10; LWA-17)'
+      E7c), the publication grants (M4-E E6b), the E6 events (M4-E E7d). **Designer decisions of 2026-10-10, evening ([decision
+      record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md), ledger MIC):** D2, M4-H''s per-run ceremony
+      through the constrained evaluator relay is an acceptable human-intent channel for this row''s endpoint challenge under
+      `guarantee: dev`, for v1 (MIC-02; F19). D3, M4-H''s request and attention disposition table, drafted from E7''s event
+      vocabulary, is exhaustive and sealed before calibration; a confirmation is never pre-granted (MIC-04 to MIC-06; F19).
+      D5, E7''s notifier stays the operator''s; the Lead''s wake for worker replies is F9''s lane in `wait --any`, not a
+      second notifier (MIC-09, MIC-10; LWA-17)'
 
   - '#': F15.6
     Work: 'Bounded recovery, the approved limited slice: R5-1, one `STALE_REVISION` retry of a non-judgment step with legality

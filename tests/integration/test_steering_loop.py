@@ -902,3 +902,40 @@ def test_a_superseded_loop_writes_nothing_shared(p, monkeypatch):
     assert lp.activate().code == L.STALE_AUTHORITY
     assert (loop_json.read_bytes(), spool.read_bytes()) == before
     assert "loop" not in (Engine.discover(p.root).steering_view() or {})
+
+
+def test_an_activation_that_returned_control_is_never_resumed(p):
+    """Review of PR #199, R1: only an activation whose final tick committed is resumed. One that ran an action and
+    then returned control quietly (nothing to do) is over: a later wake that is no commit (a run record moved) starts
+    a fresh activation with a fresh envelope, which runs what became eligible, never the old deadline."""
+    mode(p, "walk")
+    now = [1000.0]
+    calls = {"n": 0}
+
+    def projector(e: Any, c: Any, s: dict[str, Any]) -> Any:
+        rev = int(s["revision"])
+        calls["n"] += 1
+        return projection("project", rev), [projection("T-0001", rev, actions=notes(rev) if calls["n"] != 2 else [])]
+
+    lp = loop(p, projector, clock=lambda: now[0])
+    first = lp.activate()
+    assert first.code == L.IDLE and len(lp.executed) == 1, first
+    now[0] += 4000.0  # past the default loop_deadline_s (3600) since that activation started
+    outbox.bump_wake(p.root / ".aew")  # a run record moved; no commit
+    second = lp.activate()
+    assert second.code != L.LOOP_DEADLINE and len(lp.executed) >= 2, (second.code, second.message)
+
+
+def test_a_condition_still_recurring_is_never_forgotten_first(p):
+    """Review of PR #199, R2: what was notified is forgotten least recently met first, so a standing condition that
+    keeps recurring stays notified once while 64 other conditions come and go."""
+    mode(p, "walk")
+    lp = loop(p, Scripted(lambda rev: []))
+    standing = L.Stop(L.CONFIRMATION_UNAVAILABLE, "T-0001's start needs a confirmation", "T-0001", "ticket_start", "d")
+    lp._record(standing, None, "walk")
+    for i in range(L.NOTIFIED_MAX):
+        lp._record(L.Stop(L.ACTION_STOPPED, f"other condition {i}", f"T-{i:04d}", "probe_notes", f"{i}"), None, "walk")
+        if i % 8 == 0:
+            lp._record(standing, None, "walk")  # it recurs all along: still the same occurrence
+    lp._record(standing, None, "walk")
+    assert sum(1 for x in stop_lines(p) if "T-0001's start" in x) == 1

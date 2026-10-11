@@ -124,7 +124,7 @@ class Activation:
     counts: dict[str, int] = field(default_factory=dict)
     run_checked: bool = False
     last_own_rev: int | None = None
-    own_rev: int | None = None  # the revision after the loop's own last action in this activation
+    own_rev: int | None = None  # the revision the latest tick's own commit left, when that tick committed
 
 
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
@@ -247,7 +247,8 @@ class SteeringLoop:
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         self._seen: Any = None  # what the last tick started from: the control file's identity and the wake mark
-        # The conditions already notified (review of PR #199, F1, F2): bounded, kept across quiet stops and activations.
+        # The conditions already notified (review of PR #199, F1, F2, R2): kept across quiet stops and activations,
+        # bounded, the least recently met forgotten first.
         self._notified: OrderedDict[tuple[Any, ...], None] = OrderedDict()
         self._act: Activation | None = None  # the last activation: resumed while only the loop itself has committed
         self._activations = 0
@@ -353,6 +354,9 @@ class SteeringLoop:
         if self._closed.is_set():
             return Stop(OFF, "the broker is closing")  # recorded as nothing: the session ended, not the loop
         self._seen = self._snapshot()  # before any read: a change after it is one this tick did not see (F3)
+        # Only a tick that commits (its action, or SAE-07's anomaly) leaves ``own_rev`` set, so only an activation whose
+        # final tick committed can be resumed; one that returned control quietly never is (review of PR #199, R1).
+        act.own_rev = None
         lost = self._authority_lost()
         if lost:
             return Stop(STALE_AUTHORITY, f"this Lead session no longer holds Lead authority: {lost}")
@@ -533,10 +537,12 @@ class SteeringLoop:
         (``Stop.condition``: never per revision, and never forgotten because a quiet stop came between; review of PR
         #199, F1, F2). With steering off, nothing is written.
 
-        **A superseded session writes nothing shared** (review of PR #199, F8): the spool's ``broker`` file and
-        ``loop.json`` belong to the current generation's broker, and the takeover itself is the endpoint's to notify
-        (``generation_ended``, E7a). So a stale-authority stop is not recorded, and authority is checked again here,
-        just before writing, whatever stop is being recorded: a stop met just before a takeover is dropped too."""
+        **A superseded session writes nothing shared once it knows it is superseded** (review of PR #199, F8, N2): the
+        spool's ``broker`` file and ``loop.json`` belong to the current generation's broker, and the takeover itself is
+        the endpoint's to notify (``generation_ended``, E7a). So a stale-authority stop is not recorded, and authority
+        is checked again here, just before writing, whatever stop is being recorded. The residual is the moment
+        between that check and the writes: a takeover landing exactly then lets this record through, one
+        ``loop.json`` that ``status`` ignores (it carries the old generation) and at most one stale spool line."""
         if stop.code in (OFF, STALE_AUTHORITY) or self._authority_lost():
             return
         try:
@@ -550,7 +556,10 @@ class SteeringLoop:
                          "revision": revision, "at": utc_now()},
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
-        if not stop.attention or stop.condition in self._notified:
+        if not stop.attention:
+            return
+        if stop.condition in self._notified:
+            self._notified.move_to_end(stop.condition)  # recurring: the last to be forgotten (LRU; review, R2)
             return
         event_spool.append(self.aew_root, event_spool.BROKER, "loop_stopped", subject=stop.subject,
                            reason=f"{stop.code}: {stop.message}", ref=act.id if act else None)

@@ -801,10 +801,19 @@ def test_no_new_action_starts_once_the_broker_is_closing(p):
     try:
         until(lambda: len(broker.loop.executed) == 2, 30, "the first activation")
         real_drain = broker.server.drain
-        broker.server.drain = lambda t: (release.wait(8), real_drain(t))[1]  # a Lead request still in flight
+        draining = threading.Event()
+
+        def drain(t: float) -> Any:  # a Lead request still in flight
+            draining.set()
+            release.wait(8)
+            return real_drain(t)
+
+        broker.server.drain = drain
         closer = threading.Thread(target=broker.close)
         closer.start()
-        time.sleep(0.5)
+        # close() has begun (its drain follows the loop's request_stop): an event, never a sleep, orders the commit
+        # after it
+        assert draining.wait(HANG_S), "close() never reached the drain"
         Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="another actor's commit",
                                            next_action=None)
         time.sleep(3 * lead_broker.POLL_S)

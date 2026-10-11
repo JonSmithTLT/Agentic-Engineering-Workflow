@@ -58,7 +58,7 @@
     },
     "notify": {
       "type": "object",
-      "description": "The unattended-Run notifier (M4-E operator decision 1): an argv run supervisor-side, never through a shell, with a JSON event on stdin, a sanitized environment and bounded time and output. Raising the mode to run requires command[0] to resolve to an executable file. Delivery lands with the steering loop (M4-E E7).",
+      "description": "The unattended-Run notifier (M4-E operator decision 1): an argv run supervisor-side, never through a shell, with a JSON event on stdin, a sanitized environment and bounded time and output. Raising the mode to run requires command[0] to resolve to an executable file. Delivery: M4-E E7a (the operator endpoint runs it, with a timeout and an output bound; a failure is shown in status and the dashboard's attention and has no workflow effect); the loop: E7b.",
       "required": ["command"],
       "additionalProperties": false,
       "properties": {

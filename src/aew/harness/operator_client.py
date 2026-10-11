@@ -49,6 +49,12 @@ def _same_process(locator: dict[str, Any]) -> bool:
     return True  # alive and unprovable: never replaced
 
 
+def same_process(record: dict[str, Any]) -> bool:
+    """Whether the process a record names by ``pid`` and ``process_started`` is alive and is that process: the
+    locator's own check, which the endpoint's watcher also applies to the broker's liveness record (M4-E E7a)."""
+    return _same_process(record)
+
+
 def read_locator(path: Path) -> dict[str, Any] | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))

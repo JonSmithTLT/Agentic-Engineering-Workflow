@@ -594,8 +594,8 @@ model configuration is a projection of the catalog and the adopted allowed set, 
 
 The pinned harness always sends some request fields that its configuration cannot turn off:
 `stream_options.include_usage`, `store: false`, and `strict: false` on tool definitions. They are qualified live against
-the provider. The gateway strips or translates only a field whose incompatibility is proven, never one that is merely
-unfamiliar.
+the provider by the operator, in the provider's environment. The gateway strips or translates only a field whose
+incompatibility is proven, never one that is merely unfamiliar.
 
 ### 6.9 Frozen architecture
 

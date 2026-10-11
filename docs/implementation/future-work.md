@@ -54,7 +54,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 ### **Before a provider that requires a client certificate is used**
 
-**Condition:** The AEW Provider Gateway (F18.8 with F28) holds the provider's mutual-TLS client certificate and key and presents them: the pinned harness (OpenCode 2.0.18) speaks chat completions but cannot present a client certificate (harness probe, 2026-10-11), and the credential never enters a sandbox or a harness's configuration. Applies only to such providers; for others Q5's hardening milestone and its order are unchanged (designer, 2026-10-11).
+**Condition:** The AEW Provider Gateway (F18.8 with F28) holds the provider's mutual-TLS client certificate and key and presents them: the pinned harness (OpenCode 2.0.18) speaks chat completions but cannot present a client certificate (harness probe, 2026-10-11), and the credential never enters a sandbox or a harness's configuration. Applies only to such providers; for others Q5's hardening milestone and its order are unchanged (designer, 2026-10-11). The forced request fields have been qualified against the provider (operator, live; AIR-85).
 
 **Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §6.4, §6.5 (ledger AIR-81, AIR-82)
 

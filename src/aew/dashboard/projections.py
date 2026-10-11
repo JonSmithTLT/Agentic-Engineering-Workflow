@@ -24,14 +24,17 @@ computes the validator over that and then stamps the real time in (F20.4), so th
 
 from __future__ import annotations
 
+import enum
 import hashlib
 import logging
 import os
 import re
 import sqlite3
 import time
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+import uuid
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path, PurePath
 from typing import Any
 
 from aew import errors
@@ -42,7 +45,7 @@ from aew.dashboard.reader import INVALID, NONE, MapsReader, Registry, Snapshot
 from aew.dashboard.reasons import reason
 from aew.engine import outbox, recall
 from aew.engine import transitions as T
-from aew.engine.archive_ops import held_evidence, is_v2, redact
+from aew.engine.archive_ops import VERIFIER_MASK, held_evidence, is_v2
 from aew.engine.freshness import record_freshness
 from aew.engine.history_ops import TRUST_LABEL
 from aew.engine.history_ops import _public as public_entry
@@ -1060,7 +1063,8 @@ class Projector:
                 break
         op, summary = str(record.get("op") or "transition"), record.get("summary")
         title = f"{op}: {summary}" if isinstance(summary, str) and summary else op
-        return {"id": f"R{rev}", "subject": subject, "occurred_at": str(record["at"]), "title": title[:1000],
+        # redacted before the cut, so no prefix of a credential survives it
+        return {"id": f"R{rev}", "subject": subject, "occurred_at": str(record["at"]), "title": K.redact(title)[:1000],
                 "reason": reason("TRANSITION_REASON", str(record["reason"])) if record.get("reason") else None}
 
     def activity_list(self, *, limit: int, cursor: str | None) -> dict[str, Any]:
@@ -1386,5 +1390,44 @@ def _architecture_id(value: str) -> bool:
 
 
 def scrub(value: Any) -> Any:
-    """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers."""
-    return redact(value)
+    """The second layer behind the allowlist: the engine's redaction of credential strings and verifiers.
+
+    JSON-native structure only; unrecognised containers are refused. One walk does both parts:
+
+    * a ``dict`` is walked; its keys must be strings and pass the engine's credential redaction
+      (:func:`aew.harness.contract.redact`), and a ``verifier`` key's value is masked as the engine masks it
+      (:data:`aew.engine.archive_ops.VERIFIER_MASK`);
+    * a ``list`` or ``tuple`` is walked and emitted as a list;
+    * ``None``, ``bool``, ``int`` and ``float`` (subclasses too) are emitted as the plain value;
+    * a string (a subclass too) is emitted by its own characters, redacted;
+    * a plain leaf with no structure (:data:`TEXT_LEAVES`, or an ``Enum`` that is not a ``str`` or ``int``) is
+      emitted as ``str(value)``, redacted;
+    * anything else (a set, a dataclass, another mapping, a generator, an arbitrary object) raises ``TypeError``,
+      which the server answers as ``PROJECTION_FAILED``: a projection emits JSON-native structure, and nothing is
+      printed that could hold a verifier."""
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise TypeError(f"a response key is a string, not {type(k).__name__}")
+            out[K.redact(str.__str__(k))] = VERIFIER_MASK if k == "verifier" else scrub(v)
+        return out
+    if isinstance(value, list | tuple):
+        return [scrub(v) for v in value]
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return K.redact(str.__str__(value))
+    if isinstance(value, TEXT_LEAVES) or isinstance(value, enum.Enum):
+        return K.redact(str(value))
+    raise TypeError(f"a response holds JSON-native structure, not {type(value).__name__}")
+
+
+# Leaves with no structure that a response may carry as their ``str()``.
+TEXT_LEAVES = (PurePath, bytes, bytearray, datetime, date, Decimal, uuid.UUID)

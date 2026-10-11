@@ -52,6 +52,12 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source:** [F23 decision record](../design/decisions-2026-10-07-f23-internal-alpha-threat-model.md) (ledger IAT-02, IAT-03)
 
+### **Before a provider that requires a client certificate is used**
+
+**Condition:** The AEW Provider Gateway (F18.8 with F28) holds the provider's mutual-TLS client certificate and key and presents them: the pinned harness (OpenCode 2.0.18) speaks chat completions but cannot present a client certificate (harness probe, 2026-10-11), and the credential never enters a sandbox or a harness's configuration. Applies only to such providers; for others Q5's hardening milestone and its order are unchanged (designer, 2026-10-11).
+
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §6.4, §6.5 (ledger AIR-81, AIR-82)
+
 ## 2. Designed, not implemented
 
 <!-- columns: # | Work | Source (governing) | Belongs to or gated by | Notes -->
@@ -470,7 +476,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source (governing):** [F18 harness hosting and attachment authority v0.6](../design/f18-harness-hosting-attachment-authority-design-v0.6.md) §4, §20.3 (ledger HAA)
 
-**Belongs to or gated by:** **Unscheduled.** Not before M4-H (design §24.2); the F18 production-hosting track
+**Belongs to or gated by:** **Gate: before a provider that requires a client certificate is used** (§1; designer, 2026-10-11, AIR-82). Otherwise not before M4-H (design §24.2); the F18 production-hosting track
 
 **Notes:** Exit: a direct provider attempt fails; a model switch or tool injection is denied; altered, replayed or unbound tool calls fail; an outage fails closed. **One AEW Provider Gateway (designer, 2026-10-06, [decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md) §2, ledger HRC-06 to HRC-10):** this row composes F28's fixed-upstream credentialing relay with the attestation and broker binding into one logical provider path, the only custodian of the provider credential; F28 keeps the network-containment and credential-routing requirements and the separate credentialless generic egress; an internal split may not open a gap between the request attested and the request credentialed and forwarded
 
@@ -746,7 +752,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Source (governing):** [network containment design v0.2](../design/network-containment-design-v0.2.md) (adopted by the designer, 2026-10-06; ledger NET); architecture review G5, F-F
 
-**Belongs to or gated by:** **Gate: before internal alpha** (§1). Not an M4-C or M4-D blocker; depends on M4-B
+**Belongs to or gated by:** **Gate: before internal alpha** (§1), and with F18.8 before a provider that requires a client certificate is used (§1; designer, 2026-10-11, AIR-82). Not an M4-C or M4-D blocker; depends on M4-B
 
 **Notes:** An ADR-0009 label and custody amendment. **The text to land is the frozen v0.2 design's §3 (designer, 2026-10-05)**, which separates CONNECT allowlisting from provider credential injection (its §1.1); the review's earlier draft ([T6 register entry and ADR-0009 amendment draft](../archive/reviews/architecture-review-2026-10-04/t6-register-entry-and-adr-0009-amendment-draft.md), a single credential-injecting proxy, direction accepted 2026-10-04) is superseded by it; the Rocky 8.10 probes are in [T6](../archive/reviews/architecture-review-2026-10-04/t6-network-containment.md); **Landed in ADR-0009 as the amendment of 2026-10-05 (designed, not built).** Until the implementation lands, Linux runs are labelled `network: shared` (truthful topology; PR #50, NET-08) and Windows runs `not_provided`. The Rocky 8.10 probes: the namespace works, the bridge's filesystem socket survives it, the server forwarder costs about 0.7 ms per request, OpenCode 2.0.18 starts offline, Bun honours the proxy variables. Still to probe: a real streamed turn through the relay, cancellation, IPv6 **Lead developer (2026-10-05, PR #57):** M4-D's deterministic integration checks (D5) inherit F28's default that checks get no network (`isolated`); a check that needs network declares it within the policy ceiling. The F18 hosting design v0.6 §4.1 makes its gateway the only holder of provider credentials for managed execution; the designer decided on 2026-10-06 that they are one logical AEW Provider Gateway ([decision record](../design/decisions-2026-10-06-f18-2-f18-8-hosting-reconciliation.md) §2): F28's relay is not deleted and keeps its containment and fixed-upstream credential-routing requirements, F18.8 composes it with attestation and broker binding, and generic egress stays separate and credentialless.
 
@@ -1138,9 +1144,9 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 ### F46
 
-**Work:** The Operator Settings Surface: every operator-editable setting (marked by an explicit schema or registry annotation) has a dashboard editor showing its current value, description, valid values, classification, effective boundary, proposed value, validation result, diff and authority and effect; a generic schema renderer, custom editors where needed, and a completeness test proving every such setting has one. F20 presents, F15.4 classifies, the operator endpoint holds the mutation authority; the dashboard never writes control state and is never a model-visible channel. **Models per role:** (A) the live catalog from the provider's model-information endpoint; (B) AEW's advisory eligibility table (recommended|eligible|not_recommended|incompatible, with evidence and reasons), owned by the execution-profile and model-routing policy, with F19 supplying evidence only; (C) `allowed_models[role]`, the operator's, legality-affecting, through `adopt`, where an override of AEW's recommendation needs an explicit confirmation and an override record and can never override incompatible or unavailable; (D) `model_preference_order[role]`, operational when it only reorders; fallback only to the next usable model inside the adopted allowed set, otherwise operator attention
+**Work:** The Operator Settings Surface: every operator-editable setting (marked by an explicit schema or registry annotation) has a dashboard editor showing its current value, description, valid values, classification, effective boundary, proposed value, validation result, diff and authority and effect; a generic schema renderer, custom editors where needed, and a completeness test proving every such setting has one. F20 presents, F15.4 classifies, the operator endpoint holds the mutation authority; the dashboard never writes control state and is never a model-visible channel. **Models per role:** (A) the live catalog from the provider's model-information endpoint; (B) AEW's advisory eligibility table (recommended|eligible|not_recommended|incompatible, with evidence and reasons), owned by the execution-profile and model-routing policy, with F19 supplying evidence only; (C) `allowed_models[role]`, the operator's, legality-affecting, through `adopt`, where an override of AEW's recommendation needs an explicit confirmation and an override record and can never override incompatible or unavailable; (D) `model_preference_order[role]`, operational when it only reorders; fallback only to the next usable model inside the adopted allowed set, otherwise operator attention; (E) principal accessibility, a fifth runtime fact: a model that exists but that AEW's credential may not use (HTTP 403), observed per principal and model, separate from the eligibility verdict and never overridable; a 403 is not retried for the same invocation or model and fallback stays inside the allowed set; provider capability flags can establish incompatibility, never qualification or authority; AEW or the gateway queries the catalog, and the harness configuration is a projection of it
 
-**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.16, §3.17 (ledger AIR-65 to AIR-73); the operator's request of 2026-10-11
+**Source (governing):** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.16, §3.17, §6.1 to §6.3, §6.7 (ledger AIR-65 to AIR-73, AIR-78 to AIR-80, AIR-84); the operator's request of 2026-10-11
 
 **Belongs to or gated by:** **Designer.** Gated by a security design for the first write-capable dashboard flow
 
@@ -1825,6 +1831,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** A LINK of the consolidation pass; the steering loop's stop codes are not yet in the root registry
 
 *Later notes: `notes.d/E70/`, oldest first (`python tools/register.py show E70`).*
+
+### E71
+
+**Work:** The M4 operator guide: a guide under `docs/guides/` for what M4 built, which today's guides (M1 to M3) do not cover: the typed Lead tools and `aew lead tool`; the operator endpoint, steering (Crawl/Walk/Run, the steering loop) and the operator notifier; concurrency and the integration queue (`defer`, `requeue`, `reorder`, the breaker); VALIDATE_ONLY and the custody worker; checks-mode validation (Linux only); `aew stage continue|abandon` and dispositions; `aew map`, raw-history search and F9 messaging; the containment labels per platform; usage (no `aew usage` command yet, and a price table needs a `policy.pricing` entry that `aew init` does not write); and a dashboard guide, of which there is none. It also corrects what is wrong today: `opencode.md`'s containment section still says every run is workdir separation only, stale for Linux; the dashboard's default port (4280) is undocumented; and Class 0 integration needs the CLI (`ticket_draft` cannot create a Class 0 Ticket, and `ticket_prepare` requires Ticket-level verification evidence), which no guide says
+
+**Source:** The operator's request of 2026-10-11; `docs/guides/` (M1 to M3 only)
+
+**When:** **M4.** At M4-E's closeout, written after the operator's M4 UAT round (2026-10-11) so that it covers what confused the operator there. Owner: the lead developer
+
+**Notes:** The guide row owns the `opencode.md` correction, so no other change fixes it first. F20 has no dashboard guide; this row writes it
+
+*Later notes: `notes.d/E71/`, oldest first (`python tools/register.py show E71`).*
 
 ### E47
 

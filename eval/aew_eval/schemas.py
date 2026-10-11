@@ -17,7 +17,9 @@ FILES = {"aew/eval-case/v1": "case.schema.json", "aew/eval-prereg/v1": "preregis
          "aew/m4h-run-manifest/v1": "m4h-run-manifest.schema.json",
          "aew/m4h-bundle-manifest/v1": "m4h-bundle-manifest.schema.json",
          "aew/m4h-armhost/v1": "m4h-armhost.schema.json",
-         "aew/m4h-release-event/v1": "m4h-release-event.schema.json"}
+         "aew/m4h-release-event/v1": "m4h-release-event.schema.json",
+         # The run supervisor (F19 plan v5, S8a).
+         "aew/m4h-responder/v1": "m4h-responder.schema.json"}
 
 
 class Invalid(ValueError):

@@ -1516,6 +1516,14 @@ summary {
   list-style: none;
   padding: 0;
 }
+.work-invocations {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.work-invocations > p,
+.work-invocation-list {
+  margin-inline: 16px;
+}
 .work-invocation-list li {
   display: flex;
   flex-wrap: wrap;

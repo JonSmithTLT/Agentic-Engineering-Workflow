@@ -8,6 +8,10 @@ intro: |
   `python tools/register.py check` (and CI) keeps the list current. An item whose row closes, or a blocked row that
   closes, fails the check until it is removed or updated. A row has at most one item. Every open question (§4) has
   its own item, and every row targeted **Designer** has one or is blocked by one.
+
+  An item's `what` says what is owed; change it only when that changes. Context, progress and pointers to new
+  material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
+  show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
 - row: F25
   needs: decision

@@ -24,8 +24,13 @@ operator principal cannot be shown distinct from the Lead host's. What a same-ui
 :data:`RESIDUALS`; none of these barriers is a security boundary against it (plan v3 §2.1).
 
 The protocol is the dashboard control channel's (F20.3): one JSON request per connection, ``{op, args}``, never pickle,
-bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (E7), the
-publication grants (E6b) and the relaunch breaker reset (E8) join them.
+bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (M4-E E7c), the
+publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1).
+
+**Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
+whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
+broker's liveness record, commits nothing, and never takes ``_authorizing`` or ``_engine_lock``, so a slow notifier
+never delays a challenge.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ from aew import errors, operator
 from aew.engine.lock import FileLock
 from aew.engine.steering import GUARANTEE, OperatorPrincipal
 from aew.errors import LockTimeout
-from aew.harness import procs
+from aew.harness import notify, procs
 from aew.harness.bridge import private_address
 from aew.harness.operator_client import (
     CHALLENGE_TIMEOUT_S,
@@ -158,6 +163,7 @@ class OperatorEndpoint:
         self._listener: Any = None
         self._lock: FileLock | None = None
         self._thread: threading.Thread | None = None
+        self.watcher: notify.Watcher | None = None
         self.address = ""
         self.family = ""
         self._private_dir: str | None = None
@@ -173,11 +179,13 @@ class OperatorEndpoint:
             self.address, self.family, self._private_dir = private_address()
             self._listener = Listener(self.address, family=self.family)  # no key: the peer check authorizes
             self._write_locator()  # under the lock: whatever locator was there is stale
+            self.watcher = notify.Watcher(self.engine.repo_root, self.engine.aew_root)
         except BaseException:
             self._release()
             raise
         self._thread = threading.Thread(target=self._serve, name="aew-operator-endpoint", daemon=True)
         self._thread.start()
+        self.watcher.start()
 
     def serve_forever(self) -> None:
         try:
@@ -190,6 +198,8 @@ class OperatorEndpoint:
         if self._closed.is_set():
             return
         self._closed.set()
+        if self.watcher is not None:
+            self.watcher.close(WAKE_TIMEOUT_S)  # bounded: a delivery in flight is killed, never waited for
         if self._thread is not None and self._thread.is_alive():
             # The serving thread observes the closure only after an accept, so this connection always has a taker;
             # it runs on its own thread, bounded, so closing never waits on it (the 2026-10-08 CI hangs).

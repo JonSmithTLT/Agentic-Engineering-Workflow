@@ -16,6 +16,10 @@ conflict of 2026-10-09 is replayed from this repository's history and no longer 
 The exception, pinned here too: two insertions at one place (two rows closed into the same gap of §Closed's id order,
 two new rows appended at one place) conflict in git whatever the layout. For the register `register.py resolve`
 settles them, merging the YAML row by row and leaving only the same cell changed on both sides.
+
+The same cell changed on both sides conflicts whatever the layout, and appending to a hub row's Notes cell was the
+change almost every pull request made. So a later note is a file of its own under `notes.d/<row id>/`, which no
+other branch writes and which changes no shared file: two branches noting the same row merge.
 """
 
 from __future__ import annotations
@@ -49,8 +53,18 @@ def load(text: str) -> Any:
     return yaml.load(text, Loader=LOADER)  # noqa: S506  (a safe loader: CSafeLoader or SafeLoader)
 REG_YAML, REG_MD = "docs/implementation/future-work.yaml", "docs/implementation/future-work.md"
 DUE_YAML, DUE_MD = "docs/implementation/decisions-due.yaml", "docs/implementation/decisions-due.md"
+NOTES = "docs/implementation/notes.d"
 STATUS = "docs/implementation/implementation-status.md"
 STATUS_TEXT = (ROOT / STATUS).read_text(encoding="utf-8")
+# A slice named as the plans name them (E3a, S2a, MS2, HS1, D2, L1, P2b, W06), or as "slice 1" / "Slice 2b" /
+# "slices S1". A decision id after its ADR ("ADR-0017 D8") and a register row ("register E55") are not slices; both
+# are suffix-less, so a suffixed token ("register E5b", "ADR-0016 E5b") is still a slice (review of PR #195, R4-F1).
+SLICE_TOKEN = re.compile(r"\b(?:E|S|MS|HS|D|L|P|W)\d+[a-z]\b"
+                         r"|(?<!ADR-\d\d\d\d )(?<!register )\b(?:E|S|MS|HS|D|L|P|W)\d+\b(?![a-z])"
+                         r"|(?i:\bslices?) [A-Za-z]*\d+[a-z]?\b")
+# A part of a capability named by its register row (the dashboard's F20.2 to F20.6).
+PART_ID = re.compile(r"\bF\d+\.\d+\b")
+LABEL = re.compile(r"^\*\*(.+?)\*\*")
 DATA = yaml.safe_load((ROOT / REG_YAML).read_text(encoding="utf-8"))
 DUE = yaml.safe_load((ROOT / DUE_YAML).read_text(encoding="utf-8"))
 # PR #142's merge of main (d40d802): its two parents, and their merge base.
@@ -224,6 +238,27 @@ def test_the_same_cell_changed_on_both_sides_still_conflicts(repo):
     conflicts, _ = repo.merge(repo.commit(register_files(changed(DATA, first, last, " Ours.")), base),
                               repo.commit(register_files(changed(DATA, first, last, " Theirs.")), base))
     assert sorted(conflicts) == [REG_MD, REG_YAML]
+
+
+def test_two_branches_noting_the_same_row_merge_with_no_conflict(repo):
+    """The failure of 2026-10-10: almost every pull request appended a sentence to the Notes cell of one of a few hub
+    rows, which conflicts in both files whatever the layout (the test above). A note is a file of its own
+    (notes.d/<row id>/<date>-<branch slug>.md), and the page does not change when one is added, so two branches that
+    note the same row on the same day merge, the merge is exactly both notes, and every shared file is untouched."""
+    rid = "F19"
+    base_files = register_files()
+    base = repo.commit(base_files)
+    ours_note, theirs_note = f"{NOTES}/{rid}/2026-10-10-impl-ours.md", f"{NOTES}/{rid}/2026-10-10-impl-theirs.md"
+    ours = repo.commit({ours_note: "Ours.\n", **register_files()}, base)
+    theirs = repo.commit({theirs_note: "Theirs.\n", **register_files()}, base)
+    conflicts, files = repo.merge(ours, theirs)
+    assert conflicts == []
+    assert files[ours_note] == "Ours.\n" and files[theirs_note] == "Theirs.\n"
+    assert {p: files[p] for p in base_files} == base_files, "a note changes no shared file"
+    notes = [(p.removeprefix(f"{NOTES}/"), t) for p, t in files.items() if p.startswith(f"{NOTES}/")]
+    assert register.note_problems(load(files[REG_YAML]), notes) == []
+    shown = register.show(load(files[REG_YAML]), load(files[DUE_YAML]), rid, notes) or ""
+    assert shown.index("Ours.") < shown.index("Theirs.")
 
 
 def test_the_table_layout_conflicted_on_the_same_neighbouring_changes(repo):
@@ -549,3 +584,91 @@ def test_changes_to_neighbouring_capabilities_merge_and_the_same_field_still_con
     other = repo.commit({STATUS: STATUS_TEXT.replace(evidence, evidence + " Theirs.", 1)}, base)
     conflicts, _ = repo.merge(ours, other)
     assert conflicts == [STATUS]
+
+
+def _slices_named(label: str) -> set[str]:
+    """The slices a paragraph's bold label names: slice ids, "slice N" and register parts, each counted once."""
+    found = {m.group(0).lower() for m in SLICE_TOKEN.finditer(label)} | set(PART_ID.findall(label))
+    if any(t.startswith("slice") for t in found):  # "slice L1" names L1 once, not twice
+        found = {t for t in found if not t.startswith("slice")} or found
+    return found
+
+
+def _parts(heading: str) -> set[str]:
+    """The register rows a section's heading names as its parts: every id of a range ("F20.2 to F20.6"). A single id
+    in a heading ("register F15.2") is the capability's own row, not a part (review of PR #195, R5-F1)."""
+    found: set[str] = set()
+    for row, first, last in re.findall(r"\bF(\d+)\.(\d+) to F\1\.(\d+)\b", heading):
+        found |= {f"F{row}.{n}" for n in range(int(first), int(last) + 1)}
+    return found
+
+
+def _next_names_another(label: str, paragraph: str) -> list[str]:
+    """For a "next" paragraph, the slices its body names besides its own: a "next" paragraph that lists what comes
+    after it would be edited by each of those slices."""
+    if "next" not in label.lower():
+        return []
+    own = _slices_named(label)
+    body = paragraph[len(label) + 4:]
+    return sorted(t for t in _slices_named(body) if t not in own)
+
+
+def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices():
+    """The shapes found so far that would give a paragraph of a slice-built capability several authors (review of PR
+    #195, F1, R2-F1, R3-F1, R4-F1). Refused: a Status or an Acceptance paragraph that names a slice; a label naming
+    several slices or none; a label whose only slice is a register row the heading does not name as a part; a "next"
+    paragraph whose body names another slice; an unlabelled paragraph; a **Later slices** paragraph missing, not last,
+    or naming no existing row. This checks shapes, not meaning: a paragraph in prose about what comes next ("the stage
+    tools come next") passes. One author per paragraph is a convention that review keeps."""
+    ids = {r["id"] for r in register.rows(DATA, open_only=False) if r["id"]}
+    sliced = {name: paragraphs for name, paragraphs in capabilities(STATUS_TEXT).items()
+              if any(p.startswith("**Later slices:**") for p in paragraphs)}
+    assert len(sliced) >= 6, "the slice-built capabilities (outbox, F4, dashboard, M4-E, F25, F9)"
+    wrong: list[str] = []
+    for name, (status, acceptance, *rest) in sliced.items():
+        wrong += [f"{name}: its Status names {t!r}" for t in SLICE_TOKEN.findall(status)]
+        wrong += [f"{name}: its Acceptance paragraph names {t!r}" for t in SLICE_TOKEN.findall(acceptance)]
+        later = [p for p in rest if p.startswith("**Later slices:**")]
+        named = [m.group(1) for p in later if (m := re.search(r"register row (\S+) ", p))]
+        if len(later) != 1 or rest[-1] != later[0] or len(named) != 1 or named[0] not in ids:
+            wrong.append(f"{name}: one **Later slices** paragraph, last, naming a register row that exists")
+        for paragraph in rest[:-1]:
+            label = LABEL.match(paragraph)
+            if label is None:
+                wrong.append(f"{name}: a paragraph without a bold label: {paragraph[:50]!r}")
+            elif len(slices := _slices_named(label.group(1))) != 1:
+                wrong.append(f"{name}: {label.group(1)!r} names {sorted(slices)}, not one slice")
+            elif PART_ID.fullmatch(next(iter(slices))) and next(iter(slices)) not in _parts(name):
+                wrong.append(f"{name}: {label.group(1)!r} names a register row the heading does not name as a part")
+            elif others := _next_names_another(label.group(1), paragraph):
+                wrong.append(f"{name}: the next paragraph {label.group(1)!r} also names {others}")
+    assert wrong == []
+
+
+def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_that_names_one():
+    """The control for the test above: the paragraphs the reviews found are refused, the ones in use are accepted."""
+    for label in ("E5 and E6, the stage tools", "E3a and E3b", "MS0 and HS1", "Slice 2a and slice 2b", "the rest"):
+        assert len(_slices_named(label)) != 1, label
+    for label in ("E3a, the journal", "D2, next", "Slice 2b, the rest (next)", "M4-H live usage, slice L1",
+                  "HS1 built (2026-10-10; register E55, the F9-A plan's amendment 2)", "F20.3, the operator session",
+                  "S1, the field-group registry, canonicalization and live digests (F4 is dormant everywhere)",
+                  "MS0 done (2026-10-10)", "W06"):
+        assert len(_slices_named(label)) == 1, label
+    for text in ("E3a", "the stage tools are E5 and E6", "S2a", "MS2", "HS1", "sealing and compaction are D2", "L1",
+                 "P2b", "W06", "slice 1", "Slice 2b", "slices S1 to S12", "slice L1"):
+        assert SLICE_TOKEN.search(text), text
+    for text in ("register E5b", "ADR-0016 E5b"):  # suffixed: a slice, whatever precedes it (R4-F1)
+        assert SLICE_TOKEN.search(text), text
+    assert _parts("The read-only dashboard's server (register F20.2 to F20.6)") == {
+        "F20.2", "F20.3", "F20.4", "F20.5", "F20.6"}
+    assert _parts("Ticket revisions (register F4)") == set()  # so a label "F20.3, ..." there is refused (R4-F1)
+    m4e = "Governed stages on the typed Lead surface: the StageIntent journal (M4-E E3, register F15.2)"
+    assert _parts(m4e) == set()  # its own row: "**F15.2:** E5b and E6a built." is refused there (R5-F1)
+    assert _slices_named("F15.2") == {"F15.2"} and "F15.2" not in _parts(m4e)
+    assert _next_names_another("D2, next", "**D2, next:** sealing and compaction.") == []
+    assert _next_names_another("E5b, next", "**E5b, next:** then E6a and E6b.") == ["e6a", "e6b"]
+    assert _next_names_another("E5a, the first Ticket stages", "**E5a, the first Ticket stages** then E6a.") == []
+    for text in ("M4-D", "M4-H's live usage", "F20.2 to F20.6", "the F9-A plan v4", "ADR-0016", "ADR-0017 D8",
+                 "register E55", "§7", "what each slice built is in its paragraph",
+                 "the row named under **Later slices**"):
+        assert not SLICE_TOKEN.search(text), text

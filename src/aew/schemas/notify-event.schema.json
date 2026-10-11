@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/notify-event/v1",
+  "title": "AEW operator notification",
+  "description": "M4-E plan v3 §2.8 and E7 (operator decision 1); amendment 1, E7a: the JSON object the operator endpoint writes, one per occurrence, to the notifier's stdin. Plan v3's {event, project_id, subject, reason, ref, revision, at}, plus `source` (where the endpoint learned it: control state, the broker's liveness record, or a spool writer), `authenticated` (true only for an event derived from control state; a liveness record and a spool line are local files a same-uid process can forge, so they only ever notify), and an optional `reason_code` (filled from M4-E E8b on). The event enum is §2.8's whole table; E7a delivers generation_ended, broker_gone, raise_requested, confirmation_requested, breaker_tripped, custodian_lost, hard_deadline and launch_failed, and the later slices the rest. A notification is attention, never authority: nothing reads it to act.",
+  "type": "object",
+  "required": ["schema", "event", "project_id", "subject", "reason", "ref", "revision", "at", "source", "authenticated"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/notify-event/v1"},
+    "event": {"enum": ["generation_ended", "broker_gone", "raise_requested", "confirmation_requested",
+                       "confirmation_pending", "breaker_tripped", "custodian_lost", "hard_deadline", "launch_failed",
+                       "anomaly_high", "loop_stopped", "envelope_ended", "published_under_pic", "pic_not_exercised"]},
+    "project_id": {"type": "string"},
+    "subject": {"type": ["string", "null"], "maxLength": 512},
+    "reason": {"type": ["string", "null"], "maxLength": 512},
+    "ref": {"type": ["string", "null"], "maxLength": 512},
+    "revision": {"type": ["integer", "null"], "minimum": 0},
+    "at": {"type": "string"},
+    "source": {"type": "string", "pattern": "^(control_state|liveness|spool:(broker|run-R-[A-Za-z0-9_-]{1,160}))$"},
+    "authenticated": {"type": "boolean"},
+    "reason_code": {"type": ["string", "null"], "maxLength": 64}
+  }
+}

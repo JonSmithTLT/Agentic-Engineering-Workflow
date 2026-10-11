@@ -14,6 +14,12 @@ Started detached by ``aew harness launch`` / ``--launch``. It:
 
 It never commits AEW state: a run ending, with or without evidence, moves nothing (WC §8.2). If the
 supervisor itself dies, the OS kills the harness tree (job object / sentinel) and the run is ``lost``.
+
+It appends to its run's own event-spool file (``aew.harness.event_spool``; M4-E plan v3 §2.8, amendment 1 E7a), before
+the record that makes the run terminal, so the operator endpoint notifies: ``hard_deadline`` at its deadline stop, and
+``launch_failed`` at each of its three launch-failure records (custody refused, the start failed, and ``main``'s two
+records made before any supervisor exists; R2-m5). A launch whose custody is never acknowledged has no supervisor and
+no event: its launcher gets ``HarnessLaunchFailed`` and the run reads ``unconfirmed``.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ from typing import Any
 from aew import errors
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, containment, procs, registry, runlog, usage
+from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
@@ -67,6 +73,20 @@ def starting_limit_s(harness: str | None) -> float:
 def log(msg: str) -> None:
     sys.stderr.write(K.redact(f"{utc_now()} {msg}\n"))
     sys.stderr.flush()
+
+
+def spool(run_dir: Path, event: str, reason: str) -> None:
+    """Append ``event`` to this run's event-spool file, for the operator endpoint to notify (M4-E E7a). The project is
+    the run directory's (``<aew root>/local/harness/runs/<run>``); a directory anywhere else has none, and nothing is
+    appended. Never raises (``event_spool.append``)."""
+    depth = len(Path(runlog.RUNS_REL).parts)
+    if len(run_dir.parents) <= depth:
+        return
+    aew_root = run_dir.parents[depth]
+    if run_dir.parent != aew_root / runlog.RUNS_REL:
+        return
+    event_spool.append(aew_root, event_spool.run_writer(run_dir.name), event, subject=run_dir.name,
+                       reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}")
 
 
 class Supervisor:
@@ -274,6 +294,7 @@ class Supervisor:
         self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", reason_code=code,
                            ended_at=utc_now())
         self._event("custody_refused", reason=reason, reason_code=code)
+        spool(self.run_dir, "launch_failed", self.record["reason"])  # site 1 (R2-m5), before the terminal record
         self._save()
         self._send_ack({"custody": False, "reason": reason, "reason_code": code})
         self._drop_credential()
@@ -281,6 +302,7 @@ class Supervisor:
 
     def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None) -> bool:
         code = K.launch_failure_code(K.START, error_code, cause)
+        spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
         self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
         self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
         return False
@@ -319,6 +341,7 @@ class Supervisor:
             if not status.get("alive"):
                 return self._finish_exited(status)
             if deadline is not None and now >= deadline:
+                spool(self.run_dir, "hard_deadline", f"deadline of {deadline_s}s exceeded")
                 return self._finish(K.TERMINATED, f"deadline of {deadline_s}s exceeded")
             time.sleep(TICK_S)
 
@@ -522,7 +545,9 @@ def main(argv: list[str] | None = None) -> int:
     ack = sys.stdout.buffer
     raw = sys.stdin.buffer.readline(HANDOFF_LIMIT)
     sys.stdin.close()
-    if not raw.strip():
+    if not raw.strip():  # site 3 (R2-m5): main's two records, made before any supervisor exists
+        spool(run_dir, "launch_failed", "no credential handoff: the launching process ended before handing over "
+                                        "custody")
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "no credential handoff: the launching process ended before handing "
                                                 "over custody; no process holds this run's credential",
@@ -532,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         handoff = json.loads(raw.decode("utf-8"))
     except ValueError:
+        spool(run_dir, "launch_failed", "malformed credential handoff")
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "malformed credential handoff",
                                       "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": utc_now()})

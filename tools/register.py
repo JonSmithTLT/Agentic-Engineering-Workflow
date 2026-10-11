@@ -12,6 +12,23 @@ dashboard keep reading the markdown; triage tooling reads the YAML.
     python tools/register.py import            # rebuild future-work.yaml from future-work.md
     python tools/register.py summary           # open rows by section and target
     python tools/register.py due               # print the decisions-due view
+    python tools/register.py show F19          # one row, its decisions-due item and all its later notes
+    python tools/register.py note F19          # create this branch's note on F19 for today, and print its path
+
+**Later notes.** A note added to a row after this change is a file of its own, never an edit of the row's Notes cell:
+``docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`` (``NOTE_NAME_RE``): the date the note was
+written and ``slug`` of the branch's name, which ``note`` derives from the checkout (``SLUG_RULE``); a second note for
+the same row on the same branch and day edits that branch's own file. Almost
+every change used to append a sentence to the same Notes cell of a hub row (F9, F15.5, F19, F20), and two changes to
+the same cell are the same YAML bytes, which no layout and no ``resolve`` can merge, and which GitHub (which runs no
+local merge driver) shows as a conflict. Two branches whose slugs differ never write the same note path, so their
+notes merge by construction; branch names that differ only in case or punctuation (``impl/f9a``, ``impl-f9a``) share
+a slug, and two such branches noting one row on one day would still collide, which ``note`` refuses locally (the file
+exists) but nothing can rule out across unmerged branches. The
+page does not inline the notes: every row with an id carries the same pointer to its directory whether or not it holds
+anything (``pointer``), so adding a note changes no shared file, not even ``future-work.md``. ``show`` prints a row
+with its notes oldest first (by file name), and ``check`` refuses a note whose row is not in the register, whose name
+or text is malformed, or whose name collides with another's (``note_problems``). Notes already in the YAML stay there.
 
 **Decisions due.** ``docs/implementation/decisions-due.yaml`` lists what the operator or the designer still owes the
 register: each item names its register row, what is needed (a decision, a design, or the adoption of one), its owner,
@@ -58,6 +75,7 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +105,12 @@ BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
 ID_RE = re.compile(r"^[A-Z][0-9]+(?:\.[0-9]+)?$")
 ID_KEY_RE = re.compile(r"^([A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
 CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
+NOTES = ROOT / "docs" / "implementation" / "notes.d"
+NOTES_README = "README.md"
+NOTE_NAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
+SLUG_RULE = ("the branch slug is the branch's name in lower case, each run of characters other than a-z and 0-9 "
+             "replaced by one hyphen, with none at either end (impl/F9a_MS3 is impl-f9a-ms3)")
+POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
 
 
 class _Dumper(yaml.SafeDumper):
@@ -152,6 +176,8 @@ def parse_markdown(text: str) -> dict[str, Any]:
                     j += 1
                 row[column] = value
                 i, rest = j, rest[rest.index(column) + 1:]
+            if (j := _skip_blank(lines, i)) < len(lines) and POINTER_RE.match(lines[j]):
+                i = j + 1  # the row's pointer to its later notes, derived from its id
             rows.append(row)
         trailing: list[str] = []
         while i < len(lines) and not SECTION_RE.match(lines[i]):
@@ -175,9 +201,16 @@ def parse_markdown(text: str) -> dict[str, Any]:
 
 # ------------------------------------------------------------------------------------------------------- render
 
+def pointer(rid: str) -> str:
+    """The paragraph that ends every row with an id: where its later notes are. It depends on the id alone, so the
+    page is the same whether the directory holds no note or many (the module's *Later notes*)."""
+    return f"*Later notes: `notes.d/{rid}/`, oldest first (`python tools/register.py show {rid}`).*"
+
+
 def render_markdown(data: dict[str, Any]) -> str:
-    """The page: each row a ``### <first cell>`` heading and one paragraph per non-empty cell, blank lines between,
-    so no line of one row touches a line of another (the module's *Merges*)."""
+    """The page: each row a ``### <first cell>`` heading, one paragraph per non-empty cell and, for a row with an id,
+    the ``pointer`` to its later notes, blank lines between, so no line of one row touches a line of another (the
+    module's *Merges*)."""
     out = [f"# {data['title']}", "", data["preamble"], ""]
     for section in data["sections"]:
         out += [f"## {section['number']}. {section['title']}", ""]
@@ -190,6 +223,8 @@ def render_markdown(data: dict[str, Any]) -> str:
             for column in columns[1:]:
                 if row[column]:
                     out += [f"**{column}:** {row[column]}", ""]
+            if ID_RE.match(row[columns[0]]):
+                out += [pointer(row[columns[0]]), ""]
         if section.get("after"):
             out += [section["after"], ""]
     text = "\n".join(out)
@@ -415,6 +450,130 @@ def render_due(due: dict[str, Any]) -> str:
     for row in sorted(blocked, key=id_key):
         out += [f"- **{row}** waits for {'; '.join(blocked[row])}", ""]
     return "\n".join(out).rstrip("\n") + "\n"
+
+
+# ------------------------------------------------------------------------------------------------------- later notes
+
+def note_files(root: Path = ROOT) -> list[tuple[str, str | None]]:
+    """Every file under ``notes.d``: its path relative to ``notes.d`` and its text (None when it is not UTF-8)."""
+    base = root / NOTES.relative_to(ROOT)
+    if not base.is_dir():
+        return []
+    found: list[tuple[str, str | None]] = []
+    for path in sorted(p for p in base.rglob("*") if p.is_file()):
+        try:
+            text: str | None = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+        except UnicodeDecodeError:
+            text = None
+        found.append((path.relative_to(base).as_posix(), text))
+    return found
+
+
+def notes_for(rid: str, files: list[tuple[str, str | None]]) -> list[tuple[str, str]]:
+    """A row's later notes, oldest first: by file name, which starts with the date the note was written."""
+    return sorted((rel.split("/", 1)[1], text or "") for rel, text in files
+                  if rel.count("/") == 1 and rel.split("/", 1)[0] == rid)
+
+
+def note_problems(data: dict[str, Any], files: list[tuple[str, str | None]]) -> list[str]:
+    """What is wrong with the later notes: a note outside ``notes.d/<row id>/``, for a row the register does not have,
+    whose name is not ``<YYYY-MM-DD>-<slug>.md`` with a real date, whose text is empty, not UTF-8, not ended by a
+    newline or holding conflict markers, whose path differs from another's only in case (one file on Windows and macOS,
+    two on Linux), or whose text repeats another note of the same row word for word (one note added twice)."""
+    out: list[str] = []
+    ids = {r["id"] for r in rows(data, open_only=False) if r["id"] and r["id"] != "Gate"}
+    folded: dict[str, list[str]] = {}
+    texts: dict[tuple[str, str], str] = {}
+    for rel, text in files:
+        where = f"notes.d/{rel}"
+        folded.setdefault(rel.casefold(), []).append(where)
+        if rel == NOTES_README:
+            continue
+        parts = rel.split("/")
+        if len(parts) != 2:
+            out.append(f"{where}: a note is notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md, one directory per row")
+            continue
+        rid, name = parts
+        if rid not in ids:
+            out.append(f"{where}: register row {rid} is not in the register (its directory is the row's exact id)")
+        m = NOTE_NAME_RE.match(name)
+        if m is None:
+            out.append(f"{where}: a note's name is <YYYY-MM-DD>-<branch slug>.md, where {SLUG_RULE}; "
+                       "`python tools/register.py note <id>` writes it")
+        else:
+            try:
+                date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            except ValueError:
+                out.append(f"{where}: {name[:10]} is not a date")
+        if text is None:
+            out.append(f"{where}: not UTF-8 text")
+            continue
+        if not text.strip():
+            out.append(f"{where}: empty")
+            continue
+        if not text.endswith("\n"):
+            out.append(f"{where}: does not end with a newline")
+        if _MARKER_RE.search(text):
+            out.append(f"{where}: holds conflict markers")
+        twin = texts.setdefault((rid, text.strip()), where)
+        if twin != where:
+            out.append(f"{where}: the same note as {twin}; keep one")
+    out += [f"{' and '.join(paths)}: names that differ only in case are one file on Windows and macOS; rename one"
+            for paths in folded.values() if len(paths) > 1]
+    return out
+
+
+def slug(branch: str) -> str:
+    """A branch's name as it appears in a note's file name (``SLUG_RULE``)."""
+    return re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
+
+
+def new_note(data: dict[str, Any], rid: str, branch_slug: str | None, when: date,
+             root: Path = ROOT) -> tuple[Path | None, str]:
+    """Create this branch's note on ``rid`` for ``when``, empty for the author to write: the path, or None and why not.
+    The slug is the current branch's (``slug``); a detached HEAD has no branch, so it needs ``branch_slug``. It refuses
+    a row the register lacks, and a note that exists (this branch's note for the day: edit it)."""
+    ids = {r["id"] for r in rows(data, open_only=False) if r["id"] and r["id"] != "Gate"}
+    if rid not in ids:
+        return None, f"register row {rid} is not in the register"
+    if branch_slug is None:
+        head = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")  # fails on a detached HEAD
+        if head.returncode or not head.stdout.strip():
+            return None, ("no branch is checked out (a detached HEAD), so there is no branch slug: pass --slug with "
+                          "the name of the branch the note will be committed on")
+        branch_slug = head.stdout.strip()
+    name_slug = slug(branch_slug)
+    if not name_slug:
+        return None, f"{branch_slug!r} gives an empty slug ({SLUG_RULE})"
+    path = root / NOTES.relative_to(ROOT) / rid / f"{when.isoformat()}-{name_slug}.md"
+    if path.exists():
+        return None, (f"{path.relative_to(root).as_posix()} exists: it is this branch's note on {rid} for the day, "
+                      "so add to it")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    return path, path.relative_to(root).as_posix()
+
+
+def show(data: dict[str, Any], due: dict[str, Any], rid: str, files: list[tuple[str, str | None]]) -> str | None:
+    """A row as the page shows it, its decisions-due item if it has one, then each of its later notes, oldest first;
+    None when the register has no such row."""
+    for section in data["sections"]:
+        columns = section["columns"]
+        found = next((r for r in section["rows"] if r[columns[0]] == rid), None)
+        if found is None:
+            continue
+        out = [f"## {section['number']}. {section['title']}", "", f"### {rid}", ""]
+        out += [line for column in columns[1:] if found[column] for line in (f"**{column}:** {found[column]}", "")]
+        for item in due.get("items") or []:
+            if item.get("row") == rid:
+                out += [f"**Decision due:** {item.get('needs')} by the {item.get('owner')}, by {item.get('due')}: "
+                        f"{_cell(item.get('what', ''))}", ""]
+        notes = notes_for(rid, files)
+        out += [f"#### Later notes (notes.d/{rid}/): {len(notes) or 'none'}", ""]
+        for name, text in notes:
+            out += [f"##### {name}", "", text.strip("\n"), ""]
+        return "\n".join(out).rstrip("\n") + "\n"
+    return None
 
 
 # ------------------------------------------------------------------------------------------------------- files
@@ -690,8 +849,14 @@ def resolve(root: Path = ROOT) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("command", choices=["render", "check", "resolve", "import", "summary", "due"])
+    ap.add_argument("command", choices=["render", "check", "resolve", "import", "summary", "due", "show", "note"])
+    ap.add_argument("row", nargs="?", help="show, note: the row's id, as in its heading (F19, F15.5)")
+    ap.add_argument("--slug", help="note: the branch the note will be committed on, when no branch is checked out")
     args = ap.parse_args(argv)
+    if (args.command in ("show", "note")) != (args.row is not None):
+        ap.error("`show` and `note` take one row id, and no other command takes one")
+    if args.slug is not None and args.command != "note":
+        ap.error("only `note` takes --slug")
     if args.command == "import":
         data = parse_markdown(MD.read_text(encoding="utf-8"))
         YAML.write_text(dump(data), encoding="utf-8", newline="\n")
@@ -711,15 +876,33 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "due":
         print(render_due(due), end="")
         return 0
+    if args.command == "note":
+        path, said = new_note(data, args.row, args.slug, date.today())
+        if path is None:
+            print(said, file=sys.stderr)
+            return 1
+        print(f"{said}: write the note there (it is empty, which `check` refuses until it is written)")
+        return 0
+    files = note_files()
+    if args.command == "show":
+        shown = show(data, due, args.row, files)
+        if shown is None:
+            print(f"register row {args.row} is not in the register", file=sys.stderr)
+            return 1
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if reconfigure is not None:  # the register is UTF-8; a Windows console's code page is not
+            reconfigure(encoding="utf-8")
+        print(shown, end="")
+        return 0
     if args.command == "summary":
         print(summary(data))
-        for p in problems(data) + due_problems(data, due):
+        for p in problems(data) + due_problems(data, due) + note_problems(data, files):
             print("problem:", p)
         return 0
     ok = md_ok = render_markdown(data) == MD.read_text(encoding="utf-8")
     if not md_ok:  # each line names what is out of step, never the register for a decisions-due problem (PR #104, A)
         print(f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders")
-    for problem in due_problems(data, due):  # first: a malformed item is named, not a crash in the renderer
+    for problem in due_problems(data, due) + note_problems(data, files):  # a malformed item is named, not a crash
         ok = False
         print("problem:", problem)
     if render_due(due) != DUE_MD.read_text(encoding="utf-8"):

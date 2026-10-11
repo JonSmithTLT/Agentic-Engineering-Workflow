@@ -18,6 +18,7 @@ import {
 } from './pages/Records';
 import { HistoryPage, HistoryDetailPage } from './pages/History';
 const HistorySearchPage = deferredScreen<object>('Raw history search', () => import('./pages/HistorySearch').then(module => ({ default: module.HistorySearchPage })));
+const MapsPage = deferredScreen<object>('Maps', () => import('./pages/Maps').then(module => ({ default: module.MapsPage })));
 import { AttentionPage, QueuePage } from './pages/Attention';
 import './styles.css';
 async function start() {
@@ -98,6 +99,7 @@ async function start() {
               <Route path="knowledge/:id" element={<KnowledgeDetailPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="history/search" element={<HistorySearchPage />} />
+              <Route path="maps" element={<MapsPage />} />
               <Route path="history/:id" element={<HistoryDetailPage />} />
               <Route path="attention" element={<AttentionPage />} />
               <Route path="queue" element={<QueuePage />} />

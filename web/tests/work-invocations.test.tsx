@@ -27,13 +27,14 @@ it('matches exact supplied work identity and kind, deduplicates references, and 
   matching.status = 'NEW_STATUS';
   data.data.runs = [matching, { ...matching, id: 'Wrong-kind', work: { ...matching.work, kind: 'evidence' } }, { ...matching, id: 'Wrong-work', work: { ...matching.work, id: 'T-other' } }];
   state.overview = { data: { value: data }, isError: false };
-  mount({ ...work, related: [{ kind: 'invocation', id: matching.id, title: null }, { kind: 'invocation', id: 'Historical-invocation', title: null }] });
+  mount({ ...work, related: [{ kind: 'invocation', id: matching.id, title: null }, { kind: 'invocation', id: 'Historical-invocation', title: 'Earlier review attempt' }] });
   expect(screen.getAllByRole('link', { name: matching.id })).toHaveLength(1);
   expect(screen.getByText('NEW_ROLE').closest('[role="status"]')?.textContent).toBe('Unknown value: NEW_ROLE');
   expect(screen.getByText('NEW_STATUS').closest('[role="status"]')?.textContent).toBe('Unknown value: NEW_STATUS');
   expect(screen.queryByText('Wrong-kind')).toBeNull();
   expect(screen.queryByText('Wrong-work')).toBeNull();
   expect(screen.getByRole('link', { name: 'Historical-invocation' }).getAttribute('href')).toBe('/runs/Historical-invocation');
+  expect(screen.getByText('Earlier review attempt')).toBeTruthy();
   expect(screen.getByText(/not a complete invocation history/)).toBeTruthy();
 });
 it('does not associate another project summary with the work', () => {

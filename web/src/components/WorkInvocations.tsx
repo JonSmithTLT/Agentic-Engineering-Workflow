@@ -31,8 +31,10 @@ export function WorkInvocations({ record, project }: {
       {source && overview.isError && <p className="preview-note" role="status">Overview refresh failed. Invocation details below are last-known-good data.</p>}
       {ids.length ? <ul className="work-invocation-list">{ids.map(id => {
         const item = reported.find(value => value.id === id);
+        const reference = references.find(value => value.id === id);
         return <li key={id}>
           <EntityAnchor entity={{ kind: 'invocation', id }} copyCli={false} />
+          {reference?.title && reference.title !== id && <span>{reference.title}</span>}
           {item ? <><span>Role: <SemanticValue value={item.role} known={invocationRoles} /></span><span>Reported status: <SemanticValue value={item.status} known={invocationStatuses} /></span></> : <span className="muted">Role and status not supplied in this summary.</span>}
         </li>;
       })}</ul> : <p>No invocation references supplied here. Other invocations may exist.</p>}

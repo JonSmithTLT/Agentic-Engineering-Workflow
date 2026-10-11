@@ -189,7 +189,9 @@ interactions:
 
 `between` names two entries of this plan's structured decomposition (§5.4). `interface_refs` name interfaces the plan
 declares (v0.5 §7.2). `allocated_identifiers` name namespaces the project's policy declares (v0.5 §10: project policy
-data, not an AEW-global list). Nothing else is added to the shape.
+data, not an AEW-global list). Nothing else is added to the shape. A disposition that an engine-detected interaction is not
+material (§7 check 6, §8) is a separate plan-level record that names the pair and its rationale; it is not an
+`interactions[]` entry and not a fourth `parallelism` value, and its field shape is an implementation choice (F41.2).
 
 ### 6.2 The parallelism verdict
 

@@ -899,24 +899,22 @@ sources:
     role: amendment
     # Proposed (2026-10-11), awaiting the designer's adoption: the WC/F14 parent-planning amendment v0.5 needs before
     # activation (F41.1), with the parent plan's interactions[] and the composition rule (F14.1); Q6a (AIR-07). Reviewed
-    # together with IDA. Its open questions for the designer are PPA-26 to PPA-32.
+    # together with IDA. Its open questions for the designer are PPA-26 to PPA-32; its acceptance checks are PPA-34.
     no_requirements:
       "1. Purpose and scope": framing; what the amendment covers is its sections
       "5. Amended WC §9.6: the reviewed parent-plan record": heading; the record contract is in its subsections
       "6. The parent plan's `interactions[]` (F14.1)": heading; the requirements are in its subsections
-      "12. Acceptance checks": the fixtures that prove PPA-01 to PPA-25; v0.5's checks 1 to 6 and 26 stay CFI-71 to CFI-76 and CFI-96
   - prefix: IDA
     path: docs/design/wc8-e19b-interface-dependency-amendment-v0.1.md
     role: amendment
     # Proposed (2026-10-11), awaiting the designer's adoption: the WC §8 / E19-B amendment for the interface_dependency
     # edge v0.5 needs before activation (F41.5); Q6a (AIR-07). Reviewed together with PPA. Its open questions for the
-    # designer are IDA-22 to IDA-27.
+    # designer are IDA-22 to IDA-27; its acceptance checks are IDA-29.
     no_requirements:
       "1. Purpose and scope": framing; what the amendment covers is its sections
       "3. Amended WC §8: two kinds of dependency edge": heading; the requirements are in its subsections
       "6. Amended E19-B §7.5: the trigger extended to accepted interface revisions": heading; the requirements are in its subsections
       "7. The `interface_digest_current` condition": heading; the requirements are in its subsections
-      "10. Acceptance checks": the fixtures that prove IDA-01 to IDA-21; v0.5's checks 9 to 13 and 15 stay CFI-79 to CFI-83 and CFI-85
 
 requirements:
   # ---- KCA: knowledge capture and admission design v0.4 (adopted 2026-10-09; F21) -----------------------------
@@ -3169,6 +3167,7 @@ requirements:
   PPA-31: {section: "14. For the designer", kind: open-question, tracked_by: [F41.1, F14.1], statement: "P6: should parent-plan decomposition entries declare scopes where known (the minimal plan does not require one, so overlap lint evidence is often unknown), or does lint coverage stay best effort with the reviewer judging the rest"}
   PPA-32: {section: "14. For the designer", kind: open-question, tracked_by: [F41.1, F14.1], statement: "P7: is v1's registered condition set exactly the acceptance's three examples, with additions by amendment, or may project policy register more"}
   PPA-33: {section: "15. Governing disposition", kind: process, tracked_by: [F41.1], statement: "On adoption it becomes an overlay of the spec amendment index extending WC §7.5 (Story / Epic paths), §8 (ancestor plans at mutating start) and §9.6 (the reviewed parent-plan record and interactions[]), replacing no frozen text; the F14 changes are recorded on F14 and F14.1; until adoption it is listed under considered"}
+  PPA-34: {section: "12. Acceptance checks", kind: evaluation, tracked_by: [F41.2, F14.1], statement: "Fixtures A1 to A12 beside v0.5 checks 1 to 6 and 26 (CFI-71 to CFI-76, CFI-96): a planless or unreviewed-plan Class-0 Story refuses mutating child dispatch; a Lead-accepted unreviewed Class-2 plan does not meet accepted_plan; a qualifying planning child dispatches and a mutating one labelled planner does not; a review bound to an earlier sha256 does not count; a takeover re-admitting the proposer cannot adopt; lint refuses free-text-only CONDITIONAL entries, SERIAL_REQUIRED cycles and undispositioned scope overlaps; SERIAL_REQUIRED refuses like a blocking dependency; PARALLEL_ALLOWED bypasses no isolation or gate; a false or unevaluable CONDITIONAL refuses the second start and no earlier ALLOW is reused; no numeric coupling score in the schema"}
   # ---- IDA: the WC §8 / E19-B interface-dependency amendment v0.1, proposed 2026-10-11 (F41.5) --------------------
   IDA-01: {section: "2. Activation condition", kind: gate, tracked_by: [F41, F41.5, F41.1], statement: "v0.5 activates only when both Q6a amendments (this one and the WC/F14 parent-planning amendment, PPA) exist as adopted governing amendments, and the activation gate verifies it (AIR-07, CFI-70, CFI-96)"}
   IDA-02: {section: "2. Activation condition", kind: gate, tracked_by: [F41, F45], statement: "v0.5 activates only when F45 is built and its policy adopted, since the edge protects declared interfaces only and undeclared relationships rely on integration validation receiving the base drift (v0.5 §9): an activated project may not leave gates.post_integration.base_drift_overlap absent or disabled, migration needs its explicit adoption, the activation gate verifies it (AIR-09, AIR-12, AIR-75)"}
@@ -3198,6 +3197,7 @@ requirements:
   IDA-26: {section: "12. For the designer", kind: open-question, tracked_by: [F41.5, F41.4], statement: "I5: a consumer that also consumes the changed interface section is both held and stale-bound; should the hold's rebinding count as its reconfirmation of that section, or must both be recorded"}
   IDA-27: {section: "12. For the designer", kind: open-question, tracked_by: [F41.5, F14.1], statement: "I6: is an interface_dependency edge declared only by the Lead's dependency-edit authority, or also compiled from an accepted parent plan's interactions[] interface_refs when the child is created"}
   IDA-28: {section: "13. Governing disposition", kind: process, tracked_by: [F41.5], statement: "On adoption it becomes an overlay of the spec amendment index extending WC §8 (blocking and interface edges, the interface trigger of revision_impact_hold), replacing no frozen text and naming the ticket-revisions-2026-10-06 overlay it extends; until adoption it is listed under considered"}
+  IDA-29: {section: "10. Acceptance checks", kind: evaluation, tracked_by: [F41.6], statement: "Fixtures B1 to B10 beside v0.5 checks 9 to 13 and 15 (CFI-79 to CFI-83, CFI-85): an interface-only consumer is READY and dispatches on a current digest while a blocking pair waits; snapshot checks ignore interface edges; author-supplied digests are ignored; an accepted plan revision holds exactly the consumers bound to the old digest, not their dependents; a provider revision leaving the digest unchanged holds no one; the held worker cannot record either clearing action and the Lead disposition alone does not clear; old-digest results satisfy no gate after clearing; rebinding with an active attempt is quiesced; interface_digest_current is false on a missing edge, a differing digest, an open hold or an unreadable input; a CONDITIONAL pair on it runs in parallel until an accepted interface revision"}
 retired:
   CUL-16: {disposition: "superseded-by: CUL-24 (v0.2: the designer revised R8 for Q12 on 2026-10-06; usage is recorded per AEW attachment and generation, not per native Lead session committed by the broker at session end)"}
   CUL-17: {disposition: "superseded-by: CUL-25 (v0.2: the same invariants restated for the attachment record, plus that a stale generation gains no authority when its TUI later exits)"}

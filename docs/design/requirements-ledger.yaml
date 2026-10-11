@@ -851,7 +851,8 @@ sources:
     # boundary (its content is recorded by F25's slice L7, ledger CMB, amending EVC-14 for M4-H only); D2 and D3 settle
     # F19's G1 and G2; D4 revises the M4-E plan v3 §2.4's unrequired_verification_results (no ledger row carried it;
     # MIC-16 lists what it needs, owed through F15.2's item in decisions due); D5 supersedes LWA-17's "broker's
-    # notifier"; D6 to D8 answer the Claude Code probe (F24.2), D7 confirming MCD-01, MCD-02.
+    # notifier"; D6 to D8 answer the Claude Code probe (F24.2), D7 confirming MCD-01, MCD-02. D4's verification half
+    # (MIC-07, MIC-08, MIC-16) is superseded by AIR-08 (Q6b, 2026-10-11), and F15.2's item for it is removed.
     no_requirements:
       "2. Context for each decision": heading; the context of each decision is its subsections
       "D1. The measurement boundary for M4-H's counted cost (F25's G1)": the question, F25's proposed boundary and the brief's recommendation; the decision is MIC-01, and F25's slice L7 records the boundary's content (ledger CMB)

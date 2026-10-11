@@ -518,7 +518,7 @@ the gates schema and the context packs, and an overlap only escalates the valida
 - **Owed by this record:** F42's design (the first cross-cutting integration note) and F46's security design, each a
   decisions-due item.
 - **Notes** on F9, F14, F15.2, F15.3, F15.4, F18.6, F18.8, F19, F20, F25, F28, F36, F37, F41, F41.1, F41.5, F41.7,
-  F41.10, E43, E54 and U1, each saying what changed with its AIR ids.
+  F41.10, E43, E45, E54 and U1, each saying what changed with its AIR ids.
 - **Q15**, the nit-rule divergence of v0.5 §21, is closed separately from these decisions: the operator aligned
   AGENTS.md with the product rule in pull request 193 (2026-10-10; one short delta review after nits following a CLEAR),
   so the register moves it to §9 and its decisions-due item is removed.

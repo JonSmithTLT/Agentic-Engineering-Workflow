@@ -253,7 +253,7 @@ considered:
   - path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
     reason: >-
       decision record (F41, 2026-10-10); the freeze of the cross-feature integration design v0.5, V-1(b), freeze
-      versus activation, the 26 acceptance checks and the nit-rule divergence pending the operator (Q15); replaces
+      versus activation, the 26 acceptance checks and the nit-rule divergence (Q15, since closed by PR #193); replaces
       no WC/KC text
   - path: docs/design/decisions-2026-10-11-architecture-integration.md
     reason: >-

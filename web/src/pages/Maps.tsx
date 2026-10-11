@@ -28,7 +28,7 @@ function Fields({ value, semantic = {}, known, keyVocabulary, semanticKeys = {} 
     }
     return <ul>{value.map((item, index) => <li key={index}><Fields value={item} semantic={semantic} semanticKeys={semanticKeys} known={known} /></li>)}</ul>;
   }
-  if (typeof value === 'object') return <dl>{Object.entries(value).map(([key, item]) => <div key={key}><dt>{keyVocabulary ? <SemanticValue value={key} known={keyVocabulary} /> : title(key)}</dt><dd><Fields value={item} semantic={semantic} semanticKeys={semanticKeys} known={semantic[key] ?? known} keyVocabulary={semanticKeys[key]} /></dd></div>)}</dl>;
+  if (typeof value === 'object') return <dl className="map-fields">{Object.entries(value).map(([key, item]) => <div key={key} className={Array.isArray(item) && item.length > 0 && item.every(row => typeof row === 'object' && row !== null && !Array.isArray(row)) ? 'map-table-field' : undefined}><dt>{keyVocabulary ? <SemanticValue value={key} known={keyVocabulary} /> : title(key)}</dt><dd><Fields value={item} semantic={semantic} semanticKeys={semanticKeys} known={semantic[key] ?? known} keyVocabulary={semanticKeys[key]} /></dd></div>)}</dl>;
   if (typeof value === 'string' && known) return <SemanticValue value={value} known={known} />;
   return <span className="map-value">{String(value)}</span>;
 }
@@ -44,12 +44,12 @@ function sectionVocabulary(section: typeof mapSections[number]): Record<string, 
     default: return {};
   }
 }
-function ReadState({ query, children }: { query: { data?: Projection<Envelope>; isPending: boolean; isFetching: boolean; error: Error | null; refetch: () => unknown }; children: ReactNode }) {
+function ReadState({ query, children, metadataLabel }: { query: { data?: Projection<Envelope>; isPending: boolean; isFetching: boolean; error: Error | null; refetch: () => unknown }; children: ReactNode; metadataLabel: string }) {
   return <>
     {query.error && <p role="alert" className="preview-note">{query.data ? 'Refresh failed. Displaying last-known-good data. ' : 'Projection unavailable. '}{query.error.message}</p>}
     {query.isPending && !query.data && !query.error && <p role="status">Loading Maps projection…</p>}
     <button className="map-refresh" disabled={query.isFetching} onClick={() => { void query.refetch(); }}>{query.isFetching ? 'Reading…' : 'Refresh this projection'}</button>
-    {query.data && <>{children}<details><summary>Source and browser metadata</summary><SourceStrip source={query.data} failed={!!query.error} /></details></>}
+    {query.data && <>{children}<details><summary>{metadataLabel}</summary><SourceStrip source={query.data} failed={!!query.error} /></details></>}
   </>;
 }
 function Overview({ against }: { against?: string }) {
@@ -67,7 +67,7 @@ function Overview({ against }: { against?: string }) {
   useEffect(() => {
     if (data?.structural.summary && !params.has('map_root')) setParams(old => { const p = new URLSearchParams(old); p.set('map_root', data.structural.summary!.root); return p; }, { replace: true });
   }, [data, params, setParams]);
-  return <ReadState query={query}>{data && <>
+  return <ReadState query={query} metadataLabel="Overview response metadata">{data && <>
     <p>{data.label}</p><div className="map-summary-facts"><p>Registry: <SemanticValue value={data.registry.state} known={['PRESENT', 'NONE', 'INVALID']} /></p><p>Map revision: <code>{data.map_revision ?? 'Not supplied'}</code></p><p>Stored maps: {data.stored.count}</p><p>Selected artifact: <SemanticValue value={data.structural.state} known={['AVAILABLE', 'UNAVAILABLE']} /></p></div>
     {!!data.registry.reasons.length && <Reasons values={data.registry.reasons} />}{!!data.structural.reasons.length && <Reasons values={data.structural.reasons} />}
     {data.structural.summary && <p>Registry-selected root: <code>{data.structural.summary.root}</code> · Source commit: <code>{data.structural.summary.source_revision ?? 'Not supplied'}</code></p>}
@@ -93,7 +93,7 @@ function Stored() {
     const control = [...document.querySelectorAll<HTMLElement>('[data-map-root]')].find(element => element.dataset.mapRoot === position.reference);
     if (control) { restoreReference(position, control); restored.current = location.key; }
   }, [data, location.state, location.key]);
-  return <ReadState query={query}>{data && <>
+  return <ReadState query={query} metadataLabel="Stored maps response metadata">{data && <>
     <p>{data.label}</p><form noValidate onSubmit={event => { event.preventDefault(); if (source && !ObjectId.safeParse(source).success) { setError('Enter a complete source commit identity.'); focusBelowHeader(event.currentTarget.querySelector('input')); return; } setError(''); setParams(old => { const p = new URLSearchParams(old); if (source) p.set('map_source_revision', source); else p.delete('map_source_revision'); p.delete('map_cursor'); return p; }); }}><label>Stored source commit <input value={source} aria-invalid={!!error} aria-describedby={error ? 'map-source-error' : undefined} onChange={event => setSource(event.target.value)} /></label><button>Filter stored maps</button>{error && <p id="map-source-error" role="alert">{error}</p>}</form>
     {params.get('map_root') && <p role="status">Viewed map: <code>{params.get('map_root')}</code>{!data.items.some(item => item.root === params.get('map_root')) && ' · Not on this loaded page; this does not establish unavailability.'}</p>}
     {(params.get('map_a') || params.get('map_b')) && <p>Chosen comparison A: <code>{params.get('map_a') ?? 'Not selected'}</code> · B: <code>{params.get('map_b') ?? 'Not selected'}</code></p>}
@@ -127,7 +127,7 @@ function DetailBody({ root, against, tab, section, changeSection }: { root: stri
   const schema = StructuralDetailResponse.refine(value => value.data.summary.root === root, 'Map root binding mismatch').refine(value => !against || !value.data.freshness.against_commit || value.data.freshness.against_commit === against, 'Compared-against commit binding mismatch');
   const query = useMapRead(structuralMapRoute(root, { against, section: tab === 'sections' ? section : 'limits_and_omissions' }), schema, useCapability('maps').available);
   const data = query.data?.value.data;
-  return <ReadState query={query}>{data && <>
+  return <ReadState query={query} metadataLabel="Selected map response metadata">{data && <>
     <p>{data.label}</p><SemanticValue value={data.summary.status} known={['AVAILABLE', 'CORRUPT']} /><Reasons values={data.summary.reasons} />
     <SemanticValue value={data.freshness.status} known={['CURRENT', 'STALE', 'UNKNOWN']} /><Reasons values={data.freshness.reasons} /><p>Compared against commit: <code>{data.freshness.against_commit ?? 'Not supplied'}</code></p>
     <p>Cut strings: {data.cut_strings} · Dropped fields: {data.dropped_fields}. Omitted or capped material remains unknown.</p>
@@ -139,7 +139,7 @@ function Inputs({ root }: { root: string }) {
   const schema = StructuralInputsResponse.refine(value => value.data.root === root, 'Input root binding mismatch');
   const query = useMapRead(mapInputsRoute(root, { limit: 50, cursor: params.get('map_input_cursor') ?? undefined }), schema, useCapability('maps').available);
   const data = query.data?.value.data;
-  return <ReadState query={query}>{data && <><p>{data.label}</p><p>Recorded inputs · 50 per page · Cut strings: {data.cut_strings} · Dropped fields: {data.dropped_fields}</p><Fields value={data.items} semantic={{ reason: vocab.inputReason }} /><Pager next={data.next_cursor} cursorKey="map_input_cursor" resetKey={root} /></>}</ReadState>;
+  return <ReadState query={query} metadataLabel="Input page response metadata">{data && <><p>{data.label}</p><p>Recorded inputs · 50 per page · Cut strings: {data.cut_strings} · Dropped fields: {data.dropped_fields}</p><Fields value={data.items} semantic={{ reason: vocab.inputReason }} /><Pager next={data.next_cursor} cursorKey="map_input_cursor" resetKey={root} /></>}</ReadState>;
 }
 function Compare() {
   const [params, setParams] = useSearchParams();
@@ -158,7 +158,7 @@ function Diff({ a, b }: { a: string; b: string }) {
   const schema = MapDiffResponse.refine(value => value.data.a.root === a && value.data.b.root === b, 'Comparison root binding mismatch');
   const query = useMapRead(mapDiffRoute(a, b), schema, useCapability('maps').available);
   const data = query.data?.value.data;
-  return <ReadState query={query}>{data && <><p>{data.label}</p><h2>Explicit comparison operands</h2><Fields value={{ a: data.a, b: data.b }} /><p>Supplied identical result: {String(data.identical)} · Cut strings: {data.cut_strings} · Dropped fields: {data.dropped_fields} · Dropped items: {data.dropped_items}</p><details><summary>Envelope differences</summary><Fields value={data.envelope} semantic={{ object_format: vocab.objectFormat, name: vocab.generatorName }} /></details><label>Comparison section <select value={section} onChange={event => setParams(old => { const p = new URLSearchParams(old); p.set('map_section', event.target.value); return p; })}>{mapSections.map(value => <option key={value} value={value}>{title(value)}</option>)}</select></label><h3>{title(section)}</h3>{data.sections[section].beyond_cap && <p className="preview-note">Changes beyond the supplied cap remain unknown.</p>}<Fields value={data.sections[section]} semantic={sectionVocabulary(section)} semanticKeys={section === 'languages' ? { counts: vocab.language } : {}} /></>}</ReadState>;
+  return <ReadState query={query} metadataLabel="Comparison response metadata">{data && <><p>{data.label}</p><h2>Explicit comparison operands</h2><Fields value={{ a: data.a, b: data.b }} /><p>Supplied identical result: {String(data.identical)} · Cut strings: {data.cut_strings} · Dropped fields: {data.dropped_fields} · Dropped items: {data.dropped_items}</p><details><summary>Envelope differences</summary><Fields value={data.envelope} semantic={{ object_format: vocab.objectFormat, name: vocab.generatorName }} /></details><label>Comparison section <select value={section} onChange={event => setParams(old => { const p = new URLSearchParams(old); p.set('map_section', event.target.value); return p; })}>{mapSections.map(value => <option key={value} value={value}>{title(value)}</option>)}</select></label><h3>{title(section)}</h3>{data.sections[section].beyond_cap && <p className="preview-note">Changes beyond the supplied cap remain unknown.</p>}<Fields value={data.sections[section]} semantic={sectionVocabulary(section)} semanticKeys={section === 'languages' ? { counts: vocab.language } : {}} /></>}</ReadState>;
 }
 export function MapsPage() {
   const [params, setParams] = useSearchParams();

@@ -595,9 +595,9 @@ def _slices_named(label: str) -> set[str]:
 
 
 def _parts(heading: str) -> set[str]:
-    """The register rows a section's heading names as its parts: each id, and every id of a range ("F20.2 to
-    F20.6")."""
-    found = set(PART_ID.findall(heading))
+    """The register rows a section's heading names as its parts: every id of a range ("F20.2 to F20.6"). A single id
+    in a heading ("register F15.2") is the capability's own row, not a part (review of PR #195, R5-F1)."""
+    found: set[str] = set()
     for row, first, last in re.findall(r"\bF(\d+)\.(\d+) to F\1\.(\d+)\b", heading):
         found |= {f"F{row}.{n}" for n in range(int(first), int(last) + 1)}
     return found
@@ -662,6 +662,9 @@ def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_th
     assert _parts("The read-only dashboard's server (register F20.2 to F20.6)") == {
         "F20.2", "F20.3", "F20.4", "F20.5", "F20.6"}
     assert _parts("Ticket revisions (register F4)") == set()  # so a label "F20.3, ..." there is refused (R4-F1)
+    m4e = "Governed stages on the typed Lead surface: the StageIntent journal (M4-E E3, register F15.2)"
+    assert _parts(m4e) == set()  # its own row: "**F15.2:** E5b and E6a built." is refused there (R5-F1)
+    assert _slices_named("F15.2") == {"F15.2"} and "F15.2" not in _parts(m4e)
     assert _next_names_another("D2, next", "**D2, next:** sealing and compaction.") == []
     assert _next_names_another("E5b, next", "**E5b, next:** then E6a and E6b.") == ["e6a", "e6b"]
     assert _next_names_another("E5a, the first Ticket stages", "**E5a, the first Ticket stages** then E6a.") == []

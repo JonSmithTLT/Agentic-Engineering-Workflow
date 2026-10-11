@@ -56,8 +56,13 @@ DUE_YAML, DUE_MD = "docs/implementation/decisions-due.yaml", "docs/implementatio
 NOTES = "docs/implementation/notes.d"
 STATUS = "docs/implementation/implementation-status.md"
 STATUS_TEXT = (ROOT / STATUS).read_text(encoding="utf-8")
-# A slice named as the plans name them (E3a, S2a, MS2, D2, L1, P2b), or as "slice 1" / "slices S1".
-SLICE_TOKEN = re.compile(r"\b(?:E|S|MS|D|L|P)\d+[a-z]?\b|\bslices? [A-Z]*\d")
+# A slice named as the plans name them (E3a, S2a, MS2, HS1, D2, L1, P2b, W06), or as "slice 1" / "Slice 2b" /
+# "slices S1"; a decision id after its ADR ("ADR-0017 D8") and a register row ("register E55") are not slices.
+SLICE_TOKEN = re.compile(r"(?<!ADR-\d\d\d\d )(?<!register )\b(?:E|S|MS|HS|D|L|P|W)\d+[a-z]?\b"
+                         r"|(?i:\bslices?) [A-Za-z]*\d+[a-z]?\b")
+# A part of a capability named by its register row (the dashboard's F20.2 to F20.6).
+PART_ID = re.compile(r"\bF\d+\.\d+\b")
+LABEL = re.compile(r"^\*\*(.+?)\*\*")
 DATA = yaml.safe_load((ROOT / REG_YAML).read_text(encoding="utf-8"))
 DUE = yaml.safe_load((ROOT / DUE_YAML).read_text(encoding="utf-8"))
 # PR #142's merge of main (d40d802): its two parents, and their merge base.
@@ -579,28 +584,56 @@ def test_changes_to_neighbouring_capabilities_merge_and_the_same_field_still_con
     assert conflicts == [STATUS]
 
 
+def _slices_named(label: str) -> set[str]:
+    """The slices a paragraph's bold label names: slice ids, "slice N" and register parts, each counted once."""
+    found = {m.group(0).lower() for m in SLICE_TOKEN.finditer(label)} | set(PART_ID.findall(label))
+    if any(t.startswith("slice") for t in found):  # "slice L1" names L1 once, not twice
+        found = {t for t in found if not t.startswith("slice")} or found
+    return found
+
+
 def test_a_capability_built_in_slices_names_a_register_row_for_its_later_slices():
-    """A slice-built capability's Status names no slice, and a slice with no paragraph of its own records itself as a
-    note on the register row the section's **Later slices** paragraph names, so concurrent slices never edit one line
-    or insert at one place (review of PR #195, F1). The row must exist, or the notes would have nowhere to go."""
+    """A slice-built capability's sections stay merge-free by construction (review of PR #195, F1, R2-F1, R3-F1):
+    every paragraph has at most one author. The Status names no slice (it changes only with the capability's own
+    state); the Acceptance paragraph names none (it points at the plan); **Later slices** names the register row where
+    a slice with no paragraph records itself as a note, and that row exists; and every other paragraph opens with a
+    bold label naming exactly one slice, so a paragraph that lists several (what is built, what comes next), which
+    every one of them would edit, cannot be written. The structure is checked, not a growing list of phrasings: only
+    the Status and Acceptance lines use the slice pattern, and each label must name one slice."""
     ids = {r["id"] for r in register.rows(DATA, open_only=False) if r["id"]}
-    named = re.findall(r"^\*\*Later slices:\*\* .*? register row (\S+) ", STATUS_TEXT, re.M)
-    assert len(named) >= 6, "the slice-built capabilities (outbox, F4, dashboard, M4-E, F25, F9) each name a row"
-    assert [rid for rid in named if rid not in ids] == []
     sliced = {name: paragraphs for name, paragraphs in capabilities(STATUS_TEXT).items()
               if any(p.startswith("**Later slices:**") for p in paragraphs)}
-    assert len(sliced) == len(named)
-    naming = {name: SLICE_TOKEN.findall(paragraphs[0]) for name, paragraphs in sliced.items()}
-    assert {name: found for name, found in naming.items() if found} == {}, (
-        "a slice-built capability's Status names no slice, built or next: each has its own paragraph or a note")
+    assert len(sliced) >= 6, "the slice-built capabilities (outbox, F4, dashboard, M4-E, F25, F9)"
+    wrong: list[str] = []
+    for name, (status, acceptance, *rest) in sliced.items():
+        wrong += [f"{name}: its Status names {t!r}" for t in SLICE_TOKEN.findall(status)]
+        wrong += [f"{name}: its Acceptance paragraph names {t!r}" for t in SLICE_TOKEN.findall(acceptance)]
+        later = [p for p in rest if p.startswith("**Later slices:**")]
+        named = [m.group(1) for p in later if (m := re.search(r"register row (\S+) ", p))]
+        if len(later) != 1 or rest[-1] != later[0] or len(named) != 1 or named[0] not in ids:
+            wrong.append(f"{name}: one **Later slices** paragraph, last, naming a register row that exists")
+        for paragraph in rest[:-1]:
+            label = LABEL.match(paragraph)
+            if label is None:
+                wrong.append(f"{name}: a paragraph without a bold label: {paragraph[:50]!r}")
+            elif len(_slices_named(label.group(1))) != 1:
+                wrong.append(f"{name}: {label.group(1)!r} names {sorted(_slices_named(label.group(1)))}, not one slice")
+    assert wrong == []
 
 
-def test_the_slice_token_pattern_sees_the_slice_names_in_use():
-    """The control for the test above: every way a Status has named a slice is caught (review of PR #195, R2-F1),
-    and capability-level words (milestones, register rows, the **Later slices** heading) are not."""
-    for text in ("E3a", "the stage tools are E5 and E6", "S1", "S2a", "MS2", "sealing and compaction are D2", "L1",
-                 "P2b", "slice 1", "slices S1 to S12", "slice 2a", "slice L1"):
+def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_that_names_one():
+    """The control for the test above: the paragraphs the reviews found are refused, the ones in use are accepted."""
+    for label in ("E5 and E6, the stage tools", "E3a and E3b", "MS0 and HS1", "Slice 2a and slice 2b", "the rest"):
+        assert len(_slices_named(label)) != 1, label
+    for label in ("E3a, the journal", "D2, next", "Slice 2b, the rest (next)", "M4-H live usage, slice L1",
+                  "HS1 built (2026-10-10; register E55, the F9-A plan's amendment 2)", "F20.3, the operator session",
+                  "S1, the field-group registry, canonicalization and live digests (F4 is dormant everywhere)",
+                  "MS0 done (2026-10-10)", "W06"):
+        assert len(_slices_named(label)) == 1, label
+    for text in ("E3a", "the stage tools are E5 and E6", "S2a", "MS2", "HS1", "sealing and compaction are D2", "L1",
+                 "P2b", "W06", "slice 1", "Slice 2b", "slices S1 to S12", "slice L1"):
         assert SLICE_TOKEN.search(text), text
-    for text in ("M4-D", "M4-H's live usage", "F20.2 to F20.6", "the F9-A plan v4", "ADR-0016", "§7",
-                 "what each slice built is in its paragraph", "the row named under **Later slices**"):
+    for text in ("M4-D", "M4-H's live usage", "F20.2 to F20.6", "the F9-A plan v4", "ADR-0016", "ADR-0017 D8",
+                 "register E55", "§7", "what each slice built is in its paragraph",
+                 "the row named under **Later slices**"):
         assert not SLICE_TOKEN.search(text), text

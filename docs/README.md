@@ -192,10 +192,13 @@ Two amendments of 2026-10-05 are designed, not built, and the register tracks th
 
 A proposal's adoption state is in its status line and here. "Design frozen, proposed" means the designer has settled its
 content and the operator has not yet adopted it; "direction adopted" means the register took its direction but the
-text is not governing.
+text is not governing. The two v0.5 activation amendments sit in `design/`, where they will govern once adopted, but
+until then they are proposals and rank nowhere in "What governs".
 
 | Proposal | Register | Adoption state | Scheduled |
 |---|---|---|---|
+| [`wc-f14-parent-planning-amendment-v0.1.md`](design/wc-f14-parent-planning-amendment-v0.1.md) | F41.1, F14.1 | Proposed 2026-10-11 for the designer's adoption (ledger PPA), the first of the two v0.5 activation amendments Q6a owes (AIR), reviewed with the next: every Story and Epic, Class 0 included, has a reviewed accepted plan before any mutating descendant is dispatched, one input to `DispatchDecision`; the parent plan's `interactions[]` with the reviewed parallelism verdict, plan-term refs resolved at dispatch and failing closed, lint at plan acceptance and the composition rule; open questions P1 to P9 | Adoption by M4-E; v0.5 activates only after both amendments are adopted and F45 is built with its policy adopted and on |
+| [`wc8-e19b-interface-dependency-amendment-v0.1.md`](design/wc8-e19b-interface-dependency-amendment-v0.1.md) | F41.5 | Proposed 2026-10-11 for the designer's adoption (ledger IDA), the second v0.5 activation amendment: WC §8's non-blocking `interface_dependency` edge, the edge in the consumer's E19-B dependency field group, E19-B §7.5's `revision_impact_hold` extended to accepted interface revisions, and the `interface_digest_current` condition; open questions I1 to I7 | Adoption by M4-E, with the above |
 | [`spec-amendment-index-design-v0.2.md`](design/proposals/spec-amendment-index-design-v0.2.md) | E19 | Design frozen, proposed | The index now (M4-G); the WC/KC re-freeze after M4-E |
 | [`remote-integration-target-sketch-2026-10-04.md`](design/proposals/remote-integration-target-sketch-2026-10-04.md) | Q14, F33 | Sketch; its PR and merge-provider scope is deferred by the F23 decision (2026-10-07), and its bounded exact-commit push is F33 | Deferred until remote PR or merge integration is a product requirement; M4-D must not foreclose it |
 | [`execution-workspace-and-isolation-design-v0.1.md`](design/proposals/execution-workspace-and-isolation-design-v0.1.md) | F2 (built), F3 | Proposed; its containment part is built | Input to M4-B (built) and M4-C (built); the strategy abstraction and benchmarks remain |

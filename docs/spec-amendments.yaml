@@ -248,8 +248,9 @@ considered:
   - path: docs/design/cross-feature-integration-design-v0.5.md
     reason: >-
       design frozen by the designer (F41, 2026-10-10), activation gated: it needs a WC/F14 amendment (the Class-0
-      parent path, F41.1) and a WC §8 amendment (the interface_dependency edge, F41.5), neither yet written; until
-      they are adopted it replaces no WC/KC text, and they will be their own overlays
+      parent path, F41.1) and a WC §8 amendment (the interface_dependency edge, F41.5), both written and proposed
+      2026-10-11, neither adopted yet; until they are adopted it replaces no WC/KC text, and they will be their own
+      overlays
   - path: docs/design/decisions-2026-10-10-cross-feature-integration-freeze.md
     reason: >-
       decision record (F41, 2026-10-10); the freeze of the cross-feature integration design v0.5, V-1(b), freeze
@@ -261,8 +262,8 @@ considered:
       designer's architecture integration decisions: Observability and Feedback, the attention spine, the owner
       registry, base-drift validation before v0.5 activation, parent-plan interactions, the F9 kinds, Lead
       instructions in review packs and the operator settings surface; its §6 addendum, provider mediation (principal accessibility, the gateway as a
-      prerequisite for client-certificate providers, an F25 semantics value); the v0.5 activation amendments are owed,
-      not written; replaces no WC/KC text
+      prerequisite for client-certificate providers, an F25 semantics value); the v0.5 activation amendments it owes are
+      written and proposed (2026-10-11), not yet adopted; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

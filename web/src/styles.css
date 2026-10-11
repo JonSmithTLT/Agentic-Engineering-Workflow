@@ -1719,6 +1719,7 @@ summary {
 .map-refresh { min-width: 180px; }
 .map-summary-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .maps-panel table { white-space: normal; }
+.maps-panel .table-scroll > table { min-width: 640px; }
 .maps-panel td { height: auto; overflow-wrap: anywhere; }
 .maps-panel dd { margin-left: 0; min-width: 0; }
 .map-fields > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 16px; padding-block: 12px; border-bottom: 1px solid var(--border); }

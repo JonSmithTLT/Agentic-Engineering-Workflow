@@ -10,7 +10,8 @@ operator (N3). Nothing here grants, moves or commits anything: a notification is
 - control state, read with the store's lock-free reader (``read_committed``; the watcher commits nothing): the Lead
   generation ending by ``takeover``, ``handoff`` or ``release`` (from the transition log after the watcher's cursor),
   the Lead's open requests (``raise_requested``, ``confirmation_requested``), the validation circuit breaker opening
-  (``breaker_tripped``) and a lease marked for reconciliation (``custodian_lost``);
+  (``breaker_tripped``), an open high anomaly (``anomaly_high``, M4-E E7b) and a lease marked for reconciliation
+  (``custodian_lost``);
 - the broker's liveness record (``harness.broker_liveness``): ``generation_ended`` with ``crash`` or ``stale``, judged
   only for the current generation, and ``broker_gone`` while Run is effective, whatever the cause (``crash``,
   ``stale``, or ``closed`` for a clean end with the seat still held; R3-m1);
@@ -509,7 +510,8 @@ class Watcher:
 
     def _condition_source(self, state: dict[str, Any] | None) -> None:
         """Open conditions in control state, each an occurrence by its own record: the Lead's requests (the current
-        generation's; they grant nothing), the validation breaker's opening, a lease's reconcile mark."""
+        generation's; they grant nothing), the validation breaker's opening, a high anomaly (M4-E E7b, from E5b's
+        `anomalies`), a lease's reconcile mark."""
         assert state is not None
         generation = int(state["lead"]["generation"])
         for r in (state.get("steering") or {}).get("requests") or []:
@@ -528,6 +530,11 @@ class Watcher:
                 reason="infrastructure failures: " + ", ".join(map(str, opened.get("codes") or [])),
                 ref=", ".join(map(str, opened.get("runs") or [])), source="control_state", authenticated=True),
                 lane="urgent")
+        for an, anomaly in sorted((state.get("anomalies") or {}).items()):  # M4-E E7b: a high anomaly is opened
+            if anomaly.get("severity") == "high":
+                self._offer(f"anomaly_high:{an}", self._payload(
+                    state, "anomaly_high", subject=anomaly.get("subject") or "project", reason=anomaly.get("detail"),
+                    ref=an, source="control_state", authenticated=True), lane="urgent")
         lease = queue_state.get("lease") or {}
         mark = lease.get("reconcile")
         if mark:

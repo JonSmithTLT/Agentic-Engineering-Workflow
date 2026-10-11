@@ -56,8 +56,9 @@ class Call:
 
     def __init__(self, engine: Any, ctx: SurfaceContext, arguments: dict[str, Any], token: str | None, *,
                  serial: Serial | None = None, cancelled: Callable[[], str | None] | None = None,
-                 run_cli: RunCli | None = None) -> None:
+                 run_cli: RunCli | None = None, auto_run: dict[str, Any] | None = None) -> None:
         self.engine, self.ctx, self.a, self._token = engine, ctx, arguments, token
+        self.auto_run = auto_run  # the steering loop's attribution of a stage it runs (M4-E E7b), else None
         self.serial: Serial = serial or contextlib.nullcontext
         self.cancelled = cancelled
         self.run_cli = run_cli
@@ -232,22 +233,25 @@ def _error(exc: errors.AEWError) -> dict[str, Any]:
 
 def run_tool(engine: Any, ctx: SurfaceContext, name: Any, arguments: Any, *, token: str | None = None,
              serial: Serial | None = None, cancelled: Callable[[], str | None] | None = None,
-             run_cli: RunCli | None = None) -> dict[str, Any]:
+             run_cli: RunCli | None = None, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run one typed tool call and return its ``StageResult`` (or raise ``AdapterInputError`` before anything runs).
 
     ``serial`` and ``cancelled`` are the broker's hooks for a cooperative wait (module docstring); ``run_cli`` runs
-    the recovery escape's command with the broker's refusals."""
+    the recovery escape's command with the broker's refusals. ``auto_run`` is the steering loop's attribution of the
+    stage it runs (M4-E E7b): recorded on the intent, it changes nothing about the call."""
     t = check_call(name, arguments, ctx.profile)
     # A query is one read-only answer: its runner and its projection share their gate contexts (Engine.gate_memo). A
     # wait or a stage never does (a wait's world changes as it waits; a stage commits).
     with engine.gate_memo() if t.kind == contract.QUERY else contextlib.nullcontext():
-        return _run_tool(engine, ctx, t, arguments, token=token, serial=serial, cancelled=cancelled, run_cli=run_cli)
+        return _run_tool(engine, ctx, t, arguments, token=token, serial=serial, cancelled=cancelled, run_cli=run_cli,
+                         auto_run=auto_run)
 
 
 def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any, *, token: str | None,
               serial: Serial | None, cancelled: Callable[[], str | None] | None,
-              run_cli: RunCli | None) -> dict[str, Any]:
-    call = Call(engine, ctx, copy.deepcopy(arguments), token, serial=serial, cancelled=cancelled, run_cli=run_cli)
+              run_cli: RunCli | None, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
+    call = Call(engine, ctx, copy.deepcopy(arguments), token, serial=serial, cancelled=cancelled, run_cli=run_cli,
+                auto_run=auto_run)
     payload: Any = None
     stopped: dict[str, Any] | None = None
     with call.serial():

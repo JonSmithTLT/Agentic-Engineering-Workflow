@@ -75,8 +75,13 @@ CHOICES = ("accept_risk", "follow_up", "not_applicable")
 POLICY_KEY = "requires_disposition"
 HIGH, LOW = "high", "low"
 CONTRADICTION = "CONTRADICTION"
-# The E5b sources and their severity (plan v3 §2.4); E7 and E8 add theirs.
-SOURCES = {"WORKSPACE_MUTATED": HIGH, "OBSERVATION_MUTATED": HIGH, CONTRADICTION: HIGH}
+# M4-E E7b's sources (plan v3 §2.4): an auto-run step whose committed changes exceed what its primitives declare (the
+# steering loop's runtime check, SAE-07), and a harness run its supervisor ended at its hard deadline (A1 §3.2).
+SIDE_EFFECT_UNDECLARED = "SIDE_EFFECT_UNDECLARED"
+HARD_DEADLINE = "HARD_DEADLINE"
+# The sources and their severity (plan v3 §2.4): E5b's, then E7b's; E8 adds its own.
+SOURCES = {"WORKSPACE_MUTATED": HIGH, "OBSERVATION_MUTATED": HIGH, CONTRADICTION: HIGH, SIDE_EFFECT_UNDECLARED: HIGH,
+           HARD_DEADLINE: LOW}
 SIGNALLED = (WorkspaceMutated, ObservationMutated)  # the refusals that are recorded as anomalies
 ANOMALY_PREFIX = "ANM"  # not "AN": the archive's annotations use it (PR 182 review, m5)
 ANOMALY_ID = re.compile(r"^ANM-[0-9]{4,}$")
@@ -87,7 +92,11 @@ MAX_CHANGED = 20  # changed paths kept on an anomaly, each cut to MAX_PATH chara
 MAX_PATH = 300
 # The engine's own words for a signalled refusal (the Lead's projection never shows a worker's text).
 SIGNAL_TEXT = {"WORKSPACE_MUTATED": "{inv} ({role}) changed the workspace it evaluates; its report was refused",
-               "OBSERVATION_MUTATED": "{inv} ({role}) changed its read-only observation; its report was refused"}
+               "OBSERVATION_MUTATED": "{inv} ({role}) changed its read-only observation; its report was refused",
+               # The supervisor's deadline stop (M4-E E7b; A1 §3.2): the run was terminated and its credential dropped;
+               # no lease was released, nothing advanced and nothing relaunched. Reconcile it as any ended run.
+               HARD_DEADLINE: "{inv} ({role}): a run was terminated at its hard deadline; nothing was advanced or "
+                              "released, and nothing relaunched"}
 RECORDS_DIR = "records/dispositions"
 UNIT_KEY = "dispositions"  # the hot index on a live Ticket
 MAX_TEXT = 2000
@@ -188,16 +197,21 @@ def signal(aew_root: Path, exc: AEWError, work_id: str | None) -> None:
     """Record a refusal met outside a Lead transaction as a signal file the next Lead commit records (a worker commits
     no control state): its source and the refused invocation, nothing else the Lead would take on trust. Best effort:
     it never changes the refusal."""
+    signal_source(aew_root, exc.code, str(exc.details.get("invocation") or ""))
+
+
+def signal_source(aew_root: Path, source: str, invocation: str) -> None:
+    """A worker-side signal of ``source`` about ``invocation`` (:func:`signal`; the supervisor's hard deadline, M4-E
+    E7b). Best effort: a signal only reduces authority, so one that cannot be written is lost, never an error."""
     try:
-        invocation = str(exc.details.get("invocation") or "")
         if not invocation:
             return
         spool = aew_root / SPOOL_REL
         spool.mkdir(parents=True, exist_ok=True)
-        name = sha256_bytes(f"{exc.code}:{invocation}".encode())[:32]
+        name = sha256_bytes(f"{source}:{invocation}".encode())[:32]
         path = spool / f"{name}.json"
         if not path.exists():
-            path.write_text(json.dumps({"source": exc.code, "invocation": invocation}), encoding="utf-8")
+            path.write_text(json.dumps({"source": source, "invocation": invocation}), encoding="utf-8")
     except (OSError, ValueError, TypeError):
         pass
 
@@ -298,6 +312,27 @@ class Dispositions:
                                                f"now {rev}; read it again before your next call"}
         except (AEWError, OSError):
             pass
+
+    def record_violation(self, *, token: str, subject: str | None, detail: str,
+                         details: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The steering loop's runtime declaration check (M4-E E7b; SAE-07; plan v3 §2.4): an auto-run step committed
+        a change its primitives do not declare. Recorded as a high anomaly in a commit of its own under the Lead
+        credential the loop acts for, without an expected revision (it records what happened, like a refused call's
+        anomaly). It only reduces authority: a high anomaly stops the loop in every mode and holds its subject's
+        actions back from auto-running. One already open for the subject is not opened again."""
+        bounded = _bounded_details(details or {})
+        with self.k.store.session() as s:
+            actor = require_lead(s.state, token, archived=self.archive.archived_credential)
+            wid = subject if subject in s.state["work"] else None
+            key = anomaly_key(SIDE_EFFECT_UNDECLARED, wid, bounded)
+            an = self.open(s.state, source=SIDE_EFFECT_UNDECLARED, subject=wid,
+                           detail=f"{SIDE_EFFECT_UNDECLARED}: {detail}", key=key, details=bounded, rev=s.revision + 1)
+            if an is None:
+                return {"anomaly": None, "revision": s.revision}
+            rev = s.commit(Transition(op="anomaly.record", actor=actor,
+                                      summary=f"anomaly {an} ({SIDE_EFFECT_UNDECLARED}) recorded by the steering loop",
+                                      refs=[an]))
+        return {"anomaly": an, "revision": rev}
 
     def finalize(self, ctx: TxnContext) -> None:
         """Every Lead commit records what is signalled and not recorded yet: at most ``MAX_SIGNAL_FILES`` worker-side

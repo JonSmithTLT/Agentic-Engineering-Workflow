@@ -979,10 +979,11 @@ class Engine:
 
     def stage_open(self, *, token: str, expect_rev: int, tool: str, contract_digest: str, arguments: dict[str, Any],
                    judgment_inputs: list[str], base_class: str, effective_class: str, plan: list[dict[str, Any]],
-                   subject: str | None, ingress: str) -> dict[str, Any]:
+                   subject: str | None, ingress: str, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._stages.open(token=token, expect_rev=expect_rev, tool=tool, contract_digest=contract_digest,
                                  arguments=arguments, judgment_inputs=judgment_inputs, base_class=base_class,
-                                 effective_class=effective_class, plan=plan, subject=subject, ingress=ingress)
+                                 effective_class=effective_class, plan=plan, subject=subject, ingress=ingress,
+                                 auto_run=auto_run)
 
     def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
                    reason: str | None = None) -> dict[str, Any]:
@@ -1024,6 +1025,12 @@ class Engine:
         refused = self._dispositions.disposal_refusal(self._k.store.read(), anomaly)
         return None if refused is None else {"code": refused.code, "message": refused.message,
                                              "details": dict(refused.details)}
+
+    def anomaly_record_violation(self, *, token: str, subject: str | None, detail: str,
+                                 details: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The steering loop's runtime declaration check found an undeclared effect (M4-E E7b; SAE-07): a high
+        anomaly, recorded under the Lead credential the loop acts for."""
+        return self._dispositions.record_violation(token=token, subject=subject, detail=detail, details=details)
 
     def anomalies_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open anomalies (hot), by id."""

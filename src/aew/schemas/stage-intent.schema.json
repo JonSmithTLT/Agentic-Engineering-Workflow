@@ -20,6 +20,22 @@
     "base_class": {"$ref": "#/$defs/operation_class"},
     "effective_class": {"$ref": "#/$defs/operation_class"},
     "ingress": {"enum": ["mcp", "cli", "direct", "test"]},
+    "auto_run": {
+      "description": "M4-E E7b (CWR §7, §11): present when the steering loop ran the stage, attributing it to the loop's activation, the steering mode and the record that set it, the Lead generation that mode was granted to (none for a standing default), the policy digests it ran under and the projection it executed. Attribution only: it grants nothing.",
+      "type": "object", "required": ["by", "activation", "mode", "mode_record", "mode_generation", "legality_digest", "operational_digest", "projection"], "additionalProperties": false,
+      "properties": {
+        "by": {"const": "steering_loop"},
+        "activation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "mode": {"enum": ["walk", "run"]},
+        "mode_record": {"type": ["null", "string"]},
+        "mode_generation": {"type": ["null", "integer"]},
+        "legality_digest": {"$ref": "#/$defs/policy_digest"},
+        "operational_digest": {"$ref": "#/$defs/policy_digest"},
+        "projection": {"type": "object", "required": ["revision", "subject", "action"], "additionalProperties": false,
+                       "properties": {"revision": {"type": "integer", "minimum": 0}, "subject": {"type": "string"},
+                                      "action": {"$ref": "#/$defs/name"}}}
+      }
+    },
     "caller": {"type": "object", "description": "The Lead actor that opened the intent."},
     "generation": {"description": "The Lead generation that owns the intent: only it may commit a step; `resolve continue` rebinds it (F18 §14).", "type": "integer", "minimum": 1},
     "opened": {

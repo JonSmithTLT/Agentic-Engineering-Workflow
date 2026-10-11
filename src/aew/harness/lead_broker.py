@@ -50,7 +50,7 @@ from typing import Any
 from aew import errors
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_lead
-from aew.harness import bridge, broker_liveness, tool_calls
+from aew.harness import bridge, broker_liveness, steering_loop, tool_calls
 from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -183,6 +183,11 @@ class LeadBroker:
         self._beat = None if root is None else broker_liveness.Beat(
             root, generation=self.generation, poll_s=POLL_S, wedge_after_s=broker_liveness.wedge_threshold_s(
                 getattr(engine.store, "lock_timeout", 60.0), POLL_S))
+        # The steering loop (M4-E E7b; plan v3 E7, M8.1): it runs here, beside the Lead's tools, on its own thread and
+        # engine, acting for this session's credential and generation.
+        self.loop = None if root is None else steering_loop.SteeringLoop(
+            _own_engine(engine), generation=self.generation, session_label=self.session_label,
+            token=lambda: self._token, poll_s=POLL_S)
 
     @property
     def env(self) -> dict[str, str]:
@@ -193,6 +198,8 @@ class LeadBroker:
         if self._beat is not None:
             self._beat.start()
         self._watch.start()
+        if self.loop is not None:
+            self.loop.start()
 
     def close(self) -> None:
         self._stop.set()
@@ -200,6 +207,8 @@ class LeadBroker:
         self.server.drain(60)
         if self._watch.is_alive():
             self._watch.join(60)  # a check in progress finishes before the credential goes (M3-D11)
+        if self.loop is not None:
+            self.loop.close()  # an auto-run stage in flight finishes before the credential goes
         if self._beat is not None:
             self._beat.close()  # closed_at: a clean end, never a crash
         self._token = ""
@@ -283,6 +292,9 @@ class LeadBroker:
             refused = {"code": exc.code}
             raise
         finally:
+            after = ((answer or {}).get("stage_result") or {}).get("revision")
+            if self.loop is not None and after is not None and after != meta.get("revision_before"):
+                self.loop.wake()  # the commit of a Lead tool call wakes the steering loop (plan v3 E7, M8.1)
             tool_calls.record(
                 self.engine.aew_root, tool=args.get("name"), arguments=args.get("arguments"),
                 ingress=args.get("ingress"), profile=args.get("profile"), result=(answer or {}).get("stage_result"),
@@ -349,6 +361,14 @@ class LeadBroker:
                 self.superseded = lost
                 self.server.close()
         return {"stage_result": result}
+
+
+def _own_engine(engine: Any) -> Any:
+    """An engine of the loop's own for the same project, so its calls share no object with the Lead's (an engine is
+    process-safe through the store's lock, as two processes are)."""
+    from aew.engine.api import Engine
+
+    return Engine(Path(engine.repo_root), Path(engine.aew_root)) if isinstance(engine, Engine) else engine
 
 
 def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, channel: str) -> dict[str, Any]:

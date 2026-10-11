@@ -288,10 +288,12 @@ def test_the_transaction_finalizers_are_the_dispatch_check_then_archival(engine)
     # commits without a dispatch decision; M4-D: the queue follows its Tickets (before
     # archival, so a retired entry leaves with its unit); M4-D5: every terminal validation run gets its immutable
     # record (before archival, so a retired candidate's run is recorded before the unit leaves); M4-E E5b: the anomaly
-    # record adds what is signalled (it ends nothing, so it may precede the seal); then ADR-0011 R6.
+    # record adds what is signalled (it ends nothing, so it may precede the seal); M4-E E6b: the publication envelope
+    # ends with its generation, expiry, exhaustion or a manifest mismatch (it ends no invocation); then ADR-0011 R6.
     assert [named(step) for step in engine._k.finalizers.steps] == [
-        "StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize", "UsageCopy.finalize",
-        "Dispositions.finalize", "Coordination.finalize", "Archive.finalize"]
+        "StageIntents.finalize", "Dispatch.finalize", "Queue.finalize", "Validation.finalize",
+        "Publication.finalize", "UsageCopy.finalize", "Dispositions.finalize", "Coordination.finalize",
+        "Archive.finalize"]
     assert named(engine._k.archived_credential) == "Archive.archived_credential"  # R7
 
 

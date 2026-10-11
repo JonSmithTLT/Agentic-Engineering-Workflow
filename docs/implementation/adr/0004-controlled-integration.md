@@ -321,3 +321,53 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
   holds no lease and keeps its Ticket's open candidate; a custody credential stands only for the live lease's active
   custodian of the current generation.
 - **Tests:** `tests/integration/test_integration_stages.py`.
+
+## Amendment 2026-10-11 — PUBLISH_IF_CLEAN: the operator's envelope and the custodian's exercise (M4-E E6b)
+
+The M4-E plan v3 §2.2 and §2.3 (operator Q1; designer, 2026-10-07), built by E6b. Everything above holds, except
+where this amendment says otherwise.
+
+- **The envelope is the operator's.** `aew operator grant-publication --manifest <sealed run manifest> --task <task
+  file> [--for <duration>] [--max <n>]` is granted only through the operator endpoint (`aew operator serve`), after
+  its peer check and the challenge on its console, by the `OperatorPrincipal` only the endpoint constructs. The Lead
+  broker refuses the grant and `aew operator revoke-publication` in a Lead session, and no typed tool grants (A1 §1).
+  - It binds the sealed run manifest (`aew/m4h-run-manifest/v1`, ADR-0018 D4; its SHA-256), the task input's hash
+    (the task file must hash to the manifest's `task_input_sha256`), the current Lead generation, the authoritative
+    ref (`target_ref`), an expiry, a maximum number of publications, the legality digest and the policy pins, and the
+    principal (`guarantee: dev`). Its duration and maximum default to the manifest's `envelope_duration_s` and
+    `max_publications` and may only narrow them; it never lasts more than 72 h.
+  - Its record is cold and immutable (`records/authorizations/<PA-n>.yaml`); control state keeps the latest envelope
+    (`authorization`: its id, the record's digest, `published`, `reserved` and its status). A new grant supersedes it,
+    and so does a revocation. A generation change, expiry, a manifest that no longer hashes to its record, or
+    exhaustion ends it in the next transaction, with the reason.
+  - `work.create` stamps `authorization_envelope: <PA-n>` on each Ticket the envelope's own generation creates while it
+    is active: only those belong to the sealed run.
+- **The Lead's request grants nothing.** `ticket_prepare(publish_if_clean: true)` records a request (`pic/v1`) on the
+  lease's queue attempt, in the prepare's commit, binding the Ticket's record digest and state, the entry and
+  `commit_ready_seq`, the accepted plan and acceptance binding, the obligation binding, the legality digest, the Lead
+  generation and H and M. It lives as long as the lease, so it survives the one rebuild under it, and a lease granted
+  afresh to a `VALIDATED` entry carries none (the Lead's `integration_publish` is then the judgment).
+- **The exercise is the custodian's, in checks mode only.** In the custodian's validation commit, a pass under a
+  request is routed: the envelope's usability first (active, unexpired, not exhausted counting reservations, the
+  current generation, the manifest's bytes, the Ticket's stamp, the ref, the legality digest and pins), then §17's
+  eight clauses in order. Unusable: VALIDATE_ONLY, as with no request, the condition recorded on the integration's
+  `pic` record. A clause fails: not exercised, the lease released to `AWAITING_DISPOSITION` (`pic_not_exercised`, the
+  clause named); a moved head (clause 3) takes the one automatic rebuild under the same lease, and a second move
+  `head_moved_again`. All hold: the same commit moves the integration to `publishing` and reserves one publication, and
+  the custody worker runs the finish (`_finish_publish` under its custody credential), which re-checks the request,
+  the envelope and §17 in its own transaction before the CAS and withdraws the publish if one no longer holds. In
+  verifier mode a request is recorded and never exercised: the engine never accepts a verifier report on the Lead's
+  behalf.
+- **Admission.** The custody family gains the finish (`integrate.publish`). `Kernel.custody_txn` refuses any custody
+  commit that begins or finishes a publication (by its op, or by moving an integration to `publishing`) unless the
+  exercise found the request, the envelope and §17 holding on that transaction's state.
+- **The count is crash-safe (n4).** The reservation is converted to `published` in the commit that records
+  `integrated`, whether the custodian's finish or `integrate reconcile` confirming a CAS that landed before a crash, and
+  released by every commit that proves nothing was published. A reconcile never completes a PIC publish whose CAS did
+  not land: the reservation is released and the candidate returns `VALIDATED`, for the current generation to publish
+  under fresh authority (HSD-22, HSD-23). A custodian of an earlier generation commits nothing, so a held result never
+  publishes.
+- **Oracle rules 62 to 64** (`tests/helpers/invariants.py`): published plus reserved never exceeds the maximum, and
+  each reservation is held by exactly one publishing integration; the envelope's record matches its digest; a stamp is
+  a Ticket's.
+- **Tests:** `tests/integration/test_integration_pic.py`.

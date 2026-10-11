@@ -256,6 +256,42 @@ def control_violations(root: Path) -> list[str]:
     problems += coordination_violations(root, hot, state)
     # 59-61. M4-E E5b: the anomaly record and the dispositions.
     problems += disposition_violations(root, hot, state)
+    # 62-64. M4-E E6b: the publication envelope, its crash-safe count and PUBLISH_IF_CLEAN's records.
+    problems += publication_violations(root, hot)
+    return problems
+
+
+def publication_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """M4-E E6b (plan v3 §2.2, §2.3; n4)."""
+    from aew.util import sha256_text
+
+    problems: list[str] = []
+    env = state.get("authorization")
+    held = [(wid, (u.get("integration") or {}).get("pic") or {}) for wid, u in sorted(state["work"].items())]
+    held = [(wid, pic) for wid, pic in held if pic.get("reservation") == "held"]
+    if env is not None:
+        # 62. The count is crash-safe: published + reserved never exceeds the envelope's maximum, and every reservation
+        #     is held by exactly one integration still publishing under it.
+        if env["published"] + env["reserved"] > env["max_publications"]:
+            problems.append(f"envelope {env['id']} counts {env['published']} published and {env['reserved']} reserved "
+                            f"over its maximum {env['max_publications']}")
+        mine = [wid for wid, pic in held if pic.get("envelope") == env["id"]]
+        if len(mine) != env["reserved"]:
+            problems.append(f"envelope {env['id']} reserves {env['reserved']}, but {len(mine)} publish(es) hold one")
+        # 63. Its record is immutable and pinned by the digest control state keeps.
+        path = Path(root) / ".aew" / env["record"]["path"]
+        if not path.is_file() or sha256_text(path.read_text(encoding="utf-8")) != env["record"]["sha256"]:
+            problems.append(f"envelope {env['id']}'s record {env['record']['path']} is missing or differs")
+        if (env["status"] == "ended") != (env["ended"] is not None):
+            problems.append(f"envelope {env['id']} is {env['status']} with ended {env['ended']}")
+    # 64. A reservation is held only while its integration is publishing, by a custodian's PIC exercise; a stamp is a
+    #     Ticket's.
+    for wid, _pic in held:
+        if (state["work"][wid].get("integration") or {}).get("status") != "publishing":
+            problems.append(f"{wid} holds a PUBLISH_IF_CLEAN reservation but is not publishing")
+    for wid, u in sorted(state["work"].items()):
+        if u.get("authorization_envelope") is not None and u.get("kind") != "ticket":
+            problems.append(f"{wid} is a {u.get('kind')} with an envelope stamp")
     return problems
 
 

@@ -223,12 +223,16 @@ def require_invocation(
 
 CUSTODY = "custody"
 # The closed family (§2.3): the validation pin and commit and their infrastructure outcomes, routing a result (never
-# accepting a report), the custodian's own lease release, the worker's registration (S2), and the PIC publish, which
-# also needs the operator's envelope and the §17 predicate in the same transaction (E6b: until then it is refused).
+# accepting a report), the custodian's own lease release, the worker's registration (S2), and the PIC publish: its
+# begin (a clean validation commit that moves the integration to `publishing`) and its finish (CAS, sync, DONE). The
+# publish also needs the operator's envelope and the §17 predicate holding in the same transaction (M4-E E6b;
+# ``Kernel.custody_txn`` refuses it otherwise).
 CUSTODY_OPS = ("custody.register", "integrate.validate", "integrate.validated", "integrate.validation_abandoned",
                "integrate.validation_unavailable", "integrate.validation_released", "integrate.route",
-               "integrate.release", "integrate.publishing")
+               "integrate.release", "integrate.publishing", "integrate.publish")
 CUSTODY_PUBLISH = "integrate.publishing"
+CUSTODY_FINISH = "integrate.publish"
+CUSTODY_PUBLISHING = frozenset({CUSTODY_PUBLISH, CUSTODY_FINISH})
 
 
 def mint_custody(state: dict[str, Any], *, custodian: str, entry: str, attempt: int, lease_at: str) -> str:
@@ -259,7 +263,7 @@ def require_custodian(state: dict[str, Any], credential: str, op: str) -> dict[s
                              f"{record.get('revoke_reason')}", revoke_reason=record.get("revoke_reason"))
     if op not in CUSTODY_OPS or op not in (scope.get("ops") or []):
         raise PermissionDenied(f"{op} is outside the integration-custody family: a custody credential commits only "
-                               "validation, routing, its own lease release and registration", op=op)
+                               "validation, routing, its own lease release, registration and the PIC publish", op=op)
     generation = state["lead"]["generation"]
     if scope.get("generation") != generation:
         raise StaleAuthority("the custody credential was issued under a superseded Lead generation",

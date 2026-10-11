@@ -677,11 +677,12 @@ def _verified(p: Project, held: dict[str, str], *, validate: bool, mode: str) ->
 
 # Every terminal shape of the two integration stages (plan v3 §6, §10; PR #200 review): the steps a stage plans for the
 # state it is called in, each compared with its primitives run directly.
-EQUIVALENCE_CASES = [("ticket_prepare", "checks"), ("ticket_prepare", "verifier"),
+EQUIVALENCE_CASES = [("ticket_prepare", "checks"), ("ticket_prepare", "verifier"), ("ticket_prepare", "checks_pic"),
                      ("integration_publish", "done"), ("integration_publish", "rebuild"),
                      ("integration_publish", "verifier"), ("integration_publish", "rebuild_verifier")]
 PLANNED = {
     ("ticket_prepare", "checks"): ["verify.ingest", "work.transition", "integrate.prepare"],
+    ("ticket_prepare", "checks_pic"): ["verify.ingest", "work.transition", "integrate.prepare"],
     ("ticket_prepare", "verifier"): ["verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                                      "dispatch.launch"],
     ("integration_publish", "done"): ["integrate.publish"],
@@ -718,6 +719,9 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
                            else verifier_script(tmp_path / "sync")[:3])
         else:
             checks_mode(p)
+        if case == "checks_pic":  # M4-E E6b: the operator's envelope, so the Ticket is the sealed run's
+            from test_integration_pic import grant
+            grant(p, tmp_path)
         create_planned_ticket(p, tmp_path)
 
     staged, direct = _twins(tmp_path, prepare)
@@ -737,11 +741,12 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
             before = differences(end_state(staged.root, recorded), end_state(direct.root, recorded))
             assert all(d.startswith("/files/evidence/") or "validation-runs" in d for d in before), before
             if name == "ticket_prepare":
-                out = call(staged, name, work_id="T-0001", verification_evidence=found["report"])
+                pic = {"publish_if_clean": True} if case == "checks_pic" else {}  # M4-E E6b: the Lead's request
+                out = call(staged, name, work_id="T-0001", verification_evidence=found["report"], **pic)
                 e.verify_ingest(token=direct.token, expect_rev=direct.rev(), work_id="T-0001",
                                 evidence_id=found["report"], scope="ticket")
                 e.work_transition(token=direct.token, expect_rev=direct.rev(), work_id="T-0001", to="COMMIT_READY")
-                e.integrate_prepare(token=direct.token, expect_rev=direct.rev(), work_id="T-0001")
+                e.integrate_prepare(token=direct.token, expect_rev=direct.rev(), work_id="T-0001", **pic)
             else:
                 accept = {"verification_evidence": found["integration_report"]} if case == "verifier" else {}
                 out = call(staged, name, work_id="T-0001", prepared_candidate=found["candidate"], **accept)

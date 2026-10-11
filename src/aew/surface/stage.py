@@ -136,7 +136,8 @@ def _prepare(c: Call, a: dict[str, Any], rev: int) -> dict[str, Any]:
     """The candidate, prepared under a lease whose custodian's worker the engine starts right after the commit (M4-E
     E6a). A conflict is committed (the lease released to AWAITING_DISPOSITION) and stops the stage here, as an
     admission refusal does (raised by the prepare after its commit)."""
-    out = c.engine.integrate_prepare(token=c.token(), expect_rev=rev, work_id=a["work_id"])
+    out = c.engine.integrate_prepare(token=c.token(), expect_rev=rev, work_id=a["work_id"],
+                                     publish_if_clean=bool(a.get("publish_if_clean")))
     if not out.get("ok"):
         raise errors.IllegalTransition(
             f"{a['work_id']}'s candidate conflicts with the authoritative head: the entry waits for your disposition "
@@ -240,11 +241,15 @@ def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None
 def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
     """``ticket_prepare`` (M4-E E6a; plan v3 §2.3): accept the named Ticket-scope verification, VERIFIED ->
     COMMIT_READY, prepare the candidate under a lease (its custodian's worker validates in checks mode), and in verifier
-    mode (``shape``) the integration verifier, made with ``launch``, as the custodian's child."""
+    mode (``shape``) the integration verifier, made with ``launch``, as the custodian's child. With
+    ``publish_if_clean`` the prepare also records the Lead's PUBLISH_IF_CLEAN request (M4-E E6b)."""
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
+    # The Lead's PUBLISH_IF_CLEAN request rides on the prepare, which records it on the lease's attempt (M4-E E6b);
+    # no guard reads it.
+    pic = {"publish_if_clean": True} if a.get("publish_if_clean") else {}
     plan: list[dict[str, Any]] = [{"primitive": "verify.ingest", "args": ingest},
                                   {"primitive": "work.transition", "args": transition},
-                                  {"primitive": "integrate.prepare", "args": prepare}]
+                                  {"primitive": "integrate.prepare", "args": {**(prepare or {}), **pic}}]
     if (shape or {}).get(4):
         execution = {"execution": a["execution"]} if "execution" in a else {}
         plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True, **execution}},

@@ -2,9 +2,10 @@
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
 one-time codes. ``aew lead mode raise`` only sends a request to it and reads the code typed at this terminal: it has
-no engine path of its own. ``aew lead mode lower`` is the Lead's (a restriction), relayed in a Lead session like any
-Lead-reachable command. The Lead broker refuses ``raise``, ``serve`` and ``ping`` in a Lead session
-(``lead_broker.OPERATOR_ENDPOINT``).
+no engine path of its own, nor do ``aew operator grant-publication`` and ``revoke-publication`` (M4-E E6b: the
+PUBLISH_IF_CLEAN envelope, plan v3 §2.2). ``aew lead mode lower`` is the Lead's (a restriction), relayed in a Lead
+session like any Lead-reachable command. The Lead broker refuses ``raise``, ``serve``, ``ping`` and the publication
+commands in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
 """
 
 from __future__ import annotations
@@ -33,6 +34,23 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
     q.set_defaults(handler=_ping)
+    q = osub.add_parser("grant-publication",
+                        help="grant the standing PUBLISH_IF_CLEAN envelope for a sealed run, through the operator "
+                             "endpoint (its console shows a code; type it here)")
+    q.add_argument("--manifest", required=True, help="the sealed run manifest (aew/m4h-run-manifest/v1)")
+    q.add_argument("--task", required=True, help="the run's task file: its SHA-256 must be the manifest's "
+                                                 "task_input_sha256")
+    q.add_argument("--for", dest="duration", default=None,
+                   help="how long it lasts (e.g. 24h; default and ceiling: the manifest's envelope_duration_s, at "
+                        "most 72h)")
+    q.add_argument("--max", dest="max_publications", type=int, default=None,
+                   help="the most publications it allows (default and ceiling: the manifest's max_publications)")
+    _add_json(q)
+    q.set_defaults(handler=_grant)
+    q = osub.add_parser("revoke-publication", help="end the active PUBLISH_IF_CLEAN envelope, through the operator "
+                                                   "endpoint")
+    _add_json(q)
+    q.set_defaults(handler=_revoke)
 
 
 def register_lead_mode(lsub: argparse._SubParsersAction) -> None:
@@ -73,15 +91,39 @@ def _ping(a: argparse.Namespace) -> Any:
     return operator_client.ping(_engine(a).aew_root)
 
 
-def _raise(a: argparse.Namespace) -> Any:
+def _require_terminal(command: str) -> None:
     from aew import operator
-    from aew.harness import operator_client
 
-    engine = _engine(a)
     if not operator.has_terminal():
         # Refused before the endpoint is contacted: a requester that cannot type the code back must never put a
         # challenge on the operator's console (as `aew dashboard open`).
         raise OperatorAuthorizationRequired(
-            "`aew lead mode raise` reads the confirmation code from your terminal, and this process has none (a "
-            "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
+            f"`{command}` reads the confirmation code from your terminal, and this process has none (a harness tool "
+            "call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
+
+
+def _raise(a: argparse.Namespace) -> Any:
+    from aew.harness import operator_client
+
+    engine = _engine(a)
+    _require_terminal("aew lead mode raise")
     return operator_client.request_raise(engine.aew_root, a.mode)
+
+
+def _grant(a: argparse.Namespace) -> Any:
+    from aew.engine.publication_ops import parse_duration
+    from aew.harness import operator_client
+
+    engine = _engine(a)
+    duration = parse_duration(a.duration) if a.duration is not None else None
+    _require_terminal("aew operator grant-publication")
+    return operator_client.request_grant(engine.aew_root, manifest=a.manifest, task=a.task, duration_s=duration,
+                                         max_publications=a.max_publications)
+
+
+def _revoke(a: argparse.Namespace) -> Any:
+    from aew.harness import operator_client
+
+    engine = _engine(a)
+    _require_terminal("aew operator revoke-publication")
+    return operator_client.request_revoke(engine.aew_root)

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.authority import CUSTODY_PUBLISHING, require_custodian, require_lead
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import (
@@ -36,7 +36,8 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies")
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies",
+                "authorization")
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -63,6 +64,15 @@ def as_v1(state: dict[str, Any]) -> dict[str, Any]:
 V1_OPS = frozenset({"lead.handoff.offer", "lead.handoff.cancel", "lead.release", "invoke.cancel", "manifest.adopt"})
 
 
+def _begins_publishing(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """Whether a transaction moves any integration into ``publishing`` (M4-E E6b: a custody commit that does is a
+    publication, whatever op it was entered under)."""
+    old = before.get("work") or {}
+    return any((u.get("integration") or {}).get("status") == "publishing"
+               and ((old.get(w) or {}).get("integration") or {}).get("status") != "publishing"
+               for w, u in (after.get("work") or {}).items())
+
+
 @dataclass
 class TxnContext:
     session: Session
@@ -87,6 +97,9 @@ class TxnContext:
     # Facts this transition declares that its state change cannot show (ADR-0012 D2: a decision recorded, evidence
     # ingested, a handoff or an audit written). Only the operation itself appends them.
     events: list[dict[str, Any]] = field(default_factory=list)
+    # M4-E E6b: set by the PIC exercise once the request, the envelope's usability and §17's predicate held on this
+    # transaction's state; a custody transaction that publishes without it is refused (plan v3 §2.3, S1).
+    pic_checked: bool = False
     # Other history entries this transition adds (an audit record, already staged), appended by the archival
     # finalizer first and in one append with everything else: a transaction appends to the history exactly once.
     entries: list[dict[str, Any]] = field(default_factory=list)
@@ -411,12 +424,11 @@ class Kernel:
         the current Lead generation, and ``op`` is in the closed family), then the manifest and policy pins and every
         finalizer, as a Lead transaction. There is no expected revision: a custody commit is mechanical, and each one
         re-verifies what it relies on (the validation's transaction 2 does, the routing does). No Lead token is held or
-        used. A publication under custody needs the operator's envelope and the §17 predicate (E6b): it is refused."""
+        used. A publication under custody (the begin, ``integrate.publishing``, or the finish, ``integrate.publish``,
+        or any commit that moves an integration to ``publishing``) is refused unless the PIC exercise found the
+        request, the operator's envelope and the §17 predicate holding on this transaction's state (M4-E E6b:
+        ``ctx.pic_checked``)."""
         with self.store.session() as s:
-            if op == CUSTODY_PUBLISH:
-                raise IllegalTransition("a custodian publishes only under the operator's publication envelope and the "
-                                        "§17 predicate, evaluated in the same transaction; no envelope exists, so "
-                                        "nothing is published under custody", reason="no_publication_envelope")
             actor = require_custodian(s.state, credential, op)
             if s.state.get("schema") != V2:
                 raise MigrationRequired("integration custody runs under the v2 queue: migrate this project first",
@@ -426,6 +438,12 @@ class Kernel:
             try:
                 ctx = TxnContext(session=s, actor=actor, txn_op=op)
                 yield ctx
+                if not ctx.pic_checked and (op in CUSTODY_PUBLISHING or ctx.op in CUSTODY_PUBLISHING
+                                            or _begins_publishing(s.committed_view(), ctx.state)):
+                    raise IllegalTransition("a custodian publishes only under the operator's publication envelope "
+                                            "and the §17 predicate, evaluated in the same transaction; they were not, "
+                                            "so nothing is published under custody",
+                                            reason="no_publication_envelope")
                 self.finalizers.run(ctx)
                 s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
                                     events=ctx.events), expect_rev=s.revision, state=ctx.commit_state)

@@ -1,0 +1,13 @@
+case: unusable_envelope
+slice: E6b
+description: >-
+  the Lead requests PUBLISH_IF_CLEAN on a Ticket of the sealed run whose envelope the operator revoked: the stage
+  prepares the candidate and records the request, and the Ticket stays COMMIT_READY (a request grants nothing)
+seed: unusable_envelope
+stage: ticket_prepare
+arguments: {work_id: $work_id, verification_evidence: $evidence, publish_if_clean: true}
+expect:
+  availability: AVAILABLE
+  boundary: null
+  steps: [verify.ingest, work.transition, integrate.prepare]
+  unit_state: COMMIT_READY

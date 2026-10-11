@@ -24,6 +24,7 @@ from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
 from aew.engine.guards import checked as guard_checked
 from aew.engine.guards import refusal, require
+from aew.engine.validation_ops import CUSTODIAN, LEAD, Principal
 from aew.errors import (
     AEWError,
     GateUnsatisfied,
@@ -86,6 +87,7 @@ class Integration:
         self.gates = gates
         self.dispatch = dispatch
         self.queue = queue
+        self.pic: Any = None  # M4-E E6b: the PUBLISH_IF_CLEAN request and settlement (``publication_ops``)
 
     def _ref(self) -> str:
         return f"refs/heads/{self.k.authoritative_branch}"
@@ -365,7 +367,12 @@ class Integration:
             ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
         return unit, conflict, refused
 
-    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
+    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str,
+                          publish_if_clean: bool = False) -> dict[str, Any]:
+        """Prepare ``work_id``'s candidate under its lease. ``publish_if_clean`` (M4-E E6b, the Lead's request; plan v3
+        §2.2) records a conditional publication request on the lease's attempt in this same commit: it grants
+        nothing, and only the custodian exercises it, under the operator's envelope and §17."""
+        pic = None
         with self.k.lead_txn(token, expect_rev, "integrate.prepare") as ctx:
             state = ctx.state
             # Legality and queue order are the decision's (M4-D); the lease it grants is held by a new custodian. The
@@ -376,6 +383,11 @@ class Integration:
             unleased = Q.queued(state) and Q.lease_of(state, work_id) is None
             self.queue.grant(ctx, work_id)
             unit, conflict, refused = self._build_candidate(ctx, work_id, unleased=unleased)
+            if publish_if_clean:
+                if self.pic is None or not Q.queued(state):
+                    raise IllegalTransition("PUBLISH_IF_CLEAN is requested on a lease of the integration queue: "
+                                            "migrate this project to v2 first")
+                pic = self.pic.record_request(ctx, work_id)
             self.units.before_commit(ctx)
         self._prune_retired_candidates(unit)
         if refused is not None:
@@ -386,6 +398,8 @@ class Integration:
         result = {"ok": conflict is None, "work_id": work_id, "integration": unit["integration"],
                   "queue": self._queue_brief(ctx.state, work_id), "dispatch": decision.to_dict(),
                   "revision": ctx.session.committed_revision}
+        if pic is not None:
+            result["publish_if_clean"] = pic
         if conflict:
             result["next"] = "resolve by returning the Ticket to RUNNING (rebase) or REPLAN_REQUIRED"
         return result
@@ -769,99 +783,148 @@ class Integration:
         from aew.engine.stage_intents import unarmed
 
         with unarmed():
-            return self._finish_publish(token, committed, work_id)
+            return self._finish_publish(Principal(LEAD, token), committed, work_id)
 
-    def _finish_publish(self, token: str, expect_rev: int, work_id: str, *,
+    def custody_finish(self, credential: str, work_id: str) -> dict[str, Any]:
+        """The custodian's finish of a publish it began under PUBLISH_IF_CLEAN (M4-E E6b; plan v3 §2.3): the same CAS,
+        sync and DONE as the Lead's, under its custody credential, after re-checking the request, the envelope and
+        §17 in the same transaction."""
+        return self._finish_publish(Principal(CUSTODIAN, credential), 0, work_id)
+
+    def _finish_publish(self, who: Principal, expect_rev: int, work_id: str, *,
                         reconciling: bool = False) -> dict[str, Any]:
-        """CAS, worktree sync and DONE as ONE Lead transaction (review 2026-09-26 M1).
+        """CAS, worktree sync and DONE as ONE transaction (review 2026-09-26 M1): the Lead's or, for a publish begun
+        under PUBLISH_IF_CLEAN, the custodian's (M4-E E6b).
 
         Authority, the expected control revision and the manifest pin are all verified under the
         control-state lock *before* any ref or worktree side effect, and the lock is held until DONE
         commits. A rejected call therefore never moves the ref, and no other writer can interleave
         between publication and completion. A crash at any fault point leaves ``publishing`` for
         ``integrate reconcile``; a refused sync aborts the transaction, so nothing is overwritten.
+
+        Under PUBLISH_IF_CLEAN the custodian first re-checks the request, the envelope and §17 in this same
+        transaction (plan v3 §2.3, S1), withdrawing the publish before any CAS if one no longer holds. The reservation
+        is converted to a publication in the commit that records ``integrated``, and released by any commit that proves
+        nothing was published (n4). A reconcile never completes a PIC publish whose CAS never landed: the candidate
+        returns VALIDATED for the current generation (HSD-22, HSD-23).
         """
         stale: StaleCandidate | None = None
         moved: dict[str, Any] | None = None
         withdrawn: GateUnsatisfied | None = None
+        unlanded = False
+        cas = "already_published"
         sync: dict[str, Any] = {}  # set on the path that completes; the others raise below
         remove_ticket_workspace = False
-        with self.k.lead_txn(token, expect_rev, "integrate.publish") as ctx:
+        with who.txn(self.k, expect_rev, "integrate.publish") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             integ = unit.get("integration") or {}
             if integ.get("status") != "publishing":
                 raise IllegalTransition(f"{work_id} is not publishing (integration {integ.get('status')})")
             self.queue.sync(ctx.state)
-            lease = self._publishing_lease(ctx.state, work_id, reconciling)
             ref, base, candidate = self._ref(), integ["base"], integ["candidate"]
-            applies = I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch)
             current = git.rev_parse(ref, cwd=self.k.repo_root)
-            cas = "already_published"
-            mismatch = self.gates.binding_problem(unit)
-            if mismatch and current != base:
-                raise IntegrityError("CONTRADICTION: the published candidate is not bound to the Ticket's current "
-                                     "COMMIT_READY acceptance; operator inspection required", ref=ref, **mismatch)
-            if mismatch:
-                self._retire_integration(ctx.state, unit,
-                                         "bound to an earlier COMMIT_READY or plan (found at finalization)")
-                stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
-                                       "run `aew integrate prepare` again", **mismatch)
-            elif current == base:
-                withdrawn = self._publication_blocker(ctx.state, work_id, unit)
-                if withdrawn:
-                    # Nothing was published (the ref is still H): withdraw the intent so the Lead can act on
-                    # the unmet obligation instead of being held in `publishing`.
-                    integ["status"] = "validated"
-                    integ.pop("publishing_at", None)
-                    ctx.op = "integrate.withdrawn"
-                    ctx.summary = f"{work_id} publish withdrawn: {withdrawn.message}"
-                else:
-                    if applies:
-                        I.precheck_sync(self.k.repo_root, base, integ["changed_paths"])
-                    try:
-                        I.cas_publish(self.k.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
-                        cas = "published"
-                    except StaleCandidate:  # the ref moved between the check and the CAS: nothing was published
-                        moved = self._moved_head(ctx, work_id, git.rev_parse(ref, cwd=self.k.repo_root))
-            elif current is None or not git.is_ancestor(candidate, current, cwd=self.k.repo_root):
-                moved = self._moved_head(ctx, work_id, current)
-            if stale:  # the binding mismatch: superseded, the entry keeps its place (D3)
-                self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
-                ctx.op = "integrate.stale"
-                ctx.summary = f"{work_id} candidate superseded (found at finalization)"
-            elif withdrawn or moved is not None:
-                pass
-            else:
-                faults.hit("integrate.after_cas")
-                sync = {"status": "not_applicable (authoritative branch not checked out here)"}
-                if applies:
-                    # AEW-INV-ISO-004: syncing into the shared checkout is serialized by a lock held for this bounded
-                    # step only, in the lease custodian's name. It grants nothing (M4-B6).
-                    with self.queue.checkout_sync_lock(ctx.state, lease=lease, work_id=work_id):
-                        try:
-                            sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],
-                                                   head=current if cas == "already_published" else None,
-                                                   on_first=lambda: faults.hit("integrate.mid_sync"))
-                        except IntegrityError as exc:
-                            raise IntegrityError(exc.message, published=candidate, ref=ref, **exc.details) from None
-                    sync["status"] = "synced"
-                faults.hit("integrate.before_done")
-                transitions.check(unit["state"], "DONE", "integrate.publish")
-                integ.update(status="integrated", commit=candidate, integrated_at=utc_now(), cas=cas,
-                             worktree_sync=sync)
-                # A checks run still marked running (one interrupted before the Lead validated through the verifier)
-                # ends with the publication, never archived as running (PR #91 re-review R1).
-                _end_running_validation(integ, f"{work_id} was published while the run was marked running")
-                completion = self._completion_record(ctx.state, work_id, unit)
-                ctx.session.write(f"work/{work_id}/completion.md", completion)
-                ctx.refs.append(f"work/{work_id}/completion.md")
-                unit["completion_record"] = f"work/{work_id}/completion.md"
-                self.units.set_state(unit, "DONE",
-                                     f"integrated as {candidate[:12]}; post-integration verification passed",
-                                state=ctx.state)
-                remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
-                ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.k.authoritative_branch}"
+            pic_problem = None
+            if who.kind == CUSTODIAN:
+                if (integ.get("pic") or {}).get("custodian") != ctx.actor["invocation"]:
+                    raise IllegalTransition(f"{work_id}'s publish was not begun under this custodian's "
+                                            "PUBLISH_IF_CLEAN exercise: it is the Lead's to finish",
+                                            reason="no_publication_envelope")
+                if current == base:  # before any CAS
+                    pic_problem = self.pic.recheck(ctx, work_id)
+                else:  # nothing is published by this commit: a landed CAS is confirmed, a moved head rebuilt
+                    ctx.pic_checked = True
+            if pic_problem is not None:
+                self.pic.withdraw(ctx, work_id, pic_problem)
+                withdrawn = GateUnsatisfied(f"the PUBLISH_IF_CLEAN publish of {work_id} was withdrawn before its CAS "
+                                            f"({pic_problem[0]} {pic_problem[1]}): nothing was published",
+                                            reason="pic_withdrawn", kind=pic_problem[0], which=pic_problem[1])
                 self.units.before_commit(ctx)
+            elif reconciling and current == base and self.pic is not None and \
+                    self.pic.reconcile_unlanded(ctx, work_id):
+                unlanded = True
+                self.units.before_commit(ctx)
+            else:
+                lease = self._publishing_lease(ctx.state, work_id, reconciling)
+                applies = I.authoritative_worktree_applies(self.k.repo_root, self.k.authoritative_branch)
+                mismatch = self.gates.binding_problem(unit)
+                if mismatch and current != base:
+                    raise IntegrityError("CONTRADICTION: the published candidate is not bound to the Ticket's current "
+                                         "COMMIT_READY acceptance; operator inspection required", ref=ref, **mismatch)
+                if mismatch:
+                    self._settle(ctx.state, integ, published=False)
+                    self._retire_integration(ctx.state, unit,
+                                             "bound to an earlier COMMIT_READY or plan (found at finalization)")
+                    stale = StaleCandidate("the integration candidate was built from an earlier COMMIT_READY or plan; "
+                                           "run `aew integrate prepare` again", **mismatch)
+                elif current == base:
+                    withdrawn = self._publication_blocker(ctx.state, work_id, unit)
+                    if withdrawn:
+                        # Nothing was published (the ref is still H): withdraw the intent so the Lead can act on
+                        # the unmet obligation instead of being held in `publishing`.
+                        self._settle(ctx.state, integ, published=False)
+                        integ["status"] = "validated"
+                        integ.pop("publishing_at", None)
+                        ctx.op = "integrate.withdrawn"
+                        ctx.summary = f"{work_id} publish withdrawn: {withdrawn.message}"
+                    else:
+                        if applies:
+                            I.precheck_sync(self.k.repo_root, base, integ["changed_paths"])
+                        try:
+                            I.cas_publish(self.k.repo_root, ref, candidate, base, f"aew: integrate {work_id}")
+                            cas = "published"
+                        except StaleCandidate:  # the ref moved between the check and the CAS: nothing was published
+                            self._settle(ctx.state, integ, published=False)
+                            moved = self._moved_head(ctx, work_id, git.rev_parse(ref, cwd=self.k.repo_root))
+                elif current is None or not git.is_ancestor(candidate, current, cwd=self.k.repo_root):
+                    self._settle(ctx.state, integ, published=False)
+                    moved = self._moved_head(ctx, work_id, current)
+                if stale:  # the binding mismatch: superseded, the entry keeps its place (D3)
+                    self.queue.release(ctx.state, work_id, to="QUEUED", result="superseded")
+                    ctx.op = "integrate.stale"
+                    ctx.summary = f"{work_id} candidate superseded (found at finalization)"
+                elif withdrawn or moved is not None:
+                    pass
+                else:
+                    faults.hit("integrate.after_cas")
+                    sync = {"status": "not_applicable (authoritative branch not checked out here)"}
+                    if applies:
+                        # AEW-INV-ISO-004: syncing into the shared checkout is serialized by a lock held for this
+                        # bounded step only, in the lease custodian's name. It grants nothing (M4-B6).
+                        with self.queue.checkout_sync_lock(ctx.state, lease=lease, work_id=work_id):
+                            try:
+                                sync = I.sync_worktree(self.k.repo_root, base, candidate, integ["changed_paths"],
+                                                       head=current if cas == "already_published" else None,
+                                                       on_first=lambda: faults.hit("integrate.mid_sync"))
+                            except IntegrityError as exc:
+                                raise IntegrityError(exc.message, published=candidate, ref=ref,
+                                                     **exc.details) from None
+                        sync["status"] = "synced"
+                    faults.hit("integrate.before_done")
+                    transitions.check(unit["state"], "DONE", "integrate.publish")
+                    # A reservation becomes a publication in the commit that records `integrated` (n4).
+                    self._settle(ctx.state, integ, published=True)
+                    integ.update(status="integrated", commit=candidate, integrated_at=utc_now(), cas=cas,
+                                 worktree_sync=sync)
+                    # A checks run still marked running (one interrupted before the Lead validated through the
+                    # verifier) ends with the publication, never archived as running (PR #91 re-review R1).
+                    _end_running_validation(integ, f"{work_id} was published while the run was marked running")
+                    completion = self._completion_record(ctx.state, work_id, unit)
+                    ctx.session.write(f"work/{work_id}/completion.md", completion)
+                    ctx.refs.append(f"work/{work_id}/completion.md")
+                    unit["completion_record"] = f"work/{work_id}/completion.md"
+                    under = " under PUBLISH_IF_CLEAN" if who.kind == CUSTODIAN else ""
+                    self.units.set_state(unit, "DONE",
+                                         f"integrated as {candidate[:12]}{under}; post-integration verification "
+                                         "passed", state=ctx.state)
+                    remove_ticket_workspace = self._settle_ticket_workspace(unit, integ["ticket_commit"])
+                    ctx.summary = f"{work_id} DONE: integrated {candidate[:12]} into {self.k.authoritative_branch}" \
+                                  + under
+                    self.units.before_commit(ctx)
+        if unlanded:
+            return {"ok": True, "work_id": work_id, "reconciled": "pic_publish_not_landed", "published": False,
+                    "queue": self._queue_brief(ctx.state, work_id), "revision": ctx.session.committed_revision,
+                    "next": f"nothing was published; {work_id}'s candidate is VALIDATED: publish it with "
+                            "`integration_publish` if you still judge it ready"}
         if moved is not None:
             return self._moved_head_result(ctx, work_id, moved)
         if stale:
@@ -872,8 +935,16 @@ class Integration:
         self._prune_retired_candidates(unit)
         if remove_ticket_workspace:
             worktrees.remove(self.k.repo_root, unit["workspace"]["path"])
-        return {"ok": True, "work_id": work_id, "state": "DONE", "integrated_commit": candidate, "cas": cas,
-                "worktree_sync": sync, "revision": ctx.session.committed_revision}
+        out = {"ok": True, "work_id": work_id, "state": "DONE", "integrated_commit": candidate, "cas": cas,
+               "worktree_sync": sync, "revision": ctx.session.committed_revision}
+        if who.kind == CUSTODIAN:
+            out.update(published_under="PUBLISH_IF_CLEAN", envelope=(integ.get("pic") or {}).get("envelope"))
+        return out
+
+    def _settle(self, state: dict[str, Any], integ: dict[str, Any], *, published: bool) -> None:
+        """A PUBLISH_IF_CLEAN reservation on ``integ``, settled (M4-E E6b, n4); nothing for any other publish."""
+        if self.pic is not None:
+            self.pic.settle(state, integ, published=published)
 
     @staticmethod
     def _settle_ticket_workspace(unit: dict[str, Any], ticket_commit: str) -> bool:
@@ -948,7 +1019,7 @@ class Integration:
         unit = state["work"].get(work_id) or {}
         lease = Q.lease_of(state, work_id)
         if (unit.get("integration") or {}).get("status") == "publishing" or not (lease and lease["reconcile"]):
-            return self._finish_publish(token, expect_rev, work_id, reconciling=True)
+            return self._finish_publish(Principal(LEAD, token), expect_rev, work_id, reconciling=True)
         with self.k.lead_txn(token, expect_rev, "integrate.reconcile") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             lease = Q.lease_of(ctx.state, work_id)

@@ -1027,7 +1027,14 @@ sections:
       and seeded, in `eval/experiments/m4h-dogfood/`. numpy is the evaluator-only `eval` extra (pinned), which no other
       module imports. Proved in `tests/unit/test_eval_analysis.py`. **Cross-feature integration v0.5 ([cross-feature integration
       design v0.5](../design/cross-feature-integration-design-v0.5.md) §18; ledger CFI-106):** field-log #20, PR lifetime,
-      is an evaluator / process metric candidate (F41.14)'
+      is an evaluator / process metric candidate (F41.14). **The M4-H instrument (the F19 M4-H instrument plan v5, slices
+      S0 to S18; note layout from 2026-10-10):** each slice''s progress is its own paragraph of [implementation-status.md](implementation-status.md)''s
+      section "The evaluation instrument (register F19)", so slices landing in parallel never edit this cell; this row keeps
+      the decisions and gates. **S4 built (2026-10-10):** the evaluator/arm-host split''s core ([ADR-0018](adr/0018-evaluator-arm-host-split.md),
+      ledger EAS): a cell released to an arm host through a transport, registered before its bundle leaves, collected under
+      hostile receive and finalized for deferred scoring on the evaluator, with a hash-chained release ledger and the run
+      manifest `aew/m4h-run-manifest/v1`; scripted arm only until the run supervisor (S8), and no model arm or held-out
+      case released until S5''s preflight can establish isolation'
 
   - '#': F20
     Work: 'Read-only operator dashboard, main-line integration. The frontend core (D1 to D4: Overview, Work, Runs, Evidence,

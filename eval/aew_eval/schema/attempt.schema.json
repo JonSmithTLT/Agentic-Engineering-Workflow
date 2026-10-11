@@ -21,6 +21,17 @@
     },
     "requested_profile": {"type": "object"},
     "retry_of": {"type": ["string", "null"]},
+    "release": {
+      "description": "A released cell's binding (ADR-0018 D3), written before its bundle leaves the evaluator: the arm host, the hypervisor snapshot it was reset to (null for a host with none, such as the local stand-in), and the content hashes of the preflight it passed and of the release bundle's manifest.",
+      "type": "object", "required": ["host", "snapshot_uuid", "preflight_sha256", "bundle_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "host": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+        "snapshot_uuid": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+        "preflight_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
     "result_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "validity": {"enum": ["valid", "invalid_measurement", "runner_lost", "environment_blocked"]}
   },

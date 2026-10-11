@@ -242,6 +242,7 @@ class Meter:
         self.last_success: float | None = None  # self.clock() at the last successful poll
         self._lock = threading.RLock()
         self._ended = False
+        self._deadline: float | None = None  # final()'s budget, on self.clock
         self.state = self._load_state()
         started = time.time()
         self.epoch = f"m-{secrets.token_hex(6)}:{_iso_ms(started)}"
@@ -279,9 +280,18 @@ class Meter:
 
     # ------------------------------------------------------------------ requests
 
+    def _timeout(self) -> float:
+        """One request's timeout: ``request_timeout_s``, cut to what is left of ``final()``'s budget, if any."""
+        if self._deadline is None:
+            return self.request_timeout_s
+        left = self._deadline - self.clock()
+        if left <= 0:
+            raise MeterError("the final sample's time budget ran out")
+        return min(self.request_timeout_s, left)
+
     def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         try:
-            return self.client.get(path, params, timeout=self.request_timeout_s)
+            return self.client.get(path, params, timeout=self._timeout())
         except (OpenCodeError, OpenCodeUnavailable) as exc:
             raise MeterError(f"{path}: {exc}") from None
 
@@ -333,19 +343,24 @@ class Meter:
             self.last_success = self.clock()
             return sample
 
-    def final(self) -> dict[str, Any]:
+    def final(self, budget_s: float | None = None) -> dict[str, Any]:
         """The final sample: ``final`` after a successful last poll, else ``server_gone`` with the last figures.
-        A failed write raises ``OSError`` and ends nothing: ``final()`` can be called again (PR #186 m4)."""
+        A failed write raises ``OSError`` and ends nothing: ``final()`` can be called again (PR #186 m4).
+        ``budget_s`` bounds the last poll's requests in all (the adapter's share of ``TERMINATE_S``, plan v4 §4.2); a
+        poll that runs out of it is a failed poll."""
         with self._lock:
             if self._ended and self.sample is not None:
                 return self.sample
             state, observed, run_state = self.state, self.observed_at, "server_gone"
             if self.client is not None:
+                self._deadline = None if budget_s is None else self.clock() + budget_s
                 try:
                     state, observed, run_state = self._read_server(), _iso_ms(), "final"
                 except MeterError as exc:
                     self.errors += 1
                     self.last_error = str(exc)[:300]
+                finally:
+                    self._deadline = None
             elif self.prompt_state == "unsent":
                 run_state = "final"  # no server was started: nothing could have been spent (never launched)
             sample = self._publish(run_state, state=state, observed_at=observed)
@@ -471,7 +486,7 @@ class Meter:
     def _session_get(self, sid: str, rest: str, params: dict[str, str] | None = None) -> Any:
         """A session route; None when it answers 404 (the session or message is gone)."""
         try:
-            return self.client.get(f"/api/session/{sid}{rest}", params, timeout=self.request_timeout_s)
+            return self.client.get(f"/api/session/{sid}{rest}", params, timeout=self._timeout())
         except OpenCodeError as exc:
             if exc.status == 404:
                 return None
@@ -578,7 +593,7 @@ class Meter:
         finally:
             self.observed_at = held
         if self.live_path is not None:
-            atomic_write(self.live_path, json.dumps(sample, sort_keys=True, separators=(",", ":")))
+            runlog.write_live(self.live_path, sample)  # the live file's only writer (F25 L2, R2-m3)
         self.state, self.observed_at, self.seq, self.sample = state, observed, self.seq + 1, sample
         return sample
 

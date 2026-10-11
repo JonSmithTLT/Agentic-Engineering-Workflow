@@ -169,6 +169,46 @@ One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and on
 - `client` may be `None` and bound later (`meter.client = ...`), so L2 creates the meter and writes its `unsent` sample before the server starts.
 - `poll()` returns the new sample, or the last published one when a request or write fails, or `None` before any sample is published: a failure never makes a sample up or spends a `seq`. `final()` raises `OSError` when its write fails and can then be called again; `set_prompt_state()` raises on a failed write and leaves the prompt state as it was.
 
+### 5.2 A supervised run's live usage (register F25, for M4-H; slice L2)
+
+The OpenCode adapter runs the §5.1 meter for its own run, so a supervised run publishes its spend while it runs
+(`opencode/adapter.py`, `runlog.write_live` and `runlog.read_live`):
+
+- **Before the server.** `launch` creates the meter first and writes `seq 0, prompt_state: unsent` to
+  `usage.live.json` in the run directory before `Server.start`. If that write fails, the launch is refused
+  (`HarnessLaunchFailed`) and no server is started, so a run directory without a live file never had a server.
+- **Polling.** Once the server answers, the meter polls it every second on its own thread, with its own client and
+  2 s request timeouts, whatever the turn state (running, held, between turns), so the adapter's 30 s requests never
+  delay it. The meter's state is `usage.live.state.json` beside it.
+- **The prompt.** `posting` is written immediately before the first prompt's POST (a failed write refuses the launch,
+  so a delivered prompt never reads as unsent), and `posted` after it.
+- **Turn end.** The end of a turn wakes the meter for a sample at once.
+- **Terminate.** `terminate` stops the thread and takes a fresh final sample, whatever the turn's snapshot holds,
+  within a 4 s budget of requests, before the server's lease ends: `final`, or `server_gone` with the last figures.
+- **Failures.** A meter failure, a failed poll or a failed write is counted (`meter_errors` in `collect()`, and an
+  `opencode.meter_error` event) and never ends or delays the run.
+- **One writer.** The meter alone writes the live file, and a live write wakes no waiter.
+
+**Reading a run's samples.**
+
+- A run whose prompt was never posted (`unsent` in its last sample) spent nothing.
+- A run past `unsent` without a `final` sample is unknown, never zero.
+- A missing live file means no server only for a run the reader never observed; an evaluator that saw the server
+  overrides that (F19).
+
+**Metering a supervised server from outside.** `OpenCodeMeter(Client(url, password), root_session=...)` works on a
+supervised run's server as on an evaluator-owned one, with the server's password and a root session the caller finds.
+Two meters on one server are harmless: each poll is a few GETs (`tests/unit/test_usage_live_run.py`).
+
+**Who can write the files.** Under containment the run root is outside what the sandbox binds back, so the agent cannot
+write its live usage (`test_the_agent_cannot_write_its_live_usage`, Linux). The Lead's projection denies every edit,
+and its shell asks except for `aew` and read-only git. Where the Lead and AEW's supervisors share one uid (M4-H's
+deployment until F18.6), their processes still can: a residual of that deployment, as for the run record.
+
+**In M4-H**, the counted cost and the cap come from the evaluator's metering proxy; the live figure is its cross-check
+(F19). Hardening the counted-cost boundary further (the server configurations, plugins and clients a counted server
+admits) is the evaluator's preflight (slice L3).
+
 ## 6. Live results with real models (M3 step 8)
 
 **What ran.** `tests/live/test_opencode_model_live.py`:

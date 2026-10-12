@@ -175,7 +175,6 @@ class Inputs:
         return out
 
 
-
 class NonMutating:
     """Non-mutating (evidence-only) Tickets: attempts, observations, records, gates and acceptance."""
 

@@ -18,6 +18,7 @@ from aew.surface.errors import CODES, AdapterInputError
 
 __all__ = ["CODES", "AdapterInputError", "check_call"]
 
+
 @cache
 def _validator(name: str) -> Draft202012Validator:
     # The argument schemas are AEW's own: test_surface_contract checks them against the metaschema once.

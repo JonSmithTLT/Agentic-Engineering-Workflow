@@ -440,6 +440,7 @@ class HierarchyWalk:
             self.new_story("")
             self.new_ticket(self.units[-1], mutating=self.rng.random() < 0.3)
             live = [w for w in self.units if self.live(w)]
+
         def weight(w: str) -> float:
             u = self.unit(w)
             if u["kind"] != "ticket":

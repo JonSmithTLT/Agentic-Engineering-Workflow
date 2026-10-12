@@ -34,6 +34,8 @@ def findings_path_for(lane_report: Path) -> Path:
     """The findings file beside a lane report: the capture plugin writes it there and the ratchet expects it there (one
     owner for the pairing). Another schema, so assurance's report loader skips it."""
     return lane_report.with_name(lane_report.stem + FINDINGS_SUFFIX)
+
+
 SCHEMA = "aew/discovery-allowed/v1"
 STATIC_PREFIXES = ("static:", "tool-arguments:")
 

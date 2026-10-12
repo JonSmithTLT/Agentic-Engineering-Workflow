@@ -45,6 +45,8 @@ def count_cli_call() -> None:
     current = os.environ.get("PYTEST_CURRENT_TEST")
     if current:
         CLI_CALLS[current.rsplit(" (", 1)[0]] += 1
+
+
 SERIAL_UNDER_XDIST = (
     "serial test collected by an xdist worker: its property is timing or real-process concurrency, so it "
     "must never share the machine with other tests. Run it with `pytest --lane serial -p no:xdist` "

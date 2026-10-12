@@ -37,6 +37,7 @@ APPLY_PATCH = {
                            "    assert apply(subtract, 5, 3) == 2\n",
 }
 
+
 def unit_check_command() -> list[str]:
     return ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]
 
@@ -221,7 +222,6 @@ def to_verified(p: Project, tmp_path: Path, *, files: dict[str, str] | None = No
     p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
     assert p.ok("work", "show", wid)["control"]["state"] == "VERIFIED"
     return wid, impl
-
 
 
 # ------------------------------------------------------------------ M2: hierarchy and non-mutating roles

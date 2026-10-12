@@ -148,6 +148,8 @@ def planned_shape(engine: Any, stage: str, arguments: dict[str, Any], *,
     planner and its availability ask the same functions on the same kind of read."""
     current = engine.store.read() if state is None else state
     return {n: bool(applies(engine, current, arguments)) for n, applies in APPLIES.get(stage, {}).items()}
+
+
 # The request stages launch every card the effective gates require (plan v3 E5): their dispatch step (and the launch
 # after it) repeats once per card, by stage: (that step, the role slot). The cards are the policy's now
 # (:func:`stage_cards`); each card's dispatch is asked its own decision, and the step answers for all of them.

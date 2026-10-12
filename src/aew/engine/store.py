@@ -209,7 +209,6 @@ class Session:
                                                       self._prewritten, working=self.state)
         return self.committed_revision
 
-
     # ------------------------------------------------------------------ the seal check (F9-A plan D-16, R3)
 
     def _unsealed_endings(self) -> list[tuple[str, str]]:

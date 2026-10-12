@@ -25,6 +25,7 @@ from aew.harness import broker_liveness, event_spool, notify, procs, runlog
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 
+
 def event(**over: Any) -> dict[str, Any]:
     return notify.payload(**{"event": "hard_deadline", "project_id": "p", "subject": "R-INV-0001-1",
                              "reason": "deadline", "ref": None, "revision": 1, "source": "spool:run-R-INV-0001-1",

@@ -509,7 +509,6 @@ def test_a_server_gone_before_the_final_sample_keeps_the_last_figures(lab: Lab):
     assert gone["observed_at"] == live["observed_at"]
 
 
-
 class HeldPoll:
     """A poll on its own thread whose requests have all returned, and whose commit waits for ``release()``."""
 

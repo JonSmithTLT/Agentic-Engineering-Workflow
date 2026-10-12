@@ -328,7 +328,6 @@ class WorkUnits:
                                         "`aew work redispatch` for a non-mutating Ticket)", dispatch_binding=problem)
 
 
-
 class WorkCommands:
     """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
 

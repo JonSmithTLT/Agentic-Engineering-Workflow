@@ -307,7 +307,6 @@ def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project
         _names_the_operator(action)
 
 
-
 def test_an_unadopted_checks_edit_is_named_as_such_in_the_next_actions(project):
     """PR #118 review, N4: an edit that differs from its pin is not an invalid file: the next action names the
     operator's adoption, not "fix invalid policy/checks.yaml"."""

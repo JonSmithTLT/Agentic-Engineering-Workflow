@@ -52,6 +52,7 @@ def run_metrics(d: Path) -> dict[str, Any]:
             order_delivered.append(data.get("inboxID"))
         if e.get("type") == "session.inbox.enqueued":
             enqueued_ev.setdefault(data.get("inboxID"), e["s"])
+
     def tail(data: dict[str, Any]) -> str:
         return "".join(c.get("text", "") for c in data.get("content") or [] if isinstance(c, dict))[-160:]
 

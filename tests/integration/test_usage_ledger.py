@@ -185,7 +185,6 @@ def test_prices_are_operational_policy_adopted_like_any_other(lab, tmp_path):
         lab.project.adopt_policy()
 
 
-
 def archived_usage(lab: HarnessLab, wid: str, inv: str) -> list[dict[str, Any]]:
     from aew.schemas import validate
 

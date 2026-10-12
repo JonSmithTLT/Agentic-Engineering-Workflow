@@ -278,6 +278,7 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
         exists = index in listing.segments
         if exists and not listing.leftovers(index):
             continue
+
         def control_lock() -> FileLock:
             return FileLock(store.root / LOCK_REL, timeout=store.lock_timeout)
 

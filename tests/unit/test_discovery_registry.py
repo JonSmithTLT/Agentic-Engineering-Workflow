@@ -31,6 +31,9 @@ OUTSIDE_REGISTRY = frozenset({
     "CLASS0_PLAN_LINT", "CLASS0_SUBJECT_UNBOUNDED",
     "LINT_ACCEPTANCE_CHECK_UNKNOWN", "LINT_ACCEPTANCE_INPUT_WRITABLE", "LINT_AFFECTED_OUTSIDE_SCOPE",
     "LINT_AFFECTED_PROTECTED", "LINT_NO_ACCEPTANCE_MECHANISM",
+    # the configuration projection's data (register F46.1): `document.yaml_error.code`, which describes a policy
+    # file's content inside a successful read, never a refusal's code
+    "YAML_SYNTAX",
 })
 
 

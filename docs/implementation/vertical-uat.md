@@ -393,9 +393,10 @@ and fails on any code missing here or listed here and no longer defined, so the 
 
 The scan also finds codes that are not refusals: the assurance lint, Class 0 eligibility and dispatch blocker codes
 (`LINT_*`, `CLASS0_*`, `ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`, `GIT_DRIVER_UNTRUSTED`,
-`PROTECTED_CONDITION_OVERLAP`). They are entries in a refusal's details or a decision's reason codes, never a
-refusal's code, so the test pins them as a named list outside the registry; one that is no longer written, or that
-this registry lists, fails it.
+`PROTECTED_CONDITION_OVERLAP`), and the configuration projection's `YAML_SYNTAX` (register F46.1:
+`document.yaml_error.code`, the shape of a policy file's content inside a successful read). They are entries in a
+refusal's details, a decision's reason codes or a projection's data, never a refusal's code, so the test pins them as
+a named list outside the registry; one that is no longer written, or that this registry lists, fails it.
 
 **Outside the registry by namespace:** the dashboard's reason vocabulary (`dashboard/reasons.py`, and the reason codes
 its projections compute, such as `ARCHITECTURE_*`, `MAP_STALE_*`, `RUN_CRASHED`, `RUN_LOST` and

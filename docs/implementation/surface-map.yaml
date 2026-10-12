@@ -511,11 +511,12 @@ commands:
     door: "shell-only (pending A2/A4)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "recovery only, while no custody worker has registered for the candidate"
   - name: integrate custody
     users: [internal]
-    journeys: [unmapped]
+    journeys: [V1, V2, V4]
     refusals: [PROJECT_NOT_FOUND, USAGE]
-    note: "started by the engine when it grants a lease, never a Lead's command"
+    note: "started by the engine when it grants a lease (the publish path), never a Lead's command"
   - name: integrate breaker status
     users: [operator, lead]
     journeys: [diagnostic]

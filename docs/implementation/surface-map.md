@@ -20,7 +20,8 @@ same change that adds the command or tool. An entry says:
   `shell-only (pending A2/A4)` when the Lead reaches it only by `aew` from its shell or the recovery `cli` tool
   (`partly_via` names the tools that cover some of its uses). This makes the one-door gap of the vertical path's
   shift 1 explicit, command by command; A2 gives the Lead's lifecycle operations their typed homes and A4 closes the
-  shell door;
+  shell door. A read with a typed equivalent (`aew status` and the `status` tool, for example) may also carry
+  `door: typed` and `via`;
 - **`owner`**, for a Lead lifecycle operation: the owner A1's projection will mark on it (`operator`, `lead` or
   `mechanical`); `pending (A1)` until then;
 - **`refusals`**: the `aew.errors` codes it is known to raise. The floor is derived from its arguments (any command:

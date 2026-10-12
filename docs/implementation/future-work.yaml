@@ -2514,9 +2514,9 @@ sections:
       engine with role and scope checks; the correction on precedence and approval fatigue; the resolution of the Lead-notebook
       conflict), read with the earlier ruling on the same brief (operator activation, provenance in briefs, no second policy
       language); the vertical-path plan §1e (Lead, 2026-10-12; independently reviewed CLEAR; not in the repository)
-    Belongs to or gated by: '**Unscheduled.** Staged: the contract is adopted now, and its design draft is owed; its implementation
-      is not a prerequisite of the vertical gate (§1). Once active rules exist, the Lead''s handoff (F47.1, slice A1) includes
-      the relevant ones'
+    Belongs to or gated by: '**Unscheduled.** Staged: the contract is adopted now, and its design draft follows as a proposal
+      through the ingestion gate; its implementation is not a prerequisite of the vertical gate (§1). Once active rules
+      exist, the Lead''s handoff (F47.1, slice A1) includes the relevant ones'
     Notes: Rich recall, the rule-proposal UX, the Lead notebook and F19's memory experiments (an arm with rules served at
       launch) are not vertical-gate prerequisites. The fields and the `refers_to` staleness rule are the proposal the designer
       adopted as the record contract. Relates to F47.1 (the core engine-generated handoff that serves active rules) and

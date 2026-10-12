@@ -1063,12 +1063,22 @@ def dispatch_guard_calls() -> list[str]:
     return out
 
 
+GUARD_CLASS_NAMES = ("GuardRegistration", "DispatchGuard")  # aew.engine.dispatch's class, and the engine's alias
+
+
 def _guard_names(module: ast.Module) -> frozenset[str]:
-    """The names a module calls `DispatchGuard` by (the re-review's N8): the plain name, an import alias
-    (`from ... import DispatchGuard as DG`), or a name assigned from either."""
+    """The names a module calls the dispatch guard registration by (the re-reviews' N8 and N9): `DispatchGuard`,
+    the class's own name and every alias of either imported from `aew.engine.dispatch`
+    (`from aew.engine.dispatch import GuardRegistration as DispatchGuard`, `... as DG`), or a name assigned from
+    those. `aew.engine.seams.GuardRegistration`, the transition guards' class of the same name, is not one."""
     names = {"DispatchGuard"}
-    names |= {a.asname for n in ast.walk(module) if isinstance(n, ast.ImportFrom) for a in n.names
-              if a.name == "DispatchGuard" and a.asname}
+    names |= {a.asname or a.name for n in ast.walk(module) if isinstance(n, ast.ImportFrom)
+              and (n.module or "").split(".")[-1] == "dispatch" for a in n.names if a.name in GUARD_CLASS_NAMES}
+    if any(isinstance(n, ast.ClassDef) and n.name == "GuardRegistration" for n in module.body) \
+            and any(isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "ENTRYPOINTS"
+                    or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "ENTRYPOINTS"
+                                                         for t in n.targets) for n in module.body):
+        names.add("GuardRegistration")  # aew.engine.dispatch itself
     for n in ast.walk(module):
         if isinstance(n, ast.Assign) and isinstance(n.value, ast.Name) and n.value.id in names:
             names |= {t.id for t in n.targets if isinstance(t, ast.Name)}
@@ -1080,7 +1090,7 @@ def _guard_calls(module: ast.Module) -> list[ast.Call]:
     names = _guard_names(module)
     return [n for n in ast.walk(module) if isinstance(n, ast.Call)
             and (isinstance(n.func, ast.Name) and n.func.id in names
-                 or isinstance(n.func, ast.Attribute) and n.func.attr == "DispatchGuard")]
+                 or isinstance(n.func, ast.Attribute) and n.func.attr in GUARD_CLASS_NAMES)]
 
 
 def _registrations(module: ast.Module) -> list[tuple[str, str]]:
@@ -2698,6 +2708,8 @@ REGISTRATION_FORMS = {
     "lambda": ("DispatchGuard('lam', lambda s, w, f: None)", True, False),
     "module attribute": ("D.DispatchGuard('attr', self._g_attr)", True, False),
     "import alias": ("DG('al', self._g_al)", True, True),
+    "the class's own name": ("GuardRegistration('gr', self._g_gr)", True, True),  # assurance_ops's form (N9)
+    "the transition guards' class": ("TransitionGuard('tg', self._g_tg)", False, False),  # seams', not dispatch's
 }
 
 
@@ -2708,8 +2720,27 @@ def test_every_registration_form_is_counted_and_the_positional_ones_read(form):
     (an import alias included)."""
     call, counted, read = REGISTRATION_FORMS[form]
     module = ast.parse("from aew.engine.dispatch import DispatchGuard as DG\nfrom aew.engine import dispatch as D\n"
+                       "from aew.engine.dispatch import GuardRegistration\n"
+                       "from aew.engine.seams import GuardRegistration as TransitionGuard\n"
                        f"class X:\n    def regs(self):\n        return [{call}]\n")
     assert (len(_guard_calls(module)) == 1, len(_registrations(module)) == 1) == (counted, read)
+
+
+def test_the_guard_reading_is_tied_to_what_the_dispatcher_runs(monkeypatch):
+    """The re-review's N9, differentially: the assurance guards registered by the class's own name are read (32 = 32),
+    and a guard an entrypoint runs that no registration the reading understands provides shows as referenced, not
+    read."""
+    referenced = {g for ep in dispatch.ENTRYPOINTS.values() for g in ep.guards}
+    assert {"protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers"} <= set(registered_guards())
+    assert set(registered_guards()) == referenced
+    ep = dispatch.ENTRYPOINTS["invoke.create.mutating"]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(dispatch.ENTRYPOINTS, ep.name, ep._replace(guards=(*ep.guards, "registered.elsewhere")))
+        now = {g for e in dispatch.ENTRYPOINTS.values() for g in e.guards}
+        assert now - set(registered_guards()) == {"registered.elsewhere"}
+    finally:
+        ab.restore()
 
 
 def test_the_two_state_detectors_agree_on_the_engine():
@@ -2720,6 +2751,11 @@ def test_the_two_state_detectors_agree_on_the_engine():
     # N6: both detectors read registered_guards(); it reads every DispatchGuard(...) call in src/aew, in any form.
     calls = dispatch_guard_calls()
     assert len(calls) == len(guards), ("a DispatchGuard registration registered_guards does not read", calls)
+    # N9, the class fix: what the static reading finds is exactly what the dispatcher runs, the guard names
+    # dispatch.ENTRYPOINTS references. A registration in any form the reading misses is a referenced name not read.
+    referenced = {g for ep in dispatch.ENTRYPOINTS.values() for g in ep.guards}
+    assert set(guards) == referenced, ("referenced, not read", sorted(referenced - set(guards)),
+                                       "read, not referenced", sorted(set(guards) - referenced))
     broad = broad_state_guards(guards)
     assert broad - set(BROAD_EXCLUSIONS) == set(guard_branches()), (sorted(broad), sorted(guard_branches()))
     assert set(BROAD_EXCLUSIONS) <= broad  # an exclusion that no longer matches is stale: drop it

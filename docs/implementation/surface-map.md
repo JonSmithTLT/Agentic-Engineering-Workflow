@@ -242,11 +242,17 @@ registry records the plan, not the decision:
       `queue.order` is excluded because it selects among a queue entry's states, not a unit's.
     - **Per link:** for each guard the scan finds, its line count must equal the scan's link count.
 
-    Both detectors read the guards that `DispatchGuard("name", self._method)` registers, by any name the module
-    binds it to: an import alias such as `DispatchGuard as DG`, or an assignment. The test also asserts that this is
-    every `DispatchGuard` call in `src/aew`, in any form, including aliases and `module.DispatchGuard` (the
-    re-reviews' N6 and N8). So a chain, or a link,
-    or a registration that one side cannot read fails the test rather than quietly dropping uses.
+    **Which guards the detectors read.** Both read the guards registered as `DispatchGuard("name", self._method)`,
+    under any name the module binds the class to. That covers the class's own name `GuardRegistration`, every alias
+    of it imported from `aew.engine.dispatch` (the engine's `GuardRegistration as DispatchGuard`, `... as DG`), and
+    assignments. `aew.engine.seams.GuardRegistration`, the transition guards' class of the same name, is not one of
+    them.
+
+    **The test ties this reading to the code.** It asserts two things (the re-reviews' N6, N8 and N9):
+    - the reading covers every such call in `src/aew`, in any form;
+    - the guard names it reads are exactly those `dispatch.ENTRYPOINTS` runs.
+
+    So a chain, a link, or a registration that one side cannot read fails the test rather than quietly dropping uses.
   - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
     credential, the expected revisions, the print-only options).
 

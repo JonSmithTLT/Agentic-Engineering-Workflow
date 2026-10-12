@@ -179,9 +179,10 @@ exist yet. When one is built, it moves to `commands`.
 
 **A `resolve` home is proved by its pair** (the A1 slice plan, reviewed CLEAR, §2.1 item 4). `resolve` runs one
 primitive per call, chosen by its `choice`, so its `expands_to` alone would accept it as the home of any of them. A
-command `resolve` homes names the choices that home it (`via_choices`), and every (choice, subject kind) pair of each
-in `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE` must run the command's primitive. That mapping owns the choices,
-their order and `resolve`'s `expands_to`.
+command `resolve` homes names the (choice, subject kind) pairs that home it (`via_choices: {choice: [kind, ...]}`),
+and each must be in `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE` and run the command's primitive. So one choice can
+home two commands by subject kind (A2's `cancel`: a unit's `work.cancel`, an invocation's `invoke.cancel`). That
+mapping owns the choices, their order and `resolve`'s `expands_to`.
 
 ## The planned dispositions (A1-0)
 
@@ -244,7 +245,7 @@ each check.
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
 | `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
-| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's; a command `resolve` homes without `via_choices`, or with a choice whose pairs do not all run its primitive; `via_choices` on any other command |
+| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's; a command `resolve` homes without `via_choices`, or naming a (choice, subject kind) pair that is not in `RESOLVE_CHOICE_PRIMITIVE` or does not run its primitive; `via_choices` on any other command |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
 | `new_surface` | enforce | an entry outside the baseline breaks the standing rule: Lead-reachable and undecided; mutating with no credential and no mechanism keeping the Lead out (`lead_kept_out_by` with a decided disposition, `OPERATOR_ONLY`, or `internal` with its `launcher`); `typed` without a proved typed door, or still in `LEAD_REACHABLE`; `engine-owned` or `forbidden-to-lead` without its `primitive` (or `none` with a reason), still in `LEAD_REACHABLE`, or run by a typed tool |
 | `ideal_path` | enforce | an existing ideal-path command is not registered; a PROPOSED one is not under `proposed`; a proposed command exists now |

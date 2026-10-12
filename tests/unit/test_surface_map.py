@@ -320,21 +320,23 @@ def proved_typed(name: str, e: dict[str, Any]) -> list[str]:
 
 def resolve_home_problems(e: dict[str, Any]) -> list[str]:
     """G1's pair check (the A1 slice plan, reviewed CLEAR, §2.1 item 4 and §2.5): `resolve` homes a command only
-    through the choices the entry names (`via_choices`), and every (choice, subject kind) pair of each in
-    contract.RESOLVE_CHOICE_PRIMITIVE runs the entry's primitive. So `resolve` is never accepted as the home of an
-    arbitrary primitive by its `expands_to` alone."""
+    through the (choice, subject kind) pairs the entry names (`via_choices: {choice: [kind, ...]}`), and each pair is in
+    contract.RESOLVE_CHOICE_PRIMITIVE and runs the entry's primitive. So `resolve` is never accepted as the home of an
+    arbitrary primitive by its `expands_to` alone, and one choice can home two commands by subject kind (A2's
+    `cancel`: a unit's `work.cancel`, an invocation's `invoke.cancel`)."""
     choices, p = e.get("via_choices"), e.get("primitive")
     if "resolve" not in (e.get("via") or []):
         return ["only a command `resolve` homes names `via_choices`"] if choices else []
-    if not choices:
-        return ["`resolve` homes it only through the choices it names: give `via_choices`"]
+    if not isinstance(choices, dict) or not choices or not all(isinstance(k, list) and k for k in choices.values()):
+        return ["`resolve` homes it only through the pairs it names: give `via_choices: {choice: [subject kind, ...]}`"]
     out = []
-    for choice in choices:
-        runs = {q for (c, _), q in contract.RESOLVE_CHOICE_PRIMITIVE.items() if c == choice}
-        if not runs:
-            out.append(f"`resolve` has no choice {choice!r} (contract.RESOLVE_CHOICE_PRIMITIVE)")
-        elif runs != {p}:
-            out.append(f"`resolve`'s choice {choice!r} runs {sorted(runs)}, not {p!r}")
+    for choice, kinds in choices.items():
+        for kind in kinds:
+            runs = contract.RESOLVE_CHOICE_PRIMITIVE.get((choice, kind))
+            if runs is None:
+                out.append(f"`resolve` has no pair ({choice}, {kind}) (contract.RESOLVE_CHOICE_PRIMITIVE)")
+            elif runs != p:
+                out.append(f"`resolve`'s pair ({choice}, {kind}) runs {runs!r}, not {p!r}")
     return out
 
 
@@ -1693,12 +1695,17 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "`aew work list` has left the Lead's shell door"),
     # G1's pair check (§2.1 item 4): `resolve` homes a command only through choices that run its primitive.
     ("door", lambda r: _entry(r, "stage continue").pop("via_choices"),
-     "`aew stage continue`: `resolve` homes it only through the choices it names"),
-    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["accept_risk"]),
-     "`aew stage continue`: `resolve`'s choice 'accept_risk' runs ['work.dispose'], not 'stage.resolve'"),
-    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["teleport"]),
-     "`aew stage continue`: `resolve` has no choice 'teleport'"),
-    ("door", lambda r: _entry(r, "status").update(via_choices=["continue"]),
+     "`aew stage continue`: `resolve` homes it only through the pairs it names"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["continue"]),
+     "`aew stage continue`: `resolve` homes it only through the pairs it names"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"accept_risk": ["finding"]}),
+     "`aew stage continue`: `resolve`'s pair (accept_risk, finding) runs 'work.dispose', not 'stage.resolve'"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"teleport": ["stage_intent"]}),
+     "`aew stage continue`: `resolve` has no pair (teleport, stage_intent)"),
+    # A pair names its subject kind: a kind the choice does not take is no home.
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"continue": ["anomaly"]}),
+     "`aew stage continue`: `resolve` has no pair (continue, anomaly)"),
+    ("door", lambda r: _entry(r, "status").update(via_choices={"continue": ["stage_intent"]}),
      "`aew status`: only a command `resolve` homes names `via_choices`"),
 ]
 
@@ -1984,7 +1991,7 @@ ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
                                           lead_broker.LEAD_REACHABLE - {frozenset({"work", "staff"})}),
      "`aew work staff` has left the Lead's shell door"),
     ("door", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("continue", "stage_intent"), "work.dispose"),
-     "`aew stage continue`: `resolve`'s choice 'continue' runs ['work.dispose'], not 'stage.resolve'"),
+     "`aew stage continue`: `resolve`'s pair (continue, stage_intent) runs 'work.dispose', not 'stage.resolve'"),
 ]
 
 

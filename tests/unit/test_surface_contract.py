@@ -441,7 +441,12 @@ def test_resolve_choice_primitive_pairs():
     """The A1 slice plan (reviewed CLEAR) §2.1 item 4 and §7: RESOLVE_CHOICE_PRIMITIVE lands with today's pairs, each
     (choice, subject kind) mapped to the one primitive the live runner runs for it, every pair's primitive declared,
     the choices and `resolve.expands_to` derived from it, and the subject kinds the disposition record's own. A1a-2 and
-    A2 extend it, pair by pair."""
+    A2 extend it, pair by pair.
+
+    What it cannot see: the runner routes by `contract.DISPOSITION_CHOICES`, which is derived from this mapping at
+    import, so a source edit that moves a choice from one primitive to the other moves the runner with it and passes.
+    That is by design (the mapping owns the routing); the pin on today's pairs below is what names such a move. The
+    runner does not route by subject kind today, so the kinds are checked against the schema, not the runner."""
     mapping = contract.RESOLVE_CHOICE_PRIMITIVE
     assert resolve_pair_problems(mapping) == []
     assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {

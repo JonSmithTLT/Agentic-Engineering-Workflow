@@ -75,6 +75,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -287,10 +288,27 @@ class _StrictLoader(yaml.SafeLoader):
         return super().construct_mapping(node, deep=deep)
 
 
+def _unwritable(value: str) -> str:
+    """Names what makes the dumper double-quote ``value``: its control or format characters (a tab, a byte-order
+    mark, a noncharacter), else the whitespace beside a line break."""
+    chars = sorted({c for c in value if c != "\n" and unicodedata.category(c)[0] == "C"})
+    if chars:
+        return ", ".join(f"U+{ord(c):04X} " + unicodedata.name(c, _UNNAMED.get(c) or _CATEGORY[unicodedata.category(c)])
+                         for c in chars)
+    return "a space beside a line break"
+
+
+_UNNAMED = {"\t": "CHARACTER TABULATION", "\r": "CARRIAGE RETURN"}
+_CATEGORY = {"Cc": "(a control character)", "Cf": "(a format character)", "Cn": "(a noncharacter or unassigned)",
+             "Co": "(a private-use character)", "Cs": "(a surrogate)"}
+
+
 def strict_problems(text: str, name: str) -> list[str]:
-    """What only the parsed values show (``lost_text`` covers the rest): a repeated key, and any key or cell that YAML
-    loads as something other than text, such as ``no`` (false), ``~`` (null), ``1.10`` (1.1) or ``012`` (10). Every
-    cell of both files is text; the one exception is a section's ``number``."""
+    """What only the parsed values show (``lost_text`` covers the rest): a repeated key; any key or cell that YAML
+    loads as something other than text, such as ``no`` (false), ``~`` (null), ``1.10`` (1.1) or ``012`` (10) (every
+    cell of both files is text; the one exception is a section's ``number``); and a cell that ``dump`` itself would
+    write double-quoted (a tab, a byte-order mark, a noncharacter, a space beside a line break), which the next
+    render's ``lost_text`` would refuse: the validator must pass its generator's output (review of #225, V1)."""
     try:
         data = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - _StrictLoader is a SafeLoader
     except yaml.MarkedYAMLError as e:
@@ -307,8 +325,11 @@ def strict_problems(text: str, name: str) -> list[str]:
         elif isinstance(value, list):
             for i, inner in enumerate(value):
                 walk(inner, (*where, inner.get("#", i) if isinstance(inner, dict) else i))
-        elif not isinstance(value, str) and not (len(where) == 3 and where[0] == "sections" and where[2] == "number"
-                                                 and type(value) is int):
+        elif isinstance(value, str):
+            if dump({"k": value}).startswith('k: "'):  # the dumper itself decides; its rules are not restated here
+                out.append(f"{name}: {'/'.join(map(str, where))} holds {_unwritable(value)}, which render can only "
+                           "write double-quoted (and then refuses its own output); remove it")
+        elif not (len(where) == 3 and where[0] == "sections" and where[2] == "number" and type(value) is int):
             out.append(f"{name}: {'/'.join(map(str, where))} loads as {type(value).__name__} {value!r}, not text; "
                        "quote the cell")
 

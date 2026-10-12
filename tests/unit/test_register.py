@@ -296,6 +296,57 @@ PLANTED = {  # the re-review's five ways a render lost text (U1), and T1's comme
 }
 
 
+PLANTED.update({  # V1: what the dumper can only write double-quoted, which the next render would refuse
+    "tab": "    Source: 'Designer ruling,\tC3'\n",
+    "byte-order mark": "    Source: 'Designer ruling,﻿C3'\n",
+    "noncharacter": "    Source: 'Designer ruling, C3\U0010ffff'\n",
+    "space before a line break": "    Source: |-\n      Designer ruling, \n      C3\n",
+})
+ACCEPTED = {  # special to the reader or the emitter, yet written back unchanged: render twice is stable
+    "line separator": "    Source: 'Designer ruling, C3'\n",
+    "non-ASCII": "    Source: 'Designer ruling — C3, café 设计 🙂'\n",
+    "hash in quotes": "    Source: 'Designer ruling, C3 by #224'\n",
+    "line break before a space": "    Source: |-\n      Designer ruling,\n       C3\n",
+    "leading and trailing space": "    Source: ' Designer ruling, C3 '\n",
+}
+
+
+@pytest.mark.parametrize("case", sorted(ACCEPTED))
+def test_what_render_writes_the_next_render_accepts_unchanged(tmp_path, case):
+    """V1, the class: a validator paired with a generator passes the generator's own output."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace(E79_SOURCE, ACCEPTED[case]), encoding="utf-8", newline="\n")
+    assert register.render(tmp_path) == []
+    once = source.read_bytes()
+    assert register.render(tmp_path) == [] and source.read_bytes() == once
+
+
+def test_every_authorable_value_is_refused_or_written_so_the_next_render_accepts_it():
+    """The emitter's special cases, enumerated (PyYAML's analyze_scalar): every C0 and C1 control, DEL, the byte-order
+    mark, the noncharacters, and a space on either side of each line break. A value an author can write (it loads from
+    a single-quoted or block cell) is refused by strict_problems, or its dump passes text_problems."""
+    breaks = ["\n", "\x85", " ", " "]
+    specials = [chr(c) for c in [*range(0x100), 0x2028, 0x2029, 0xFEFF, 0xFFFD, 0xFFFE, 0xFFFF, 0x10FFFE, 0x10FFFF]]
+    specials += [" " + b for b in breaks] + [b + " " for b in breaks]
+    checked = 0
+    for s in specials:
+        value = f"a{s}b"
+        for authored in (f"k: '{value}'\n", "k: |-\n  " + value.replace("\n", "\n  ") + "\n"):
+            try:
+                if yaml.safe_load(authored)["k"] != value:
+                    continue
+            except yaml.YAMLError:
+                continue  # the reader refuses it, loudly
+            checked += 1
+            if not register.strict_problems(authored, "f.yaml"):
+                written = register.dump({"k": value})
+                assert register.text_problems(written, "f.yaml") == [], (repr(value), written)
+                assert yaml.safe_load(written)["k"] == value, repr(value)
+    assert checked > 200
+
+
 @pytest.mark.parametrize("case", sorted(PLANTED))
 def test_render_refuses_each_way_of_losing_text_and_writes_nothing(tmp_path, case):
     """Through the real render, on a copy of the register: each planted cell is named, and every file stays

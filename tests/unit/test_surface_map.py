@@ -948,11 +948,11 @@ class _Captured(BaseException):
 
 @contextlib.contextmanager
 def capture_spawns():
-    """While active, every way to start a process records the argv it was given and raises `_Captured` instead:
-    `subprocess.Popen`, `procs.spawn_detached`, and `os.spawn*`, `os.exec*` and `os.posix_spawn*`."""
+    """While active, these ways to start a process record the argv they were given and raise `_Captured` instead:
+    `subprocess.Popen` at its bottom layer (`Popen._execute_child`, so a module's own `from subprocess import Popen`
+    alias is covered too), `os.system`, `os.startfile` (Windows), and `os.spawn*`, `os.exec*` and `os.posix_spawn*`
+    (PR 215 sixth review, finding 1). Other ways to start a process (a C extension, `ctypes`) are not covered."""
     from unittest import mock
-
-    from aew.harness import procs
 
     captured: list[list[str]] = []
 
@@ -964,9 +964,9 @@ def capture_spawns():
         raise _Captured
 
     names = [n for n in dir(os) if n.startswith(("spawn", "exec", "posix_spawn")) and callable(getattr(os, n))]
+    names += [n for n in ("system", "startfile") if hasattr(os, n)]
     with contextlib.ExitStack() as stack:
-        stack.enter_context(mock.patch.object(subprocess, "Popen", record))
-        stack.enter_context(mock.patch.object(procs, "spawn_detached", record))
+        stack.enter_context(mock.patch.object(subprocess.Popen, "_execute_child", record))
         for n in names:
             stack.enter_context(mock.patch.object(os, n, record))
         stack.enter_context(mock.patch.dict(os.environ, {"AEW_CUSTODY_WORKER": ""}))
@@ -1099,7 +1099,7 @@ def check_keep_out(reg: dict[str, Any]) -> list[str]:
         if changed:
             out.append(f"`aew {name}` in a Lead session's environment changed {changed}")
         bare_code, _, bare_err = run_cli(s.root, fill(argv, s), stdin="")
-        if bare_code != 0 and session_marker(bare_err):
+        if bare_code != 0 and session_marker(bare_err) is not None:
             out.append(f"`aew {name}`: outside a Lead session it is still refused as if in one")
         if bare_code != 0 and _refusal_text(bare_err) == in_session:
             out.append(f"`aew {name}`: its probe is refused the same way outside a Lead session ({in_session}), so the "
@@ -1544,6 +1544,13 @@ def test_a_keep_out_refusal_must_be_the_lead_sessions(tmp_path, monkeypatch):
     findings = check_keep_out({"commands": [entry], "tools": []})
     assert any("does not say the session caused it" in f for f in findings), findings
 
+    def marked_everywhere(self: Any, *args: Any, **kwargs: Any) -> Any:  # repro N3: the marker, with no variables
+        raise _errors.PermissionDenied("refused", variables=[], reason="lead_session")
+
+    monkeypatch.setattr(Engine, "context_pack", marked_everywhere)
+    findings = check_keep_out({"commands": [entry], "tools": []})
+    assert any("outside a Lead session it is still refused as if in one" in f for f in findings), findings
+
     def session_guard(self: Any, *args: Any, **kwargs: Any) -> Any:  # a real one: keyed on the session's variables
         present = [v for v in lead_broker.ENV_NAMES if os.environ.get(v)]
         if present:
@@ -1713,6 +1720,21 @@ def test_a_launcher_is_resolved_without_starting_anything():
     assert captured == [["aew", "status"]]
     assert _git(ROOT, "status", "--porcelain", "--ignored", "--untracked-files=all") == before
     assert not (ROOT / "probe-root").exists()
+
+
+def test_an_aliased_popen_launcher_is_captured_and_never_runs(tmp_path, monkeypatch):
+    """PR 215 sixth review, repro P2: a launcher module holding its own `Popen` (`from subprocess import Popen`) still
+    goes through the capture: its argv is resolved and the child never runs (it would have written a marker file)."""
+    marker = tmp_path / "ran.txt"
+    child = f"open({str(marker)!r}, 'w').close()"  # what the child would do, had it run
+    source = ["import sys", "from subprocess import Popen", "", "", "def launch():",
+              f"    return Popen([sys.executable, '-c', {child!r}, 'aew', 'status'])", ""]
+    (tmp_path / "g1_p2_launcher.py").write_text(chr(10).join(source), encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    argv = launcher_argv("g1_p2_launcher:launch")
+    assert isinstance(argv, list) and argv[-2:] == ["aew", "status"], argv
+    assert launched_command(argv) == "status"
+    assert not marker.exists(), "the aliased Popen's child ran"
 
 
 def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):

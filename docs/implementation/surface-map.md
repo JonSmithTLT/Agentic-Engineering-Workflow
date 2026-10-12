@@ -50,8 +50,9 @@ finding 2).
   the command. A table that merely mentions it does not count.
 
   A callable is never run for real (fifth review, finding 3). It is called with synthetic arguments in a temporary
-  working directory, while `subprocess.Popen`, `procs.spawn_detached` and `os.spawn*`/`os.exec*` record the argv
-  they are given and raise instead of starting a process. So `custody_ops.spawn_worker`, the real spawner, resolves
+  working directory, while `subprocess.Popen` at its bottom layer (`Popen._execute_child`, so an aliased `Popen` is
+  covered), `os.system`, `os.startfile` and `os.spawn*`/`os.exec*`/`os.posix_spawn*` record the argv they are given and
+  raise instead of starting a process. Other ways to start one (a C extension, `ctypes`) are not covered. So `custody_ops.spawn_worker`, the real spawner, resolves
   without spawning anything.
 
 The dispositions:

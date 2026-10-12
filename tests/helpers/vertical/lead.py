@@ -84,6 +84,8 @@ TERMINAL = frozenset({"DONE", "CANCELLED"})
 AVAILABLE = "AVAILABLE"
 EXIT = "/exit"
 CHAT_TIMEOUT_S = 1800.0
+WRITE_TRIES = 20  # a record write retried this many times on an OSError (a sharing violation on Windows), then raised
+MCP_ENDED = "the aew-lead MCP server ended"
 PROGRESS = ("REVIEW", "VERIFY", "COMMIT_READY", "RUNNING", "READY", "DONE")
 
 
@@ -116,15 +118,38 @@ class Lead:
             facts.setdefault("blockers", [{k: b.get(k) for k in ("code", "message", "details")}
                                           for b in self.last_projection.get("blockers") or []][:8])
             facts.setdefault("hints", list(self.last_projection.get("hints") or [])[:8])
-        with self.lock, self.events_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n")
+        line = json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n"
+        with self.lock:
+            _retrying(lambda: _append(self.events_path, line))
+
+    def best_effort_event(self, kind: str, **facts: Any) -> None:
+        """An event from a path that must not die of recording it (the listener, an exit): ``event`` with its bounded
+        retry, and, if the write still fails, the event goes to stderr instead of ending the thread (review of #213,
+        H2). It records only the harness's own faults and the exit: no counted call ever goes through here."""
+        try:
+            self.event(kind, **facts)
+        except OSError as exc:
+            print(f"vertical lead: could not record {kind}: {exc}: {facts}", file=sys.stderr, flush=True)
+
+    def doing(self, what: str, **facts: Any) -> None:
+        """What the Lead is doing now (``lead-state.json``, overwritten): read by the operator when the Lead is silent
+        past a bound, to tell a harness fault (both sides waiting on the chat) from a product hang (a call that never
+        returned). Best-effort: it is evidence, never a count."""
+        path = self.spec.get("state")
+        if not path:
+            return
+        body = json.dumps({"doing": what, "chat_read": self.chat.read, "step": self.step, **facts})
+        try:
+            _retrying(lambda: _replace(Path(path), body))
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ the operator
 
     def _read_error(self, path: Path, exc: BaseException) -> None:
         """A chat read failed: recorded (the ledger keeps it as ``lead.listener_error``), then retried by the mailbox
         within its bound. A harness fault is never left to read as AEW's behaviour (review of #213, G2)."""
-        self.event("listener_error", file=path.name, error=f"{type(exc).__name__}: {exc}"[:300])
+        self.best_effort_event("listener_error", file=path.name, error=f"{type(exc).__name__}: {exc}"[:300])
 
     def _listen(self) -> None:
         """Every operator line arrives here; ``/exit`` ends the TUI at once, whatever the Lead is doing (as
@@ -137,12 +162,12 @@ class Lead:
             except Gone:
                 msg = {"text": EXIT, "timeout": True}
             except Exception as exc:  # recorded, never silent; retried within the same bound  # noqa: BLE001
-                self.event("listener_error", error=f"{type(exc).__name__}: {exc}"[:300])
+                self.best_effort_event("listener_error", error=f"{type(exc).__name__}: {exc}"[:300])
                 time.sleep(POLL_S)
                 continue
             deadline = time.monotonic() + CHAT_TIMEOUT_S
             if str(msg.get("text", "")).strip() == EXIT:
-                self.event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
+                self.best_effort_event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
                 with self.lock:
                     if self.server is not None and self.server.stdin is not None:
                         self.server.stdin.close()
@@ -153,7 +178,10 @@ class Lead:
         self.chat.send({"type": kind, **body})
 
     def hear(self) -> dict[str, Any]:
-        return self.inbox.get(timeout=CHAT_TIMEOUT_S)
+        self.doing("waiting_to_hear")
+        msg = self.inbox.get(timeout=CHAT_TIMEOUT_S)
+        self.doing("working")
+        return msg
 
     def ask(self, question: str, *, label: str, detail: Any = None) -> str:
         self.say("ask", text=question, label=label, detail=detail)
@@ -184,11 +212,12 @@ class Lead:
         assert self.server is not None and self.server.stdout is not None
         self.rid += 1
         rid = self.rid
+        self.doing("calling", method=method, tool=params.get("name"))
         self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
         while True:
             line = self.server.stdout.readline()
             if not line:
-                raise RuntimeError("the aew-lead MCP server ended")
+                raise RuntimeError(MCP_ENDED)
             reply = json.loads(line)
             if reply.get("id") == rid:
                 return reply
@@ -671,7 +700,43 @@ def _words(result: Any) -> str | None:
     return None
 
 
+def _append(path: Path, line: str) -> None:
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def _replace(path: Path, text: str) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _retrying(write: Any) -> None:
+    """A record write, retried on an OSError within a bound (WRITE_TRIES polls), then raised."""
+    for attempt in range(WRITE_TRIES):
+        try:
+            write()
+            return
+        except OSError:
+            if attempt == WRITE_TRIES - 1:
+                raise
+            time.sleep(POLL_S)
+
+
+def classify(exc: BaseException) -> str:
+    """Whose fault ended the Lead: the aew-lead MCP server ending is the product's (AEW's broker or its MCP server);
+    anything else is not established here (a bug in this script, or AEW answering what it did not expect)."""
+    return "product" if isinstance(exc, RuntimeError) and str(exc) == MCP_ENDED else "not established"
+
+
 def main(spec_path: Path) -> int:
+    """The scripted Lead's session. Nothing ends it without a record (review of #213, H2): an exception in its main
+    thread is recorded as ``lead_error`` with the step it was on and whose fault it is, then the session ends."""
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    Lead(spec).run()
+    lead = Lead(spec)
+    try:
+        lead.run()
+    except Exception as exc:  # recorded, never silent  # noqa: BLE001
+        lead.best_effort_event("lead_error", error=f"{type(exc).__name__}: {exc}"[:400], fault=classify(exc))
+        return 1
     return 0

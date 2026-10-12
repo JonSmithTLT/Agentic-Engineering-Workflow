@@ -544,9 +544,112 @@ def test_a_chat_read_error_is_recorded_retried_and_loses_no_message(tmp_path, mo
     assert [e["kind"] for e in events] == ["listener_error"] and "PermissionError" in events[0]["error"]
 
 
-def test_a_silent_lead_is_a_harness_fault_never_a_product_result():
+def test_a_silence_is_a_harness_fault_only_with_harness_evidence():
+    """H1: a silent Lead is the harness's only with harness evidence (a chat read error, or the Lead waiting to hear
+    while an operator message it has not read exists). A call that never returned, or no Lead at all, is not
+    established and reads as a possible product hang, never as the harness's."""
+    from vertical.scripted_operator import silence_fault
+
+    waiting = {"doing": "waiting_to_hear", "chat_read": 3}
+    assert silence_fault(chat_errors=["operator-0003.json: PermissionError"], events=[], state=None, sent=4)[0] == \
+        "harness"
+    assert silence_fault(chat_errors=[], events=[{"kind": "listener_error"}], state=waiting, sent=3)[0] == "harness"
+    fault, why = silence_fault(chat_errors=[], events=[], state=waiting, sent=4)
+    assert fault == "harness" and "1 operator message" in why
+    # Product-side silences: no evidence of the harness.
+    assert silence_fault(chat_errors=[], events=[], state=waiting, sent=3)[0] == "not established"  # all read
+    fault, why = silence_fault(chat_errors=[], events=[], state={"doing": "calling", "tool": "harness_wait",
+                                                                 "chat_read": 3}, sent=4)
+    assert fault == "not established" and "harness_wait" in why
+    fault, why = silence_fault(chat_errors=[], events=[], state=None, sent=1)
+    assert fault == "not established" and "no TUI started" in why
+
     led = L.Ledger("unit")
-    led.observe("lead_silent", waiting_for="the conversation", bound_s=1800.0, chat_errors=[])
+    led.observe("lead_silent", waiting_for="the conversation", fault="not established",
+                why="the Lead is in a call that has not returned: harness_wait")
+    assert "lead silent or ended: lead_silent (not established) the Lead is in a call" in led.summary()
+    assert "harness faults" not in led.summary()
     led.lead_event({"kind": "listener_error", "file": "operator-0003.json", "error": "PermissionError: busy"})
+    led.observe("lead_silent", waiting_for="first words", fault="harness", why="chat read errors")
     summary = led.summary()
-    assert "harness faults: lead_silent the conversation" in summary and "lead.listener_error" in summary
+    assert "harness faults: lead.listener_error operator-0003.json" in summary and "lead_silent first words" in summary
+
+
+def test_the_lead_records_why_it_ended_and_whose_fault_it_is(tmp_path):
+    """H2 (a): an exception in the Lead's main thread is recorded as `lead_error` with its fault: the aew-lead MCP
+    server ending is the product's; anything else is not established."""
+    import json
+
+    from vertical import lead as V
+
+    events = tmp_path / "lead-events.jsonl"
+    spec = tmp_path / "lead-tui.json"
+    spec.write_text(json.dumps({"events": str(events), "chat": str(tmp_path / "chat"), "pidfile": str(tmp_path / "p"),
+                                "state": str(tmp_path / "lead-state.json")}), encoding="utf-8")
+
+    def ends(exc):
+        def run(self):
+            self.step = "T-0001:REVIEW"
+            raise exc
+        return run
+
+    for exc, fault in ((RuntimeError(V.MCP_ENDED), "product"), (KeyError("x"), "not established")):
+        events.unlink(missing_ok=True)
+        original = V.Lead.run
+        V.Lead.run = ends(exc)
+        try:
+            assert V.main(spec) == 1
+        finally:
+            V.Lead.run = original
+        recorded = [json.loads(line) for line in events.read_text(encoding="utf-8").splitlines()]
+        assert recorded[-1]["kind"] == "lead_error" and recorded[-1]["fault"] == fault
+        assert recorded[-1]["step"] == "T-0001:REVIEW"
+    led = L.Ledger("unit")
+    led.lead_event(recorded[-1])
+    assert "lead silent or ended: lead.lead_error (not established) KeyError" in led.summary()
+
+
+def test_recording_an_error_never_kills_the_listener(tmp_path, monkeypatch):
+    """H2 (b): the listener's own event writes are best-effort. A write that keeps failing (a sharing violation on the
+    events file) goes to stderr, and the listener goes on; one that fails a few times is retried and recorded."""
+    import json
+    import queue
+    import threading
+
+    from vertical import chat as C
+    from vertical import lead as V
+
+    monkeypatch.setattr(V, "POLL_S", 0.001)
+    lead = V.Lead.__new__(V.Lead)
+    lead.events_path, lead.lock, lead.step, lead.subject = tmp_path / "events.jsonl", threading.Lock(), "s", None
+    lead.last_projection, lead.spec = None, {}
+    real = V._append
+    failing = {"left": 3}
+
+    def flaky(path, line):
+        if failing["left"]:
+            failing["left"] -= 1
+            raise PermissionError(32, "being used by another process")
+        real(path, line)
+
+    monkeypatch.setattr(V, "_append", flaky)
+    lead.best_effort_event("listener_error", error="x")  # three failures, then written
+    assert json.loads(lead.events_path.read_text(encoding="utf-8"))["kind"] == "listener_error"
+    failing["left"] = 10 ** 6  # it never succeeds: reported on stderr, and the caller goes on
+    lead.best_effort_event("listener_error", error="y")
+
+    # The listener itself: a receive that raises, whose recording also fails, still delivers the next line.
+    lead.chat = C.Mailbox(tmp_path / "chat", "lead")
+    lead.inbox = queue.Queue()
+    real_receive, calls = lead.chat.receive, {"n": 0}
+
+    def receive(timeout, gone=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("the chat directory is busy")
+        return real_receive(timeout, gone)
+
+    lead.chat.receive = receive
+    C.Mailbox(tmp_path / "chat", "operator").send({"text": "carry on"})
+    threading.Thread(target=lead._listen, daemon=True).start()
+    assert lead.inbox.get(timeout=5)["text"] == "carry on"

@@ -132,7 +132,7 @@ def enforce_blockers(*, lead_label_wired: bool) -> list[str]:
 STATUS = re.compile(r"\b(PASS|WARN|FAIL|INFO|UNAVAILABLE)\b")
 FAILING = frozenset({"FAIL", "WARN"})
 # Faults of the test's own harness (the chat between the scripted actors), recorded apart from AEW's behaviour.
-HARNESS_FAULTS = frozenset({"lead_silent", "chat_read_error", "lead.listener_error"})
+HARNESS_FAULTS = frozenset({"chat_read_error", "lead.listener_error"})
 
 
 def _json_objects(text: str) -> tuple[list[dict[str, Any]], str]:
@@ -430,7 +430,14 @@ class Ledger:
         if unknown:  # a finding: asked of the operator and compared, but the owner is not one the spec names
             lines.append("unknown owners (asked of the operator): " + "; ".join(
                 f"{o.get('decision')} [owner {o.get('owner')!r}]" for o in unknown))
-        faults = [o for o in self.observations if o["kind"] in HARNESS_FAULTS]
+        faults = [o for o in self.observations if o["kind"] in HARNESS_FAULTS
+                  or (o["kind"] in ("lead_silent", "lead.lead_error") and o.get("fault") == "harness")]
+        ended = [o for o in self.observations if o["kind"] in ("lead_silent", "lead.lead_error")
+                 and o.get("fault") != "harness"]
+        if ended:  # the Lead went silent or ended, and nothing shows the harness at fault
+            lines.append("lead silent or ended: " + "; ".join(
+                f"{o['kind']} ({o.get('fault')}) {o.get('why') or o.get('error') or ''}".strip()
+                for o in ended[:3])[:200])
         if faults:  # the test's own harness, never AEW's behaviour (review of #213, G2)
             lines.append("harness faults: " + "; ".join(
                 f"{o['kind']} {o.get('waiting_for') or o.get('file') or ''} {o.get('error') or ''}".strip()

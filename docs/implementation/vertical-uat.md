@@ -240,10 +240,14 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   label from the product rather than assume none (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py`
   checks whenever the mode is `enforce`). Today both conditions block it.
 - **Harness faults are not product results.** The chat between the scripted actors survives a failed read (retried
-  within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`). A Lead
-  session that stays alive and silent past the bound is recorded as `lead_silent`, and the verdict says the scripted
-  Lead went silent (a harness fault), never "no result reached the operator". The summary lists them as harness
-  faults.
+  within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`); the
+  listener's own records are best-effort, so recording an error never ends it. A Lead session that stays alive and
+  silent past the bound is recorded as `lead_silent` with whose fault it is, only as far as the evidence goes: the
+  harness's only with harness evidence (a chat read error, or the Lead waiting to hear while an operator message it
+  has not read exists); otherwise "not established", with what the Lead was doing (a call that never returned, no TUI
+  started), so a product hang reads as one. An exception that ends the scripted Lead is recorded as `lead_error`: the
+  aew-lead MCP server ending is the product's, anything else is not established. Neither is ever reported as "no
+  result reached the operator".
 - **Stale revisions are attributed.** For each `STALE_REVISION` the Lead meets, the ledger records the commit that
   staled it (from the transition log), attributed through the stage intent it belongs to: the steering loop's when
   that intent was auto-run, else the Lead's. Only a commit in no stage falls back to its actor, and then a Lead

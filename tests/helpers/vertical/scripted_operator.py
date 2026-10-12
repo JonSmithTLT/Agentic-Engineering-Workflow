@@ -188,10 +188,14 @@ class Operator:
         return msg
 
     def lead_silent(self, waiting_for: str, bound: float) -> None:
-        """The Lead's session is alive and said nothing within the bound: a harness fault (the scripted Lead stopped
-        hearing or answering), recorded so the verdict never reads it as AEW's behaviour (review of #213, G2)."""
-        self.ledger.observe("lead_silent", waiting_for=waiting_for, bound_s=bound, chat_errors=self.chat.errors[-6:],
-                            note="the Lead session was alive and silent past the bound: a harness fault")
+        """The Lead's session is alive and said nothing within the bound. Recorded with whose fault it is, only as far
+        as the evidence goes (review of #213, G2 and H1): see :func:`silence_fault`."""
+        state = lead_state(self.lab)
+        events = lead_events(self.lab)
+        fault, why = silence_fault(chat_errors=self.chat.errors, events=events, state=state, sent=self.chat.sent)
+        self.ledger.observe("lead_silent", waiting_for=waiting_for, bound_s=bound, fault=fault, why=why,
+                            chat_errors=self.chat.errors[-6:], lead_state=state,
+                            last_lead_event=events[-1] if events else None)
 
     def say(self, step: str, text: str) -> None:
         self.chat.send({"text": text})
@@ -330,6 +334,7 @@ def execution_policy(lab: HarnessLab, *, steering: str | None = None) -> dict[st
 def lead_spec(lab: HarnessLab, *, steering: bool = False) -> dict[str, Any]:
     sync = lab.tmp / "sync"
     return {"driver": "vertical", "chat": str(sync / "chat"), "events": str(sync / "lead-events.jsonl"),
+            "state": str(sync / "lead-state.json"),
             "pidfile": str(sync / f"lead-{len(lab.sessions)}.pid"), "draft": workers.DRAFT, "steering": steering}
 
 
@@ -415,3 +420,35 @@ def staled_by(record: dict[str, Any], intents: dict[str, dict[str, Any]]) -> dic
     by = ("the Lead's credential, no stage intent (the Lead, or the loop under it)" if kind == "lead"
           else str(kind))
     return {"by": by, "intent": None, "via": "actor"}
+
+
+# ---------------------------------------------------------------------------------------------- a silent Lead
+
+
+def lead_state(lab: HarnessLab) -> dict[str, Any] | None:
+    """What the scripted Lead last said it was doing (``lead-state.json``), or None when no Lead ever started."""
+    path = lab.tmp / "sync" / "lead-state.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def silence_fault(*, chat_errors: list[str], events: list[dict[str, Any]], state: dict[str, Any] | None,
+                  sent: int) -> tuple[str, str]:
+    """Whose fault a silent Lead is, from the evidence (review of #213, H1). ``harness`` only with harness evidence:
+    a chat read error on either side, or the Lead waiting to hear while an operator message it has not read exists
+    (both sides waiting on the chat). Otherwise ``not established``, with what the Lead was doing, so a product hang
+    (a call that never returned, no TUI started) reads as one and never as the harness's."""
+    listener = [e for e in events if e.get("kind") == "listener_error"]
+    if chat_errors or listener:
+        return "harness", f"chat read errors: operator {len(chat_errors)}, Lead {len(listener)}"
+    if state is not None and state.get("doing") == "waiting_to_hear" and sent > int(state.get("chat_read") or 0):
+        return "harness", (f"the Lead waits to hear, and {sent - int(state.get('chat_read') or 0)} operator "
+                           "message(s) it has not read exist")
+    if state is None:
+        return "not established", "no Lead activity was recorded (no TUI started, or it never reached its policy)"
+    if state.get("doing") == "calling":
+        call = state.get("tool") or state.get("method")
+        return "not established", f"the Lead is in a call that has not returned: {call}"
+    return "not established", f"the Lead's last activity: {state.get('doing')}"

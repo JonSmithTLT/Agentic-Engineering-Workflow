@@ -187,10 +187,15 @@ def write_out(op: Operator, request: pytest.FixtureRequest) -> Path:
 
 def result_problems(op: Operator) -> list[str]:
     """The operator gets the result: the diff, an evidence summary, and the commit."""
-    silent = [o for o in op.ledger.observations if o["kind"] == "lead_silent"]
-    if not op.reports and silent:  # a harness fault, never reported as AEW's (review of #213, G2)
-        return [f"the scripted Lead went silent waiting for {silent[0].get('waiting_for')} (a harness fault, not a "
-                f"product result; chat errors: {silent[0].get('chat_errors')})"]
+    ended = [o for o in op.ledger.observations if o["kind"] in ("lead_silent", "lead.lead_error")]
+    if not op.reports and ended:  # named with whose fault it is, as far as the evidence goes (review of #213, G2, H1)
+        o = ended[0]
+        what = (f"went silent waiting for {o.get('waiting_for')}" if o["kind"] == "lead_silent"
+                else f"ended with an error: {o.get('error')}")
+        side = ("a harness fault, not a product result" if o.get("fault") == "harness" else
+                "the product's (the aew-lead MCP server ended)" if o.get("fault") == "product" else
+                "fault not established: read as a possible product hang")
+        return [f"the scripted Lead {what} ({side}; {o.get('why') or ''})"]
     if not op.reports:
         stuck = [m for m in op.said if m.get("type") == "stuck"]
         return [f"no result reached the operator{': ' + stuck[-1]['text'] if stuck else ''}"]

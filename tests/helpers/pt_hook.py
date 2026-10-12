@@ -34,92 +34,25 @@ from typing import Any
 
 import pt_pattern
 
-UNIT_OPEN, UNIT_ID, UNIT_CLOSE = "", "", ""
-VALUE_OPEN, VALUE_ID, VALUE_CLOSE = "", "", ""
+UNIT_OPEN, UNIT_ID, UNIT_CLOSE = "\ue000", "\ue001", "\ue002"
+VALUE_OPEN, VALUE_ID, VALUE_CLOSE = "\ue003", "\ue004", "\ue005"
 MARKER_CHARS = frozenset(UNIT_OPEN + UNIT_ID + UNIT_CLOSE + VALUE_OPEN + VALUE_ID + VALUE_CLOSE)
 MARKER_BYTES = tuple(c.encode("utf-8") for c in sorted(MARKER_CHARS))
-_IDS = re.compile("[][^-]*[]")
-_OPENS = re.compile("[]")
+_IDS = re.compile("[\ue001\ue004][^\ue000-\ue005]*[\ue002\ue005]")
+_OPENS = re.compile("[\ue000\ue003]")
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 PKG = SRC / "aew"
 
-# The hook functions (§2.1, V11-1): the renderers, the producers dispositioned worker text or fenced, the
-# manual-delivery methods, the parser builders and the worker result methods. Derived by the render-set scan and the
-# producer dispositions at the plan's base; keyed by (module, qualified name). The allowed-kind test checks each kind.
-HOOK_FUNCTIONS: dict[tuple[str, str], str] = {
-    ("cli/commands.py", "_add_json"): "parser-builder",
-    ("cli/commands.py", "_add_lead"): "parser-builder",
-    ("cli/commands.py", "register"): "parser-builder",
-    ("cli/commands.py", "_register_lead"): "parser-builder",
-    ("cli/commands.py", "_register_stage"): "parser-builder",
-    ("cli/commands.py", "_register_authority"): "parser-builder",
-    ("cli/credentials.py", "register"): "parser-builder",
-    ("cli/dashboard_commands.py", "register"): "parser-builder",
-    ("cli/fields.py", "register"): "parser-builder",
-    ("cli/history_commands.py", "register"): "parser-builder",
-    ("cli/main.py", "build_parser"): "parser-builder",
-    ("cli/main.py", "recall_search_for"): "parser-builder",
-    ("cli/main.py", "coordination_reads_for"): "parser-builder",
-    ("cli/map_commands.py", "register"): "parser-builder",
-    ("cli/message_commands.py", "register"): "parser-builder",
-    ("cli/operator_commands.py", "register"): "parser-builder",
-    ("cli/operator_commands.py", "register_lead_mode"): "parser-builder",
-    ("cli/work_commands.py", "_add_launch"): "parser-builder",
-    ("cli/work_commands.py", "_add_execution"): "parser-builder",
-    ("cli/work_commands.py", "register"): "parser-builder",
-    ("cli/work_commands.py", "register.<locals>._add_assurance"): "parser-builder",
-    ("cli/work_commands.py", "_register_later_steps"): "parser-builder",
-    ("cli/work_commands.py", "_register_integration"): "parser-builder",
-    ("engine/archive_ops.py", "reference_summary"): "producer:fenced",
-    ("engine/archive_ops.py", "evidence_reference"): "producer:fenced",
-    ("engine/context_ops.py", "ContextPacks._input_summaries"): "producer:worker text",
-    ("engine/context_ops.py", "ContextPacks._m2_pack_extras"): "producer:worker text",
-    ("engine/context_ops.py", "ContextPacks._history_refs"): "producer:fenced",
-    ("engine/context_ops.py", "ContextPacks.context_pack"): "manual-delivery",
-    ("engine/context_ops.py", "ContextPacks.context_show"): "manual-delivery",
-    ("engine/evidence_ops.py", "EvidenceCommands.check_run"): "result-method",
-    ("engine/evidence_ops.py", "EvidenceCommands.submit"): "result-method",
-    ("engine/gates.py", "effective_obligations"): "producer:worker text",
-    ("engine/harness_ops.py", "Harness.invocation_whoami"): "result-method",
-    ("engine/role_ops.py", "Roles.effective_role_plan"): "producer:worker text",
-    ("engine/role_ops.py", "Roles._specialty_requirement"): "producer:worker text",
-    ("harness/contract.py", "preamble"): "renderer",
-    ("harness/contract.py", "continuation_text"): "renderer",
-    ("harness/opencode/projection.py", "skills"): "renderer",
-    ("harness/opencode/projection.py", "permissions"): "renderer",
-    ("harness/opencode/projection.py", "system_text"): "renderer",
-    ("harness/opencode/projection.py", "invocation_config"): "renderer",
-    ("harness/opencode/projection.py", "session_body"): "renderer",
-    ("knowledge/context.py", "_bullets"): "producer:worker text",
-    ("knowledge/context.py", "_card_section"): "renderer",
-    ("knowledge/context.py", "_launch_contract"): "renderer",
-    ("knowledge/context.py", "_requirement"): "renderer",
-    ("knowledge/context.py", "_authority"): "renderer",
-    ("knowledge/context.py", "_checks"): "renderer",
-    ("knowledge/context.py", "_findings"): "renderer",
-    ("knowledge/context.py", "_check_results"): "renderer",
-    ("knowledge/context.py", "_hierarchy"): "renderer",
-    ("knowledge/context.py", "_inputs"): "renderer",
-    ("knowledge/context.py", "_subject"): "renderer",
-    ("knowledge/context.py", "_children"): "renderer",
-    ("knowledge/context.py", "_history"): "renderer",
-    ("knowledge/context.py", "_lines_section"): "producer:worker text",
-    ("knowledge/context.py", "sections"): "renderer",
-    ("knowledge/context.py", "_cut_marker"): "producer:worker text",
-    ("knowledge/context.py", "_notice"): "producer:worker text",
-    ("knowledge/context.py", "assemble"): "renderer",
-    ("knowledge/context.py", "render"): "renderer",
-    ("knowledge/evidence.py", "_scan"): "producer:worker text",
-    ("maps/slices.py", "lines"): "producer:worker text",
-    ("maps/slices.py", "_unavailable"): "producer:worker text",
-    ("maps/slices.py", "static_prefix"): "producer:worker text",
-    ("maps/slices.py", "_freshness_line"): "producer:worker text",
-    ("maps/slices.py", "body"): "producer:worker text",
-    ("maps/slices.py", "frame"): "producer:worker text",
-    ("maps/store.py", "parse_artifact"): "producer:worker text",
-    ("maps/store.py", "parse_artifact.<locals>.corrupt"): "producer:worker text",
-}
+
+def hook_functions() -> dict[tuple[str, str], str]:
+    """The hook functions (§2.1, V11-1), (module, qualified name) -> kind: derived from the tree by the render-set scan
+    and the producer dispositions (``pt_scan``), never listed by hand."""
+    import pt_scan
+
+    return pt_scan.hook_functions()
+
+
 ALLOWED_KINDS = frozenset({"renderer", "producer:worker text", "producer:fenced", "manual-delivery", "parser-builder",
                            "result-method"})
 
@@ -278,6 +211,24 @@ def _module_constants(tree: ast.Module) -> dict[str, str]:
 
 
 _CONSTS: dict[str, dict[str, str]] | None = None
+_CONST_LINES: dict[str, dict[str, int]] | None = None
+
+
+def all_constant_lines() -> dict[str, dict[str, int]]:
+    """Module dotted name -> the line of each of its module-level string constants (a name's last assignment)."""
+    global _CONST_LINES
+    if _CONST_LINES is None:
+        out: dict[str, dict[str, int]] = {}
+        for p in sorted(PKG.rglob("*.py")):
+            lines = out.setdefault(_module_name(p), {})
+            for st in ast.parse(_read(p)).body:
+                if isinstance(st, ast.Assign) and isinstance(st.value, ast.Constant) and \
+                        isinstance(st.value.value, str):
+                    for t in st.targets:
+                        if isinstance(t, ast.Name):
+                            lines[t.id] = st.lineno
+        _CONST_LINES = out
+    return _CONST_LINES
 
 
 def all_constants() -> dict[str, dict[str, str]]:
@@ -362,8 +313,9 @@ def _outer_scopes(tree: ast.Module) -> dict[tuple[int, int], str]:
     return out
 
 
-def qualnames(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Qualified name -> definition, for every function and method (``f.<locals>.g`` for nested ones)."""
+def qualnames(tree: ast.Module, *, strict: bool = True) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Qualified name -> definition, for every function and method (``f.<locals>.g`` for nested ones). A name defined
+    twice (a platform branch) fails when ``strict``; otherwise the later one is named ``<name>#2``."""
     out: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
 
     def visit(node: ast.AST, prefix: list[str]) -> None:
@@ -373,7 +325,9 @@ def qualnames(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunction
             elif isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 q = ".".join([*prefix, ch.name])
                 if q in out:
-                    raise HookError(f"two definitions named {q}")
+                    if strict:
+                        raise HookError(f"two definitions named {q}")
+                    q = next(f"{q}#{i}" for i in range(2, 100) if f"{q}#{i}" not in out)
                 out[q] = ch
                 visit(ch, [*prefix, ch.name, "<locals>"])
             else:
@@ -511,7 +465,7 @@ REGISTRY = Registry()
 def hook_modules() -> dict[str, list[str]]:
     """Module file (relative to src/aew) -> the qualified names of its hook functions."""
     out: dict[str, list[str]] = {}
-    for (rel, qual) in HOOK_FUNCTIONS:
+    for (rel, qual) in hook_functions():
         out.setdefault(rel, []).append(qual)
     return out
 
@@ -528,6 +482,7 @@ class Plan:
     data: dict[str, tuple[ast.expr, dict[Key, str]]]  # a module display a hook function reads -> its leaves' unit ids
     counts: dict[str, int]
     nodes: list[ast.AST]  # every original node, kept alive so no id in ``keys`` is ever reused
+    ref_sites: dict[Key, tuple[str, str, int]] = field(default_factory=dict)  # a ref -> (function, expression, line)
 
 
 def _const_choices(expr: ast.expr) -> list[ast.Constant] | None:
@@ -618,19 +573,20 @@ def plan_module(rel: str, source: str, *, plants: dict[Key, str] | None = None,
         """(file, line, text) of the module-level string constant ``e`` names, resolved by import."""
         if isinstance(e, ast.Name) and e.id in local:
             return file, module_assign[e.id].lineno, local[e.id]
-        consts = all_constants()
+        consts, lines = all_constants(), all_constant_lines()
         if isinstance(e, ast.Name) and e.id in names:
             m, n = names[e.id]
             if n in consts.get(m, {}):
-                return f"src/{m.replace('.', '/')}.py", 0, consts[m][n]
+                return f"src/{m.replace('.', '/')}.py", lines[m][n], consts[m][n]
         if isinstance(e, ast.Attribute) and isinstance(e.value, ast.Name) and e.value.id in mods:
             m = mods[e.value.id]
             if e.attr in consts.get(m, {}):
-                return f"src/{m.replace('.', '/')}.py", 0, consts[m][e.attr]
+                return f"src/{m.replace('.', '/')}.py", lines[m][e.attr], consts[m][e.attr]
         return None
 
     values: dict[Key, str] = {}
     refs: dict[Key, dict[str, str]] = {}
+    ref_sites: dict[Key, tuple[str, str, int]] = {}
     data: dict[str, tuple[ast.expr, dict[Key, str]]] = {}
 
     def ref_choices(fn: ast.AST, e: ast.expr) -> dict[str, str] | None:
@@ -666,11 +622,13 @@ def plan_module(rel: str, source: str, *, plants: dict[Key, str] | None = None,
         if s in values or s in refs or isinstance(e, (ast.Constant, ast.Starred)):
             return
         choices = ref_choices(fn, e)
+        expr = ast.get_source_segment(source, e) or ast.unparse(e)
         if choices is not None:
             refs[s] = choices
+            ref_sites[s] = (q, expr, e.lineno)
             return
-        values[s] = reg.value({"file": file, "line": e.lineno, "col": e.col_offset, "function": q,
-                               "expr": ast.get_source_segment(source, e) or ast.unparse(e)})
+        values[s] = reg.value({"file": file, "line": e.lineno, "col": e.col_offset, "function": q, "expr": expr,
+                               "kind": "operand"})
 
     def is_prose(e: ast.expr) -> bool:
         if isinstance(e, ast.Constant):
@@ -692,7 +650,8 @@ def plan_module(rel: str, source: str, *, plants: dict[Key, str] | None = None,
                         elif key(v) not in values:
                             values[key(v)] = reg.value({  # the expression's own position: the same on every Python
                                 "file": file, "line": v.value.lineno, "col": v.value.col_offset, "function": q,
-                                "expr": ast.get_source_segment(source, v.value) or ast.unparse(v.value)})
+                                "expr": ast.get_source_segment(source, v.value) or ast.unparse(v.value),
+                                "kind": "fstring"})
             if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add) and (is_prose(n.left) or is_prose(n.right)):
                 for side in (n.left, n.right):
                     if not is_prose(side):
@@ -722,7 +681,7 @@ def plan_module(rel: str, source: str, *, plants: dict[Key, str] | None = None,
                             "via": f"module data {n.id}"})
                 if leaves:
                     data[n.id] = (display, leaves)
-    return tree, Plan(keys, wrapped, values, refs, data, counts, list(ast.walk(tree)))
+    return tree, Plan(keys, wrapped, values, refs, data, counts, list(ast.walk(tree)), ref_sites)
 
 
 class _Rewrite(ast.NodeTransformer):
@@ -965,6 +924,8 @@ class _Loader(importlib.machinery.SourceFileLoader):
     def exec_module(self, module: Any) -> None:
         module.__dict__.update(_pt_hook_fv=_fv, _pt_hook_value=_value, _pt_hook_ref=_ref)
         super().exec_module(module)
+        for edit in MODULE_EDITS.get(module.__name__, ()):  # a negative control's import-time product edit
+            edit(module)
         for name, (display, leaves) in (self.plan.data if self.plan else {}).items():
             module.__dict__[name] = wrap_data(module.__dict__[name], display, leaves, self.plan.keys)  # type: ignore[union-attr]
         if self.after is not None:
@@ -978,7 +939,7 @@ class Finder(importlib.abc.MetaPathFinder):
         self.patches = patches
 
     def find_spec(self, fullname: str, path: Any, target: Any = None) -> Any:
-        if fullname not in self.modules and fullname not in self.patches:
+        if fullname not in self.modules and fullname not in self.patches and fullname not in MODULE_EDITS:
             return None
         spec = importlib.machinery.PathFinder.find_spec(fullname, path)
         if spec is None or spec.origin is None:
@@ -1056,7 +1017,7 @@ def fence(obj: Any, name: str, registry: Registry | None = None) -> Any:
     """Every non-empty string leaf of ``obj`` wrapped as a fenced value named ``name`` (and its path)."""
     reg = registry if registry is not None else REGISTRY
     if isinstance(obj, str):
-        return wrap_core(obj, lambda core: wrap_value(core, reg.value({"fence": name})))
+        return wrap_core(obj, lambda core: wrap_value(core, reg.value({"fence": name, "kind": "fence"})))
     if isinstance(obj, dict):
         return {k: fence(v, f"{name}.{k}", reg) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -1100,6 +1061,8 @@ def _patch_context_ops(yaml_plants: dict[str, dict[str, str]]) -> Callable[[Any]
 
             def wrapped(self: Any, state: dict[str, Any], inv_id: str, *a: Any, _o: Any = original, **kw: Any) -> Any:
                 inputs, sources = _o(self, state, inv_id, *a, **kw)
+                for edit in INPUT_EDITS:  # a negative control's product edit, made where the product would make it
+                    edit(inputs)
                 pin = pinned_card(state["invocations"][inv_id].get("card"))
                 if pin is not None and inputs.card is not None:
                     rel, _ = pin
@@ -1111,15 +1074,75 @@ def _patch_context_ops(yaml_plants: dict[str, dict[str, str]]) -> Callable[[Any]
     return patch
 
 
+# Negative controls (F4 of the prototype's review): product edits a control plants, each where the product itself would
+# make it: an edit of a pack's inputs inside `_pack_inputs`, before the data boundary wraps them, and an edit of a
+# module right after it runs, before its displays are wrapped. Empty unless a control installs them (pt_negatives).
+INPUT_EDITS: list[Callable[[Any], None]] = []
+MODULE_EDITS: dict[str, list[Callable[[Any], None]]] = {}
+
+# What argparse generates itself, marked where it generates it (V11-2, made positional: F3 of the review). The kinds:
+CLI_USAGE, CLI_INVOCATION, CLI_BUILTIN_HELP = "usage", "invocation", "argparse built-in help"
+
+
+def _argparse_len(obj: Any) -> int:
+    """argparse's ``len``: every width it measures is the stripped text's (V12-1)."""
+    return len(strip(obj)) if isinstance(obj, str) and has_marker_chars(obj) else len(obj)
+
+
+def _cli_value(kind: str) -> Callable[[str], str]:
+    return lambda core: wrap_value(core, REGISTRY.value({"cli": kind, "kind": "cli"}))
+
+
+def _patch_argparse() -> None:
+    """Patch argparse to measure stripped text and to mark the text it generates: the usage line, each action's
+    invocation (option strings, metavars, choices, subcommand names) and the help of its own -h and --version
+    actions. Text it is given (help, description, epilog) is the hook's (units); nothing is matched by text."""
+    import argparse
+
+    fmt = argparse.HelpFormatter
+    argparse.len = _argparse_len  # type: ignore[attr-defined]  (a module global shadows the builtin there)
+    fmt._split_lines = _split_lines_stripped(fmt._split_lines)  # type: ignore[method-assign]
+    fmt._fill_text = _fill_text_stripped(fmt._fill_text)  # type: ignore[method-assign]
+    usage, action, expand = fmt._format_usage, fmt._format_action, fmt._expand_help
+
+    def _format_usage(self: Any, *a: Any, **kw: Any) -> str:
+        return wrap_core(usage(self, *a, **kw), _cli_value(CLI_USAGE))
+
+    def _format_action(self: Any, act: Any) -> str:
+        header = self._format_action_invocation(act)
+        text = action(self, act)  # its sub-actions come back through this patch, marked
+        at = self._current_indent
+        if not header or text[at:at + len(header)] != header:
+            return text  # not argparse's layout: left unmarked, so untraced
+        return text[:at] + wrap_value(header, REGISTRY.value({"cli": CLI_INVOCATION, "kind": "cli"})) + \
+            text[at + len(header):]
+
+    def _expand_help(self: Any, act: Any) -> str:
+        text = expand(self, act)
+        if isinstance(act, (argparse._HelpAction, argparse._VersionAction)):
+            return wrap_core(text, _cli_value(CLI_BUILTIN_HELP))
+        return text
+
+    subparsers = argparse.ArgumentParser.add_subparsers
+
+    def add_subparsers(self: Any, **kw: Any) -> Any:
+        # argparse formats a usage line to make its sub-commands' prog prefix: data, not output, so unmarked
+        action = subparsers(self, **kw)
+        action._prog_prefix = strip(action._prog_prefix)
+        return action
+
+    fmt._format_usage = _format_usage  # type: ignore[method-assign]
+    fmt._format_action = _format_action  # type: ignore[method-assign]
+    fmt._expand_help = _expand_help  # type: ignore[method-assign]
+    argparse.ArgumentParser.add_subparsers = add_subparsers  # type: ignore[method-assign]
+
+
 def install(*, plants: dict[str, dict[Key, str]] | None = None,
             yaml_plants: dict[str, dict[str, str]] | None = None) -> Finder:
     """Install the hook in this process (before ``aew`` is imported) and patch argparse."""
     if any(name == "aew" or name.startswith("aew.") for name in sys.modules):
         raise HookError("install the hook before anything imports aew")
-    import argparse
-
-    argparse.HelpFormatter._split_lines = _split_lines_stripped(argparse.HelpFormatter._split_lines)  # type: ignore[method-assign]
-    argparse.HelpFormatter._fill_text = _fill_text_stripped(argparse.HelpFormatter._fill_text)  # type: ignore[method-assign]
+    _patch_argparse()
     finder = Finder(plants or {}, {"aew.util": _patch_util, "aew.roles": _patch_roles(yaml_plants or {}),
                                    "aew.knowledge.context": _patch_context,
                                    "aew.engine.context_ops": _patch_context_ops(yaml_plants or {})})

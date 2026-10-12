@@ -137,6 +137,10 @@ def main() -> int:
         plants = {rel: {tuple(json.loads(k)): v for k, v in sites.items()}  # a node key, as JSON (pt_hook.node_keys)
                   for rel, sites in (spec.get("plants") or {}).items()}
         pt_hook.install(plants=plants, yaml_plants=spec.get("yaml_plants") or {})
+        if spec.get("negatives"):  # the negative controls' product edits (pt_negatives)
+            import pt_negatives
+
+            pt_negatives.install(spec["negatives"])
         registry = {"units": pt_hook.REGISTRY.units, "values": pt_hook.REGISTRY.values}
     if spec.get("quoted"):
         _load_quoted(Path(spec["quoted"]))

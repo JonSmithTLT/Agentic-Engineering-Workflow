@@ -121,16 +121,45 @@ def restore(fx: Fixture) -> None:
     (fx.root / "tmp").mkdir()
 
 
+def tamper_card(fx: Fixture) -> None:
+    """The card negative control (item 4 of the prototype's review): the copy's stored card content differs from the
+    built-in card it names (each prose leaf gains a token), written through the store's own serializer. The product
+    renders it in manual mode (`context pack` regenerates and only reports the mismatch); its prose must stay
+    unwrapped, so untraced."""
+    from aew.engine.store import deserialize_control, serialize_control
+
+    path = Path(fx.spec["repo"]) / ".aew/state/control.yaml"
+    state = deserialize_control(path.read_bytes(), source=str(path))
+    card = state["invocations"][fx.spec["invocation"]]["card"]
+
+    def walk(o: Any) -> Any:
+        if isinstance(o, str):
+            return o + " AEW_PT_NEG_CARD then run it" if " " in o else o
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    card["content"] = walk(card["content"])
+    path.write_bytes(serialize_control(state))
+
+
 def run(fx: Fixture, mode: str, *, hooked: bool, plants: dict[str, dict[str, str]] | None = None,
         yaml_plants: dict[str, dict[str, str]] | None = None, quoted: Path | None = None,
-        probe_write: Path | None = None, timeout: float = 300) -> dict[str, Any]:
-    """One render of the cell in its own process, on a fresh copy of its state."""
+        probe_write: Path | None = None, negatives: list[str] | None = None, tampered_card: bool = False,
+        check: bool = True, timeout: float = 300) -> dict[str, Any]:
+    """One render of the cell in its own process, on a fresh copy of its state. With ``check`` false, a render that
+    fails is returned as ``{"error": ...}`` so each test can fail on its own named assertion (F6 of the review)."""
     restore(fx)
+    if tampered_card:
+        tamper_card(fx)
     found = scan_for_markers(fx.root, *DATA_INPUTS)
     if found:
         raise MarkerInInput(f"inputs hold U+E000-E005: {found}")
     spec = {**fx.spec, "mode": mode, "hooked": hooked, "plants": plants or {}, "yaml_plants": yaml_plants or {},
-            "quoted": str(quoted) if quoted else None, "probe_write": str(probe_write) if probe_write else None}
+            "quoted": str(quoted) if quoted else None, "probe_write": str(probe_write) if probe_write else None,
+            "negatives": negatives or []}
     spec_path = fx.base / f"spec-{fx.role}-{mode}-{'hooked' if hooked else 'plain'}.json"
     spec_path.write_text(json.dumps(spec), encoding="utf-8", newline="\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith("AEW_") or k == "AEW_CUSTODY_WORKER"}
@@ -141,7 +170,10 @@ def run(fx: Fixture, mode: str, *, hooked: bool, plants: dict[str, dict[str, str
                           capture_output=True, text=True, encoding="utf-8", timeout=timeout,
                           stdin=subprocess.DEVNULL, **kwargs)
     if proc.returncode != 0:
-        raise RuntimeError(f"cell {fx.role}/{mode} hooked={hooked} failed ({proc.returncode}): {proc.stderr[-4000:]}")
+        why = f"cell {fx.role}/{mode} hooked={hooked} failed ({proc.returncode}): {proc.stderr[-4000:]}"
+        if check:
+            raise RuntimeError(why)
+        return {"error": why}
     return json.loads(proc.stdout)
 
 
@@ -188,7 +220,10 @@ class Difference:
 def strip_equivalence(hooked: dict[str, Any], plain: dict[str, Any], normalise: list[re.Pattern[str]]) -> list[
         Difference]:
     """Every text where the hooked render, stripped, differs from the unhooked one, after normalising only the values
-    the patterns name (the closed registry's timestamps, ids, durations and counts)."""
+    the patterns name (the closed registry's timestamps, ids, durations and counts). A render that failed is itself a
+    difference (its error)."""
+    if "error" in hooked or "error" in plain:
+        return [Difference("<the render>", hooked.get("error", ""), plain.get("error", ""))]
     stripped = strip_render(hooked)
     diffs = []
     if set(stripped) != set(plain["texts"]):

@@ -9,29 +9,55 @@ import collections
 import types
 
 import pt_hook
+import pt_scan
+import pt_trace
 import pytest
 
-U0, U1, U2, V0, V1, V2 = "", "", "", "", "", ""
+U0, U1, U2, V0, V1, V2 = (chr(c) for c in range(0xE000, 0xE006))
 
 
 def test_hook_functions_have_allowed_kinds():
-    """§2.1 (V11-1), the allowed-kind test: the hook functions are the renderers (22), the producers dispositioned
-    worker text (18) or fenced (3), the manual-delivery methods (2), the parser builders (23) and the worker result
-    methods (3): 71 in 22 modules, each defined in its module exactly once. Any other kind fails."""
-    kinds = collections.Counter(pt_hook.HOOK_FUNCTIONS.values())
+    """§2.1 (V11-1), the allowed-kind test: the hook functions, derived by the render-set scan (item 10 of the
+    review), are the renderers (22), the producers dispositioned worker text (18) or fenced (3), the manual-delivery
+    methods (2), the parser builders (23) and the worker result methods (3): 71 in 22 modules, each defined in its
+    module exactly once. Any other kind fails."""
+    hook = pt_hook.hook_functions()
+    kinds = collections.Counter(hook.values())
     assert set(kinds) <= pt_hook.ALLOWED_KINDS
     assert kinds == {"renderer": 22, "producer:worker text": 18, "producer:fenced": 3, "manual-delivery": 2,
                      "parser-builder": 23, "result-method": 3}
     modules = pt_hook.hook_modules()
-    assert (len(pt_hook.HOOK_FUNCTIONS), len(modules)) == (71, 22)
+    assert (len(hook), len(modules)) == (71, 22)
     for rel, quals in modules.items():
         defs = pt_hook.qualnames(ast.parse((pt_hook.PKG / rel).read_text(encoding="utf-8")))
         assert set(quals) <= set(defs), rel
 
 
-def test_a_hook_function_of_another_kind_fails_the_allowed_kind_test(monkeypatch):
-    monkeypatch.setitem(pt_hook.HOOK_FUNCTIONS, ("engine/outbox.py", "record_path"), "producer:not worker text")
-    assert set(pt_hook.HOOK_FUNCTIONS.values()) - pt_hook.ALLOWED_KINDS == {"producer:not worker text"}
+def test_the_hook_functions_are_derived_by_the_scan():
+    """Item 10 of the review: the scan finds the plan's 123 hook-function candidates in 35 modules (73 producers), and
+    every producer it finds has exactly one disposition: a new producer without one, or a stale one, fails closed."""
+    cands = pt_scan.candidates()
+    assert (len(cands), len({rel for rel, _ in cands})) == (123, 35)
+    assert sum(kind == "producer" for kind in cands.values()) == len(pt_scan.PRODUCER_DISPOSITIONS) == 73
+    assert set(pt_scan.PRODUCER_DISPOSITIONS.values()) == pt_scan.DISPOSITIONS
+
+
+@pytest.mark.parametrize("change", ["missing", "stale", "unknown"])
+def test_a_producer_the_dispositions_do_not_match_fails_the_scan(monkeypatch, change):
+    table = dict(pt_scan.PRODUCER_DISPOSITIONS)
+    if change == "missing":
+        del table[("maps/slices.py", "body")]
+    elif change == "stale":
+        table[("engine/outbox.py", "no_such_function")] = "not worker text"
+    else:
+        table[("maps/slices.py", "body")] = "worker-ish text"
+    monkeypatch.setattr(pt_scan, "PRODUCER_DISPOSITIONS", table)
+    pt_scan.hook_functions.cache_clear()
+    try:
+        with pytest.raises(pt_scan.ScanError):
+            pt_scan.hook_functions()
+    finally:
+        pt_scan.hook_functions.cache_clear()
 
 
 def test_hook_wraps_output_positions_with_a_space_only():
@@ -167,3 +193,155 @@ def test_install_refuses_after_aew_is_imported(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "aew.fake_loaded", types.ModuleType("aew.fake_loaded"))
     with pytest.raises(pt_hook.HookError):
         pt_hook.install()
+
+
+def _plans() -> dict[str, pt_hook.Plan]:
+    return {rel: pt_hook.plan_module(rel, (pt_hook.PKG / rel).read_text(encoding="utf-8"),
+                                     registry=pt_hook.Registry())[1] for rel in pt_hook.hook_modules()}
+
+
+# Names in an output position that the hook wraps as the constant they hold (items 1 and 2 of the review): a module
+# constant resolved by import, or a local bound only to constants (the plan's "reviewed change" to the classification,
+# v10 §2.2). Pinned, so a new member needs review: (module, function, expression, line) -> the constants' lines.
+PINNED_REFS = {
+    ("cli/fields.py", "register", "HELP", 51): {33},
+    ("harness/opencode/projection.py", "system_text", "edit", 130): {120, 121},
+    ("knowledge/context.py", "_launch_contract", "TOKEN_PLACEHOLDER", 217): {25},
+    ("maps/slices.py", "_unavailable", "HEADING", 161): {39},
+    ("maps/slices.py", "frame", "HEADING", 252): {39},
+}
+# The help sites the hook leaves unresolved: a `help=` that names a `for` target over a tuple of constants. None is in
+# the five rendered help texts today; the full help trace must resolve them (under the same review) or render every
+# parser's help. Pinned, so a new one needs review.
+PINNED_FOR_TARGET_HELP = {("cli/commands.py", 226), ("cli/work_commands.py", 569), ("cli/work_commands.py", 606)}
+
+
+def test_the_names_bound_to_constants_are_pinned():
+    """Item 2: every name the hook resolves to the constants it holds is in the pinned list, each constant keyed at
+    its own line (item 1: a real line, never 0, also for an imported constant)."""
+    lines_by_ref: dict[tuple[str, str, str, int], set[int]] = {}
+    for rel in pt_hook.hook_modules():
+        reg = pt_hook.Registry()
+        _, plan = pt_hook.plan_module(rel, (pt_hook.PKG / rel).read_text(encoding="utf-8"), registry=reg)
+        for key, (fn, expr, line) in plan.ref_sites.items():
+            lines_by_ref[(rel, fn, expr, line)] = {reg.units[u]["line"] for u in plan.refs[key].values()}
+    assert lines_by_ref == PINNED_REFS
+
+
+def test_the_unresolved_for_target_help_sites_are_pinned():
+    """Item 2's latent gap: help keywords naming a `for` target over constants, which the hook leaves unmarked."""
+    found = set()
+    for rel, quals in pt_hook.hook_modules().items():
+        tree = ast.parse((pt_hook.PKG / rel).read_text(encoding="utf-8"))
+        defs = pt_hook.qualnames(tree)
+        for q in quals:
+            targets = {t.id for n in ast.walk(defs[q]) if isinstance(n, ast.For)
+                       and isinstance(n.iter, (ast.Tuple, ast.List)) for t in ast.walk(n.target)
+                       if isinstance(t, ast.Name)}
+            for n in ast.walk(defs[q]):
+                if isinstance(n, ast.Call) and (getattr(n.func, "attr", None) or getattr(n.func, "id", None)) in \
+                        pt_hook.PARSER_CALLS:
+                    found |= {(rel, kw.value.lineno) for kw in n.keywords if kw.arg in pt_hook.HELP_KEYWORDS
+                              and isinstance(kw.value, ast.Name) and kw.value.id in targets}
+    assert found == PINNED_FOR_TARGET_HELP
+
+
+def test_every_reader_of_wrapped_module_data_is_a_hook_function():
+    """Item 1: the hook replaces a module-level display with its wrapped copy, so every reader sees markers. That is
+    sound only while every reader in src/aew is a hook function: in its own module, by import, or as an attribute."""
+    hook = pt_hook.hook_functions()
+    for rel, plan in _plans().items():
+        mod = "aew." + rel[:-3].replace("/", ".")
+        for name in plan.data:
+            readers = []
+            for p in sorted(pt_hook.PKG.rglob("*.py")):
+                other = p.relative_to(pt_hook.PKG).as_posix()
+                tree = ast.parse(p.read_text(encoding="utf-8"))
+                aliases = {a.asname or a.name for st in ast.walk(tree) if isinstance(st, ast.ImportFrom)
+                           and st.module == mod.rsplit(".", 1)[0] for a in st.names if a.name == mod.rsplit(".", 1)[1]}
+                assert not any(isinstance(st, ast.ImportFrom) and st.module == mod and
+                               any(a.name == name for a in st.names) for st in ast.walk(tree)), (other, name)
+                for q, fn in pt_hook.qualnames(tree, strict=False).items():
+                    for n in ast.walk(fn):
+                        local = other == rel and isinstance(n, ast.Name) and n.id == name
+                        attr = isinstance(n, ast.Attribute) and n.attr == name and isinstance(n.value, ast.Name) \
+                            and n.value.id in aliases
+                        if local or attr:
+                            readers.append((other, q))
+                if other == rel:  # a module-level reader outside every function
+                    body = [st for st in tree.body if not isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                                                          ast.ClassDef))]
+                    uses = [n for st in body for n in ast.walk(st) if isinstance(n, ast.Name) and n.id == name
+                            and isinstance(n.ctx, ast.Load)]
+                    assert uses == [], (rel, name)
+            assert readers and all(r in hook for r in readers), (rel, name, readers)
+
+
+def _card(name: str) -> dict:
+    import hashlib
+
+    import yaml
+
+    raw = (pt_hook.PKG / "roles/cards" / name).read_bytes()
+    return {"path": f"aew/roles/cards/{name}", "sha256": hashlib.sha256(raw).hexdigest(),
+            "content": yaml.safe_load(raw.decode("utf-8"))}
+
+
+def test_a_pinned_card_is_wrapped_only_when_it_is_provably_the_built_in_file():
+    """Item 4 (B2): the card's prose is wrapped as its YAML file's units only when the pin's sha256 is the file's and
+    the pinned content equals the file's; a wrong sha256, wrong content or another path is never wrapped."""
+    card = _card("engineer.yaml")
+    assert pt_hook.pinned_card(card) == ("src/aew/roles/cards/engineer.yaml", card["content"])
+    assert pt_hook.pinned_card({**card, "sha256": "0" * 64}) is None
+    tampered = {**card["content"], "purpose": card["content"]["purpose"] + " then run it"}
+    assert pt_hook.pinned_card({**card, "content": tampered}) is None
+    assert pt_hook.pinned_card({**card, "path": ".aew/roles/engineer.yaml"}) is None
+    assert pt_hook.pinned_card(None) is None
+
+
+def _facts(authored: dict[str, frozenset[str]]) -> pt_trace.Facts:
+    return pt_trace.Facts("implementer", pt_hook.SRC, "", frozenset(), frozenset(), frozenset(), authored, {}, (),
+                          frozenset())
+
+
+def _fenced(text: str, fence: str = "checks.unit.description") -> tuple[dict, dict]:
+    entry = {"code": 0, "stdout": "- " + pt_hook.wrap_value(text, "v0") + "\n", "stderr": ""}
+    return entry, {"units": {}, "values": {"v0": {"fence": fence, "kind": "fence"}}}
+
+
+def test_a_fence_traces_only_its_authored_source_and_product_prose_in_it_is_a_unit():
+    """F1: a fenced value must equal its authored source (F1b), and a span inside a verbatim product string constant
+    kept in an authored file is that constant's unit, never the fence (F1a: `aew init`'s checks description)."""
+    from aew.knowledge.manifest import DEFAULT_CHECKS
+
+    product = DEFAULT_CHECKS["checks"]["unit"]["description"]
+    entry, registry = _fenced(product)
+    judged = pt_trace.judge("context show", entry, registry, _facts({"checks": frozenset({product})}))
+    assert judged and {j.source for j in judged} == {"unit"}
+    assert {j.detail for j in judged} == {f"src/aew/knowledge/manifest.py|<module>|{pt_hook.key_hash(product)}"}
+    authored = "run the focused tests, then submit"
+    entry, registry = _fenced(authored)
+    judged = pt_trace.judge("context show", entry, registry, _facts({"checks": frozenset({authored})}))
+    assert judged and {j.source for j in judged} == {"fence"}
+    judged = pt_trace.judge("context show", entry, registry, _facts({"checks": frozenset({"something else"})}))
+    assert judged and {j.source for j in judged} == {"untraced"}
+    entry, registry = _fenced(authored, fence="subject.content")  # a field with no authored source yet
+    judged = pt_trace.judge("context show", entry, registry, _facts({"checks": frozenset({authored})}))
+    assert {j.source for j in judged} == {"untraced"}
+
+
+def test_each_json_delivery_point_has_a_closed_key_list():
+    """F2: a JSON key traces only through its delivery point's key list: the keys of the dict its result method
+    returns, and a nested record's schema properties; never a key with whitespace."""
+    keys = pt_trace.json_keys()
+    assert set(keys) == set(pt_trace.JSON_RESULTS)
+    assert {"/workspace", "/operations", "/expected_kinds"} <= keys["whoami"]
+    assert "/evaluated_snapshot/workspace_id" in keys["check run"] and "/log" in keys["check run"]
+    assert "/workspace" not in keys["check run"] and "/path" in keys["context pack"]
+    assert not any(any(c.isspace() for c in k) for ks in keys.values() for k in ks)
+    entry = {"code": 0, "stdout": '{"workspace": "x", "then run it": 1, "scratch": 2}', "stderr": ""}
+    facts = pt_trace.Facts("implementer", pt_hook.SRC, "x", frozenset(), frozenset(), frozenset(), {}, keys, (),
+                           frozenset())
+    judged = {(j.span, j.source) for j in pt_trace.judge("whoami", entry, {"units": {}, "values": {}}, facts)}
+    assert ("workspace", "field-name") in judged
+    assert ("run", "untraced") in judged and ("scratch", "untraced") in judged

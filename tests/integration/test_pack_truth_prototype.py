@@ -4,6 +4,15 @@ Two roles (implementer, reviewer) × two modes (harness: the launch prompt and t
 context pack` and `aew context show`), each with the worker commands' results and help. Each cell's fixture is built
 unhooked; its hooked and unhooked renders run in separate processes, each on its own copy of that state (pt_harness).
 The gate: every span traced, the planted control met, and strip-equivalence in all four cells.
+
+The controls are both kinds: positive plants that must trace to their own key (§2.3), and negative plants, one per
+judge branch, that must come out untraced (F4 of the prototype's review; pt_negatives).
+
+The harness cells run the worker commands in this process with the invocation's credential, not through the custody
+bridge (item 11 of the review). The bridge's own texts are handed to PT-2: each is a refusal it raises
+(``bridge.validate_request``, ``rebuild_error``), PT-2's capture scope (§2.5), and a bridge cell needs the supervisor
+processes that are PT-2's second prerequisite. Its success path relays the result methods' dicts, which these cells
+trace.
 """
 
 from __future__ import annotations
@@ -16,6 +25,8 @@ from typing import Any
 
 import pt_harness as H
 import pt_hook
+import pt_negatives as N
+import pt_scan
 import pt_trace as T
 import pytest
 
@@ -64,37 +75,41 @@ def fixtures(base: Path) -> dict[str, H.Fixture]:
 
 @pytest.fixture(scope="module")
 def renders(fixtures: dict[str, H.Fixture]) -> dict[tuple[str, str], tuple[dict[str, Any], dict[str, Any]]]:
-    """Every cell, hooked and unhooked, each in its own process on its own copy of the cell's state."""
-    return {(role, mode): (H.run(fixtures[role], mode, hooked=True), H.run(fixtures[role], mode, hooked=False))
+    """Every cell, hooked and unhooked, each in its own process on its own copy of the cell's state. A render that
+    fails is kept as its error, so each test fails on its own assertion (F6 of the review)."""
+    return {(role, mode): (H.run(fixtures[role], mode, hooked=True, check=False),
+                           H.run(fixtures[role], mode, hooked=False, check=False))
             for role in H.ROLES for mode in H.MODES}
 
 
 @pytest.fixture(scope="module")
-def registry_inputs() -> tuple[frozenset[str], tuple[str, ...]]:
-    return T.field_names(), T.cli_identifiers()
+def registry_inputs() -> None:
+    """Kept for the review's probe: the registry's inputs are read per cell now (``pt_trace.facts``)."""
+    return None
 
 
-def judged(fx: H.Fixture, hooked: dict[str, Any], registry_inputs: tuple[frozenset[str], tuple[str, ...]]
-           ) -> list[T.Judged]:
-    fields, cli = registry_inputs
-    return T.judge_render(hooked, T.facts(fx.spec, fx.pristine, fields=fields, cli=cli))
+def judged(fx: H.Fixture, hooked: dict[str, Any], registry_inputs: Any = None) -> list[T.Judged]:
+    assert "error" not in hooked, hooked.get("error")
+    return T.judge_render(hooked, T.facts(fx.spec, fx.pristine))
 
 
 def test_strip_equivalence_every_cell(renders):
     """§2.3: in all four cells the hooked render, every marker removed, is byte-identical to the unhooked one. The two
     copies hold the same state, so no registry value needs normalising: the comparison is exact."""
+    differences = {cell: H.strip_equivalence(hooked, plain, []) for cell, (hooked, plain) in renders.items()}
+    assert {cell: d for cell, d in differences.items() if d} == {}
     for cell, (hooked, plain) in renders.items():
-        assert H.strip_equivalence(hooked, plain, []) == [], cell
         assert set(hooked["texts"]) == set(plain["texts"]), cell
         # every delivery point rendered, and none refused
         assert all(e["code"] == 0 for e in plain["texts"].values()), (cell, plain["texts"])
 
 
-def test_every_span_traced_every_cell(renders, fixtures, registry_inputs):
-    """§2.3: every span of the pattern in every cell traces to one source: a unit, a fenced authored input, a
-    registered value its accessor confirms, a named JSON field, or a CLI identifier of the live parser."""
+def test_every_span_traced_every_cell(renders, fixtures):
+    """§2.3: every span of the pattern in every cell traces to one source: a unit, a fenced authored input its
+    accessor confirms, a registered value its accessor confirms, a JSON key or field of its delivery point, or
+    argparse's own output."""
     for (role, mode), (hooked, _) in renders.items():
-        result = judged(fixtures[role], hooked, registry_inputs)
+        result = judged(fixtures[role], hooked)
         assert result, (role, mode)
         untraced = [j for j in result if j.source == "untraced"]
         assert untraced == [], (role, mode, untraced)
@@ -108,7 +123,9 @@ def test_every_value_class_has_an_accessor_and_the_tables_are_distinct():
     display keeps the last of two equal keys silently)."""
     assert set(T.VALUE_SITES.values()) | set(T.JSON_FIELDS.values()) <= set(T.CLASSES)
     for path, name in ((Path(T.__file__), "VALUE_SITES"), (Path(T.__file__), "JSON_FIELDS"),
-                       (Path(pt_hook.__file__), "HOOK_FUNCTIONS"), (Path(pt_hook.__file__), "FENCED_FIELDS")):
+                       (Path(T.__file__), "JSON_RESULTS"), (Path(T.__file__), "NESTED_RECORDS"),
+                       (Path(pt_scan.__file__), "PRODUCER_DISPOSITIONS"), (Path(pt_hook.__file__), "FENCED_FIELDS"),
+                       (Path(N.__file__), "PLANTS")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         display = next(st.value for st in tree.body if isinstance(st, ast.AnnAssign)
                        and isinstance(st.target, ast.Name) and st.target.id == name)
@@ -121,17 +138,17 @@ def control(fx: H.Fixture, quoted: Path | None = None) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def controlled(fixtures, registry_inputs) -> tuple[dict[str, Any], list[T.Judged]]:
+def controlled(fixtures) -> tuple[dict[str, Any], list[T.Judged]]:
     fx = fixtures["reviewer"]
     hooked = control(fx)
-    return hooked, judged(fx, hooked, registry_inputs)
+    return hooked, judged(fx, hooked)
 
 
 def spans_of(result: list[T.Judged], token: str, text: str = "context show") -> list[T.Judged]:
     return [j for j in result if j.span == token and j.text == text]
 
 
-def test_control_baseline_per_hit_and_test_quoted_copy(fixtures, controlled, registry_inputs):
+def test_control_baseline_per_hit_and_test_quoted_copy(fixtures, controlled):
     """§2.3: a token planted in a baseline unit and one in a per-hit unit each trace to their own key, and a copy of
     the product string quoted in a test, loaded into the hooked process, changes nothing."""
     hooked, result = controlled
@@ -139,7 +156,7 @@ def test_control_baseline_per_hit_and_test_quoted_copy(fixtures, controlled, reg
     assert [j.detail for j in spans_of(result, BASELINE[0])] == [BASELINE[3]]
     assert QUOTED_COPY in H.strip_render(hooked)["context show"]["stdout"]
     with_copy = control(fixtures["reviewer"], quoted=Path(__file__))
-    assert judged(fixtures["reviewer"], with_copy, registry_inputs) == result
+    assert judged(fixtures["reviewer"], with_copy) == result
     assert H.strip_render(with_copy) == H.strip_render(hooked)
 
 
@@ -177,6 +194,75 @@ def test_control_yaml_value_nested(controlled):
     assert everywhere and {j.source for j in everywhere} <= {"value", "json-field"}
 
 
+# ---------------------------------------------------------------------------------------- negative controls (F4)
+
+NEGATIVES = ["fence-edit", "value-unregistered", "value-refused", "ref-rebound", "data-mutated", "json-key",
+             "json-value", "help-prose"]
+# plant -> (delivery point, a token or text every span inside which must be untraced)
+NEGATIVE_SPANS: dict[str, tuple[str, str]] = {
+    "fence-edit": ("context show", "AEW_PT_NEG_FENCE"),
+    "value-unregistered": ("context show", "AEW_PT_NEG_VALUE"),
+    "value-refused": ("context show", "AEW_PT_NEG_ACCESSOR"),
+    "ref-rebound": ("context show", "AEW_PT_NEG_REF"),
+    "data-mutated": ("context show", "AEW_PT_NEG_DATA"),
+    "json-key": ("whoami", "AEW_PT_NEG_KEY"),
+    "json-value": ("whoami", "AEW_PT_NEG_JSON"),
+    "help-prose": ("help whoami", N.HELP),
+}
+
+
+@pytest.fixture(scope="module")
+def negatives(fixtures) -> tuple[dict[str, Any], list[T.Judged]]:
+    fx = fixtures["implementer"]
+    hooked = H.run(fx, "manual", hooked=True, negatives=NEGATIVES)
+    return hooked, judged(fx, hooked)
+
+
+def planted(hooked: dict[str, Any], result: list[T.Judged], text: str, plant: str) -> list[T.Judged]:
+    """The judged spans that lie inside an occurrence of ``plant`` in ``text`` (its stripped, judged form)."""
+    stripped = pt_hook.strip(T.judged_text(text, hooked["texts"][text])[0])
+    start = stripped.find(plant)
+    assert start >= 0, (text, plant)
+    return [j for j in result if j.text == text and start <= j.start and j.end <= start + len(plant)]
+
+
+@pytest.mark.parametrize("plant", NEGATIVES)
+def test_negative_control_comes_out_untraced(negatives, plant):
+    """F4: for each judge branch, a planted string that the branch must not accept (product prose with no unit, a value
+    the registry does not name or its accessor refuses, a key outside the closed list, help prose argparse did not
+    generate) comes out untraced, so a branch widened to accept a whole position fails the gate."""
+    hooked, result = negatives
+    text, token = NEGATIVE_SPANS[plant]
+    spans = planted(hooked, result, text, token) if " " in token else \
+        [j for j in result if j.text == text and token in j.span]
+    assert spans, (plant, text, token)
+    assert {j.source for j in spans} == {"untraced"}, (plant, spans)
+
+
+def test_negative_control_tampered_card_in_a_manual_cell(fixtures):
+    """Item 4 of the review: a stored card whose content differs from the built-in card it names reaches the manual
+    cells (`context pack` regenerates and only reports the mismatch); its prose is not wrapped, so it is untraced."""
+    fx = fixtures["reviewer"]
+    hooked = H.run(fx, "manual", hooked=True, tampered_card=True)
+    assert json.loads(hooked["texts"]["context pack"]["stdout"])["matches_recorded"] is False
+    spans = [j for j in judged(fx, hooked) if j.span == "AEW_PT_NEG_CARD"]
+    assert spans and {j.source for j in spans} == {"untraced"}
+
+
+def test_data_markers_keep_whitespace_outside(renders, fixtures):
+    """Item 6 of the review: a YAML leaf, a fence or a `+` value is wrapped with its leading and trailing whitespace
+    outside the marker, so a renderer's `strip()` of it still strips it. The invariant holds in every cell and in a
+    control that plants whitespace around a YAML leaf and a `+` value."""
+    for cell, (hooked, _) in renders.items():
+        assert T.whitespace_inside(hooked) == [], cell
+    fx = fixtures["implementer"]
+    rel, path = N.YAML_WS_LEAF[0].format(role="implementer"), N.YAML_WS_LEAF[1]
+    hooked = H.run(fx, "manual", hooked=True, negatives=["plus-ws"], yaml_plants={rel: {path: N.YAML_WS_TOKEN}})
+    shown = H.strip_render(hooked)["context show"]["stdout"]
+    assert N.YAML_WS_TOKEN.strip() in shown and N.PLUS_WS.strip() in shown  # the plants reached the pack
+    assert T.whitespace_inside(hooked) == []
+
+
 def tree_digest(*roots: Path, skip: Path | None = None) -> dict[str, str]:
     out = {}
     for root in roots:
@@ -208,11 +294,11 @@ def test_marker_chars_in_input_fail(fixtures):
     """§2.3 (V10-5): any input to a hooked render that holds U+E000-E005 fails it closed, before the render starts:
     here a fixture project file. The planted file is removed, byte for byte, afterwards."""
     fx = fixtures["implementer"]
-    planted = fx.pristine / "repo" / "calc" / "notes.txt"
-    planted.write_text("a note with a marker  in it\n", encoding="utf-8", newline="\n")
+    planted_file = fx.pristine / "repo" / "calc" / "notes.txt"
+    planted_file.write_text(f"a note with a marker {chr(0xE003)} in it\n", encoding="utf-8", newline="\n")
     try:
         with pytest.raises(H.MarkerInInput, match="notes.txt"):
             H.run(fx, "manual", hooked=True)
     finally:
-        planted.unlink()
+        planted_file.unlink()
     assert H.scan_for_markers(fx.pristine) == []

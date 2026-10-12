@@ -512,3 +512,45 @@ def test_the_endpoint_accepts_only_its_operations(project, endpoint):
             conn.close()
         assert reply["ok"] is False, message
     assert ep.refused == 3
+
+
+def test_a_publication_grant_through_the_endpoint_needs_the_code_shown_on_its_console(project, endpoint, tmp_path):
+    """M4-E E6b (plan v3 §2.2): the PUBLISH_IF_CLEAN envelope is granted and revoked only at the endpoint, after the
+    challenge on its console, with the sealed manifest's and the task's hashes shown; the code never reaches the
+    requester. Every record is `guarantee: dev`."""
+    import hashlib
+
+    _ep, console = endpoint
+    task = tmp_path / "task.md"
+    task.write_bytes(b"the sealed task\n")
+    manifest = tmp_path / "run-manifest.json"
+    manifest.write_text(json.dumps({
+        "schema": "aew/m4h-run-manifest/v1", "seal_sha256": "1" * 64, "run_id": "m4h-test/run-1", "cell": "c1",
+        "task_input_sha256": hashlib.sha256(b"the sealed task\n").hexdigest(), "caps": {"usd": 1, "wall_s": 60},
+        "treatment_sha256": "2" * 64, "max_publications": 2, "envelope_duration_s": 3600}), encoding="utf-8")
+    prompts: list[str] = []
+
+    def wrong(prompt: str) -> str:
+        prompts.append(prompt)
+        return "000000"
+
+    aew_root = project.root / ".aew"
+    with pytest.raises(errors.PermissionDenied):
+        operator_client.request_grant(aew_root, manifest=str(manifest), task=str(task), ask=wrong, requester="test")
+    assert Engine.discover(project.root).publication_view() is None
+    shown = "".join(console.lines)
+    assert "GRANT a publication envelope" in shown and hashlib.sha256(manifest.read_bytes()).hexdigest() in shown
+
+    def right(prompt: str) -> str:
+        prompts.append(prompt)
+        return console.code()
+
+    out = operator_client.request_grant(aew_root, manifest=str(manifest), task=str(task), ask=right,
+                                        requester="test")
+    assert out["guarantee"] == "dev" and out["max_publications"] == 2
+    assert console.code() not in "".join(prompts)
+    view = Engine.discover(project.root).publication_view()
+    assert view is not None and view["status"] == "active" and view["id"] == out["envelope"]
+    revoked = operator_client.request_revoke(aew_root, ask=right, requester="test")
+    assert revoked["revoked"] and Engine.discover(project.root).publication_view()["status"] == "ended"
+    assert_control_invariants(project)

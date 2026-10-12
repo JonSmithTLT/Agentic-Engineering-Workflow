@@ -24,7 +24,7 @@ LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
-OPERATIONS = ("ping", "mode_raise")
+OPERATIONS = ("ping", "mode_raise", "grant_publication", "revoke_publication")
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
 RESIDUALS = (
@@ -139,14 +139,52 @@ def raise_prompt(bound: dict[str, Any], requester: str) -> str:
 def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None = None,
                   requester: str | None = None) -> dict[str, Any]:
     """``aew lead mode raise``: ask the endpoint, read the code the operator types at **this** terminal, send it."""
+    return _challenge(aew_root, "mode_raise", {"mode": mode}, raise_prompt, ask=ask, requester=requester)
+
+
+def grant_prompt(bound: dict[str, Any], requester: str) -> str:
+    return operator.challenge(
+        "", f"GRANT publication envelope for run {bound['run_id']}: at most {bound['max_publications']} "
+            f"publication(s) for {bound['duration_s']} s, Lead generation {bound['generation']}",
+        requested_by=requester, destination="a publication envelope record (no credential is issued)",
+        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
+                    "and press Enter; anything else refuses.") + "> "
+
+
+def revoke_prompt(bound: dict[str, Any], requester: str) -> str:
+    return operator.challenge(
+        "", f"REVOKE publication envelope {bound['envelope']}", requested_by=requester,
+        destination="the envelope's end", instruction="The terminal running `aew operator serve` now shows a "
+                                                      "one-time confirmation code. Type it here and press Enter; "
+                                                      "anything else refuses.") + "> "
+
+
+def request_grant(aew_root: Path, *, manifest: str, task: str, duration_s: int | None = None,
+                  max_publications: int | None = None, ask: Callable[[str], str] | None = None,
+                  requester: str | None = None) -> dict[str, Any]:
+    """``aew operator grant-publication`` (M4-E E6b): the endpoint shows the bindings and the code; type it here."""
+    args = {"manifest": str(Path(manifest).resolve()), "task": str(Path(task).resolve()),
+            "duration_s": duration_s, "max_publications": max_publications}
+    return _challenge(aew_root, "grant_publication", args, grant_prompt, ask=ask, requester=requester)
+
+
+def request_revoke(aew_root: Path, *, ask: Callable[[str], str] | None = None,
+                   requester: str | None = None) -> dict[str, Any]:
+    """``aew operator revoke-publication`` (M4-E E6b)."""
+    return _challenge(aew_root, "revoke_publication", {}, revoke_prompt, ask=ask, requester=requester)
+
+
+def _challenge(aew_root: Path, op: str, args: dict[str, Any], prompt: Callable[[dict[str, Any], str], str], *,
+               ask: Callable[[str], str] | None, requester: str | None) -> dict[str, Any]:
+    """Ask the endpoint for ``op``, read the code the operator types at **this** terminal, send it."""
     who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
-    read = ask if ask is not None else (lambda prompt: operator.ask(prompt))
+    read = ask if ask is not None else (lambda text: operator.ask(text))
     conn = _connect(aew_root)
     try:
-        _send(conn, "mode_raise", {"mode": mode, "requester": who})
+        _send(conn, op, {**args, "requester": who})
         shown = _reply(conn)
         try:
-            answer = read(raise_prompt(shown["bound"], who))
+            answer = read(prompt(shown["bound"], who))
         except errors.AEWError:
             try:  # void the code at the endpoint, and let it finish refusing
                 conn.send_bytes(json.dumps({"op": "answer", "args": {"code": ""}}).encode("utf-8"))

@@ -54,6 +54,8 @@ DROPPED = frozenset({("revision",), ("last_transition",), ("outbox",), ("stage_i
                      ("counters", "stage_intent"), ("cold", "root"), ("work", "*", "stage_intents"),
                      # M4-E E6a: the intent whose step granted the lease, recorded on it for attribution (§2.3)
                      ("queue", "lease", "custody", "requested_by"),
+                     # M4-E E6b: the intent whose step recorded a PUBLISH_IF_CLEAN request, for attribution (§2.2)
+                     ("queue", "entries", "*", "attempts", "pic_request", "requested_by"),
                      # M4-E E6a: counts annotations, the journal's own on an archived unit included (module docstring);
                      # every other annotation is compared as its file and its tail entry
                      ("counters", "annotation")})
@@ -63,7 +65,9 @@ REVISION_BOUND = frozenset({("invocations", "*", "dispatch", "revision"),
                             ("invocations", "*", "runs", "dispatch", "revision"),
                             # M4-E E6a: a rebuild's own `integrate.prepare` decision, on the candidate and its attempt
                             ("work", "*", "integration", "admission", "revision"),
-                            ("queue", "entries", "*", "attempts", "rebuild_admission", "revision")})
+                            ("queue", "entries", "*", "attempts", "rebuild_admission", "revision"),
+                            # M4-E E6b: the revision a PUBLISH_IF_CLEAN request was recorded at, in the prepare
+                            ("queue", "entries", "*", "attempts", "pic_request", "rev")})
 # A dispatch decision's digest, recomputed over the recorded decision with its revision substituted (module docstring).
 DECISION_DIGEST = frozenset({("invocations", "*", "dispatch", "decision"),
                              ("invocations", "*", "runs", "dispatch", "decision"),

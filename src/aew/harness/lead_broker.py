@@ -85,10 +85,12 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
                        frozenset({"authority", "accept"}): ("decided_by", "operator")}
 # The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
 # through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
-# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
-# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
+# separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b adds the publication
+# envelope's grant and revocation (A1 §1: the Lead may request PUBLISH_IF_CLEAN, never grant it); E7c and E8b add
+# `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
-                     frozenset({"operator", "ping"}))
+                     frozenset({"operator", "ping"}), frozenset({"operator", "grant-publication"}),
+                     frozenset({"operator", "revoke-publication"}))
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.

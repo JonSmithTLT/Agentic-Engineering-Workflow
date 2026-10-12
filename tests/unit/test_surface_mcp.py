@@ -83,8 +83,9 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     # Under §2.6's 11,900-byte stop line with every M4-E tool built: `resolve` with E5b's dispositions takes exactly the
     # 771 bytes the plan measured for it (5,135 bytes at E3c; 7,996 at E5a; 9,991 at E5b, its two stages' rows exactly
     # as catalogued since F15.1, so the projection with every tool built is unchanged; 11,694 at E6a, the two
-    # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line).
-    assert size <= 11_694, f"the normal advertised surface grew past E6a's {size} bytes"
+    # integration rows as catalogued plus `verification_evidence`; 11,793 at E6b, `ticket_prepare.publish_if_clean`
+    # exactly as measured, the last argument plan v3 §2.6 projects).
+    assert size <= 11_793, f"the normal advertised surface grew past E6b's {size} bytes"
     assert len(json.dumps(by_name["resolve"], separators=(",", ":"))) <= 771
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised

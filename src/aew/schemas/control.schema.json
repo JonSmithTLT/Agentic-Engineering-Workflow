@@ -546,6 +546,26 @@
       "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
+    "authorization": {
+      "description": "M4-E E6b (plan v3 §2.2, §2.7): the operator's publication authorization envelope for PUBLISH_IF_CLEAN, granted through the operator endpoint. One at a time: the latest, active or ended (a new grant supersedes it). Its immutable record is `records/authorizations/<PA-n>.yaml`, pinned by `record.sha256`; hot state keeps its id, its counters and its status. `reserved` counts publications begun and not yet settled; `published` those that landed (crash-safe: published + reserved never exceeds max_publications).",
+      "type": "object",
+      "required": ["id", "record", "generation", "expires_at", "max_publications", "published", "reserved", "status", "ended"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^PA-[0-9]{4,}$"},
+        "record": {"type": "object", "required": ["path", "sha256"], "additionalProperties": false,
+                   "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+        "generation": {"type": "integer", "minimum": 1},
+        "expires_at": {"type": "string"},
+        "max_publications": {"type": "integer", "minimum": 1},
+        "published": {"type": "integer", "minimum": 0},
+        "reserved": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["active", "ended"]},
+        "ended": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["reason", "at", "rev"], "additionalProperties": false,
+                   "properties": {"reason": {"enum": ["superseded", "revoked", "generation", "expiry", "exhausted", "manifest"]},
+                                  "at": {"type": "string"}, "rev": {"type": "integer", "minimum": 1}}}]}
+      }
+    },
     "coordination_store": {
       "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Written once, by the operator's `manifest adopt` that leaves `coordination.messaging: enabled`, and never removed: threads may exist after the switch is turned off. An engine built before thread sealing refuses a control state holding it, so it cannot end a messaged invocation without a seal.",
       "type": "object",
@@ -607,7 +627,7 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}
+            {"required": ["anomalies"]}, {"required": ["authorization"]}
           ]
         }
       }
@@ -665,6 +685,12 @@
           "type": "object",
           "description": "M4-D4: the fresh integrate.prepare decision that admitted this attempt's one automatic rebuild (its provenance, dependency and policy digests, and the move it answered). The custodian keeps the grant's decision.",
           "required": ["entrypoint", "revision", "decision", "dependency_digests", "rebuild"]
+        },
+        "pic_request": {
+          "type": "object",
+          "description": "M4-E E6b (plan v3 §2.2): the Lead's conditional publication request (`ticket_prepare(publish_if_clean: true)`), recorded in the prepare's commit. It grants nothing: the custodian exercises it only under the operator's usable envelope and §17's predicate. It lives as long as this attempt's lease, so it survives the one rebuild under it.",
+          "required": ["conditions", "generation", "ticket", "entry", "commit_ready_seq", "obligation_binding", "legality_digest", "mode"],
+          "properties": {"conditions": {"const": "pic/v1"}}
         }
       }
     },

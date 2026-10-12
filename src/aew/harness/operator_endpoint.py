@@ -24,8 +24,9 @@ operator principal cannot be shown distinct from the Lead host's. What a same-ui
 :data:`RESIDUALS`; none of these barriers is a security boundary against it (plan v3 §2.1).
 
 The protocol is the dashboard control channel's (F20.3): one JSON request per connection, ``{op, args}``, never pickle,
-bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (M4-E E7c), the
-publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1).
+bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; E6b adds the publication
+envelope's ``grant_publication`` and ``revoke_publication`` (plan v3 §2.2), each with the peer check and the challenge;
+``confirm`` (M4-E E7c) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1).
 
 **Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
 whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
@@ -298,6 +299,10 @@ class OperatorEndpoint:
                     reply: dict[str, Any] = {"ok": True, "result": self.ping()}
                 elif op == "mode_raise":
                     reply = {"ok": True, "result": self._mode_raise(conn, args)}
+                elif op == "grant_publication":
+                    reply = {"ok": True, "result": self._grant_publication(conn, args)}
+                elif op == "revoke_publication":
+                    reply = {"ok": True, "result": self._revoke_publication(conn, args)}
                 else:
                     raise errors.PermissionDenied(f"the operator endpoint does not offer {op!r}",
                                                   offered=list(OPERATIONS))
@@ -319,47 +324,102 @@ class OperatorEndpoint:
                 "guarantee": GUARANTEE, "dumpable": _dumpable(), "operations": list(OPERATIONS),
                 "residuals": list(RESIDUALS)}
 
-    def _mode_raise(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
-        mode = str(args.get("mode") or "")
+    def _challenged(self, conn: Any, args: dict[str, Any], *, command: str, preview: Callable[[], dict[str, Any]],
+                    describe: Callable[[dict[str, Any]], str], destination: str,
+                    commit: Callable[[OperatorPrincipal, dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+        """One operator operation: refused before the operator is asked if its preview refuses, then the challenge on
+        this console, the code typed at the requesting terminal, and the engine's commit of exactly what was shown."""
         requester = str(args.get("requester") or "unknown")[:400]
         if not self._authorizing.acquire(blocking=False):
             raise errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
                                           "after it is answered or times out")
         try:
             with self._engine_lock:
-                bound = self.engine.steering_raise_preview(mode)  # refused here before the operator is asked
+                bound = preview()  # refused here before the operator is asked
             code = operator.new_code()
             self.console(operator.challenge(
-                code,
-                f"Project '{bound['project']}': RAISE the Lead's steering mode {bound['previous'] or 'none'} -> "
-                f"{mode}\n"
-                f"  for Lead generation : {bound['generation']} (ends with that generation)\n"
-                f"  legality digest     : {bound['legality_digest']}\n"
-                f"  guarantee           : {GUARANTEE} (not production authority until F18.6)",
+                code, describe(bound) + f"\n  guarantee           : {GUARANTEE} (not production authority until F18.6)",
                 requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
-                destination="a steering mode record (no credential is issued)",
-                instruction=f"Type the confirmation code {code} into the terminal that ran `aew lead mode raise` "
-                            "(not here); anything else there refuses."))
+                destination=destination,
+                instruction=f"Type the confirmation code {code} into the terminal that ran `{command}` (not here); "
+                            "anything else there refuses."))
             conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
                                                                "bound": bound}}).encode("utf-8"))
             if not conn.poll(self.timeout):
-                self.console("\n(the `aew lead mode raise` request timed out; the code is void)\n")
+                self.console(f"\n(the `{command}` request timed out; the code is void)\n")
                 raise errors.PermissionDenied("operator authorization timed out")
             op, answer = _request(conn.recv_bytes(MAX_MESSAGE))
             given = str(answer.get("code", "")).strip().upper() if op == "answer" else ""
             if not hmac.compare_digest(given, code):
-                self.console("\n(the `aew lead mode raise` request was refused: wrong code)\n")
+                self.console(f"\n(the `{command}` request was refused: wrong code)\n")
                 raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
             principal = OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX"
                                           else "named_pipe", endpoint_pid=self.pid,
                                           endpoint_started_at=self.started_at)
             with self._engine_lock:
-                out = self.engine.steering_raise(principal, mode=mode, generation=bound["generation"],
-                                                 legality_digest=bound["legality_digest"])
+                return commit(principal, bound)
+        finally:
+            self._authorizing.release()
+
+    def _mode_raise(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        mode = str(args.get("mode") or "")
+
+        def commit(principal: OperatorPrincipal, bound: dict[str, Any]) -> dict[str, Any]:
+            out = self.engine.steering_raise(principal, mode=mode, generation=bound["generation"],
+                                             legality_digest=bound["legality_digest"])
             self.console(f"\n(steering mode raised to {mode} for Lead generation {bound['generation']}: "
                          f"{out['record']})\n")
             return out
-        finally:
-            self._authorizing.release()
+
+        return self._challenged(
+            conn, args, command="aew lead mode raise", preview=lambda: self.engine.steering_raise_preview(mode),
+            describe=lambda b: (f"Project '{b['project']}': RAISE the Lead's steering mode {b['previous'] or 'none'} "
+                                f"-> {mode}\n"
+                                f"  for Lead generation : {b['generation']} (ends with that generation)\n"
+                                f"  legality digest     : {b['legality_digest']}"),
+            destination="a steering mode record (no credential is issued)", commit=commit)
+
+    def _grant_publication(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        """GRANT a publication envelope for PUBLISH_IF_CLEAN (M4-E E6b; plan v3 §2.2): the sealed run manifest, the
+        task file whose hash it names, the duration and the publication bound, all shown with the challenge."""
+        def preview() -> dict[str, Any]:
+            duration, most = args.get("duration_s"), args.get("max_publications")
+            return self.engine.publication_grant_preview(
+                manifest=str(args.get("manifest") or ""), task=str(args.get("task") or ""),
+                duration_s=int(duration) if duration is not None else None,
+                max_publications=int(most) if most is not None else None)
+
+        def commit(principal: OperatorPrincipal, bound: dict[str, Any]) -> dict[str, Any]:
+            out = self.engine.publication_grant(principal, bound=bound)
+            self.console(f"\n(publication envelope {out['envelope']} granted until {out['expires_at']}: "
+                         f"{out['record']})\n")
+            return out
+
+        return self._challenged(
+            conn, args, command="aew operator grant-publication", preview=preview,
+            describe=lambda b: (f"Project '{b['project']}': GRANT a publication envelope (PUBLISH_IF_CLEAN)\n"
+                                f"  run manifest        : {b['run_manifest']['path']}\n"
+                                f"  manifest sha256     : {b['run_manifest']['sha256']}\n"
+                                f"  run                 : {b['run_id']}\n"
+                                f"  task input sha256   : {b['task_input_sha256']} (matches the task file)\n"
+                                f"  for Lead generation : {b['generation']} (ends with that generation)\n"
+                                f"  publications        : at most {b['max_publications']}, to {b['target_ref']}\n"
+                                f"  lasts               : {b['duration_s']} s\n"
+                                f"  legality digest     : {b['legality_digest']}"
+                                + (f"\n  supersedes          : {b['supersedes']}" if b.get("supersedes") else "")),
+            destination="a publication envelope record (no credential is issued)", commit=commit)
+
+    def _revoke_publication(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        def commit(principal: OperatorPrincipal, bound: dict[str, Any]) -> dict[str, Any]:
+            out = self.engine.publication_revoke(principal, envelope_id=bound["envelope"])
+            self.console(f"\n(publication envelope {bound['envelope']} revoked)\n")
+            return out
+
+        return self._challenged(
+            conn, args, command="aew operator revoke-publication", preview=self.engine.publication_revoke_preview,
+            describe=lambda b: (f"Project '{b['project']}': REVOKE publication envelope {b['envelope']}\n"
+                                f"  published so far    : {b['published']} ({b['reserved']} begun: withdrawn "
+                                "before their CAS, or counted if it landed)"),
+            destination="the envelope's end (nothing more is published under it)", commit=commit)
 
 

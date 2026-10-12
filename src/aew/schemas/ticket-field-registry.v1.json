@@ -56,6 +56,7 @@
     "archived_children",
     "attempts",
     "attention",
+    "authorization_envelope",
     "baseline_commit",
     "blocked_by",
     "blocked_descendants",

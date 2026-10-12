@@ -162,6 +162,7 @@ class Validation:
         self.gates = gates
         self.queue = queue
         self.backoff_s = V.BACKOFF_S  # tests shorten it
+        self.pic: Any = None  # M4-E E6b: the PUBLISH_IF_CLEAN exercise (``publication_ops.Publication``)
 
     # ------------------------------------------------------------------ resolution (read-only)
 
@@ -236,9 +237,10 @@ class Validation:
     def custody_validate(self, *, credential: str, work_id: str) -> dict[str, Any]:
         """The custodian's checks-mode validation (M4-E E6a; plan v3 §2.3, N2): the same pin, execution and commit,
         each committed through ``custody_txn`` under the lease's custody credential, never the Lead's. A pass routes
-        the result in its commit: the candidate is kept and the entry released to VALIDATED (VALIDATE_ONLY; the PIC
-        publish is E6b's). A fail or an inconclusive result takes M4-D5's paths. Where containment cannot keep the
-        candidate immutable, nothing is pinned: the lease is released to AWAITING_DISPOSITION, for the Lead."""
+        the result in its commit: the candidate is kept and the entry released to VALIDATED (VALIDATE_ONLY), or, under
+        a PUBLISH_IF_CLEAN request and a usable envelope, §17 routes it (M4-E E6b). A fail or an inconclusive result
+        takes M4-D5's paths. Where containment cannot keep the candidate immutable, nothing is pinned: the lease is
+        released to AWAITING_DISPOSITION, for the Lead."""
         who = Principal(CUSTODIAN, credential)
         state = self.k.store.read()
         self._require_validatable(state, work_id)
@@ -593,8 +595,8 @@ class Validation:
                     ctx.refs.append(f"evidence/{work_id}/{eid}.md")
                 ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "check_result",
                                    "ids": evidence_ids})
-                change = self._apply_result(state, work_id, unit, run, overall, results, who=who)
                 ctx.summary = f"{work_id} validation run {run['id']} committed: {overall}"
+                change = self._apply_result(state, work_id, unit, run, overall, results, who=who, ctx=ctx)
             self.units.before_commit(ctx)
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
                                "revision": ctx.session.committed_revision}
@@ -609,13 +611,26 @@ class Validation:
         out.update(result=current["result"], evidence=evidence_ids, transition=change,
                    integration=integ.get("status"), queue=Q.entry_of(ctx.state, work_id)[1])
         out["ok"] = current["result"] == "pass"
-        out["next"] = {"pass": (f"the candidate is kept, VALIDATED and unleased: publish it with `integration_publish` "
-                                f"(`aew integrate publish {work_id}`)" if who.kind == CUSTODIAN
+        out["next"] = {"pass": (self._custodian_next(ctx.state, work_id, integ) if who.kind == CUSTODIAN
                                 else f"`aew integrate publish {work_id}`"),
                        "fail": f"classify the failure (`aew verify classify {work_id}`)",
                        "inconclusive": "the entry waits for your disposition (`aew integrate requeue` once settled)"
                        }[current["result"]]
         return out
+
+    @staticmethod
+    def _custodian_next(state: dict[str, Any], work_id: str, integ: dict[str, Any]) -> str:
+        """What follows a clean result the custodian committed: VALIDATE_ONLY, or the PIC routes (M4-E E6b)."""
+        status = integ.get("status")
+        if status == "publishing":
+            return "the custodian publishes it under PUBLISH_IF_CLEAN (its finish re-checks the envelope and §17)"
+        if status == "prepared":
+            return "the head moved: the candidate was rebuilt once under the same lease, and is validated again"
+        entry = Q.entry_of(state, work_id)[1] or {}
+        if entry.get("state") == "AWAITING_DISPOSITION":
+            return "PUBLISH_IF_CLEAN was not exercised (a §17 clause failed): the entry waits for your disposition"
+        return (f"the candidate is kept, VALIDATED and unleased: publish it with `integration_publish` "
+                f"(`aew integrate publish {work_id}`)")
 
     def _pin_problem(self, state: dict[str, Any], work_id: str, unit: dict[str, Any],
                      run: dict[str, Any]) -> tuple[str, str] | None:
@@ -686,7 +701,8 @@ class Validation:
         return out
 
     def _apply_result(self, state: dict[str, Any], work_id: str, unit: dict[str, Any], run: dict[str, Any],
-                      overall: str, results: list[dict[str, Any]], *, who: Principal) -> dict[str, str] | None:
+                      overall: str, results: list[dict[str, Any]], *, who: Principal,
+                      ctx: Any = None) -> dict[str, str] | None:
         evidence_ids = [r["id"] for r in results]
         integ = unit["integration"]
         integ["validation"] = {"mode": V.CHECKS, "run": run["id"], "evidence": evidence_ids,
@@ -696,9 +712,13 @@ class Validation:
         if overall == "pass":
             integ["status"] = "validated"
             if who.kind == CUSTODIAN:
-                # VALIDATE_ONLY (M4-E E6a; plan v3 §2.3), in the commit transaction: no publication is requested (the
-                # PIC envelope is E6b's), so the custodian ends its own lease and the entry keeps its candidate,
-                # VALIDATED, for the Lead's later `integration_publish` under a fresh lease.
+                # PUBLISH_IF_CLEAN (M4-E E6b; plan v3 §2.3), in the commit transaction: with a request on the lease's
+                # attempt and a usable envelope, §17 decides between publishing now, the one rebuild and disposition.
+                if self.pic is not None and self.pic.on_clean(ctx, work_id, integ[CURRENT]) is not None:
+                    return None
+                # VALIDATE_ONLY (M4-E E6a; plan v3 §2.3): no publication is requested (or its envelope is not usable),
+                # so the custodian ends its own lease and the entry keeps its candidate, VALIDATED, for the Lead's
+                # later `integration_publish` under a fresh lease.
                 identity = run["identity"]
                 self.queue.release(state, work_id, to="VALIDATED", result="validated", validated=Q.validated_record(
                     integ, mode=V.CHECKS, custodian=run["custodian"], run=run["id"],

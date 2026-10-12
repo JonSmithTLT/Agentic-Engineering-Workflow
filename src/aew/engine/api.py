@@ -37,6 +37,7 @@ from aew.engine.lead_ops import Lead
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
+from aew.engine.publication_ops import Publication
 from aew.engine.queue_ops import Queue
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
@@ -470,8 +471,12 @@ class Engine:
 
         queue.spawn = spawn
         self._validation = Validation(k, units=units, invocations=invocations, gates=gates, queue=queue)
+        # M4-E E6b: PUBLISH_IF_CLEAN, the operator's envelope and its exercise by the custodian.
+        self._publication = publication = Publication(k, units=units, gates=gates, queue=queue, dispatch=dispatch,
+                                                      integration=integration)
+        self._validation.pic = integration.pic = publication
         self._custody = Custody(k, units=units, gates=gates, queue=queue, validation=self._validation,
-                                mode=integration.validation_mode)
+                                mode=integration.validation_mode, finish=integration.custody_finish)
         self._harness = harness = Harness(k, invocations=invocations, packs=packs, gates=gates, archive=archive,
                                           dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
@@ -520,7 +525,8 @@ class Engine:
         # The anomaly record (M4-E E5b) runs before the seal: it only adds what is signalled to the hot state, ends
         # nothing, and reads the contradictions of the committed state the transaction starts from.
         k.finalizers.steps.extend([stages.finalize, dispatch.finalize, queue.finalize, self._validation.finalize,
-                                   usage_ops.UsageCopy(k.aew_root, k.pricing).finalize, dispositions.finalize,
+                                   publication.finalize, usage_ops.UsageCopy(k.aew_root, k.pricing).finalize,
+                                   dispositions.finalize,
                                    coordination.finalize, archive.finalize])
         # A Lead transaction refused with a recorded signal (WORKSPACE_MUTATED, OBSERVATION_MUTATED) records it.
         k.refusal_hooks.append(dispositions.record_refusal)
@@ -804,8 +810,10 @@ class Engine:
     def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
         return self._inputs.input_status(state, work_id)
 
-    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        return self._integration.integrate_prepare(token=token, expect_rev=expect_rev, work_id=work_id)
+    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str,
+                          publish_if_clean: bool = False) -> dict[str, Any]:
+        return self._integration.integrate_prepare(token=token, expect_rev=expect_rev, work_id=work_id,
+                                                   publish_if_clean=publish_if_clean)
 
     def integrate_publish(self, *, token: str, expect_rev: int, work_id: str,
                           candidate: str | None = None) -> dict[str, Any]:
@@ -1032,6 +1040,9 @@ class Engine:
                 from aew.harness import operator_client
 
                 out["steering"] = view | {"operator_endpoint": operator_client.status(self._k.aew_root)}
+            publication = self._publication.view(state)  # M4-E E6b: the operator's publication envelope
+            if publication is not None:
+                out["publication_envelope"] = publication
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
@@ -1057,6 +1068,26 @@ class Engine:
 
     def steering_view(self) -> dict[str, Any]:
         return self._steering.view(self._k.store.read())
+
+    # ---------------------------------------------------------------- the publication envelope (M4-E E6b; §2.2)
+
+    def publication_grant_preview(self, *, manifest: str, task: str, duration_s: int | None = None,
+                                  max_publications: int | None = None) -> dict[str, Any]:
+        return self._publication.grant_preview(manifest=manifest, task=task, duration_s=duration_s,
+                                               max_publications=max_publications)
+
+    def publication_grant(self, principal: OperatorPrincipal, *, bound: dict[str, Any]) -> dict[str, Any]:
+        """The operator endpoint's commit of a publication envelope; ``principal`` only the endpoint constructs."""
+        return self._publication.grant(principal, bound=bound)
+
+    def publication_revoke_preview(self) -> dict[str, Any]:
+        return self._publication.revoke_preview()
+
+    def publication_revoke(self, principal: OperatorPrincipal, *, envelope_id: str) -> dict[str, Any]:
+        return self._publication.revoke(principal, envelope_id=envelope_id)
+
+    def publication_view(self) -> dict[str, Any] | None:
+        return self._publication.view(self._k.store.read())
 
     # ---------------------------------------------------------------- the stage journal (M4-E E3)
 

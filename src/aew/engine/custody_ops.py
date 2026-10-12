@@ -18,7 +18,9 @@ a process to run in, the **custody worker** (``aew integrate custody <IA-n>``):
 - **What it does, by validation mode** (its lease's candidate ``prepared``, not yet validated):
   - ``checks``: runs ``integrate.validate`` under its lease (``Validation.custody_validate``) and routes the result in
     the commit: a pass releases the lease to VALIDATED with the candidate kept; a fail or inconclusive result takes
-    M4-D5's paths;
+    M4-D5's paths. Under the Lead's PUBLISH_IF_CLEAN request and the operator's usable envelope, §17 routes a pass
+    instead (M4-E E6b; ``aew.engine.publication_ops``): published under the same lease (the worker then runs the
+    publish's finish), rebuilt once on a moved head, or sent to AWAITING_DISPOSITION;
   - ``verifier``: waits for the integration verifier's run (the Lead's ``ticket_prepare`` launched it, as the
     custodian's child) to end, then routes its report **without accepting it**: a clean report to VALIDATED, anything
     else (a failed, unclean or missing report) to AWAITING_DISPOSITION. The Lead accepts and publishes later through
@@ -48,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.engine import disposition_ops as DO
 from aew.engine import queue_ops as Q
-from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
+from aew.errors import AEWError, GateUnsatisfied, IllegalTransition, PermissionDenied, StaleAuthority, StaleCandidate
 from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
@@ -153,13 +155,14 @@ class Custody:
     """The custody worker's engine operations: registration, one pass of its work, and the report routing."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, gates: GatesPort, queue: QueuePort, validation: Any,
-                 mode: Any) -> None:
+                 mode: Any, finish: Any = None) -> None:
         self.k = k
         self.units = units
         self.gates = gates
         self.queue = queue
         self.validation = validation
         self.mode = mode  # (state, work_id) -> "checks" | "verifier"
+        self.finish = finish  # (credential, work_id) -> the PIC publish's finish (M4-E E6b)
 
     def register(self, credential: str) -> dict[str, Any]:
         """The worker's first commit (S2): its process identity on its custodian, under its custody credential."""
@@ -183,11 +186,16 @@ class Custody:
             return ENDED, None
         wid = inv["work_unit"]
         integ = (state["work"].get(wid) or {}).get("integration") or {}
-        if integ.get("status") != "prepared":  # validated (a lease to publish: the Lead's), publishing, or retired
-            return WAITING, None
         try:
+            if integ.get("status") == "publishing" and (integ.get("pic") or {}).get("custodian") == custodian:
+                return ACTED, self._finish(credential, wid)  # a publish this custodian began under PIC (M4-E E6b)
+            if integ.get("status") != "prepared":  # validated (a lease to publish: the Lead's), publishing, or retired
+                return WAITING, None
             if self.mode(state, wid) == V.CHECKS:
-                return ACTED, self.validation.custody_validate(credential=credential, work_id=wid)
+                out = self.validation.custody_validate(credential=credential, work_id=wid)
+                if out.get("integration") == "publishing":  # PIC began the publish in the validation's commit
+                    out["publish"] = self._finish(credential, wid)
+                return ACTED, out
             child = self._verifier(state, custodian)
             ended = self._ended(state, child) if child is not None else None
             if child is None or ended is None:
@@ -226,6 +234,16 @@ class Custody:
             until = time.monotonic() + poll_s
             while time.monotonic() < min(until, deadline or until) and wake_mark(self.k.aew_root) == mark:
                 time.sleep(0.05)
+
+    def _finish(self, credential: str, work_id: str) -> dict[str, Any]:
+        """The finish of a publish begun under PUBLISH_IF_CLEAN (M4-E E6b): its result, or the refusal it ended with
+        once committed (a withdrawal, a moved head's rebuild or disposition). Any other refusal propagates: one of the
+        custody itself ends the worker, and the rest back off to the worker's poll (``run``), never a hot retry."""
+        try:
+            return self.finish(credential, work_id)
+        except (GateUnsatisfied, StaleCandidate) as exc:  # committed: a withdrawal, a rebuild or a disposition
+            return {"ok": False, "work_id": work_id, "published": False,
+                    "error": {"code": exc.code, "message": exc.message, **exc.details}}
 
     # ------------------------------------------------------------------ verifier mode
 

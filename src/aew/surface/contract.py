@@ -268,13 +268,18 @@ TOOLS: dict[str, Tool] = _catalog(
          required_judgments=("accept_review_evidence",), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((STATE, 2),), ((DISPATCH, 3),))),
+    # `publish_if_clean` (M4-E E6b; plan v3 §2.2) is the Lead's request for PUBLISH_IF_CLEAN: it grants nothing. Only
+    # the lease's custodian exercises it, under the operator's envelope and §17's predicate, never the steering loop,
+    # and the stage stays judgment-bearing, so it is never auto-runnable (m2; A1 §5).
     Tool("ticket_prepare", STAGE, JUDGMENT_BEARING,
          "Accept the named verification and prepare the integration candidate. Publication stays a separate decision.",
          _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "verification_evidence": EVIDENCE_ID,
-               "execution": EXECUTION}, ("expect_rev", "work_id", "verification_evidence")),
+               "execution": EXECUTION,
+               "publish_if_clean": {"type": "boolean", "description": "publish if clean, under the operator's grant"}},
+              ("expect_rev", "work_id", "verification_evidence")),
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
-         required_judgments=("accept_verification",), promotes=("execution",),
+         required_judgments=("accept_verification",), promotes=("execution", "publish_if_clean"),
          dispatches=True, mutates=True, progression=True,
          # Steps 4 and 5 (the integration verifier and its launch) are planned in verifier mode only (plan v3 §2.3).
          produced_by=((), ((STATE, 1), (EVIDENCE, 1)), ((EVIDENCE, 1), (STATE, 2), (ACCEPTANCE, 2)),

@@ -14,7 +14,8 @@ may say it is not (``auto_runnable: false``: an open high anomaly, which adds no
 (`ticket_draft`, `ticket_start`) and grows with each later slice, which seeds the cases its stages reach: E5b the
 unmigrated guard (a non-mutating Ticket's own transition guard, which its request stage reaches), stale evidence,
 pending disposition and high anomaly; E6a and E6b the moved head, the second move and the unusable envelope per
-clause; E7 the stale confirmation."""
+clause (E6b: a request under a revoked envelope; each clause and each unusable condition is
+`test_integration_pic`'s, where the custodian, not a stage, would publish); E7 the stale confirmation."""
 
 from __future__ import annotations
 
@@ -163,11 +164,28 @@ def _high_anomaly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Proj
     return p, wid, [lab.cleanup]
 
 
+def _unusable_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Project, str | None, list[Any]]:
+    """M4-E E6b: a VERIFY_PENDING Ticket of the sealed run whose publication envelope the operator has revoked. The
+    Lead's PUBLISH_IF_CLEAN request is recorded and never advances the Ticket past COMMIT_READY by itself
+    (`test_integration_pic` proves the custodian never publishes it either)."""
+    from test_integration_pic import grant, principal
+    from test_integration_stages import checks_mode, verifying
+
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    granted = grant(p, tmp_path)
+    wid, report = verifying(p, tmp_path)
+    Engine.discover(p.root).publication_revoke(principal(), envelope_id=granted["envelope"])
+    EVIDENCE[str(p.root)] = report
+    return p, wid, []
+
+
 SEEDS: dict[str, Seed] = {"ready": _ready, "proposed_plan": _proposed_plan, "cap_held": _cap_held,
                           "non_mutating_ready": _non_mutating_ready, "unadopted_policy_edit": _unadopted_policy_edit,
                           "unlaunchable": _unlaunchable, "held_by_intent": _held_by_intent, "empty": _empty,
                           "non_mutating_running": _non_mutating_running, "stale_review": _stale_review,
-                          "disposition_pending": _disposition_pending, "high_anomaly": _high_anomaly}
+                          "disposition_pending": _disposition_pending, "high_anomaly": _high_anomaly,
+                          "unusable_envelope": _unusable_envelope}
 
 
 def test_the_corpus_is_well_formed():

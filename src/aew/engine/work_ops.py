@@ -11,6 +11,7 @@ from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
 from aew.engine.guards import NotQueryable, checked, refusal, require
+from aew.engine.publication_ops import stamp as stamp_envelope
 from aew.engine.seams import GuardRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
@@ -378,6 +379,9 @@ class WorkCommands:
             # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
             require(self.create_query(ctx.state, None, args))
             work_id, unit, text = self._draft_unit(ctx.state, args, ctx.actor)
+            # M4-E E6b (plan v3 §2.2): a Ticket the active publication envelope's own Lead generation creates belongs
+            # to the sealed run; any other unit carries no stamp and can never use the envelope.
+            stamp_envelope(ctx.state, ctx.state["work"][work_id])
             path = unit["record"]
             ctx.session.write(path, text)
             ctx.refs.append(path)

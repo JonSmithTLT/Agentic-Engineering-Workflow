@@ -82,6 +82,8 @@ try {
         assert.equal(await page.evaluate(() => window.__settingsHostile), undefined);
         assert.equal(await page.locator('.settings-page script').count(), 0);
         await page.screenshot({ path: `${output}/${adapter}-${width}-long.png`, fullPage: true });
+        const longNameGeometry = await page.locator('.settings-profile-scroll tbody tr:first-child button').boundingBox();
+        assert(longNameGeometry.width >= 120 && longNameGeometry.height < 400, 'Long profile name wraps in a readable bounded column');
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'Long content stays bounded');
         await page.goto(`${base}/settings?fixture=F1&settings_activity=arbitrary`);
         await page.getByText('Unsupported Settings presentation link. No configuration data was read.', { exact: true }).waitFor();

@@ -1983,3 +1983,19 @@ def test_no_job_loses_test_time_to_the_session_deadlines_clearance():
 
     problems = bounds.restored_timeout_problems(ROOT / ".github" / "workflows", PRE_G3A_TIMEOUT_MIN)
     assert problems == [], "\n".join(problems)
+
+
+def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
+    """G3a: the cost record no longer restates a timeout ("the timeout is 30" went stale when the session deadline's
+    clearance raised the lanes to 34). It reads each job's timeout from ci.yml, so the text and the workflow agree."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z",
+                "2026-10-07T00:30:00Z"),
+            job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z", "2026-10-07T00:30:00Z")]
+    found = {h["job"]: h["detail"] for h in cost_record.build([], jobs, None)["health"] if h["kind"] == "job_time"}
+    assert found["integration 1/5 (ubuntu-latest)"].endswith(
+        f"(its job's timeout is {wf['lanes']['timeout-minutes']:g} minutes, ci.yml)"), found
+    assert found["core (windows-latest)"].endswith(
+        f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
+    source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
+    assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text

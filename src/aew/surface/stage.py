@@ -424,8 +424,15 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                     return _stop(c, intent, n, step["primitive"], refusal, outputs)
                 retried, rev = True, _revision(c)
             except errors.HarnessLaunchFailed as failed:
-                # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands.
-                return _stop(c, intent, n, step["primitive"], failed, outputs, boundary="launch_failed")
+                # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands,
+                # unless bounded recovery relaunches that run once here (M4-E E8b; plan v3 E8, N2c).
+                try:
+                    out = _recover(c, intent, failed)
+                except errors.HarnessLaunchFailed as again:  # the relaunched run failed too: attention, nothing more
+                    return _stop(c, intent, n, step["primitive"], again, outputs, boundary="launch_failed")
+                if out is None:
+                    return _stop(c, intent, n, step["primitive"], failed, outputs, boundary="launch_failed")
+                break
             except errors.AEWError as refusal:
                 # A publish that only rebuilt stops at the journal's `rebuilt` boundary (its typed result keeps the
                 # surface's vocabulary: refused, STALE_CANDIDATE, `published: false`).
@@ -438,6 +445,45 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     if not final:  # the last step launched: its commit could not also complete the stage
         _end(c, lambda r: c.engine.stage_close(token=c.token(), expect_rev=r, intent=intent))
     return _payload(c, intent, outputs)
+
+
+def _recover(c: Call, intent: str, failed: errors.HarnessLaunchFailed) -> dict[str, Any] | None:
+    """Bounded recovery at the ``launch_failed`` stop (M4-E E8b; plan v3 E8, N2c), the one place a relaunch happens:
+    under the broker's Lead credential, for a launch this stage made. The failure is read from the exception the
+    launcher raised in this process (its code and observations came over the supervisor's acknowledgement pipe), never
+    from the run directory. ``None`` when nothing was relaunched (off, ineligible, or the breaker opened): the stage
+    stops, and the verdict is on the stop's error details. The relaunched run's output when it started: the stage goes
+    on. A relaunched run that fails too raises its ``HarnessLaunchFailed``, which stops the stage: an invocation is
+    relaunched once (BRP R5-3)."""
+    from aew.engine import recovery
+
+    failure = recovery.failure_of(failed.details, intent=intent)
+    try:
+        decision = c.engine.recovery_decide(failure)
+        if not decision["eligible"]:
+            failed.details["recovery"] = _verdict(decision, relaunched=False)
+            return None
+        out = c.engine.recovery_relaunch(token=c.token(), decision=decision)
+    except errors.HarnessLaunchFailed as again:
+        again.details["recovery"] = {"relaunched": True, "failed_run": failure["run"], "second_failure": True,
+                                     "message": "the invocation's one automatic relaunch failed too: the Lead decides"}
+        raise
+    except errors.AEWError as refused:  # a refusal met while recovering never hides the launch failure
+        failed.details["recovery"] = {"relaunched": False, "refused": {"code": refused.code,
+                                                                       "message": redact(refused.message)}}
+        return None
+    if not out["relaunched"]:
+        failed.details["recovery"] = {**_verdict(out["verdict"], relaunched=False),
+                                      "reevaluated": out.get("reevaluated", False)}
+        return None
+    return {"revision": out["revision"], "invocation": failure["invocation"], "relaunched": out["new_run"],
+            "failed_run": out["failed_run"], "launch": out.get("launch")}
+
+
+def _verdict(decision: dict[str, Any], *, relaunched: bool) -> dict[str, Any]:
+    return {"relaunched": relaunched, "reasons": list(decision.get("reasons") or []),
+            "reason_code": decision.get("reason_code"), "scope": decision.get("scope"),
+            "detail": {k: [redact(str(x)) for x in v][:8] for k, v in (decision.get("detail") or {}).items()}}
 
 
 def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:

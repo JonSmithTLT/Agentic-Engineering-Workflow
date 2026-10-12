@@ -278,6 +278,12 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Later slices:** each records what it built, and its evidence, as a note on register row F15.5 ([`notes.d/F15.5/`](notes.d/README.md); `python tools/register.py show F15.5`), never by editing a paragraph here.
 
+### Bounded recovery: one relaunch of a stage's failed launch (BRP R5-3 with A2, register F15.6)
+
+**Status:** **Built, off by default ([the M4-E plan v3](m4-e-plan-v3.md) E8 as split by [its amendment 1](m4-e-plan-v3-amendment-1.md)); no real launch failure maps to an allow-listed reason yet, so nothing relaunches in practice until one is mapped with the test that reproduces it.** R5-1 (the one stale-revision retry) is the stage executor's, above
+
+**Acceptance evidence / next action:** **M4-E E8b:** `engine/recovery.py`. With `execution.recovery.relaunch_launch_failed: 1` adopted, the stage runner (only there, at a stage's `launch_failed` stop, under the broker's Lead credential) relaunches a failed launch once when its reason, as the supervisor acknowledged it over its pipe, is on the recovery module's allow-list and every A2 proof holds: termination per platform and no side effect per channel, from the supervisor's acknowledged observations and the engine's own reads, anything unobservable failing closed. One Lead transaction under a new `harness.launch` decision revokes the failed run's credential, confirms it, then mints the new run's, and the invocation's `relaunch` record binds what A2 §7 names. A second failure, an ineligible one, or one that opens the relaunch breaker (3 in 5 minutes per harness and provider, or project-wide; reset only at the operator endpoint, `aew recovery breaker reset`) stops the stage for the Lead with the verdict on its error; the operator is notified when the breaker opens. The details and every test are in the note on register row F15.6 ([`notes.d/F15.6/`](notes.d/README.md); `python tools/register.py show F15.6`). Tests: `tests/integration/test_relaunch.py`.
+
 ### Filesystem containment for harness runs
 
 **Status:** **Linux: built (M4-B).** Windows: workdir separation only

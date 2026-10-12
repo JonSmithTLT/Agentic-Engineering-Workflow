@@ -75,8 +75,9 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
-def spool(run_dir: Path, event: str, reason: str) -> None:
-    """Append ``event`` to this run's event-spool file, for the operator endpoint to notify (M4-E E7a). The project is
+def spool(run_dir: Path, event: str, reason: str, *, reason_code: str | None = None) -> None:
+    """Append ``event`` to this run's event-spool file, for the operator endpoint to notify (M4-E E7a), with a launch
+    failure's closed code (M4-E E8b: telemetry for the notification, never an eligibility input). The project is
     the run directory's (``<aew root>/local/harness/runs/<run>``); a directory anywhere else has none, and nothing is
     appended. Never raises (``event_spool.append``)."""
     depth = len(Path(runlog.RUNS_REL).parts)
@@ -86,7 +87,7 @@ def spool(run_dir: Path, event: str, reason: str) -> None:
     if run_dir.parent != aew_root / runlog.RUNS_REL:
         return
     event_spool.append(aew_root, event_spool.run_writer(run_dir.name), event, subject=run_dir.name,
-                       reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}")
+                       reason=K.redact(reason), ref=f"{runlog.RUNS_REL}/{run_dir.name}", reason_code=reason_code)
 
 
 class Supervisor:
@@ -294,7 +295,8 @@ class Supervisor:
         self.record.update(status=K.LAUNCH_FAILED, reason=f"custody refused: {reason}", reason_code=code,
                            ended_at=utc_now())
         self._event("custody_refused", reason=reason, reason_code=code)
-        spool(self.run_dir, "launch_failed", self.record["reason"])  # site 1 (R2-m5), before the terminal record
+        # Site 1 (R2-m5), before the terminal record.
+        spool(self.run_dir, "launch_failed", self.record["reason"], reason_code=code)
         self._save()
         self._send_ack({"custody": False, "reason": reason, "reason_code": code})
         self._drop_credential()
@@ -302,10 +304,34 @@ class Supervisor:
 
     def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None) -> bool:
         code = K.launch_failure_code(K.START, error_code, cause)
-        spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
+        spool(self.run_dir, "launch_failed", reason, reason_code=code)  # site 2 (R2-m5), before the terminal record
         self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
-        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
+        observations = self._failure_observations()
+        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code,
+                        "observations": observations})
         return False
+
+    def _failure_observations(self) -> dict[str, Any]:
+        """What this supervisor saw of its failed start, once the run has ended (``_finish`` killed the tree and closed
+        the bridge): the termination and no-side-effect observations A2's proofs read (M4-E E8b; plan v3 E8, "the
+        supervisor's part"). Observing reduces no authority and grants none: the stage runner decides a relaunch, from
+        these as they reach it over the acknowledgement pipe, never from the run directory (amendment 1, R2-m2). The
+        record keeps a copy as telemetry."""
+        observed: dict[str, Any] = {"platform": sys.platform,
+                                    "record_ended": self.record.get("status") == K.LAUNCH_FAILED
+                                    and bool(self.record.get("ended_at"))}
+        try:
+            observed.update(self.tree.termination())
+        except Exception as exc:  # noqa: BLE001  an unreadable fact is unobservable, which makes the run ineligible
+            observed["termination_error"] = f"{type(exc).__name__}: {exc}"
+        # The prompt: no adapter means none was ever created, so nothing was sent; else the adapter's own knowledge.
+        observed["prompt_delivered"] = False if self.adapter is None else getattr(self.adapter, "prompt_delivered",
+                                                                                   None)
+        # The bridge: every request that reached it, served or refused, is a tool event beyond startup.
+        observed["bridge_requests"] = 0 if self.bridge is None else self.bridge.requests + self.bridge.refused
+        self.record["observations"] = observed
+        self._save()
+        return observed
 
     def watch(self) -> None:
         self._watching.set()
@@ -555,7 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdin.close()
     if not raw.strip():  # site 3 (R2-m5): main's two records, made before any supervisor exists
         spool(run_dir, "launch_failed", "no credential handoff: the launching process ended before handing over "
-                                        "custody")
+                                        "custody", reason_code=K.launch_failure_code(K.HANDOFF))
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "no credential handoff: the launching process ended before handing "
                                                 "over custody; no process holds this run's credential",
@@ -565,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         handoff = json.loads(raw.decode("utf-8"))
     except ValueError:
-        spool(run_dir, "launch_failed", "malformed credential handoff")
+        spool(run_dir, "launch_failed", "malformed credential handoff", reason_code=K.launch_failure_code(K.HANDOFF))
         runlog.write_record(run_dir, {"schema": K.RUN_SCHEMA, "run": run_dir.name, "status": K.LAUNCH_FAILED,
                                       "reason": "malformed credential handoff",
                                       "reason_code": K.launch_failure_code(K.HANDOFF), "ended_at": utc_now()})

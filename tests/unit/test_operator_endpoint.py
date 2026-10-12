@@ -512,3 +512,59 @@ def test_the_endpoint_accepts_only_its_operations(project, endpoint):
             conn.close()
         assert reply["ok"] is False, message
     assert ep.refused == 3
+
+
+# ----------------------------------------------------------------------------------------- the relaunch breaker (E8b)
+
+
+def _open_relaunch_breaker(project, scope: str = "project") -> None:
+    """The relaunch breaker opened for ``scope``, as recovery's commit leaves it (M4-E E8b)."""
+    from aew.engine.store import Transition
+
+    engine = Engine.discover(project.root)
+    with engine.store.session() as s:
+        failures = [{"at": f"2026-10-11T00:00:0{n}Z", "run": f"R-INV-000{n}-1", "reason_code": "spawn_race"}
+                    for n in (1, 2, 3)]
+        s.state["recovery"] = {"breakers": {scope: {"failures": failures, "open": {
+            "at": "2026-10-11T00:00:03Z", "reason_codes": ["spawn_race"], "runs": [f["run"] for f in failures]}}}}
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="a tripped relaunch breaker"))
+
+
+def test_the_relaunch_breaker_resets_only_through_the_endpoint_with_its_code(project, endpoint):
+    """M4-E E8b (plan v3 E8): `aew recovery breaker reset` only sends a request; the endpoint shows the scopes and a
+    code on its console, and closes exactly those scopes once the code is typed back at the requesting terminal. A Lead
+    session can neither run the command nor build the principal the engine accepts."""
+    ep, console = endpoint
+    _open_relaunch_breaker(project)
+    root = project.root / ".aew"
+    prompts: list[str] = []
+
+    def wrong(prompt: str) -> str:
+        prompts.append(prompt)
+        return "000000"
+
+    with pytest.raises(errors.PermissionDenied):
+        operator_client.request_breaker_reset(root, None, "the race is fixed", ask=wrong, requester="test")
+    assert console.code() not in "".join(prompts)
+    assert Engine.discover(project.root).recovery_breaker_status()["open"] == ["project"]
+    out = operator_client.request_breaker_reset(root, None, "the race is fixed", ask=lambda p: console.code(),
+                                                requester="test")
+    assert out["reset"] == ["project"] and out["guarantee"] == "dev"
+    status = Engine.discover(project.root).recovery_breaker_status()
+    assert status["open"] == [] and status["breakers"]["project"]["reset"]["by"]["guarantee"] == "dev"
+    with pytest.raises(errors.IllegalTransition):  # refused before the operator is asked: nothing is open
+        operator_client.request_breaker_reset(root, None, "again", ask=lambda p: console.code(), requester="test")
+    refusal = lead_broker.refuses_locally(build_parser().parse_args(["recovery", "breaker", "reset", "--reason", "x"]))
+    assert refusal and "operator endpoint" in refusal
+    assert lead_broker.refuses_locally(build_parser().parse_args(["recovery", "breaker", "status"])) is None
+
+    class Lookalike:
+        uid, method, endpoint_pid, endpoint_started_at, guarantee = 0, "peer_credentials", 1, "x", "dev"
+
+    _open_relaunch_breaker(project)
+    with pytest.raises(errors.PermissionDenied):
+        Engine.discover(project.root).recovery_breaker_reset(Lookalike(), scope=None, reason="x",  # type: ignore[arg-type]
+                                                             scopes=["project"])
+    with pytest.raises(errors.IllegalTransition):  # the scopes shown must be the scopes still open
+        Engine.discover(project.root).recovery_breaker_reset(_principal(), scope=None, reason="x", scopes=[])
+    assert_control_invariants(project)

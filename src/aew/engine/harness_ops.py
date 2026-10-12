@@ -172,6 +172,10 @@ class Harness:
         del credential
         return result
 
+    def spawn_relaunched(self, inv_id: str, run: str, credential: str) -> dict[str, Any]:
+        """Hand a run that recovery's relaunch committed to its supervisor (M4-E E8b), exactly as any launch."""
+        return self._spawn_run(inv_id, run, credential)
+
     def _spawn_run(self, inv_id: str, run: str, credential: str) -> dict[str, Any]:
         """Start the run's supervisor and hand it the credential over its stdin pipe. Never raises after the
         launch commit without saying which run was recorded."""
@@ -210,7 +214,8 @@ class Harness:
         out = {**base, "supervisor_pid": proc.pid}
         # Each failure carries a closed `reason_code` (M4-E E8a; plan v3 n8) and where it came from: the supervisor's
         # acknowledgement, over this pipe, or this launcher's own. Never the run record's code: the run directory is
-        # model-writable (amendment 1, R2-m2 and R3-n1).
+        # model-writable (amendment 1, R2-m2 and R3-n1). From M4-E E8b the acknowledged code, and the observations that
+        # came with it, decide a stage's relaunch (`aew.engine.recovery`), so they reach the stage runner only this way.
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
@@ -228,7 +233,7 @@ class Harness:
         if not started["started"]:
             raise HarnessLaunchFailed(f"{run} failed to start: {started.get('reason')}", **out,
                                       status=started.get("status"), reason=started.get("reason"),
-                                      **_acknowledged_code(started))
+                                      **_acknowledged_code(started), **_acknowledged_observations(started, proc))
         return {**out, "status": K.RUNNING, **{k: v for k, v in started.items() if k in {"harness", "session"}}}
 
     def _regenerated_pack(self, state: dict[str, Any], inv_id: str) -> dict[str, Any]:
@@ -669,8 +674,8 @@ class Harness:
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
                           f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
-                        "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
-                        "action": action})
+                        "status": status, "reason": (record or {}).get("reason"), "reason_code": _reason_code(record),
+                        "evidence": evidence, "action": action})
         return out
 
     def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]]) -> str:
@@ -736,6 +741,24 @@ class Harness:
 def _launcher_code() -> dict[str, str]:
     """``HarnessLaunchFailed``'s code when no supervisor acknowledged custody: none is known, so ``unknown``."""
     return {"reason_code": K.launch_failure_code(K.LAUNCHER), "reason_code_source": "launcher"}
+
+
+SUPERVISOR_EXIT_S = 30.0  # how long a launcher waits for a supervisor that reported a failed start to exit (E8b)
+
+
+def _acknowledged_observations(ack: dict[str, Any], proc: subprocess.Popen[bytes]) -> dict[str, Any]:
+    """What a supervisor that reported a failed start observed of it (M4-E E8b; plan v3 E8, A2 §2 and §4), from its
+    acknowledgement over this pipe, plus this launcher's own observation that the supervisor process exited. Nothing
+    when the acknowledgement carries none: no relaunch proof can be made then."""
+    observed = ack.get("observations")
+    if not isinstance(observed, dict):
+        return {}
+    try:
+        proc.wait(timeout=SUPERVISOR_EXIT_S)
+        exited = True
+    except subprocess.TimeoutExpired:
+        exited = False
+    return {"observations": {**observed, "supervisor_exited": exited}}
 
 
 def _acknowledged_code(ack: dict[str, Any]) -> dict[str, str]:

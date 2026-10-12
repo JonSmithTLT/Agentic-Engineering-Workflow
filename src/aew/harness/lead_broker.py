@@ -88,7 +88,8 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
 # grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
-                     frozenset({"operator", "ping"}))
+                     frozenset({"operator", "ping"}),
+                     frozenset({"recovery", "breaker", "reset"}))  # M4-E E8b: the relaunch breaker's reset
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.

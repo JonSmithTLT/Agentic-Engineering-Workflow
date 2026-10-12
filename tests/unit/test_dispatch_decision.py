@@ -22,6 +22,7 @@ NOT_DISPATCHING = {
     "authority accept", "authority list", "authority reject", "check run", "checkpoint", "context pack",
     "context show", "dashboard open", "dashboard serve", "dashboard status",  # reads only (F20.3)
     "lead mode lower", "lead mode raise", "operator ping", "operator serve",  # steering records only (M4-E E2)
+    "recovery breaker reset", "recovery breaker status",  # the relaunch breaker: a read and an operator reset (E8b)
     "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
     "history audit", "history compact", "history links", "history list", "history log", "history load",

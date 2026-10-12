@@ -220,11 +220,11 @@ def _crashed_broker(project) -> None:
         "generation": generation, "beat_at": time.time(), "watchdog_tick_at": time.time(), "wedge_after_s": 62.0})
 
 
-def spooled(project, event: str, reason: str, run: str = "R-INV-0001-1") -> None:
+def spooled(project, event: str, reason: str, run: str = "R-INV-0001-1", reason_code: str | None = None) -> None:
     """A supervisor's append, for a run whose directory its launcher made."""
     root = project.root / ".aew"
     runlog.run_dir(root, run).mkdir(parents=True, exist_ok=True)
-    event_spool.append(root, event_spool.run_writer(run), event, subject=run, reason=reason)
+    event_spool.append(root, event_spool.run_writer(run), event, subject=run, reason=reason, reason_code=reason_code)
 
 
 def _high_anomaly(state: dict[str, Any]) -> None:
@@ -237,6 +237,14 @@ def _high_anomaly(state: dict[str, Any]) -> None:
 def _breaker(state: dict[str, Any]) -> None:
     state["queue"] = {"next_seq": 1, "lease": None, "entries": {}, "validation_breaker": {
         "failures": [], "open": {"at": "2026-10-10T00:00:00Z", "codes": ["SANDBOX_UNAVAILABLE"], "runs": ["V-1"]}}}
+
+
+def _relaunch_breaker(state: dict[str, Any]) -> None:
+    """M4-E E8b: the relaunch breaker opened for one scope (its window and its opening, as recovery records them)."""
+    failures = [{"at": f"2026-10-11T00:00:0{n}Z", "run": f"R-INV-000{n}-1", "reason_code": "spawn_race"}
+                for n in (1, 2, 3)]
+    state["recovery"] = {"breakers": {"project": {"failures": failures, "open": {
+        "at": "2026-10-11T00:00:03Z", "reason_codes": ["spawn_race"], "runs": [f["run"] for f in failures]}}}}
 
 
 def _reconcile(state: dict[str, Any]) -> None:
@@ -254,6 +262,11 @@ SEEDS = {
     "custodian_lost[reconcile]": lambda project, mp: seed(project, _reconcile),
     "hard_deadline": lambda project, mp: spooled(project, "hard_deadline", "deadline"),
     "launch_failed": lambda project, mp: spooled(project, "launch_failed", "custody refused"),
+    # M4-E E8b: the relaunch breaker's opening (the same event, its subject naming the breaker), and a launch failure's
+    # closed code carried from the supervisor's spool line to the notification.
+    "breaker_tripped[relaunch]": lambda project, mp: seed(project, _relaunch_breaker),
+    "launch_failed[reason_code]": lambda project, mp: spooled(project, "launch_failed", "start failed",
+                                                              reason_code="spawn_race"),
     # M4-E E7b: a high anomaly opened in control state, and the steering loop's stop in the broker's spool.
     "anomaly_high": lambda project, mp: seed(project, _high_anomaly),
     "loop_stopped": lambda project, mp: event_spool.append(
@@ -294,6 +307,11 @@ def test_event_delivered_once_per_occurrence(project, tmp_path, monkeypatch, cas
     assert len(keys) == len(set(keys)) == 1
     assert got[0]["authenticated"] is (got[0]["source"] == "control_state")
     schemas.validate("notify-event", got[0], source="test")
+    if case == "breaker_tripped[relaunch]":  # amendment 1, nit 4: which breaker is in `subject`
+        assert (got[0]["subject"], got[0]["ref"], got[0]["reason_code"]) == ("relaunch_breaker", "project",
+                                                                              "spawn_race")
+    if case == "launch_failed[reason_code]":
+        assert got[0]["reason_code"] == "spawn_race" and got[0]["authenticated"] is False
 
 
 def test_the_watcher_moves_no_revision(project, tmp_path, monkeypatch):

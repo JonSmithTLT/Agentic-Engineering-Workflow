@@ -38,6 +38,7 @@ from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
+from aew.engine.recovery import Recovery
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
@@ -479,6 +480,8 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
+        # Bounded recovery (M4-E E8b): one relaunch of a stage's failed launch, decided by the stage runner only.
+        self._recovery = Recovery(k, harness=harness)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
@@ -1057,6 +1060,28 @@ class Engine:
 
     def steering_view(self) -> dict[str, Any]:
         return self._steering.view(self._k.store.read())
+
+    # ---------------------------------------------------------------- bounded recovery (M4-E E8b)
+
+    def recovery_decide(self, failure: dict[str, Any]) -> dict[str, Any]:
+        """The relaunch decision at a stage's ``launch_failed`` stop (read-only): the stage runner's alone (N2c)."""
+        return self._recovery.decide(failure)
+
+    def recovery_relaunch(self, *, token: str, decision: dict[str, Any]) -> dict[str, Any]:
+        """Commit the relaunch an eligible ``decision`` allows, re-evaluated in its transaction: the stage runner's
+        alone, at a stage's ``launch_failed`` stop (N2c; a static test pins the one caller)."""
+        return self._recovery.relaunch(token=token, decision=decision)
+
+    def recovery_breaker_status(self) -> dict[str, Any]:
+        return self._recovery.breaker_status()
+
+    def recovery_breaker_reset_preview(self, scope: str | None) -> dict[str, Any]:
+        return self._recovery.reset_preview(scope)
+
+    def recovery_breaker_reset(self, principal: OperatorPrincipal, *, scope: str | None, reason: str,
+                               scopes: list[str]) -> dict[str, Any]:
+        """The operator endpoint's commit of a relaunch breaker reset; ``principal`` only the endpoint constructs."""
+        return self._recovery.reset(principal, scope=scope, reason=reason, scopes=scopes)
 
     # ---------------------------------------------------------------- the stage journal (M4-E E3)
 

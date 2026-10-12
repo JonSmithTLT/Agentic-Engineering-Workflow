@@ -24,7 +24,7 @@ LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
-OPERATIONS = ("ping", "mode_raise")
+OPERATIONS = ("ping", "mode_raise", "relaunch_breaker_reset")  # the reset: M4-E E8b (plan v3 §2.1, E8)
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
 RESIDUALS = (
@@ -147,6 +147,56 @@ def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None
         shown = _reply(conn)
         try:
             answer = read(raise_prompt(shown["bound"], who))
+        except errors.AEWError:
+            try:  # void the code at the endpoint, and let it finish refusing
+                conn.send_bytes(json.dumps({"op": "answer", "args": {"code": ""}}).encode("utf-8"))
+                _reply(conn)
+            except errors.AEWError:
+                pass
+            raise
+        try:
+            conn.send_bytes(json.dumps({"op": "answer", "args": {"code": answer.strip()}}).encode("utf-8"))
+        except (OSError, EOFError):
+            try:
+                _reply(conn)
+            except errors.NotFound:
+                pass
+            raise errors.PermissionDenied("operator authorization timed out: the endpoint closed the request before "
+                                          "the code arrived") from None
+        return _reply(conn)
+    finally:
+        conn.close()
+
+
+def breaker_reset_prompt(bound: dict[str, Any], requester: str) -> str:
+    return operator.challenge(
+        "", f"RESET the relaunch circuit breaker for {', '.join(bound['scopes'])}: automatic relaunches of failed "
+            "launches resume there",
+        requested_by=requester, destination="the relaunch breaker in control state (no credential is issued)",
+        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
+                    "and press Enter; anything else refuses.") + "> "
+
+
+def request_breaker_reset(aew_root: Path, scope: str | None, reason: str, *, ask: Callable[[str], str] | None = None,
+                          requester: str | None = None) -> dict[str, Any]:
+    """``aew recovery breaker reset`` (M4-E E8b): ask the endpoint, read the code typed at **this** terminal, and
+    send it."""
+    return _challenged(aew_root, "relaunch_breaker_reset", {"scope": scope, "reason": reason},
+                       lambda shown, who: breaker_reset_prompt(shown["bound"], who), ask=ask, requester=requester)
+
+
+def _challenged(aew_root: Path, op: str, args: dict[str, Any], prompt: Callable[[dict[str, Any], str], str], *,
+                ask: Callable[[str], str] | None, requester: str | None) -> dict[str, Any]:
+    """One challenged request: send it, show what the endpoint bound, read the code the operator types here, send it,
+    and return the endpoint's result."""
+    who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
+    read = ask if ask is not None else (lambda text: operator.ask(text))
+    conn = _connect(aew_root)
+    try:
+        _send(conn, op, {**args, "requester": who})
+        shown = _reply(conn)
+        try:
+            answer = read(prompt(shown, who))
         except errors.AEWError:
             try:  # void the code at the endpoint, and let it finish refusing
                 conn.send_bytes(json.dumps({"op": "answer", "args": {"code": ""}}).encode("utf-8"))

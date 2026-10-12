@@ -35,6 +35,7 @@ class FakeAdapter(HarnessAdapter):
     name = "fake"
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
+        self.prompt_delivered = False  # the scripted agent is its prompt: delivered when it is spawned (M4-E E8b)
         scripts = Path(os.environ[SCRIPTS_ENV])
         script = next((p for p in (scripts / f"{contract.run}.json", scripts / f"{contract.invocation}.json",
                                    scripts / "default.json") if p.exists()), None)
@@ -56,10 +57,12 @@ class FakeAdapter(HarnessAdapter):
         (hdir / "prompt.md").write_text(contract.prompt, encoding="utf-8")
         self.transcript = hdir / "transcript.jsonl"
         self._out = (hdir / "agent.log").open("ab")
+        self.prompt_delivered = None  # a spawn that fails part way may have started the agent
         self.proc = self.tree.spawn([sys.executable, str(AGENT), "--script", str(script),
                                      "--transcript", str(self.transcript)],
                                     env=agent_env, cwd=contract.workspace, stdin=subprocess.DEVNULL,
                                     stdout=self._out, stderr=self._out)
+        self.prompt_delivered = True
         self.emit({"event": "fake.launched", "pid": self.proc.pid, "script": script.name})
         self.session = f"fake-{contract.run}"
         (hdir / "sessions").mkdir(exist_ok=True)

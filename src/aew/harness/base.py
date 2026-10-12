@@ -35,6 +35,12 @@ class HarnessAdapter(ABC):
         self.tree = tree
         self.run_dir = run_dir
         self.emit = emit  # append a telemetry event to the run's local event log
+        # Whether the launch contract's prompt reached the harness, as this adapter knows it in the supervisor's memory
+        # (M4-E E8b; plan v3 E8, the network channel of A2 §4's no-side-effect proof): False only while the adapter
+        # knows no prompt was sent, True once it was, and None when it cannot tell (a POST that failed may have
+        # arrived). Only False lets a failed launch be relaunched automatically; an adapter that never sets it keeps
+        # every launch failure ineligible.
+        self.prompt_delivered: bool | None = None
 
     @abstractmethod
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:

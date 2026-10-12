@@ -68,7 +68,7 @@ proposed:
 
 commands:
   - name: doctor
-    home: diagnostic
+    home: product
     users: [operator]
     journeys: [V3]
     mutates: "no"
@@ -95,7 +95,7 @@ commands:
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "the operator reads a revision from it in today's adopt and takeover fallbacks"
   - name: resume
-    home: diagnostic
+    home: recovery
     users: [operator, lead]
     journeys: []
     mutates: "no"
@@ -228,6 +228,7 @@ commands:
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
     mutates_basis: "serves the typed surface over stdio; its mutating tools commit through the broker"
+    launcher: "the Lead's harness, from the session's OpenCode configuration (`aew opencode`, `aew lead session`)"
     refusals: [USAGE]
     note: "spawned by the Lead's harness in every Lead session (not relayed)"
   - name: opencode
@@ -306,7 +307,7 @@ commands:
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work show
-    home: diagnostic
+    home: product
     users: [operator, lead]
     journeys: []
     mutates: "no"
@@ -321,7 +322,9 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [work, list]
+    probe:
+      - [work, list]
+      - [work, list, --state, READY]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: work ready
     home: diagnostic
@@ -476,7 +479,7 @@ commands:
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
-    home: diagnostic
+    home: product
     users: [operator, lead]
     journeys: []
     mutates: "no"
@@ -512,7 +515,9 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only)"
-    probe: [dispatch, explain, "{ticket}"]
+    probe:
+      - [dispatch, explain, "{ticket}"]
+      - [dispatch, explain, "{ticket}", --role, implementer]
     door: typed
     via: [explain]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -558,7 +563,9 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only)"
-    probe: [plan, lint, "{ticket}"]
+    probe:
+      - [plan, lint, "{ticket}"]
+      - [plan, lint, "{ticket}", --revision, 1]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: plan accept
     home: product
@@ -622,7 +629,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [invoke, show, INV-0001]
+    probe: [invoke, show, "{invocation}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: context pack
     home: recovery
@@ -638,7 +645,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [context, show, INV-0001]
+    probe: [context, show, "{invocation}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: check run
     home: product
@@ -661,7 +668,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     mutates_exempt: "a read: which invocation the credential acts as; the credential only identifies"
-    probe: [whoami]
+    probe: [whoami, --invocation-token, "{invocation_token}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: harness launch
     home: recovery
@@ -675,12 +682,14 @@ commands:
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
   - name: harness status
-    home: diagnostic
+    home: product
     users: [operator, lead]
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [harness, status]
+    probe:
+      - [harness, status]
+      - [harness, status, "{invocation}"]
     door: typed
     via: [harness_status]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -691,6 +700,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: blocks on run telemetry, commits nothing"
     probe: [harness, wait, R-INV-0001-1, --timeout, 1]
+    probe_refused: "NOT_FOUND: the sample has no harness run (a run needs a launched harness)"
     door: typed
     via: [harness_wait]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -846,6 +856,8 @@ commands:
     journeys: [V1, V2, V4]
     mutates: "yes"
     mutates_basis: "the custody worker validates or routes the candidate under the custody credential"
+    launcher: "the engine, on a lease grant (custody_ops.spawn_worker); it refuses to run in a Lead session
+              (custody_ops.refuse_lead_session)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "started by the engine when it grants a lease (the publish path), never a Lead's command"
   - name: integrate breaker status
@@ -900,6 +912,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [history, show, "{ticket}"]
+    probe_refused: "NOT_FOUND: the sample has no archived record (only finished work is archived)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history list
     home: diagnostic
@@ -907,7 +920,9 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [history, list]
+    probe:
+      - [history, list]
+      - [history, list, --limit, 1]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history log
     home: diagnostic
@@ -915,16 +930,17 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe: [history, log, --since, 0]
+    probe:
+      - [history, log, --since, 0]
+      - [history, log, --since, 0, --limit, 1]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history compact
     home: operator-admin
     users: [operator]
     journeys: []
-    mutates: "no"
-    mutates_basis: "rewrites the transition log's physical representation only, never a logical transition
-                   (Engine.history_compact, ADR-0012 D6)"
-    probe: [history, compact]
+    mutates: "yes"
+    mutates_basis: "seals revisions older than the 4,096-revision window into segments: a physical rewrite of the
+                   authoritative log, logically equivalent (Engine.history_compact, ADR-0012 D6)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history links
     home: diagnostic
@@ -933,6 +949,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [history, links, "{ticket}"]
+    probe_refused: "NOT_FOUND: the sample has no archived record (only finished work is archived)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history load
     home: product
@@ -968,8 +985,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe_exempt: "registered only while switched on, and the sample project leaves it off (recall search, register
-                  F21)"
+    probe: [history, search, probe]
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while the adopted execution policy switches recall search on (register F21)"
   - name: dashboard serve
@@ -1048,6 +1064,7 @@ commands:
     mutates_basis: "a read: whether the operator endpoint answers"
     mutates_exempt: "operator-only because it reaches the operator endpoint, but it only asks whether it answers"
     probe: [operator, ping]
+    probe_refused: "NOT_FOUND: no operator endpoint runs for the sample (it needs a console)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: message thread
     home: diagnostic
@@ -1055,7 +1072,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe_exempt: "registered only while switched on, and the sample project leaves it off (messaging, F9-A)"
+    probe: [message, thread, "{invocation}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
   - name: message list
@@ -1064,7 +1081,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
-    probe_exempt: "registered only while switched on, and the sample project leaves it off (messaging, F9-A)"
+    probe: [message, list, --work, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
   - name: message unseen
@@ -1105,7 +1122,7 @@ tools:
     probe: [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}', --token, "{token}"]
     refusals: []
   - name: explain
-    home: diagnostic
+    home: recovery
     users: [lead]
     journeys: [V1, V2]
     mutates: "no"
@@ -1128,6 +1145,7 @@ tools:
     mutates: "no"
     mutates_basis: contract.Tool.mutates
     probe: [lead, tool, harness_wait, --arguments, '{"runs": ["R-INV-0001-1"], "timeout_s": 1}', --token, "{token}"]
+    probe_refused: "refused: the sample has no harness run (a run needs a launched harness)"
     refusals: []
   - name: checkpoint
     home: product

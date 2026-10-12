@@ -17,10 +17,20 @@ primitive declarations and the vertical UAT's `IDEAL_PATH`.
   - dispositions applied, and Lead shell lifecycle operations at 0 (A4).
 
 **A label never exempts a surface.** Doors and dispositions key off `LEAD_REACHABLE` and the typed surface, never
-off `home`. A behavioural probe runs every surface declared `mutates: "no"` in process, against a synthetic sample
-project, and fails it if anything under `.aew/` (bar the derived history index), a git ref or the working tree
-changed. Of 43 such surfaces, 32 run to completion, 8 run only to a refusal on the sample, and 3 are exempt because
-they are switched off there; `probe_coverage` lists the last 11.
+off `home`, and whether the Lead's shell can reach a mutating command is decided by its mechanism (a credential,
+`OPERATOR_ONLY`, an internal launcher, or a stated `lead_kept_out_by`), never by `users`.
+
+A behavioural probe runs every surface declared `mutates: "no"` in process, against a synthetic sample project. The
+sample has messaging and recall search on, and a Ticket assigned without a launch. The probe fails the surface if
+any file under the sample's directory changed, bar derived indexes and git's caches. That covers `.aew/`, the
+workspaces root, ignored files and `.git/`'s refs, config and worktrees.
+
+- Each probe must run the real path (exit 0).
+- A refusal is accepted only for the pinned, shrink-only `PROBE_LIMITED` list.
+- A diagnostic home has no journeys.
+
+Of 42 such surfaces, 37 run their real path, and 5 run only to a refusal on the sample (no harness run, no archived
+record, no operator endpoint).
 
 **The end-state metric** (designer, 2026-10-12) is not one typed equivalent per command. It is every Lead lifecycle
 need covered by typed or engine-owned behaviour, with Lead shell lifecycle operations at 0. Today 36 of the 48

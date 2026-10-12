@@ -99,14 +99,17 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **A new command or typed tool ships with its surface-map entry and honours it** (operator, 2026-10-12;
   [`docs/implementation/surface-map.md`](docs/implementation/surface-map.md)). In the same pull request, add its full
   entry to `docs/implementation/surface-map.yaml`: home, mutates, users, journeys, refusals, and a decided
-  `lead_disposition` if the Lead uses it to change anything. The code must honour that disposition in the same pull
+  `lead_disposition` if the Lead can use it to change anything. Reachability is decided by the mechanism, not by
+  `users`: a mutating command that takes no Lead credential and is neither `OPERATOR_ONLY` nor internal (with its
+  `launcher`) states `lead_kept_out_by`. The code must honour that disposition in the same pull
   request. `typed` means the Lead reaches it through a typed tool with a proved primitive, never through the shell
   (keep it out of `lead_broker.LEAD_REACHABLE`). `engine-owned` means the engine does it, and it is absent from
   `LEAD_REACHABLE` and the typed surface. `forbidden-to-lead` means it is reachable through neither Lead door.
   `tests/unit/test_surface_map.py` (`new_surface`) enforces this. Its grandfathered baseline only shrinks.
-  A surface declared `mutates: "no"` also gives a `probe`, the arguments that run it against the test's sample
-  project, which must leave the project unchanged; or `probe_exempt` with the reason. A new `diagnostic` home also
-  gives a one-line `diagnostic_justification`.
+  A surface declared `mutates: "no"` also gives a `probe`: one or more argument lists that run its real path (exit
+  0, every option it takes) against the test's sample project and leave the sample unchanged. A refused or exempt
+  probe is only for the test's pinned `PROBE_LIMITED` list, which only shrinks. A new `diagnostic` home has no
+  journeys and gives a one-line `diagnostic_justification`.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

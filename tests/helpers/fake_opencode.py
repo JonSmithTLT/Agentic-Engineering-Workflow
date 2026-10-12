@@ -38,7 +38,9 @@ pinned (``tests/fixtures/opencode/live-usage-2.0.18.json``).
 
 Run as ``opencode --standalone <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
 ``<scripts>/lead-tui.json`` with the TUI's own environment, which a V2 ``--standalone`` TUI sends as every
-session's shell environment, and records the steps in ``<scripts>/lead-tui.jsonl``.
+session's shell environment, and records the steps in ``<scripts>/lead-tui.jsonl``. A ``lead-tui.json`` of the form
+``{"driver": "vertical", ...}`` runs the vertical UAT's scripted Lead instead (``vertical/lead.py``): a policy that
+reads the projection and asks the operator, not a fixed list of steps.
 """
 
 from __future__ import annotations
@@ -811,6 +813,11 @@ TUI_SCRIPT, TUI_TRANSCRIPT, TUI_ARGV = "lead-tui.json", "lead-tui.jsonl", "lead-
 def tui(argv: list[str], scripts: Path) -> int:
     """The Lead's TUI (``--standalone``): the Lead's model acts in the TUI's own environment."""
     (scripts / TUI_ARGV).write_text(json.dumps(argv), encoding="utf-8")
+    spec = json.loads((scripts / TUI_SCRIPT).read_text(encoding="utf-8"))
+    if isinstance(spec, dict) and spec.get("driver") == "vertical":  # the vertical UAT's scripted Lead (a policy)
+        from vertical import lead
+
+        return lead.main(scripts / TUI_SCRIPT)
     import fake_agent
 
     sys.argv = ["fake_agent", "--script", str(scripts / TUI_SCRIPT), "--transcript", str(scripts / TUI_TRANSCRIPT)]

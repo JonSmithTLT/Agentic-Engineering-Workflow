@@ -52,17 +52,19 @@ typed Lead tool (`aew.surface.contract.TOOLS`) has one entry:
     external system (the designer's positive definition, 2026-10-12). So a diagnostic entry is always
     `mutates: "no"`; a command that mutates only with a flag is homed by its mutating form, or split. Its
     `journeys` are empty: a journey that uses it is evidence that a supported workflow needs it (PR 215 second
-    review, finding 6).
+    review, finding 6). A guide mentioning a command as a way to inspect state does not make it a workflow step;
+    journeys do.
   - `internal`: started by AEW or the Lead's harness itself; not user-facing. Its `launcher` says what starts it.
 - **`users`**: `operator`, `lead`, `worker` or `internal`.
 - **`journeys`**: evidence only. It lists the vertical UAT's scenarios that exercise the entry today (`V1` to `V4`,
   [vertical-uat.md](vertical-uat.md) §3), possibly none.
 - **`mutates`**: declared, with `mutates_basis` saying how it was determined. The values:
   - `"no"` or `"yes"` (quoted, because YAML reads a bare yes as true);
-  - `{with: [--flag, ...]}` when it mutates only with those flags;
-  - `unknown`, which is reported, never taken as false.
+  - `{with: [--flag, ...]}` when it mutates only with those flags.
 
-  The declaration is cross-checked against the code's own markers (check `mutates`).
+  The declaration is cross-checked against the code's own markers (check `mutates`). A `"yes"` the sample would not
+  show by itself, because the surface is a no-op when its output is current, carries a `mutates_proof`: the file to
+  remove and the probe that writes it again (`context pack`).
 - **`door`**, for every command a Lead session may relay (`LEAD_REACHABLE`): how the Lead reaches it today.
   - `typed`: its lifecycle use has a typed home. `via` names the tools, and `primitive` names the step they run.
   - `shell-only (pending A2/A4)`: only by `aew` from the shell or the recovery `cli` tool. `partly_via` names tools
@@ -183,7 +185,6 @@ each check.
 | `refusal_floor` | enforce | an entry omits a refusal its own arguments imply |
 | `owner` | report | a Lead lifecycle operation (a Lead-reachable command, a mutating tool) has no owner: until A1 puts `owner` in the projection |
 | `structured_refusals` | report | the refusal inventory is partial, or refusals are not structured: until A2 |
-| `mutates_unknown` | report | an entry's `mutates` is `unknown` |
 | `undecided` | report | a Lead-reachable command's disposition is `undecided`: until A2's plan decides each |
 | `disposition_applied` | report | an `engine-owned` or `forbidden-to-lead` command is still in `LEAD_REACHABLE`: until A4 |
 | `lead_shell_lifecycle` | report | a Lead-reachable command is reached by the shell only (the end-state metric, 0): until A4 |

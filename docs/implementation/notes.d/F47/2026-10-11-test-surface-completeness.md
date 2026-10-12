@@ -30,7 +30,8 @@ workspaces root, ignored files and `.git/`'s refs, config and worktrees.
 - A diagnostic home has no journeys.
 
 Of 42 such surfaces, 37 run their real path, and 5 run only to a refusal on the sample (no harness run, no archived
-record, no operator endpoint).
+record, no operator endpoint). `context pack` is declared mutating, proved on the sample by removing its pack and
+running it.
 
 **The end-state metric** (designer, 2026-10-12) is not one typed equivalent per command. It is every Lead lifecycle
 need covered by typed or engine-owned behaviour, with Lead shell lifecycle operations at 0. Today 36 of the 48

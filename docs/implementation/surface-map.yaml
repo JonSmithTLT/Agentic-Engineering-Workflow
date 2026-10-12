@@ -33,7 +33,6 @@ vocabulary:
       system
     "yes": changes at least one of them
     with: changes one only with the flags it names
-    unknown: not classified yet (reported)
   doors:
     typed: the Lead's lifecycle use of it has a typed home (`via`); `primitive` is the step those tools run, and
       names this command
@@ -635,9 +634,11 @@ commands:
     home: recovery
     users: [operator, lead]
     journeys: []
-    mutates: "unknown"
-    mutates_basis: "(re)generates an invocation's pack from durable state: a derived file the worker reads; not
-                   classified against the authority, policy, work-state and evidence list"
+    mutates: "yes"
+    mutates_basis: "(re)writes the invocation's pack (.aew/local/packs/<invocation>/pack.md), the context the worker
+                   is given, from durable state; a no-op when the pack is current, which is why `mutates_proof` runs
+                   it on a missing pack"
+    mutates_proof: {remove: ".aew/local/packs/{invocation}/pack.md", probe: [context, pack, "{invocation}"]}
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: context show
     home: diagnostic

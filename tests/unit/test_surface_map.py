@@ -68,7 +68,6 @@ CHECKS: dict[str, str] = {
     "refusal_floor": ENFORCE,  # refusals include the codes the command's own arguments imply
     "owner": REPORT,  # A1: the projection's owner (operator, lead, mechanical) of each Lead lifecycle operation
     "structured_refusals": REPORT,  # A2: every refusal structured (cause, remedy, owner), the inventory complete
-    "mutates_unknown": REPORT,  # every surface's `mutates` classified
     "undecided": REPORT,  # A2's plan: every Lead-reachable command's disposition decided
     "disposition_applied": REPORT,  # A4: engine-owned and forbidden-to-lead commands have left LEAD_REACHABLE
     "lead_shell_lifecycle": REPORT,  # A4: Lead shell lifecycle operations = 0
@@ -242,12 +241,12 @@ def operator_only(name: str) -> bool:
 
 
 def mutates(e: dict[str, Any]) -> str:
-    """`no`, `yes`, `with` (only with the flags it names) or `unknown`; anything else is `invalid`."""
+    """`no`, `yes` or `with` (only with the flags it names); anything else is `invalid`."""
     m = e.get("mutates")
     if isinstance(m, dict):
         return "with" if set(m) == {"with"} and m["with"] and all(str(f).startswith("--") for f in m["with"]) \
             else "invalid"
-    return m if m in ("no", "yes", "unknown") else "invalid"
+    return m if m in ("no", "yes") else "invalid"
 
 
 def primitive_names(name: str, primitive: str) -> bool:
@@ -323,8 +322,8 @@ def check_fields(reg: dict[str, Any]) -> list[str]:
             out.append(f"{name}: `journeys` is the list of vertical journeys that exercise it (possibly empty)")
         out += [f"{name}: unknown journey {j!r}" for j in e.get("journeys") or [] if j not in journeys]
         if mutates(e) == "invalid":
-            out.append(f"{name}: `mutates` is \"no\", \"yes\" (quoted: YAML reads a bare yes as true), unknown "
-                       f"or {{with: [--flag, ...]}}, not {e.get('mutates')!r}")
+            out.append(f"{name}: `mutates` is \"no\", \"yes\" (quoted: YAML reads a bare yes as true) or "
+                       f"{{with: [--flag, ...]}}, not {e.get('mutates')!r}")
         if not e.get("mutates_basis"):
             out.append(f"{name}: `mutates_basis` says how its `mutates` was determined")
         if not isinstance(e.get("refusals"), list):
@@ -573,11 +572,6 @@ def check_structured_refusals(reg: dict[str, Any]) -> list[str]:
             out.append(f"{label(kind, str(e.get('name')))}: refusals inventory {status.get('inventory')!r}, "
                        f"structured {status.get('structured')!r} (A2)")
     return out
-
-
-def check_mutates_unknown(reg: dict[str, Any]) -> list[str]:
-    return [f"{label(kind, str(e.get('name')))}: mutates unknown ({e.get('mutates_basis')})"
-            for kind, e in entries(reg) if mutates(e) == "unknown"]
 
 
 def check_undecided(reg: dict[str, Any]) -> list[str]:
@@ -879,7 +873,7 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "home": check_home, "mutates": check_mutates, "door": check_door, "disposition": check_disposition,
     "new_surface": check_new_surface, "ideal_path": check_ideal_path, "codes": check_codes,
     "refusal_floor": check_refusal_floor, "owner": check_owner, "structured_refusals": check_structured_refusals,
-    "mutates_unknown": check_mutates_unknown, "undecided": check_undecided,
+    "undecided": check_undecided,
     "disposition_applied": check_disposition_applied, "lead_shell_lifecycle": check_lead_shell_lifecycle,
     "unevidenced": check_unevidenced, "probe": check_probe, "probe_coverage": check_probe_coverage,
     "probe_flags": check_probe_flags, "shell_reachable_mutation": check_shell_reachable_mutation,
@@ -966,7 +960,7 @@ def test_the_registry_is_versioned_and_states_its_vocabulary():
     assert set(vocab["homes"]) == {"product", "operator-admin", "recovery", DIAGNOSTIC, "internal"}
     assert {"operator", "lead", "worker", "internal"} == set(vocab["users"])
     assert set(vocab["journeys"]) == {"V1", "V2", "V3", "V4"}
-    assert set(vocab["mutates"]) == {"no", "yes", "with", "unknown"}
+    assert set(vocab["mutates"]) == {"no", "yes", "with"}
     assert set(vocab["doors"]) == {TYPED, "shell-only (pending A2/A4)"}
     assert set(vocab["lead_dispositions"]) == {TYPED, *LEAVES_LEAD_DOORS, UNDECIDED}
 
@@ -1189,6 +1183,26 @@ def test_the_probe_names_what_it_cannot_prove(edit, name, not_baseline, named):
     assert any(named in f for f in findings), findings
 
 
+PROVED = [str(e["name"]) for _, e in entries(load()) if e.get("mutates_proof")]
+
+
+@pytest.mark.parametrize("name", PROVED)
+def test_a_declared_mutation_is_shown_on_the_sample(name):
+    """A surface whose mutation the sample would not show by itself (a no-op when its output is current) is proved
+    `"yes"` by its `mutates_proof`: remove the file it maintains, run it, and it writes that file again (`context pack`,
+    whose own help says it regenerates a pack after `local/` was deleted). The sample ends as it began."""
+    proof = _entry(load(), name)["mutates_proof"]
+    s = sample()
+    target = s.root / fill([proof["remove"]], s)[0]
+    assert target.is_file(), f"{target} is not on the sample: the proof names nothing to remove"
+    start = snapshot(s)
+    target.unlink()
+    removed = snapshot(s)
+    code, _, changed = probe_one([str(a) for a in proof["probe"]], s)
+    assert code == 0 and "sample/" + fill([proof["remove"]], s)[0] in changed, (code, changed)
+    assert snapshot(s) == start and removed != start
+
+
 def test_a_new_surface_that_honours_its_disposition_passes():
     """The rule's positive side: a new command the engine owns, absent from both Lead doors, passes; so does a new
     read the Lead uses."""
@@ -1225,11 +1239,9 @@ def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():
         if e.get("door") not in (None, TYPED):
             e.pop("door")
             e.pop("partly_via", None)
-        if e.get("mutates") == "unknown":
-            e["mutates"] = "yes"
         if not e.get("journeys") and e.get("home") not in (DIAGNOSTIC, "internal"):
             e["journeys"] = ["V1"]
-    for check in ("owner", "structured_refusals", "mutates_unknown", "undecided", "lead_shell_lifecycle",
+    for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle",
                   "unevidenced"):
         assert CHECK_FUNCTIONS[check](reg) == [], check
     assert check_disposition_applied(reg)  # engine-owned, yet still Lead-reachable: A4 has not closed the door

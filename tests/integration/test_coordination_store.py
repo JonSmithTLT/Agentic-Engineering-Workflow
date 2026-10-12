@@ -845,12 +845,21 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 
 
 # The policy files `aew init` writes, and their digests, captured at the base commit (677e4ac) before F9-A existed.
+# Re-captured once since, for execution.yaml only: ADR-0010's amendment of 2026-10-11 (the adapter's model identity)
+# rewrote two comment lines of the template (a model may be written as the harness lists it, `provider/model`, with
+# no separate provider). The parsed policy is unchanged, so the two digests below are too, and the test keeps proving
+# what D-32 needs: init writes no `coordination` and nothing F9-A added (the template's previous digest was
+# 2d36d67ee0185d77ebb1c9fc57c31c78d62edc3a578b6700e972138fa6c59fd3).
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
-    "policy/execution.yaml": "2d36d67ee0185d77ebb1c9fc57c31c78d62edc3a578b6700e972138fa6c59fd3",
+    "policy/execution.yaml": "a13a8659844ae4c9f03a76ef3b0b24219697be052845105f01193111fd8cdffb",
     "policy/gates.yaml": "b676e7da71583adf2815f95b9728f4e1230348daa72ed4bc95d9050ef9e791f3",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
+# What the execution template configures, parsed: unchanged since before F9-A (only its comments have changed).
+INIT_EXECUTION_PARSED = {"schema": "aew/execution/v1", "configured": False, "harness": "opencode", "profiles": {},
+                         "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}},
+                         "provider_env": []}
 INIT_POLICY_DIGESTS = {
     "legality_digest": "sha256:e35bc2c2a63baada8a49a817af6632246baff9f325f5716adb6a4d6887b11bb6",
     "operational_digest": "sha256:656c7e5fe5947690a7b5287e9b0309b24bb451ed41c84dd39b2dd0473396d06c",
@@ -872,6 +881,7 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     assert {rel: sha256_file(aew / rel) for rel in policy_files(load_manifest(aew))} == INIT_POLICY_SHA256
     assert e.policy_digests() == INIT_POLICY_DIGESTS
     assert "coordination" not in X.TEMPLATE and "coordination" not in util.load_yaml(X.TEMPLATE)
+    assert util.load_yaml(X.TEMPLATE) == INIT_EXECUTION_PARSED  # comments may change; what init configures may not
     assert X.messaging(util.load_yaml(X.TEMPLATE)) == "disabled" and X.messaging(None) == "disabled"
 
     w = world(tmp_path / "migrated", messaging=None)

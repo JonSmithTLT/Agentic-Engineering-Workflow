@@ -23,8 +23,30 @@ def _check(name: str, status: str, detail: str) -> dict[str, str]:
     return {"check": name, "status": status, "detail": detail}
 
 
+# Windows stays outside the enforced vertical gate, and UNQUALIFIED, until its containment exists and passes its
+# qualification; that state is never silently absent (operator decision 2026-10-11). The gate's verdicts and the docs
+# begin the same way.
+WINDOWS_UNQUALIFIED = "Windows: UNQUALIFIED (excluded from the enforced gate)"
+WINDOWS_WHY = ("runs here have workdir separation only: no OS filesystem containment, no isolation between runs, and "
+               "an uncontained Lead, so an agent's shell can read and write whatever your account can. Windows "
+               "qualifies only once a Low-integrity containment backend for the Lead and the workers, with "
+               "run-to-run isolation and a withheld set of secrets no run may read, passes its qualification "
+               "self-tests. Until then, evaluate on scratch repositories here; real-repository work runs contained on "
+               "Linux")
+
+
+def platform_qualification(platform_name: str | None = None) -> dict[str, str] | None:
+    """The Windows line: stated on Windows, absent elsewhere (Linux's containment is the ``containment`` check's)."""
+    if (platform_name or sys.platform) != "win32":
+        return None
+    return _check("platform", "WARN", f"{WINDOWS_UNQUALIFIED}: {WINDOWS_WHY}")
+
+
 def environment_checks() -> list[dict[str, str]]:
     checks = []
+    windows = platform_qualification()
+    if windows is not None:
+        checks.append(windows)
     py = sys.version_info[:3]
     checks.append(
         _check(
@@ -37,7 +59,9 @@ def environment_checks() -> list[dict[str, str]]:
     if git is None:
         checks.append(_check("git", "FAIL", "git executable not found on PATH"))
     else:
-        out = subprocess.run([git, "--version"], capture_output=True, text=True).stdout.strip()
+        # No console window on Windows (CREATE_NO_WINDOW; 0, which every platform accepts, where there is none).
+        out = subprocess.run([git, "--version"], capture_output=True, text=True,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
         match = re.search(r"(\d+)\.(\d+)", out)
         version: tuple[int, int] = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
         checks.append(

@@ -50,7 +50,7 @@ from typing import Any
 from aew import errors
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_lead
-from aew.harness import bridge, broker_liveness, steering_loop, tool_calls
+from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
 from aew.util import read_text_input
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -502,12 +502,15 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                                     "(it is removed from the session's environment), or take a vacant seat with "
                                     "--acquire (the credential then exists only inside this session)")
     broker = LeadBroker(engine, token)
-    broker.start()
-    child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
-    try:
-        code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
-    finally:
-        broker.close()
+    # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
+    # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
+    with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
+        broker.start()
+        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
+        try:
+            code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
+        finally:
+            broker.close()
     out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership}
     state = engine.store.read()
     if acquire and not broker.superseded:

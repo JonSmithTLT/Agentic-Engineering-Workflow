@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import HarnessIncompatible
+from aew.harness import models
 from aew.harness.contract import LaunchContract
 from aew.harness.procs import ProcessTree
 
@@ -44,6 +45,14 @@ class HarnessAdapter(ABC):
         ``agent_env`` is the complete environment for every model-controlled process: it carries no AEW
         credential, no provider secret and no harness server password.
         """
+
+    @classmethod
+    def model_identity(cls, provider: str | None, model: str, *, field: str = "model") -> models.ModelIdentity:
+        """A profile's model as this harness names it: the raw id, AEW's provider/model pair and the harness reference
+        (ADR-0010 amendment 2026-10-11). Every place that resolves a profile's model asks the adapter, so the rule has
+        one owner. The default is the ``provider/model`` rule (:mod:`aew.harness.models`); an adapter whose harness
+        names models differently overrides it."""
+        return models.from_profile(provider, model, field=field)
 
     @classmethod
     def launch_bound_s(cls) -> float:

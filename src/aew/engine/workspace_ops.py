@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,9 +14,16 @@ from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.queue_ops import is_custodian
-from aew.errors import ConcurrencyLimit, DependencyUnsatisfied, IllegalTransition, NotFound, PermissionDenied
+from aew.errors import (
+    ConcurrencyLimit,
+    DependencyUnsatisfied,
+    HarnessIncompatible,
+    IllegalTransition,
+    NotFound,
+    PermissionDenied,
+)
+from aew.harness import agentenv, registry
 from aew.harness import contract as K
-from aew.harness import registry
 from aew.knowledge.records import format_id
 from aew.policy import execution as X
 from aew.roles import NON_MUTATING_EXECUTORS
@@ -87,7 +95,8 @@ class Invocations:
         """The harness/provider/model/effort pin for a new invocation (ADR-0010); never changed afterwards."""
         policy, sha = self.k.execution_policy()
         return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
-                         risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request)
+                         risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request,
+                         identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
 
     def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
         inv = state["invocations"][inv_id]
@@ -145,9 +154,24 @@ class Invocations:
                 f"{inv_id} has no execution profile, so no harness, provider or model is pinned for it: configure "
                 "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
         registry.check(profile["harness"])
+        self._require_provider_env()
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction
             self.invocation_workspace(state, inv)  # its workspace, candidate or observation is still live
         return inv
+
+    def _require_provider_env(self) -> None:
+        """Refuse a launch, before anything is committed, when a variable the execution policy's ``provider_env``
+        names cannot reach the run's harness server from this process's environment, which is the one the run's
+        supervisor inherits (``harness_ops.supervisor_env``). Before, the server started without it and the run failed
+        as ``provider_auth_failed``, blaming the provider (M4 user acceptance test). The names are the policy's current
+        ones, as the launch contract's are."""
+        policy, _ = self.k.execution_policy()
+        problems = agentenv.provider_env_problems([str(n) for n in (policy or {}).get("provider_env") or []],
+                                                  os.environ)
+        if problems:
+            raise HarnessIncompatible("the execution policy's provider_env cannot reach the run: "
+                                      + "; ".join(why for _, why in problems), reason="provider_env",
+                                      variables=[name for name, _ in problems])
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
         """``--launch`` on a dispatch: run 1 adopts the credential this transaction issued."""

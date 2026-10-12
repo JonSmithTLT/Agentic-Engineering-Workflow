@@ -114,7 +114,8 @@
     },
     "profile": {
       "type": "object",
-      "required": ["provider", "model"],
+      "description": "One execution profile. model is the id exactly as the harness lists it (provider/model) or, with provider set, the bare id; the harness adapter's model identity maps it to the pinned provider and model (ADR-0010 amendment 2026-10-11): a provider's own prefix is removed, a missing provider is taken from the prefix, and a prefix naming another provider is refused.",
+      "required": ["model"],
       "additionalProperties": false,
       "properties": {
         "harness": {"x-aew-class": "legality_affecting", "type": "string", "minLength": 1},

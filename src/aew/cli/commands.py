@@ -279,6 +279,10 @@ def _doctor(args: argparse.Namespace) -> Any:
     from aew import doctor
 
     report = doctor.run(cwd=args.cwd)
+    # Both output modes exit 1 when any line is FAIL (WARN and UNAVAILABLE stay 0): the JSON report carries
+    # `ok: false`, which main turns into 1, and the rendered text says the same through the command's exit status
+    # (review of PR #214, F1: a FAIL the exit status reported as success depended on the output format).
+    args.exit_status = lambda _result: 0 if report["ok"] else 1
     return report if args.json else doctor.render(report)
 
 

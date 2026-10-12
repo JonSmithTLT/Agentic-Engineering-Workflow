@@ -102,52 +102,79 @@ def _holders_text(directory: Path, extra: list[str]) -> str:
 
 
 class OwnChildren:
-    """Linux: every child this process creates, by (pid, start time), recorded as it is created. The controller's
-    own children are exactly these: ``subprocess`` (``_fork_exec``, ``os.posix_spawn``), ``multiprocessing``
-    (``_posixsubprocess.fork_exec``, ``os.fork``), ``pty.fork`` (``os.forkpty``) and direct ``os.fork`` calls all go
-    through the functions wrapped here. Any other child of the controller is an orphan it adopted as a subreaper.
-    A child is recorded before its creator returns, so before it can have been reaped: its pid cannot have been reused
-    yet, and the start time read then is its own."""
+    """Linux: every child this process creates, by (pid, start time). ``subprocess`` (``_fork_exec``, and
+    ``os.posix_spawn`` where it uses that), ``multiprocessing`` (``_posixsubprocess.fork_exec``, ``os.fork``),
+    ``pty.fork`` (``os.forkpty``) and direct ``os.fork`` and ``os.posix_spawn[p]`` calls go through the functions
+    wrapped here. A zombie child of the controller that is not recorded is an orphan it adopted as a subreaper.
+
+    **Creation and recording are one step for the reaper.** The wrapper holds :attr:`lock` from before the creating call
+    until the child is recorded, and :class:`Reaper` holds it for each whole pass. So a child that exits at once is
+    never seen unrecorded: the reaper cannot take its exit status, and ``Popen.wait()`` reports it (review of #217,
+    F1: before, a child that exited between the call's return and its recording was reaped, and ``wait()`` said 0).
+
+    **What it cannot see** (review of #217, F2): a child created by C code that calls ``fork`` itself (a C extension,
+    ``ctypes``), and ``os.system`` and ``os.popen``'s shell. Nothing in AEW or its tests creates children that way
+    today; such a child would be reaped if it exited before its creator waited for it. :meth:`install` refuses to run
+    when this Python's ``subprocess`` path cannot be wrapped (a private name gone), rather than silently recording
+    nothing."""
+
+    seam: Any = None  # tests only: called with the pid between the creating call and its recording
 
     def __init__(self) -> None:
         self.ids: set[tuple[int, int]] = set()
-        self._lock = threading.Lock()
+        self.lock = threading.RLock()
 
     def add(self, pid: int) -> None:
         start = proctree.linux_start(pid)
         if start is not None:
-            with self._lock:
+            with self.lock:
                 self.ids.add((pid, start))
 
     def __contains__(self, ident: object) -> bool:
-        with self._lock:
+        with self.lock:
             return ident in self.ids
 
-    def _wrap(self, owner: Any, name: str, pid_of: Any) -> None:
+    def _wrap(self, owner: Any, name: str, pid_of: Any) -> bool:
         original = getattr(owner, name, None)
-        if original is None or getattr(original, "_aew_own_children", False):
-            return
+        if original is None:
+            return False
+        if getattr(original, "_aew_own_children", False):
+            return True
 
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            out = original(*args, **kwargs)
-            pid = pid_of(out)
-            if pid:  # 0 in a forked child: nothing to record there
-                self.add(pid)
-            return out
+            with self.lock:  # the reaper waits: the child is recorded before it can be reaped
+                out = original(*args, **kwargs)
+                pid = pid_of(out)
+                if pid:  # 0 in a forked child: nothing to record there
+                    if self.seam is not None:
+                        self.seam(pid)
+                    self.add(pid)
+                return out
 
         wrapper._aew_own_children = True  # type: ignore[attr-defined]
         setattr(owner, name, wrapper)
+        return True
 
     def install(self) -> None:
+        """Wrap every creating function this Python has. Refuses, before wrapping anything, when ``subprocess``'s own
+        path cannot be wrapped: the reaper would then take the status of every child a test starts."""
         import _posixsubprocess  # type: ignore[import-not-found]
 
         def first(out: Any) -> int:
             return out[0] if isinstance(out, tuple) else out
 
-        self._wrap(subprocess, "_fork_exec", first)
-        self._wrap(_posixsubprocess, "fork_exec", first)
-        for name in ("fork", "forkpty", "posix_spawn", "posix_spawnp"):
-            self._wrap(os, name, first)
+        targets = [(subprocess, "_fork_exec"), (_posixsubprocess, "fork_exec")]
+        targets += [(os, name) for name in ("fork", "forkpty", "posix_spawn", "posix_spawnp")]
+        needed = [(subprocess, "_fork_exec"), (_posixsubprocess, "fork_exec"), (os, "fork")]
+        if getattr(subprocess, "_USE_POSIX_SPAWN", False):
+            needed.append((os, "posix_spawn"))
+        missing = [f"{owner.__name__}.{name}" for owner, name in needed if getattr(owner, name, None) is None]
+        if missing:
+            raise RuntimeError(f"the session deadline cannot record this process's own children on this Python "
+                               f"({sys.version.split()[0]}): {', '.join(missing)} not found. Its reaper would take "
+                               "their exit status, so it refuses to start")
+        for owner, name in targets:
+            self._wrap(owner, name, first)
 
 
 class Reaper:
@@ -170,6 +197,10 @@ class Reaper:
         threading.Thread(target=self._run, name="aew-session-reaper", daemon=True).start()
 
     def poll(self) -> None:
+        with self.own.lock:  # one whole pass: a child being created is recorded before or after it, never during
+            self._poll()
+
+    def _poll(self) -> None:
         for pid in proctree.linux_children():
             state = proctree.linux_state(pid)
             if state is None or state[0] != "Z" or (pid, state[1]) in self.own:

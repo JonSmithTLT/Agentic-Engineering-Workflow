@@ -301,3 +301,62 @@ def test_a_helper_childs_native_crash_names_itself(tmp_path):
                                            encoding="utf-8")
     assert autopsy.native_crashes(tmp_path) == ("fatal-42.txt: Windows fatal exception: access violation "
                                                 "(see the file for every thread's stack)")
+
+
+LINUX_ONLY = pytest.mark.skipif(not sys.platform.startswith("linux"),
+                                reason="the session's subreaper and its reaper are Linux's; Windows uses the job")
+
+
+def _status_with_a_reap_in_the_record_window(own) -> tuple[int, int]:
+    """Create a child through ``own``'s wrapper that exits at once, and run a reaper pass while the child is a zombie
+    and not yet recorded (the seam, ordered by events). Returns its ``wait()`` status and how many the pass reaped."""
+    import threading
+    import types
+
+    import session_deadline as sd
+
+    fake = types.SimpleNamespace(spawn=lambda: subprocess.Popen([sys.executable, "-c", "raise SystemExit(3)"]))
+    own._wrap(fake, "spawn", lambda proc: proc.pid)
+    reaper = sd.Reaper(own)
+    passed = threading.Event()
+
+    def seam(pid):
+        bounds.bounded_wait("test.child_is_a_zombie", lambda: (proctree.linux_state(pid) or ("",))[0] == "Z",
+                            seconds=30)
+        threading.Thread(target=lambda: (reaper.poll(), passed.set()), daemon=True).start()
+        passed.wait(2)  # unlocked: the pass reaps here; locked: it waits for the recording, after this seam
+
+    own.seam = seam
+    proc = fake.spawn()
+    status = proc.wait(30)
+    passed.wait(30)
+    return status, reaper.reaped
+
+
+@LINUX_ONLY
+def test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status():
+    """Review of #217, F1: a child that ends between its creating call's return and its recording was reaped by the
+    session's reaper, and ``wait()`` then said 0. Creation and recording are now one step for the reaper (its lock).
+    Differential, in one test: without the lock the same sequence loses the status."""
+    import contextlib
+
+    import session_deadline as sd
+
+    assert _status_with_a_reap_in_the_record_window(sd.OwnChildren()) == (3, 0)
+    unlocked = sd.OwnChildren()
+    unlocked.lock = contextlib.nullcontext()  # the earlier code: nothing holds the reaper off
+    status, reaped = _status_with_a_reap_in_the_record_window(unlocked)
+    assert reaped >= 1 and status != 3, (status, reaped)
+
+
+@LINUX_ONLY
+def test_the_reaper_refuses_to_start_where_it_cannot_record_this_processs_children(monkeypatch):
+    """Review of #217, F2: a Python whose ``subprocess`` path is not where the wrapper looks makes the session refuse,
+    loudly and before wrapping anything, instead of reaping every child a test starts."""
+    import session_deadline as sd
+
+    fork = os.fork
+    monkeypatch.delattr(subprocess, "_fork_exec")
+    with pytest.raises(RuntimeError, match="subprocess._fork_exec not found"):
+        sd.OwnChildren().install()
+    assert os.fork is fork  # nothing was wrapped

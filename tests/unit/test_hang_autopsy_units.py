@@ -428,3 +428,8 @@ def test_a_job_whose_timeout_does_not_carry_the_clearance_is_named(tmp_path):
     found = bounds.restored_timeout_problems(tmp_path, {"w.yml": {"short": 20, "right": 20}})
     assert [p.split(":")[0] for p in found] == ["w.yml short", "w.yml unrecorded"], found
     assert "it would lose test time" in found[0]
+    # a stale row: its job is gone, or no longer sets a deadline step (review of #217 at c2685a4)
+    stale = bounds.restored_timeout_problems(tmp_path, {"w.yml": {"short": 20, "right": 20, "unrecorded": 20,
+                                                                   "gone": 30, "no_deadline": 5}})
+    assert [p.split(":")[0] for p in stale] == ["w.yml short", "w.yml gone", "w.yml no_deadline"], stale
+    assert "no such job" in stale[1] and "sets no AEW_JOB_DEADLINE" in stale[2]

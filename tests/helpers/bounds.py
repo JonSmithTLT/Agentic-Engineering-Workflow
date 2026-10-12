@@ -240,15 +240,20 @@ def job_deadline_problems(workflows: Path) -> list[str]:
 def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float]]) -> list[str]:
     """Every job that sets ``AEW_JOB_DEADLINE`` keeps its test time: its ``timeout-minutes`` is its timeout before the
     session deadline (``before``, by workflow file and job) plus the deadline's clearance, ``JOB_MARGIN_S`` and two
-    ``DEADLINE_MARGIN_S``. A job missing from ``before`` is named too, so a new one is decided, never left out."""
+    ``DEADLINE_MARGIN_S``. A job missing from ``before`` is named too, so a new one is decided, never left out; and
+    so is a row of ``before`` whose job is gone or no longer sets a deadline step, so the table never keeps a stale
+    row (review of #217 at c2685a4)."""
     import yaml
 
     clearance = (JOB_MARGIN_S + 2 * DEADLINE_MARGIN_S) / 60
     problems = []
+    present: dict[tuple[str, str], bool] = {}  # (file, job) -> whether it sets a deadline step
     for path in sorted(workflows.glob("*.yml")):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for name, job in (doc.get("jobs") or {}).items():
-            if not any(JOB_DEADLINE_RE.search(str(st.get("run") or "")) for st in job.get("steps") or []):
+            sets = any(JOB_DEADLINE_RE.search(str(st.get("run") or "")) for st in (job or {}).get("steps") or [])
+            present[(path.name, name)] = sets
+            if not sets:
                 continue
             was = before.get(path.name, {}).get(name)
             have = float(job.get("timeout-minutes") or 0)
@@ -257,4 +262,11 @@ def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float
             elif have != was + clearance:
                 problems.append(f"{path.name} {name}: timeout-minutes {have:g}, not its {was:g} before G3a plus the "
                                 f"session deadline's clearance ({clearance:g}): it would lose test time")
+    for file, jobs in sorted(before.items()):
+        for name in sorted(jobs):
+            if (file, name) not in present:
+                problems.append(f"{file} {name}: a row of the table, but no such job: remove the row")
+            elif not present[(file, name)]:
+                problems.append(f"{file} {name}: a row of the table, but the job sets no AEW_JOB_DEADLINE: remove the "
+                                "row (or restore the step)")
     return problems

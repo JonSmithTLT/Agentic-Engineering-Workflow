@@ -914,23 +914,65 @@ def _literals(node: ast.AST) -> tuple[str, ...]:
     return ()
 
 
-def _state_branches(fn: ast.FunctionDef) -> list[tuple[tuple[Constraint, ...], tuple[str, ...]]]:
+UNRESOLVED = "?"  # a state constant the scan could not resolve: named, never dropped (the agreement test refuses it)
+
+
+@cache
+def engine_constants() -> dict[str, tuple[str, ...]]:
+    """Every module-level string, or collection of strings, that aew.engine's modules define or import, by name: what
+    a guard's `st in EXECUTE_STATES` compares against (the re-review's N4)."""
+    out: dict[str, tuple[str, ...]] = {}
+    for f in sorted(ENGINE_SRC.glob("*.py")):
+        module = importlib.import_module(f"aew.engine.{f.stem}")
+        for name, value in vars(module).items():
+            if not name.isupper() or name in out:
+                continue
+            if isinstance(value, str):
+                out[name] = (value,)
+            elif isinstance(value, (tuple, list, set, frozenset)) and value and all(isinstance(v, str) for v in value):
+                out[name] = tuple(sorted(value)) if isinstance(value, (set, frozenset)) else tuple(value)
+    return out
+
+
+def _state_branches(fn: ast.FunctionDef, constants: dict[str, tuple[str, ...]] | None = None
+                    ) -> list[tuple[tuple[Constraint, ...], tuple[str, ...]]]:
     """The longest if/elif chain in ``fn`` whose links test a unit's state: per link, the `facts.get(...)` equalities
-    its test (or an earlier link's, negated) sets, and the states it selects (in its test, or its body's tests)."""
+    its test (or an earlier link's, negated) sets, and the states it selects (in its test, or its body's tests).
+
+    A unit is a name assigned from an expression that indexes `"work"` or calls a `unit(...)` accessor
+    (`self.units.unit(state, w)`); its state is `unit["state"]`, `unit.get("state")`, or a name assigned from either.
+    The states compared are string literals, collections of them, or a constant's name, resolved through
+    ``constants`` (default: :func:`engine_constants`); an unresolved name is kept as `?NAME` (the re-review's N4)."""
+    table = engine_constants() if constants is None else constants
     assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)]
-    units = {a.targets[0].id for a in assigns  # type: ignore[union-attr]
-             if any(isinstance(c, ast.Constant) and c.value == "work" for c in ast.walk(a.value))}
 
-    def is_state_subscript(e: ast.AST) -> bool:
-        return isinstance(e, ast.Subscript) and isinstance(e.slice, ast.Constant) and e.slice.value == "state" \
-            and isinstance(e.value, ast.Name) and e.value.id in units
+    def unit_source(e: ast.AST) -> bool:
+        return any(isinstance(c, ast.Constant) and c.value == "work" for c in ast.walk(e)) or any(
+            isinstance(c, ast.Call) and (isinstance(c.func, ast.Attribute) and c.func.attr == "unit"
+                                         or isinstance(c.func, ast.Name) and c.func.id == "unit")
+            for c in ast.walk(e))
 
-    names = {a.targets[0].id for a in assigns if is_state_subscript(a.value)}  # type: ignore[union-attr]
+    units = {a.targets[0].id for a in assigns if unit_source(a.value)}  # type: ignore[union-attr]
+
+    def is_state_read(e: ast.AST) -> bool:
+        if isinstance(e, ast.Subscript):
+            return isinstance(e.slice, ast.Constant) and e.slice.value == "state" \
+                and isinstance(e.value, ast.Name) and e.value.id in units
+        return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "get" \
+            and isinstance(e.func.value, ast.Name) and e.func.value.id in units \
+            and bool(e.args) and isinstance(e.args[0], ast.Constant) and e.args[0].value == "state"
+
+    names = {a.targets[0].id for a in assigns if is_state_read(a.value)}  # type: ignore[union-attr]
+
+    def compared(node: ast.AST) -> tuple[str, ...]:
+        if isinstance(node, ast.Name):
+            return table.get(node.id, (f"{UNRESOLVED}{node.id}",))
+        return _literals(node)
 
     def states(tests: list[ast.AST]) -> tuple[str, ...]:
         return tuple(s for t in tests for c in ast.walk(t) if isinstance(c, ast.Compare)
-                     and (is_state_subscript(c.left) or isinstance(c.left, ast.Name) and c.left.id in names)
-                     for s in _literals(c.comparators[0]))
+                     and (is_state_read(c.left) or isinstance(c.left, ast.Name) and c.left.id in names)
+                     for s in compared(c.comparators[0]))
 
     def facts(test: ast.AST) -> list[Constraint]:
         return [(c.left.args[0].value, c.comparators[0].value, isinstance(c.ops[0], ast.Eq),
@@ -959,25 +1001,59 @@ def _state_branches(fn: ast.FunctionDef) -> list[tuple[tuple[Constraint, ...], t
 
 
 @cache
-def guard_branches() -> dict[str, list[tuple[tuple[Constraint, ...], tuple[str, ...]]]]:
-    """Every registered dispatch guard that selects among a unit's states, with its branches."""
+def registered_guards() -> dict[str, tuple[str, ast.FunctionDef]]:
+    """Every `DispatchGuard(name, self._method)` registration under src/aew/engine: its module and its function."""
     methods: dict[tuple[str, str], ast.FunctionDef] = {}
     registered: dict[str, tuple[str, str]] = {}
     for f in sorted(ENGINE_SRC.glob("*.py")):
         for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
             if isinstance(node, ast.FunctionDef):
-                methods[(f.name, node.name)] = node
+                methods[(f.stem, node.name)] = node
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "DispatchGuard" \
                     and len(node.args) >= 2 and isinstance(node.args[0], ast.Constant) \
                     and isinstance(node.args[1], ast.Attribute):
-                registered[str(node.args[0].value)] = (f.name, node.args[1].attr)
+                registered[str(node.args[0].value)] = (f.stem, node.args[1].attr)
+    return {g: (stem, methods[(stem, attr)]) for g, (stem, attr) in registered.items() if (stem, attr) in methods}
+
+
+def module_constants(stem: str) -> dict[str, tuple[str, ...]]:
+    """The constants a guard's own module sees (its definitions and imports) first, then the engine's."""
+    own: dict[str, tuple[str, ...]] = {}
+    for name, value in vars(importlib.import_module(f"aew.engine.{stem}")).items():
+        if name.isupper() and isinstance(value, str):
+            own[name] = (value,)
+        elif name.isupper() and isinstance(value, (tuple, list, set, frozenset)) and value \
+                and all(isinstance(v, str) for v in value):
+            own[name] = tuple(sorted(value)) if isinstance(value, (set, frozenset)) else tuple(value)
+    return {**engine_constants(), **own}
+
+
+@cache
+def guard_branches() -> dict[str, list[tuple[tuple[Constraint, ...], tuple[str, ...]]]]:
+    """Every registered dispatch guard that selects among a unit's states, with its branches."""
     out = {}
-    for guard, where in registered.items():
-        fn = methods.get(where)
-        branches = _state_branches(fn) if fn is not None else []
+    for guard, (stem, fn) in registered_guards().items():
+        branches = _state_branches(fn, module_constants(stem))
         if branches:
             out[guard] = branches
     return out
+
+
+# The second, form-agnostic detector (the re-review's N4): an if/elif line of a guard that compares anything that
+# reads like a state (`["state"]`, `.get("state")`, a name `st` or `state`, a `*_STATES` constant). Guards with two such
+# lines must be exactly `guard_branches()`, less the exclusions below, each with its reason. Two detectors written
+# differently must agree, so a chain one of them cannot read fails here instead of shrinking the derived gaps.
+BROAD_STATE_LINE = re.compile(
+    r"""(\[['"]state['"]\]|\.get\(['"]state['"]\)|\bst\b|\b[A-Z_]*STATES?\b).*(==|!=|\bnot in\b|\bin\b)"""
+    r"""|(==|!=|\bin\b).*(\[['"]state['"]\]|\.get\(['"]state['"]\)|\b[A-Z_]*STATES?\b)""")
+BROAD_EXCLUSIONS = {"queue.order": "it selects among a queue entry's states, not a unit's (`integrate.prepare`, a "
+                                   "decided command)"}
+
+
+def broad_state_guards(guards: dict[str, ast.FunctionDef]) -> set[str]:
+    return {g for g, fn in guards.items()
+            if sum(1 for line in ast.unparse(fn).splitlines() if line.strip().startswith(("if ", "elif "))
+                   and BROAD_STATE_LINE.search(line)) >= 2}
 
 
 def state_uses(name: str) -> list[tuple[str, str, tuple[Constraint, ...], str]]:
@@ -2445,6 +2521,68 @@ def test_the_state_selected_scan_reads_the_guards():
     assert parsed(two.split("    elif")[0]) == []  # one precondition: no branch
     entry = two.replace("state['work'][w]", "state['queue']['entries'][w]")
     assert parsed(entry) == []  # a queue entry's state is not a unit's
+
+
+# The same two-link unit-state chain, written each way the engine's code reads a unit and its states (the re-review's
+# N4 probe, `state-scan-recognition.py`): each must be recognised by both detectors.
+_N4_BODY = "    if st == 'A':\n        x = 1\n    elif st in {'B', 'C'}:\n        x = 2\n"
+N4_FORMS = {
+    "work subscript": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n" + _N4_BODY,
+    "unit accessor": "def g(self, state, w, facts):\n    unit = self.units.unit(state, w)\n    st = unit['state']\n"
+                     + _N4_BODY,
+    ".get('state')": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit.get('state')\n"
+                     + _N4_BODY,
+    "inline": "def g(self, state, w, facts):\n    unit = state['work'][w]\n"
+              "    if unit['state'] == 'A':\n        x = 1\n    elif unit['state'] in {'B', 'C'}:\n        x = 2\n",
+    "nested check()": "def g(self, state, w, facts):\n    def check():\n        unit = state['work'][w]\n"
+                      "        st = unit['state']\n        if st == 'A':\n            x = 1\n"
+                      "        elif st in {'B', 'C'}:\n            x = 2\n    return checked(check)\n",
+    "states constant": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
+                       "    if st in EXECUTE_STATES:\n        x = 1\n    elif st == 'REVIEW_PENDING':\n        x = 2\n",
+}
+
+
+def _parsed(src: str) -> ast.FunctionDef:
+    fn = ast.parse(src).body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    return fn
+
+
+@pytest.mark.parametrize("form", sorted(N4_FORMS))
+def test_both_state_detectors_read_every_form(form):
+    """The re-review's N4: each written form of a unit-state chain is a chain to both detectors, with its states
+    resolved (a module constant through the engine's own constants)."""
+    fn = _parsed(N4_FORMS[form])
+    branches = _state_branches(fn)
+    assert len(branches) == 2 and broad_state_guards({form: fn}) == {form}
+    assert not any(s.startswith(UNRESOLVED) for _, states in branches for s in states)
+    if form == "states constant":
+        assert branches[0][1] == tuple(sorted(engine_constants()["EXECUTE_STATES"]))
+
+
+def test_the_two_state_detectors_agree_on_the_engine():
+    """The re-review's N4, the class check: over every registered guard, the form-agnostic detector finds exactly the
+    fourth scan's guards plus the stated exclusions, and no state the scan derived is unresolved. A guard the scan
+    cannot read fails here (the differential below), never silently dropping its uses."""
+    guards = {g: fn for g, (_, fn) in registered_guards().items()}
+    assert len(guards) >= 28
+    broad = broad_state_guards(guards)
+    assert broad - set(BROAD_EXCLUSIONS) == set(guard_branches()), (sorted(broad), sorted(guard_branches()))
+    assert set(BROAD_EXCLUSIONS) <= broad  # an exclusion that no longer matches is stale: drop it
+    assert not any(s.startswith(UNRESOLVED) for branches in guard_branches().values()
+                   for _, states in branches for s in states)
+    # Differential: a guard the recogniser cannot read (its chain on a value it cannot tie to a unit) is found by the
+    # broad detector alone, so the agreement fails.
+    unread = _parsed("def g(self, state, w, facts):\n    st = lookup(state, w)\n" + _N4_BODY)
+    assert broad_state_guards({"unread": unread}) == {"unread"} and _state_branches(unread) == []
+    # And the other way: a chain on a differently named state variable is the recogniser's alone.
+    renamed = _parsed(N4_FORMS["work subscript"].replace("st ", "phase ").replace("st =", "phase ="))
+    assert len(_state_branches(renamed)) == 2 and broad_state_guards({"renamed": renamed}) == set()
+    # What both miss, pinned as a probe (surface-map.md's "cannot see" list): a state read through an arbitrary helper
+    # into a variable not named like a state.
+    neither = _parsed(N4_FORMS["work subscript"].replace("st = unit['state']", "phase = lookup(state, w)")
+                      .replace("st ", "phase "))
+    assert _state_branches(neither) == [] and broad_state_guards({"neither": neither}) == set()
 
 
 def test_a_home_covers_a_state_selected_use_only_if_it_starts_there(monkeypatch):

@@ -215,6 +215,18 @@ registry records the plan, not the decision:
     unit's states (two links or more, read from the guard's source) gives its entrypoint one use per state. Today
     that is `invoke.slot`: a prepared COMMIT_READY with scope integration, ASSIGNED and RUNNING (implementer),
     REVIEW_PENDING (reviewer) and VERIFY_PENDING (verifier).
+
+    **What counts as a unit's state** (the re-review's N4):
+    - **The unit:** a name assigned from an expression that indexes `"work"`, or that calls a `unit(...)` accessor
+      (`self.units.unit(state, w)`).
+    - **Its state:** `unit["state"]`, `unit.get("state")`, or a name assigned from either.
+    - **The states compared:** string literals, collections of them, or a constant's name resolved through the
+      guard's module and the engine's constants (`st in EXECUTE_STATES`).
+
+    **A second, form-agnostic detector must agree.** It counts a guard's `if`/`elif` lines that compare anything
+    reading like a state. Over every registered guard, its set must equal the scan's, less stated exclusions:
+    `queue.order` selects among a queue entry's states, not a unit's. So a chain one detector cannot read fails the
+    test rather than quietly dropping uses.
   - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
     credential, the expected revisions, the print-only options).
 
@@ -253,7 +265,10 @@ registry records the plan, not the decision:
   - A built stage's earlier steps are not checked against a state-selected use's state. The scan credits a dispatch
     step that has no state-producing step before it with every branch its arguments select.
   - A state check inside a helper a guard calls (`require_launchable`, for example) is a single precondition, not a
-    branch. A guard selecting by something other than an if/elif chain on the unit's state is not seen.
+    branch.
+  - A guard selecting by something other than an if/elif chain on the unit's state is not seen.
+  - Both state detectors miss a chain on a state read through an arbitrary helper into a variable not named like a
+    state. The test pins this as a probe. Either detector alone seeing a chain fails the agreement test.
   - A built `resolve` choice that runs `work.transition` covers no edge until its edges have an owner in the code.
   - Routes of two or more steps are not scanned.
   - A use that is neither an edge, an entrypoint, a state-selected entrypoint use nor an option is not seen.

@@ -32,8 +32,9 @@ workspaces root, ignored files and `.git/`'s refs, config and worktrees.
 Of 42 such surfaces, 37 run their real path, and 5 run only to a refusal on the sample (no harness run, no archived
 record, no operator endpoint). `context pack` is declared mutating, proved on the sample by removing its pack and
 running it. A keep-out claim is proved differentially: the command is refused in a real Lead session's
-environment (built from `lead_broker.ENV_NAMES`) and not refused that way outside one (`integrate custody`). A
-typed-surface transport (`lead mcp`) is the Lead's door, not a keep-out. Every check that reads the code has an
+environment (built from `lead_broker.ENV_NAMES`), with a refusal whose details name the session
+(`reason: lead_session`), and not refused that way outside one (`integrate custody`). The typed surface's two
+transports are the Lead's door, not a keep-out, and `NOT_RELAYED` is pinned to exactly them. Every check that reads the code has an
 ablation test.
 
 **The end-state metric** (designer, 2026-10-12) is not one typed equivalent per command. It is every Lead lifecycle

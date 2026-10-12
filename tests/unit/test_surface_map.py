@@ -30,6 +30,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -336,7 +337,7 @@ def check_fields(reg: dict[str, Any]) -> list[str]:
 
 
 def check_users(reg: dict[str, Any]) -> list[str]:
-    out, workers = [], worker_commands()
+    out, workers = not_relayed_problems(), worker_commands()
     for kind, e in entries(reg):
         name, users = str(e.get("name")), set(e.get("users") or [])
         if kind == "tool":
@@ -349,12 +350,30 @@ def check_users(reg: dict[str, Any]) -> list[str]:
             out.append(f"`aew {name}` is operator-only (lead_broker.OPERATOR_ONLY): its users must be [operator]")
         if lead_reachable(name) and "lead" not in users:
             out.append(f"`aew {name}` is the Lead's (lead_broker.LEAD_REACHABLE): its users must name lead")
-        if frozenset(name.split()) in lead_broker.NOT_RELAYED and not users & {"lead", "internal"}:
+        if frozenset(name.split()) in transports() and not users & {"lead", "internal"}:
             out.append(f"`aew {name}` is a typed-surface transport: its users must name lead or internal")
         if (name in workers) != ("worker" in users):
             out.append(f"`aew {name}`: `worker` must be named exactly for the worker bridge's commands "
                        f"({sorted(workers)})")
     return out
+
+
+# The typed surface's two transports, the only commands lead_broker.NOT_RELAYED may hold (PR 215 fifth review,
+# finding 2): in the product that list only stops relaying, so membership proves nothing by itself. Pinned by its
+# digest; a transport may only leave it (TRANSPORTS_GRADUATED).
+TRANSPORTS: frozenset[str] = frozenset({"lead mcp", "lead tool"})
+TRANSPORTS_DIGEST = "15bcc1cc1dafdec415084b309d28c32ec9179410663df3c715a1f3270a8e8f06"
+TRANSPORTS_GRADUATED: frozenset[str] = frozenset()
+
+
+def transports() -> set[frozenset[str]]:
+    return {frozenset(t.split()) for t in TRANSPORTS - TRANSPORTS_GRADUATED}
+
+
+def not_relayed_problems() -> list[str]:
+    return [f"lead_broker.NOT_RELAYED holds `aew {' '.join(sorted(p))}`, which is not one of the typed surface's "
+            "pinned transports: NOT_RELAYED only stops relaying, so a command in it is not kept from the Lead's shell"
+            for p in lead_broker.NOT_RELAYED if p not in transports()]
 
 
 def check_home(reg: dict[str, Any]) -> list[str]:
@@ -879,8 +898,9 @@ def lead_kept_out(name: str, e: dict[str, Any]) -> str | None:
         return "it takes the Lead credential: lead_broker classifies it (LEAD_REACHABLE or OPERATOR_ONLY)"
     if operator_only(name):
         return "lead_broker.OPERATOR_ONLY refuses it in a Lead session"
-    if frozenset(name.split()) in lead_broker.NOT_RELAYED:
-        return "a typed-surface transport (lead_broker.NOT_RELAYED): it commits only through the Lead broker's checks"
+    if frozenset(name.split()) in transports() & set(lead_broker.NOT_RELAYED):
+        return "a typed-surface transport (pinned, and in lead_broker.NOT_RELAYED): it commits only through the Lead " \
+               "broker's checks"
     if "invocation_token" in ds:
         return "it acts only with an invocation credential, which the Lead does not hold"
     if e.get("home") == "internal" and not launcher_problem(name, e):
@@ -906,13 +926,51 @@ def launcher_argv(code: str) -> list[str] | str:
     if callable(obj):
         params = [p for p in inspect.signature(obj).parameters.values()
                   if p.default is inspect.Parameter.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
-        try:
-            obj = obj(*[_synthetic(p) for p in params])
-        except Exception as exc:  # noqa: BLE001 (any failure means it produces no argv)
-            return f"its launcher {code!r} cannot be called with synthetic arguments ({exc!r})"
+        with tempfile.TemporaryDirectory(prefix="aew-g1-launcher-") as where, capture_spawns() as captured:
+            here = os.getcwd()
+            os.chdir(where)  # anything it writes lands here, never in the checkout
+            try:
+                obj = obj(*[_synthetic(p) for p in params])
+            except _Captured:
+                obj = captured[0]
+            except Exception as exc:  # noqa: BLE001 (any failure means it produces no argv)
+                return f"its launcher {code!r} cannot be called with synthetic arguments ({exc!r})"
+            finally:
+                os.chdir(here)
     if not isinstance(obj, (list, tuple)) or not obj or not all(isinstance(a, str) for a in obj):
         return f"its launcher {code!r} produces no argv (a list of strings), but {type(obj).__name__}"
     return [str(a) for a in obj]
+
+
+class _Captured(BaseException):
+    """Raised in place of starting a process: a launcher is resolved, never run (PR 215 fifth review, finding 3)."""
+
+
+@contextlib.contextmanager
+def capture_spawns():
+    """While active, every way to start a process records the argv it was given and raises `_Captured` instead:
+    `subprocess.Popen`, `procs.spawn_detached`, and `os.spawn*`, `os.exec*` and `os.posix_spawn*`."""
+    from unittest import mock
+
+    from aew.harness import procs
+
+    captured: list[list[str]] = []
+
+    def record(*args: Any, **kwargs: Any) -> Any:
+        for a in [*args, *kwargs.values()]:
+            if isinstance(a, (list, tuple)) and a and all(isinstance(x, str) for x in a):
+                captured.append([str(x) for x in a])
+                break
+        raise _Captured
+
+    names = [n for n in dir(os) if n.startswith(("spawn", "exec", "posix_spawn")) and callable(getattr(os, n))]
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(subprocess, "Popen", record))
+        stack.enter_context(mock.patch.object(procs, "spawn_detached", record))
+        for n in names:
+            stack.enter_context(mock.patch.object(os, n, record))
+        stack.enter_context(mock.patch.dict(os.environ, {"AEW_CUSTODY_WORKER": ""}))
+        yield captured
 
 
 def launched_command(argv: list[str]) -> str | None:
@@ -963,7 +1021,7 @@ def claims_lead_kept_out(name: str, e: dict[str, Any]) -> bool:
     """A claim that the Lead is kept out: `lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, or an internal home.
     A typed-surface transport (`NOT_RELAYED`) is the Lead's door by design, not a keep-out (fourth review, finding 4):
     `users` and `lead_reachability` cover it."""
-    if frozenset(name.split()) in lead_broker.NOT_RELAYED:
+    if frozenset(name.split()) in transports() & set(lead_broker.NOT_RELAYED):
         return False
     return bool(e.get("lead_kept_out_by")) or e.get("lead_disposition") in LEAVES_LEAD_DOORS \
         or e.get("home") == "internal"
@@ -974,6 +1032,22 @@ def _refusal(err: str) -> str | None:
         return json.loads(err)["error"]["code"]
     except (ValueError, KeyError, TypeError):
         return None
+
+
+LEAD_SESSION_REASON = "lead_session"  # custody_ops.LEAD_SESSION: the refusal's own reason code
+
+
+def session_marker(err: str) -> set[str] | None:
+    """The session variables a refusal says caused it (`details.reason == "lead_session"`, `details.variables`), or
+    ``None`` when it does not say a Lead session caused it (PR 215 fifth review, finding 1)."""
+    try:
+        details = json.loads(err)["error"].get("details") or {}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None
+    if details.get("reason") != LEAD_SESSION_REASON:
+        return None
+    variables = details.get("variables")
+    return set(variables) if isinstance(variables, list) and variables else set()
 
 
 def _refusal_text(err: str) -> tuple[str, str] | None:
@@ -1009,8 +1083,14 @@ def check_keep_out(reg: dict[str, Any]) -> list[str]:
             continue
         s = sample()
         before = snapshot(s)
-        code, _, err = run_cli(s.root, fill(argv, s), env=lead_session_env(), stdin="")
+        env = lead_session_env()
+        code, _, err = run_cli(s.root, fill(argv, s), env=env, stdin="")
         in_session = _refusal_text(err)
+        marked = session_marker(err)
+        if code != 0 and marked != set(env):
+            out.append(f"`aew {name}`: its refusal in a Lead session does not say the session caused it: its details "
+                       f"carry reason {LEAD_SESSION_REASON!r} and variables naming exactly the session's {sorted(env)} "
+                       f"(got {marked})")
         after = snapshot(s)
         if code == 0 or _refusal(err) != expected:
             out.append(f"`aew {name}` claims the Lead is kept out, but in a Lead session's environment it "
@@ -1019,6 +1099,8 @@ def check_keep_out(reg: dict[str, Any]) -> list[str]:
         if changed:
             out.append(f"`aew {name}` in a Lead session's environment changed {changed}")
         bare_code, _, bare_err = run_cli(s.root, fill(argv, s), stdin="")
+        if bare_code != 0 and session_marker(bare_err):
+            out.append(f"`aew {name}`: outside a Lead session it is still refused as if in one")
         if bare_code != 0 and _refusal_text(bare_err) == in_session:
             out.append(f"`aew {name}`: its probe is refused the same way outside a Lead session ({in_session}), so the "
                        "refusal proves nothing about the Lead session; give a probe that runs past it outside one")
@@ -1147,7 +1229,9 @@ def shrink_only_problems() -> list[str]:
             ("KEEP_OUT_LIMITED", KEEP_OUT_LIMITED, KEEP_OUT_LIMITED_DIGEST, KEEP_OUT_GRADUATED,
              "a new keep-out claim is proved by running it"),
             ("PROBE_LIMITED", PROBE_LIMITED, PROBE_LIMITED_DIGEST, PROBE_GRADUATED,
-             "a new probe must run its command's real path")):
+             "a new probe must run its command's real path"),
+            ("TRANSPORTS", TRANSPORTS, TRANSPORTS_DIGEST, TRANSPORTS_GRADUATED,
+             "a command in NOT_RELAYED is not kept from the Lead's shell")):
         if hashlib.sha256("\n".join(sorted(frozen)).encode()).hexdigest() != digest:
             out.append(f"{name} changed: an entry may only leave it, through its graduated list; {how}")
         if not graduated <= frozen:
@@ -1451,9 +1535,19 @@ def test_a_keep_out_refusal_must_be_the_lead_sessions(tmp_path, monkeypatch):
     findings = check_keep_out({"commands": [entry], "tools": []})
     assert any("refused the same way outside a Lead session" in f for f in findings), findings
 
+    def varying(self: Any, *args: Any, **kwargs: Any) -> Any:  # repro N: always denied, its message never the same
+        import time
+
+        raise _errors.PermissionDenied(f"this probe is not allowed anyway (attempt at {time.perf_counter_ns()})")
+
+    monkeypatch.setattr(Engine, "context_pack", varying)
+    findings = check_keep_out({"commands": [entry], "tools": []})
+    assert any("does not say the session caused it" in f for f in findings), findings
+
     def session_guard(self: Any, *args: Any, **kwargs: Any) -> Any:  # a real one: keyed on the session's variables
-        if any(os.environ.get(v) for v in lead_broker.ENV_NAMES):
-            raise _errors.PermissionDenied("refused in a Lead session")
+        present = [v for v in lead_broker.ENV_NAMES if os.environ.get(v)]
+        if present:
+            raise _errors.PermissionDenied("refused in a Lead session", variables=present, reason="lead_session")
         return original(self, *args, **kwargs)
 
     monkeypatch.setattr(Engine, "context_pack", session_guard)
@@ -1532,6 +1626,9 @@ ABLATIONS: list[tuple[str, Callable[[Any], None], str]] = [
     ("users", lambda mp: mp.setattr(lead_broker, "OPERATOR_ONLY",
                                     (*lead_broker.OPERATOR_ONLY, frozenset({"work", "list"}))),
      "`aew work list` is operator-only"),
+    ("users", lambda mp: mp.setattr(lead_broker, "NOT_RELAYED",
+                                    (*lead_broker.NOT_RELAYED, frozenset({"context", "pack"}))),
+     "lead_broker.NOT_RELAYED holds `aew context pack`"),
     ("disposition", lambda mp: mp.setattr(lead_broker, "LEAD_REACHABLE",
                                           lead_broker.LEAD_REACHABLE | {frozenset({"work", "list"})}),
      "`aew work list` is Lead-reachable: name its lead_disposition"),
@@ -1545,9 +1642,6 @@ ABLATIONS: list[tuple[str, Callable[[Any], None], str]] = [
     ("registered", lambda mp: mp.setitem(contract.TOOLS, "ticket_fly", contract.TOOLS["status"]._replace(
         name="ticket_fly")), "tool `ticket_fly` exists but is not registered"),
     ("live", lambda mp: mp.delitem(contract.TOOLS, "steering"), "tool `steering` is registered but no longer exists"),
-    ("ideal_path", lambda mp: (lambda rows: mp.setattr(_sys_module(), "ideal_path", lambda: {
-        **rows, "teleport": {"input": "aew work teleport", "status": "EXISTS"}}))(dict(ideal_path())),
-     "ideal path `teleport` (aew work teleport) names no live command"),
     ("codes", lambda mp: mp.setattr(errors.NotFound, "code", "NOT_FOUND_RENAMED"),
      "NOT_FOUND is not a code in aew.errors"),
     ("home", lambda mp: mp.setattr(custody_ops_module(), "worker_argv", lambda repo_root, custodian: ["aew", "status"]),
@@ -1578,6 +1672,49 @@ def test_an_enforced_check_fails_when_its_code_input_loses_the_property(check, a
     assert any(named in f for f in findings), findings
 
 
+def test_the_ideal_path_check_reads_the_vertical_module(tmp_path, monkeypatch):
+    """The check reads IDEAL_PATH from the vertical UAT's module: a row added to a copy of the module, with the reader
+    pointed at the copy, is named."""
+    text = VERTICAL.read_text(encoding="utf-8")
+    anchor = "IDEAL_PATH: dict[str, dict[str, str]] = {\n"
+    assert text.count(anchor) == 1
+    copy_path = tmp_path / "test_vertical_path_copy.py"
+    row = '    "teleport": {"input": "aew work teleport", "status": EXISTS, "ideal": "x"},' + chr(10)
+    copy_path.write_text(text.replace(anchor, anchor + row), encoding="utf-8")
+    monkeypatch.setattr(_sys_module(), "VERTICAL", copy_path)
+    ideal_path.cache_clear()
+    try:
+        assert any("ideal path `teleport` (aew work teleport) names no live command" in f
+                   for f in check_ideal_path(load()))
+    finally:
+        ideal_path.cache_clear()
+
+
+def test_new_surface_fails_when_the_code_stops_keeping_the_lead_out(monkeypatch):
+    """A code-input ablation of `new_surface`: a new mutating command kept from the Lead only by OPERATOR_ONLY fails
+    once the code drops it from OPERATOR_ONLY."""
+    reg = copy.deepcopy(load())
+    _new(reg, "dashboard serve")
+    assert _run("new_surface", reg) == []
+    monkeypatch.setattr(lead_broker, "OPERATOR_ONLY", tuple(p for p in lead_broker.OPERATOR_ONLY
+                                                            if p != frozenset({"dashboard", "serve"})))
+    assert any("new `aew dashboard serve` mutates and takes no credential" in f for f in _run("new_surface", reg))
+
+
+def test_a_launcher_is_resolved_without_starting_anything():
+    """PR 215 fifth review, finding 3: the real spawner (`custody_ops.spawn_worker`) is an honest launcher, resolved by
+    capturing the argv it would start: no process starts, and nothing is written outside a temporary directory."""
+    before = _git(ROOT, "status", "--porcelain", "--ignored", "--untracked-files=all")
+    entry = {"launcher": {"code": "aew.engine.custody_ops:spawn_worker"}}
+    assert launcher_problem("integrate custody", entry) is None
+    with capture_spawns() as captured:
+        with pytest.raises(_Captured):
+            subprocess.Popen(["aew", "status"])
+    assert captured == [["aew", "status"]]
+    assert _git(ROOT, "status", "--porcelain", "--ignored", "--untracked-files=all") == before
+    assert not (ROOT / "probe-root").exists()
+
+
 def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):
     monkeypatch.setitem(CHECKS, "owner", ENFORCE)
     assert pin_problems()
@@ -1587,6 +1724,9 @@ def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):
     monkeypatch.undo()
     monkeypatch.setattr(_sys_module(), "PROBE_LIMITED", PROBE_LIMITED | {"cli:work list"})
     assert any("PROBE_LIMITED changed" in p for p in shrink_only_problems())
+    monkeypatch.undo()
+    monkeypatch.setattr(_sys_module(), "TRANSPORTS", TRANSPORTS | {"context pack"})
+    assert any("TRANSPORTS changed" in p for p in shrink_only_problems())
 
 
 def test_the_mutation_proof_fails_when_the_command_no_longer_writes(tmp_path, monkeypatch):

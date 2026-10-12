@@ -30,18 +30,29 @@ finding 2).
   environment is built from the product's own definition, `lead_broker.ENV_NAMES` (what `run_session` gives the
   harness; it pops `AEW_LEAD_TOKEN`), with synthetic values.
 - **The result.** The command must be refused with a code that means "not here" (`PERMISSION_DENIED`, or
-  `OPERATOR_AUTHORIZATION_REQUIRED` declared as `keep_out_refusal`), and it must change nothing.
-- **The comparison.** The same probe also runs without that environment, with an empty stdin. It must not end in the
-  same refusal (code and message), so the refusal is the session's, not the probe's arguments'.
+  `OPERATOR_AUTHORIZATION_REQUIRED` declared as `keep_out_refusal`), and it must change nothing. The refusal must say
+  that the session caused it: its details carry `reason: lead_session` and `variables` naming exactly the session's
+  variables that were set. That is how `custody_ops.refuse_lead_session` refuses (PR 215 fifth review, finding 1); a
+  message alone proves nothing.
+- **The comparison.** The same probe also runs without that environment, with an empty stdin. It must not carry the
+  session marker, nor end in the same refusal (code and message), so the refusal is the session's, not the probe's
+  arguments'.
 - **Today.** `integrate custody` passes: refused by `custody_ops.refuse_lead_session` in a session, and past it, to
   the credential read, outside one.
-- **Not a keep-out.** A typed-surface transport (`lead_broker.NOT_RELAYED`: `lead mcp`, `lead tool`) is the Lead's
-  door by design, not a keep-out. `users` and the reachability test cover it.
+- **Not a keep-out.** A typed-surface transport (`lead mcp`, `lead tool`) is the Lead's door by design, not a
+  keep-out. In the product, `lead_broker.NOT_RELAYED` only stops relaying, so membership proves nothing by itself.
+  The test pins the transports to exactly these two (`TRANSPORTS`, digest-pinned, shrink-only), and `users` fails
+  whenever `NOT_RELAYED` holds anything else (fifth review, finding 2).
 - **Unproved claims.** A claim the test cannot prove would need the pinned, shrink-only `KEEP_OUT_LIMITED` list,
   which is empty.
 - **Launchers.** An `internal` home's `launcher` is `{code: "module:attribute"}`. It must produce an argv: a list of
-  strings, or a callable that returns one when called with synthetic arguments. The words after `aew` must resolve to
+  strings, or a callable that returns one, or a callable that would start one. The words after `aew` must resolve to
   the command. A table that merely mentions it does not count.
+
+  A callable is never run for real (fifth review, finding 3). It is called with synthetic arguments in a temporary
+  working directory, while `subprocess.Popen`, `procs.spawn_detached` and `os.spawn*`/`os.exec*` record the argv
+  they are given and raise instead of starting a process. So `custody_ops.spawn_worker`, the real spawner, resolves
+  without spawning anything.
 
 The dispositions:
 

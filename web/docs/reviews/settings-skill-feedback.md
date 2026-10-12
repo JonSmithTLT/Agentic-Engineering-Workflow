@@ -18,6 +18,8 @@ Add an early verification-tool check. Existing Windows dependencies supported ty
 
 No separate coding/testing skill was necessary: repository code, tests and pinned tools provide that procedure. An engineering companion could help with component extraction, validation boundaries and selecting meaningful tests, provided it does not impose a framework or duplicate host rules. Independent review remains a repository requirement.
 
+Independent review exposed concrete gaps in the initial implementation: retirement must be checked after awaited work and before the next read, and replacing a source must synchronously exclude its predecessor's displayed result. A useful engineering companion would teach these guarantees and test noncooperative asynchronous sources. The design skill's general stale-response advice helps but does not replace such tests. It also should encourage semantically coherent fixtures: an initial long-name fixture changed the name without changing its field locators and exceeded the safe-name bound. Those findings are corrected and retained in review evidence; they are not evidence that this skill outperforms another.
+
 ## Noise, conflicts and reuse
 
 Marketing/asset examples contribute little here, but remain compact and impose no inappropriate choices. No instruction conflicts with the dashboard or offline gate observed. I would load the candidate again. This is a qualitative assessment, not demonstrated superiority over another skill.

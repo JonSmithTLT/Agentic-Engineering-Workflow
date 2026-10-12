@@ -51,11 +51,15 @@ export function settingsFixture(project: string, scenario: SettingsCase) {
   }
   if (scenario === 'long') {
     data.description.value = '<script>window.__settingsHostile=1</script> ' + 'Long supplied description '.repeat(15);
-    data.profiles[0].name = 'profile-' + 'long-name-'.repeat(22);
+    const longName = 'profile-' + 'long-name-'.repeat(10);
+    data.profiles[0] = profile(longName, 0, 'model-a');
+    data.routing.default.value = longName;
+    data.routing.archetypes.entries[0].profile.value = longName;
     data.profiles[0].fields.description.value = 'A long profile description '.repeat(18);
   }
   if (['manifest', 'invalid', 'absent', 'empty'].includes(scenario)) {
     data.profiles = []; data.connections = []; data.routing.archetypes.entries = [];
+    if (scenario === 'empty') { data.configured = field('/configured', false); data.routing.default = field('/routing/default', null); }
     if (scenario !== 'empty') {
       Object.assign(data.document, { state: scenario === 'manifest' ? 'MANIFEST_DRIFTED' : scenario === 'invalid' ? 'INVALID' : 'ABSENT', in_force: scenario === 'absent', on_disk_matches_adopted: false });
       data.configured = field('/configured'); data.harness = field('/harness'); data.description = field('/description'); data.routing.default = field('/routing/default');

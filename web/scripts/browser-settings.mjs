@@ -51,7 +51,7 @@ try {
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'settings-tab-project');
         await page.keyboard.press('Home'); await page.getByRole('heading', { name: 'Controls', exact: true }).waitFor();
         await page.getByRole('tab', { name: 'Profiles', exact: true }).click();
-        await page.getByLabel('Settings scenario', { exact: true }).selectOption('withheld');
+        await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption('withheld');
         await page.getByRole('button', { name: 'Profile 1 (name withheld)', exact: true }).click();
         await page.getByText('field withheld', { exact: true }).waitFor();
         await page.getByRole('button', { name: 'Copy dashboard link', exact: true }).click();
@@ -61,9 +61,9 @@ try {
         assert.equal(new URL(copied).searchParams.get('settings_digest'), `sha256:${'a'.repeat(64)}`);
         await page.goto(copied); await page.getByRole('heading', { name: 'Profile 1 (name withheld)', exact: true }).waitFor();
         for (const [scenario, text] of [['drifted', /On-disk configuration is drifted/], ['unpin', /Never adopted/], ['manifest', /Manifest drifted/], ['invalid', /Configuration is invalid/], ['absent', /Configuration is absent/], ['empty', 'No profiles supplied.'], ['partial', 'Profile list is truncated. Additional entries are not listed.'], ['unknown', /Unknown value: FUTURE_DOCUMENT_STATE/], ['error', 'Synthetic configuration read failed.']]) {
-          await page.getByLabel('Settings scenario', { exact: true }).selectOption(scenario); await page.getByText(text, { exact: typeof text === 'string' }).waitFor();
+          await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption(scenario); await page.getByText(text, { exact: typeof text === 'string' }).waitFor();
         }
-        await page.getByLabel('Settings scenario', { exact: true }).selectOption('long');
+        await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption('long');
         await page.getByText(/<script>window.__settingsHostile=1<\/script>/).waitFor();
         assert.equal(await page.evaluate(() => window.__settingsHostile), undefined);
         assert.equal(await page.locator('.settings-page script').count(), 0);

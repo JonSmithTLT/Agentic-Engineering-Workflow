@@ -12,6 +12,13 @@ const activities = ['execution', 'providers', 'workflow', 'project'];
 const sections = ['profiles', 'routing', 'controls'];
 const states = ['MANIFEST_DRIFTED', 'DRIFTED', 'INVALID', 'ADOPTED', 'UNPINNED', 'ABSENT'];
 const capabilityStates = ['AVAILABLE', 'UNAVAILABLE', 'UNSUPPORTED', 'UNKNOWN'];
+const sourceIds = new WeakMap<SettingsSource, number>();
+let nextSourceId = 0;
+function sourceIdentity(source: SettingsSource) {
+  let identity = sourceIds.get(source);
+  if (identity === undefined) { identity = ++nextSourceId; sourceIds.set(source, identity); }
+  return identity;
+}
 const label = (value: string) => value.replaceAll('_', ' ');
 const scalar = (value: unknown) => value === null ? 'null' : String(value);
 function Facts({ children }: { children: ReactNode }) { return <dl className="settings-facts">{children}</dl>; }
@@ -53,7 +60,7 @@ export default function SettingsPage({ source = fixtureSettingsSource }: { sourc
   const [result, setResult] = useState<{ key: string; index?: SettingsIndex; execution?: SettingsExecution; error?: string }>({ key: '' });
   const [retry, setRetry] = useState(0);
   const projectId = project.data?.value.project_id;
-  const key = JSON.stringify([projectId, session.generation, scenario, retry, activity]);
+  const key = JSON.stringify([sourceIdentity(source), projectId, session.generation, scenario, retry, activity]);
   const current = result.key === key ? result : undefined;
   const heading = useRef<HTMLHeadingElement>(null);
   const pendingFocus = useRef(false);
@@ -65,11 +72,15 @@ export default function SettingsPage({ source = fixtureSettingsSource }: { sourc
       try {
         if (scenario === 'loading') await new Promise<void>(resolve => { const timer = window.setTimeout(resolve, 1500); controller.signal.addEventListener('abort', () => { window.clearTimeout(timer); resolve(); }, { once: true }); });
         controller.signal.throwIfAborted();
-        const index = indexResponse.parse(await source.readIndex(projectId, scenario as SettingsCase, controller.signal));
+        const rawIndex = await source.readIndex(projectId, scenario as SettingsCase, controller.signal);
+        if (retired || controller.signal.aborted) return;
+        const index = indexResponse.parse(rawIndex);
         if (index.project_id !== projectId) throw new Error('Configuration project binding mismatch.');
         if (!['execution', 'providers'].includes(activity)) { if (!retired) setResult({ key, index }); return; }
         if (index.data.activities.find(item => item.activity === activity)?.capability.state !== 'AVAILABLE') { if (!retired) setResult({ key, index }); return; }
-        const execution = executionResponse.parse(await source.readExecution(projectId, scenario as SettingsCase, controller.signal));
+        const rawExecution = await source.readExecution(projectId, scenario as SettingsCase, controller.signal);
+        if (retired || controller.signal.aborted) return;
+        const execution = executionResponse.parse(rawExecution);
         const doc = index.data.documents.find(item => item.document === 'execution');
         if (execution.project_id !== projectId || !doc || doc.digest !== execution.data.document.digest || doc.state !== execution.data.document.state || doc.in_force !== execution.data.document.in_force) throw new Error('Configuration document binding mismatch.');
         if (!retired) setResult({ key, index, execution });

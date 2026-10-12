@@ -89,6 +89,38 @@ it('late scenario reads cannot replace the active scenario', async () => {
   release(settingsFixture('synthetic-settings', 'adopted').index);
   await waitFor(() => expect(screen.getByText(/On-disk configuration is drifted/)).toBeDefined());
 });
+it('a retired inventory cannot initiate concealed execution even when it ignores abort', async () => {
+  let release!: (value: unknown) => void;
+  let first = true;
+  const source: SettingsSource = { ...fixtureSettingsSource,
+    readIndex: vi.fn(async (project, scenario) => { if (first) { first = false; return new Promise(resolve => { release = resolve; }); } return settingsFixture(project, scenario).index; }),
+    readExecution: vi.fn(fixtureSettingsSource.readExecution),
+  };
+  mount('', source); await waitFor(() => expect(release).toBeDefined());
+  fireEvent.click(screen.getByRole('tab', { name: 'Workflow' }));
+  release(settingsFixture('synthetic-settings', 'adopted').index);
+  await screen.findByRole('heading', { name: 'Workflow' });
+  expect(source.readExecution).not.toHaveBeenCalled();
+});
+it('a replacement source immediately hides former-source data while pending', async () => {
+  const first = { ...fixtureSettingsSource };
+  const replacement = { ...fixtureSettingsSource, readIndex: vi.fn(async () => await new Promise(() => {})) };
+  const view = mount('', first); await screen.findByRole('button', { name: 'standard' });
+  view.rerender(<MemoryRouter><SettingsPage source={replacement} /></MemoryRouter>);
+  await waitFor(() => expect(replacement.readIndex).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: 'standard' })).toBeNull();
+  expect(screen.getByText('Loading configuration fixture…')).toBeDefined();
+});
+it('shown profile names, field locators and long-fixture routes refer to the same keys', () => {
+  for (const scenario of settingsCases) for (const profile of settingsFixture('synthetic-settings', scenario).execution.data.profiles) {
+    if (profile.name !== null) expect(new TextEncoder().encode(profile.name).length).toBeLessThanOrEqual(128);
+    const prefix = `/profiles/${profile.name ?? '@' + profile.index}/`;
+    for (const value of Object.values(profile.fields)) expect(value.path.startsWith(prefix)).toBe(true);
+  }
+  const data = settingsFixture('synthetic-settings', 'long').execution.data;
+  expect(data.profiles.some(profile => profile.name === data.routing.default.value)).toBe(true);
+  expect(data.profiles.some(profile => profile.name === data.routing.archetypes.entries[0].profile.value)).toBe(true);
+});
 it('contains unknown semantics and hostile descriptions as plain data', async () => {
   mount('?settings_case=long'); await screen.findByText(/<script>window.__settingsHostile=1<\/script>/);
   expect(document.querySelector('.settings-page script')).toBeNull();

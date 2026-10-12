@@ -87,6 +87,11 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+# G3 H4: a failed test's tmp_path is kept (the last 3 sessions); a passing one's is removed. The base temporary
+# directory stays outside the report directory: a kept directory reaches the CI artifact only through the autopsy's
+# redacted copy (tests/helpers/autopsy.py, harness_diagnostics.copy_tree), never as it is.
+tmp_path_retention_policy = "failed"
+tmp_path_retention_count = 3
 # Lanes and markers: docs/implementation/testing-and-ci-strategy.md. Every test maps to exactly one lane.
 markers = [
     "acceptance(id): acceptance scenario (M1: AT-1..AT-7, M2: AT-8..AT-13, KC 26); select with -m acceptance",

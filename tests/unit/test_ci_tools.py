@@ -1726,7 +1726,8 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
     assert lane["run"] == ("python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist "
-                           "--test-timeout 600")
+                           "--test-timeout 600 --session-deadline 660 "  # its own job's deadline and hang dir (G3)
+                           '--hang-dir "${{ runner.temp }}/fastbase/hangs"')
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
     assert lane["working-directory"] == "${{ runner.temp }}/base"
@@ -1854,3 +1855,76 @@ def test_the_audit_flags_a_subprocess_naming_a_unit_file_and_ignores_the_rest(tm
     assert auditor.classify("subprocess.Popen", ("python", ["python", "-c", "1"], None, None)) is None
     assert auditor.classify("open", (str(tmp_path / "unit" / "notes.txt"), "r", 0)) is None
     assert auditor.classify("import", ("json", None, [], [], [])) is None
+
+
+# ------------------------------------------------- the hang autopsy and the session deadline (G3, the hang-and-flake
+# diagnosis plan, H1, H3 and H5). Appended as separate tests so a merge with other changes to this file stays trivial.
+
+def test_the_assurance_readers_never_read_anything_under_an_autopsy(tmp_path):
+    """L1: a hang's autopsy lives in the uploaded report directory. Its files never end in `.json`, and the readers
+    skip its directory as well: a raw lane-report-shaped file planted there (as if a copy had slipped the rename),
+    and a moved work directory's `.aew/` JSON, are read by neither tool."""
+    reports = tmp_path / "reports"
+    for i, r in enumerate(good_run()):
+        (reports / f"job{i}").mkdir(parents=True)
+        (reports / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    autopsy = reports / "job0" / "autopsy" / "tests_unit_test_a.py_t1-0123456789"
+    (autopsy / "workdir" / "tmp_path" / ".aew" / "state").mkdir(parents=True)
+    (autopsy / "workdir" / "tmp_path" / ".aew" / "state" / "control.json").write_text('{"revision": 3}',
+                                                                                     encoding="utf-8")
+    bogus = report("linux", "fast", {ALL[0]: "failed"})  # a lane report that would fail the gate if it were read
+    bogus["results"][ALL[0]]["duration"] = 999.0
+    (autopsy / "lane.json").write_text(json.dumps(bogus), encoding="utf-8")
+    (autopsy / "stacks.main-1.txt").write_text("--- thread MainThread\n", encoding="utf-8")
+    (reports / "job0" / "autopsy" / "session-1" / "session-finished.txt").parent.mkdir(parents=True)
+    (reports / "job0" / "autopsy" / "session-1" / "session-finished.txt").write_text("done\n", encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    assert all("autopsy" not in r["_source"] for r in check_assurance.load_reports(reports))
+    assert check_assurance.main([str(reports), "--skips", str(tmp_path / "skips.yaml")]) == 0
+    out = tmp_path / "durations.json"
+    assert update_durations.main([str(reports), "--out", str(out)]) == 0
+    assert 999.0 not in json.loads(out.read_text(encoding="utf-8"))["platforms"]["linux"].values()
+
+
+def _workflow_lanes():
+    import bounds
+
+    lanes = bounds.workflow_lanes(ROOT / ".github" / "workflows")
+    assert len(lanes) >= 12, [x.label for x in lanes]  # every workflow's pytest invocations were found
+    return lanes
+
+
+def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
+    """H3 and H5: every pytest invocation in every workflow passes --test-timeout and --session-deadline, with
+    inner helper bounds < --test-timeout < --session-deadline (plus its two margins, times a loop's repetitions)
+    < the job's timeout-minutes less 3 minutes. A change to any one value that breaks the order fails here."""
+    import bounds
+
+    problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
+    assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
+
+
+def test_every_lane_uploads_its_hang_directory_whatever_the_outcome():
+    """H3: the autopsy, the deadline's markers and the watchdog's dumps go to the lane's hang directory (its explicit
+    --hang-dir, else its lane report's directory), which an `if: always()` upload in the same job covers: uploads
+    still run after a failure, a cancellation or the job's timeout."""
+    import re
+
+    problems = []
+    for lane in _workflow_lanes():
+        where = lane.hang_dir or (lane.lane_report.rsplit("/", 1)[0] if lane.lane_report else None)
+        if where is None:
+            problems.append(f"{lane.label}: no --hang-dir and no --lane-report (the default is the runner's temp)")
+            continue
+        covered = [u for u in lane.uploads if str(u.get("if", "")).startswith("always()")
+                   and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", str(u["with"]["path"])).rstrip("/"))]
+        if not covered:
+            problems.append(f"{lane.label}: no `if: always()` upload covers {where}")
+    assert problems == [], "\n".join(problems)
+
+
+def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
+    """H3, P2: under the deadline a worker that exits ends the run (`--max-worker-restart 0`): xdist must not replace
+    it and keep scheduling past the deadline. A crash is evidence, not something to route around."""
+    found = [(x.label, x.max_worker_restart) for x in _workflow_lanes() if x.xdist]
+    assert found and all(v == "0" for _, v in found), found

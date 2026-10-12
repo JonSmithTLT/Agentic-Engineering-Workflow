@@ -843,8 +843,13 @@ def main(argv: list[str], scripts: Path) -> int:
     os._exit(0)
 
 
+# A helper the product starts, with an environment the product curates: its diagnostics (childdiag: periodic stacks,
+# uncaught exceptions, its output teed) are installed from ``<scripts>/childdiag-dir.txt`` when the test wrote one
+# (G3 H1), and nothing changes when it did not.
 LAUNCHER = """import sys
 sys.path.insert(0, {helpers!r})
+import childdiag
+childdiag.install_beside(__import__("pathlib").Path({scripts!r}))
 import fake_opencode
 sys.exit(fake_opencode.main(sys.argv[1:], __import__("pathlib").Path({scripts!r})))
 """

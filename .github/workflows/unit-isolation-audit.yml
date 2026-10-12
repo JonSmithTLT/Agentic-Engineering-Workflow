@@ -60,7 +60,8 @@ jobs:
         run: >-
           python -m pytest tests/integration tests/regression tests/acceptance
           -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal
-          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600
+          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 2100 --max-worker-restart 0
+          --hang-dir "${{ runner.temp }}/audit/hangs"
           -p unit_isolation_audit --unit-isolation-dir tests/unit
           --unit-isolation-report "${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7
@@ -90,7 +91,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/tools/ci
         run: >-
           python -m pytest tests/integration tests/regression tests/acceptance
-          -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600
+          -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600 --session-deadline 2100
+          --hang-dir "${{ runner.temp }}/audit/hangs"
           -p unit_isolation_audit --unit-isolation-dir tests/unit
           --unit-isolation-report "${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7

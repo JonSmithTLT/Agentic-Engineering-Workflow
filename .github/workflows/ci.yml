@@ -107,12 +107,13 @@ jobs:
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600
+          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600 --session-deadline 960
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
+          --session-deadline 960
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -178,7 +179,7 @@ jobs:
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          --test-timeout 600
+          --test-timeout 600 --session-deadline 1560 --max-worker-restart 0
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -226,7 +227,9 @@ jobs:
         env:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
-        run: python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+        run: >-
+          python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+          --session-deadline 660 --hang-dir "${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

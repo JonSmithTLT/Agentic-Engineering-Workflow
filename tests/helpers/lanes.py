@@ -278,6 +278,9 @@ class LanePlugin:
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
+        import watchdog
+
+        outs.append(watchdog.hang_dir(self.config) / harness_diagnostics.AUTOPSY_DIR)  # G3: autopsies, deadline marks
         return [Path(p) for p in outs if p]
 
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:

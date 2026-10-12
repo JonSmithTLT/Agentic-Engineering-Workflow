@@ -239,5 +239,9 @@ skipped:
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
+    tests/unit/test_hang_autopsy_units.py::test_a_session_job_lists_exactly_its_members_and_refuses_breakaway: >-
+      the session job object is Windows'; Linux defines the session's set by the subreaper and start times
+      (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
+      abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

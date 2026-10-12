@@ -18,6 +18,7 @@ from typing import Any
 
 DURATIONS_SCHEMA = "aew/test-durations/v1"
 REPORT_SCHEMA = "aew/lane-report/v1"
+AUTOPSY_DIR = "autopsy"  # a hang's autopsy in a report directory is never a lane report (check_assurance.py)
 
 
 def merge(current: dict[str, Any], reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -40,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("reports", type=Path, nargs="+")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
-    reports = [json.loads(p.read_text(encoding="utf-8")) for d in args.reports for p in sorted(d.rglob("*.json"))]
+    reports = [json.loads(p.read_text(encoding="utf-8")) for d in args.reports for p in sorted(d.rglob("*.json"))
+               if AUTOPSY_DIR not in p.relative_to(d).parts]
     reports = [r for r in reports if r.get("schema") == REPORT_SCHEMA]
     current = json.loads(args.out.read_text(encoding="utf-8")) if args.out.exists() else {}
     args.out.write_text(json.dumps(merge(current, reports), indent=1) + "\n", encoding="utf-8", newline="\n")

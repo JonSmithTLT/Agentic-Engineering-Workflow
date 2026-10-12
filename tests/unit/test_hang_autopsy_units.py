@@ -398,3 +398,33 @@ def test_a_forked_child_never_inherits_the_reapers_lock_held():
     inherited = sd.OwnChildren()
     inherited.reset_in_child = False
     assert not _child_can_take_the_lock(inherited)
+
+
+def test_a_job_whose_timeout_does_not_carry_the_clearance_is_named(tmp_path):
+    """G3a: a job with a deadline step whose timeout is less (or other) than its timeout before G3a plus the session
+    deadline's clearance is named, and so is one with no recorded value; the right one is not."""
+    step = 'echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"'
+    (tmp_path / "w.yml").write_text(f"""jobs:
+  short:
+    timeout-minutes: 20
+    steps:
+      - shell: bash
+        run: '{step}'
+  right:
+    timeout-minutes: 24
+    steps:
+      - shell: bash
+        run: '{step}'
+  unrecorded:
+    timeout-minutes: 24
+    steps:
+      - shell: bash
+        run: '{step}'
+  no_deadline:
+    timeout-minutes: 5
+    steps:
+      - run: echo hello
+""", encoding="utf-8")
+    found = bounds.restored_timeout_problems(tmp_path, {"w.yml": {"short": 20, "right": 20}})
+    assert [p.split(":")[0] for p in found] == ["w.yml short", "w.yml unrecorded"], found
+    assert "it would lose test time" in found[0]

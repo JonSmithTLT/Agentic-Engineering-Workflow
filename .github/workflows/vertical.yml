@@ -32,13 +32,14 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 49
     steps:
       # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2460 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2700 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -48,7 +49,7 @@ jobs:
           AEW_VERTICAL_OUT: ${{ runner.temp }}/vertical
         run: >-
           python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py
-          -n auto --dist worksteal --test-timeout 1800 --session-deadline 2400 --max-worker-restart 0
+          -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0
           --hang-dir "${{ runner.temp }}/vertical/hangs"
       - name: The ledgers' one-screen summaries
         if: always()

@@ -134,7 +134,8 @@ def test_the_nightly_reference_job_is_sharded_and_aggregated():
     timeout, and the aggregate (which `report` waits for) requires both platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     reference = jobs["reference"]
-    assert reference["timeout-minutes"] <= 60, "split the job further instead of raising the timeout (E26)"
+    # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
+    assert reference["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["reference"] + DEADLINE_MARGINS_MIN
     per_os: dict[str, list[tuple[int, int]]] = {}
     for entry in reference["strategy"]["matrix"]["include"]:
         per_os.setdefault(entry["os"], []).append((entry["shard"], entry["of"]))
@@ -188,7 +189,8 @@ def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
     aggregate that `report` waits for, requiring both platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     extra = jobs["matrix-extra"]
-    assert extra["timeout-minutes"] <= 60, "split the job further instead of raising the timeout"
+    # split the job further instead of raising the timeout; G3a's clearance is the one addition
+    assert extra["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["matrix-extra"] + DEADLINE_MARGINS_MIN
     per_os: dict[str, list[tuple[int, int]]] = {}
     pythons: dict[str, set[str]] = {}
     for entry in extra["strategy"]["matrix"]["include"]:
@@ -1718,9 +1720,16 @@ def _deadline_margins_min() -> float:
 
 
 DEADLINE_MARGINS_MIN = _deadline_margins_min()
-# core's and fastbase's timeouts before G3a's session deadline (2026-10-12): each was raised by DEADLINE_MARGINS_MIN,
-# so a margin change in bounds.py must move them too, or these pins fail.
-CORE_BEFORE_G3A_MIN, FASTBASE_BEFORE_G3A_MIN = 20, 15
+# Every job's timeout before G3a's session deadline (2026-10-12), the one source for them: each job with a deadline
+# step has exactly this plus DEADLINE_MARGINS_MIN, so no job loses test time to the deadline's clearance (Lead's
+# decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
+# every timeout with it, or the pin fails.
+PRE_G3A_TIMEOUT_MIN = {
+    "ci.yml": {"core": 20, "lanes": 30, "fastbase": 15},
+    "vertical.yml": {"vertical": 45},
+    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60},
+    "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
+}
 
 
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
@@ -1739,7 +1748,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert base["runs-on"] == "ubuntu-latest"
     step, setup = strategy_fast_lane_minutes()
     # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
-    assert base["timeout-minutes"] == FASTBASE_BEFORE_G3A_MIN + DEADLINE_MARGINS_MIN
+    assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
     assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
@@ -1755,7 +1764,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == CORE_BEFORE_G3A_MIN + DEADLINE_MARGINS_MIN
+    assert core["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["core"] + DEADLINE_MARGINS_MIN
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
@@ -1963,4 +1972,14 @@ def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline
     import bounds
 
     problems = bounds.job_deadline_problems(ROOT / ".github" / "workflows")
+    assert problems == [], "\n".join(problems)
+
+
+def test_no_job_loses_test_time_to_the_session_deadlines_clearance():
+    """G3a (Lead's decision, 2026-10-12): every job with a session-deadline step has its timeout before G3a plus the
+    deadline's clearance (bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S), from one table. Windows integration shards,
+    18 to 26 minutes on main under 30, met their job deadline at 25 once the clearance came out of their time."""
+    import bounds
+
+    problems = bounds.restored_timeout_problems(ROOT / ".github" / "workflows", PRE_G3A_TIMEOUT_MIN)
     assert problems == [], "\n".join(problems)

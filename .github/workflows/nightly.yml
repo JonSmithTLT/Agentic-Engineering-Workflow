@@ -40,13 +40,14 @@ jobs:
           - {os: windows-latest, python: "3.13", shard: 7, of: 8}
           - {os: windows-latest, python: "3.13", shard: 8, of: 8}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
     steps:
       # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -56,7 +57,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
-          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 3300
+          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 3600
           --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -105,7 +106,8 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
     env:
       AEW_WALK_STEPS: "150"
       AEW_WALK_FAULT_RATE: "0.15"
@@ -116,7 +118,7 @@ jobs:
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -132,7 +134,7 @@ jobs:
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: >-
           python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
-          --test-timeout 1800 --session-deadline 3300 --max-worker-restart 0 --hang-dir "${{ runner.temp }}/hangs"
+          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 --hang-dir "${{ runner.temp }}/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -150,13 +152,14 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
     steps:
       # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -176,7 +179,7 @@ jobs:
           AEW_RACE_WRITES: "200"
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
-          --test-timeout 600 --session-deadline 3300 --hang-dir "${{ runner.temp }}/hangs/racing"
+          --test-timeout 600 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs/racing"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -194,7 +197,8 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
     env:
       AEW_CRASH_ITERATIONS: "2000"
     steps:
@@ -202,7 +206,7 @@ jobs:
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -212,7 +216,7 @@ jobs:
         run: |
           echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
           AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
-            --test-timeout 1800 --session-deadline 3300 --hang-dir "${{ runner.temp }}/hangs" \
+            --test-timeout 1800 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs" \
             "tests/unit/test_store.py::test_randomized_crash_iterations"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -227,7 +231,7 @@ jobs:
     # lanes (`--shard k/N` over every collected test; the serial tests are deselected here and run once per OS, in its
     # shard 1, with no xdist). `matrix-extra-assurance` proves the shards and the serial lane together ran every
     # collected test exactly once. One job per OS ran out its 60 minute timeout from 2026-10-06 (strategy §8). Grow
-    # `of` when a shard nears 30 minutes, half the timeout; never raise the timeout.
+    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance).
     name: full suite ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
@@ -241,13 +245,14 @@ jobs:
           - {os: windows-latest, python: "3.11", shard: 3, of: 4}
           - {os: windows-latest, python: "3.11", shard: 4, of: 4}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
     steps:
       # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -259,13 +264,13 @@ jobs:
         run: >-
           python -m pytest -q -p no:cacheprovider --durations=20 -m "not serial"
           --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600
-          --session-deadline 3300 --max-worker-restart 0
+          --session-deadline 3600 --max-worker-restart 0
           --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
       - name: serial lane (once per OS, never parallel)
         if: matrix.shard == 1 && (success() || failure())
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
-          --session-deadline 3300
+          --session-deadline 3600
           --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()

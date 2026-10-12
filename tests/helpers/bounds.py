@@ -235,3 +235,26 @@ def job_deadline_problems(workflows: Path) -> list[str]:
                 problems.append(f"{label}: AEW_JOB_DEADLINE is start + {m.group(1)}s, not start + {want:g}s "
                                 f"(timeout-minutes less {JOB_MARGIN_S:g}s and two {DEADLINE_MARGIN_S:g}s margins)")
     return problems
+
+
+def restored_timeout_problems(workflows: Path, before: dict[str, dict[str, float]]) -> list[str]:
+    """Every job that sets ``AEW_JOB_DEADLINE`` keeps its test time: its ``timeout-minutes`` is its timeout before the
+    session deadline (``before``, by workflow file and job) plus the deadline's clearance, ``JOB_MARGIN_S`` and two
+    ``DEADLINE_MARGIN_S``. A job missing from ``before`` is named too, so a new one is decided, never left out."""
+    import yaml
+
+    clearance = (JOB_MARGIN_S + 2 * DEADLINE_MARGIN_S) / 60
+    problems = []
+    for path in sorted(workflows.glob("*.yml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for name, job in (doc.get("jobs") or {}).items():
+            if not any(JOB_DEADLINE_RE.search(str(st.get("run") or "")) for st in job.get("steps") or []):
+                continue
+            was = before.get(path.name, {}).get(name)
+            have = float(job.get("timeout-minutes") or 0)
+            if was is None:
+                problems.append(f"{path.name} {name}: sets AEW_JOB_DEADLINE but has no timeout before G3a recorded")
+            elif have != was + clearance:
+                problems.append(f"{path.name} {name}: timeout-minutes {have:g}, not its {was:g} before G3a plus the "
+                                f"session deadline's clearance ({clearance:g}): it would lose test time")
+    return problems

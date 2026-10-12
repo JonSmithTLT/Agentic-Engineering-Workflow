@@ -390,3 +390,7 @@ def test_a_stop_reason_too_long_for_the_supervisor_is_refused(lab, tmp_path):
     assert lab.project.rev() == rev
     assert not list((runlog.run_dir(lab.aew_root, run) / "requests").glob("*.json"))
     lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

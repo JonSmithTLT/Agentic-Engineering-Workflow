@@ -16,3 +16,7 @@ def test_fake_harness_conforms(scenario, tmp_path):
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
 def test_opencode_adapter_conforms(scenario, tmp_path):
     run_scenario(scenario, FakeOpenCodeDriver(), tmp_path)
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

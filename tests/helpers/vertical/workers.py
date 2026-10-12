@@ -22,6 +22,7 @@ from typing import Any
 
 HERE = Path(__file__).resolve()
 sys.path.insert(0, str(HERE.parents[1]))  # loaded by path in each run's supervisor: its helpers are siblings
+import bounds  # noqa: E402
 from fake_harness import SCRIPTS_ENV, FakeAdapter  # noqa: E402
 
 from aew.harness.contract import LaunchContract  # noqa: E402
@@ -90,10 +91,15 @@ REVIEW = {"claim": "independent review of the change against the plan and contra
           "review": {"independence": "R1", "disposition": "pass", "findings": [], "resolved_findings": []}}
 
 
+GATE_S = bounds.declare("vertical.implementer_gate", 1200, lanes={"vertical"},
+                        why="how long a gated implementer waits for the test to release it (V2); was 1800 s, equal "
+                            "to the lane's --test-timeout")
+
+
 def implementer(gate: Path | None = None) -> list[dict[str, Any]]:
     """The fix, the real check, the report. With ``gate``, the implementer waits for that file first (V2: it is still
     running when the operator closes the Lead session), announcing itself in ``<gate>.ready``."""
-    wait = ([{"do": "wait_file", "path": str(gate), "ready": f"{gate}.ready", "timeout": 1800}] if gate else [])
+    wait = ([{"do": "wait_file", "path": str(gate), "ready": f"{gate}.ready", "timeout": GATE_S}] if gate else [])
     return [*wait, {"do": "write", "files": FIX}, {"do": "check", "id": "unit"},
             {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
 

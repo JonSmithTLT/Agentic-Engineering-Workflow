@@ -18,8 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 
+import autopsy  # noqa: E402  (a hang, a deadline or a marked failure leaves an autopsy: G3 H1)
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
+import session_deadline  # noqa: E402  (--session-deadline: CI keeps the evidence before a job timeout: G3 H3)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
 
@@ -27,12 +29,22 @@ from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks 
 def pytest_addoption(parser: pytest.Parser) -> None:
     lanes.addoption(parser)
     watchdog.addoption(parser)
+    session_deadline.addoption(parser)
     harness_diagnostics.addoption(parser)
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
+    # tryfirst: the session deadline's job object must exist, and the controller be in it, before xdist starts any
+    # worker (only processes created after the join are members). Without --session-deadline it creates nothing.
+    session_deadline.configure(config)
     lanes.configure(config)
     watchdog.configure(config)
+    autopsy.configure(config)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    autopsy.unconfigure()
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:

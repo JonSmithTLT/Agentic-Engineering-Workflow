@@ -268,3 +268,7 @@ def test_with_messaging_on_before_ms5b_harness_send_is_refused_needs_store(lab, 
     release(tmp_path)
     assert "send" not in stop_and_requests(lab, run)
     assert lead_posts(lab, run) == []
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

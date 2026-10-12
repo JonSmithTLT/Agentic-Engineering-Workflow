@@ -4,6 +4,16 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
+      the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
+      session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).
+      Covered on Linux.
+    tests/unit/test_hang_autopsy_units.py::test_a_forked_child_never_inherits_the_reapers_lock_held: >-
+      os.fork and the reaper's record of the controller's children are Linux's; Windows has no fork and no reaper.
+      Covered on Linux.
+    tests/unit/test_hang_autopsy_units.py::test_the_reaper_refuses_to_start_where_it_cannot_record_this_processs_children: >-
+      the reaper's record of the controller's own children wraps Linux's process creation (_posixsubprocess, os.fork);
+      Windows has no reaper. Covered on Linux.
     tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-none]: >-
       the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
       every platform. Covered on Linux.
@@ -239,5 +249,9 @@ skipped:
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
+    tests/unit/test_hang_autopsy_units.py::test_a_session_job_lists_exactly_its_members_and_refuses_breakaway: >-
+      the session job object is Windows'; Linux defines the session's set by the subreaper and start times
+      (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
+      abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

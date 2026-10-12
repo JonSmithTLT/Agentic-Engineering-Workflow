@@ -29,7 +29,13 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
-from dashboard_contract import base_contract, note_text, proposed  # noqa: E402
+from dashboard_contract import (  # noqa: E402
+    CONFIG_NOTE_REL,
+    base_contract,
+    config_base_contract,
+    note_text,
+    proposed,
+)
 from invariants import assert_control_invariants  # noqa: E402
 
 from aew.dashboard import contract as CT  # noqa: E402
@@ -51,9 +57,14 @@ assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
 # Every route contract 0.1.3 adds is served now (S1, S2), so a later version's routes stand in for the pending ones:
 # one that no template matches and one a template does (``/runs/latest`` is ``/runs/{id}`` with the id ``latest``).
 LATER_ROUTES = {"/maps/semantic", "/runs/latest"}
+# The 0.1.4 note's routes (register F46.1, slice F1b) are proposed and not served until F1c: pending, derived from the
+# note, before and after the web developer adopts them, and no longer pending once F1c serves them.
+CONFIG_PROPOSED = set(proposed(note_text(rel=CONFIG_NOTE_REL), config_base_contract())["paths"])
+UNSERVED_PROPOSED = CONFIG_PROPOSED - set(config_base_contract()["paths"]) - set(ROUTES) - set(CONDITIONAL_ROUTES)
 PENDING = sorted(pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"])
-                                | LATER_ROUTES))
-assert set(PENDING) == LATER_ROUTES  # nothing the accepted contract or the change note adds is left pending
+                                | CONFIG_PROPOSED | LATER_ROUTES))
+# Nothing the accepted contract or a change note adds is left pending, except what a note proposes and no slice serves.
+assert set(PENDING) == LATER_ROUTES | UNSERVED_PROPOSED
 
 
 class OpenAccess:

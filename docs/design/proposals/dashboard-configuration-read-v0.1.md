@@ -69,7 +69,11 @@ The 0.1.3 note's readiness is a set of rules, not lists, so W2 needs no main-lin
   no `contract.py` change.
 - **Pending routes are derived** (`server.pending_routes`: contract paths minus served minus conditional), so
   `/configuration` and `/configuration/execution` are pending from W2 until F1c serves them, and answer as this server
-  answers without them.
+  answers without them. The dashboard's integration tests take this note's proposed routes into the pending set from
+  the note itself (never a list), so they are tested as pending before W2 and after, and leave the set once F1c serves
+  them.
+- **This note is a code input** (`tools/ci/tier.py`'s `SHARED`), as the 0.1.3 note is: the tests read its appendix
+  and its status line, so a change to it runs the full gate.
 - **The 0.1.3 note** checks a later minor version against its adopted shapes over the routes served at adoption; W2's
   0.1.4 passes it without a note edit.
 - **This note against the contract** (`tests/unit/test_dashboard_config_note.py`): Appendix A compiles as JSON Schema

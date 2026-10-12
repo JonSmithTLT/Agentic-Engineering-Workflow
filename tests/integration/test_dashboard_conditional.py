@@ -239,7 +239,7 @@ def test_a_pending_route_is_refused_as_without_it_before_authentication_or_by_it
     # The change notes' proposed routes not served yet, and a later version's stand-ins: one that no template matches
     # and one a template does (``/runs/{id}``); the one owner of the expected set is dashboard_contract.
     pending = pending_routes(set(CONTRACT.paths) | proposed_routes() | LATER_ROUTES)
-    assert pending == expected_pending(set(ROUTES), set(CONDITIONAL_ROUTES))
+    assert pending == expected_pending(set(CONTRACT.paths), set(ROUTES), set(CONDITIONAL_ROUTES))
     assert match_route("/maps/semantic") is None and match_route("/runs/latest") is not None
     world.gate.closed = True
     try:

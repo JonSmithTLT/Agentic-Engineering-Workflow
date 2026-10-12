@@ -52,7 +52,7 @@ assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
 # 0.1.4 note's two until F1c (register F46.1), before and after the web developer adopts them; LATER_ROUTES stand in
 # for a later version's. Nothing else the accepted contract holds may be left pending.
 PENDING = sorted(pending_routes(set(CONTRACT.paths) | proposed_routes() | LATER_ROUTES))
-assert set(PENDING) == expected_pending(set(ROUTES), set(CONDITIONAL_ROUTES))
+assert set(PENDING) == expected_pending(set(CONTRACT.paths), set(ROUTES), set(CONDITIONAL_ROUTES))
 
 
 class OpenAccess:

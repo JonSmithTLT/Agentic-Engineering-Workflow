@@ -78,10 +78,13 @@ def proposed_routes(root: Path = ROOT) -> set[str]:
     return out
 
 
-def expected_pending(served: set[str], conditional: set[str], root: Path = ROOT) -> set[str]:
-    """The routes the dashboard's tests expect pending: the later stand-ins, and every route a change note proposes
-    that no slice serves yet (the 0.1.4 note's two until F1c), before and after the web developer adopts them."""
-    return set(LATER_ROUTES) | (proposed_routes(root) - served - conditional)
+def expected_pending(contract_paths: set[str], served: set[str], conditional: set[str], root: Path = ROOT) -> set[str]:
+    """The routes the dashboard's tests expect pending: the later stand-ins, and every route that a change note
+    proposes or the accepted contract adds over the latest vendored base (0.1.3) and that no slice serves yet: the
+    0.1.4 note's two until F1c, under the names the web developer gives them if W2 renames one. Every 0.1.3 route
+    stays served, so one left pending still fails."""
+    added = proposed_routes(root) | (set(contract_paths) - set(config_base_contract(root)["paths"]))
+    return set(LATER_ROUTES) | (added - served - conditional)
 
 
 def appendix(text: str) -> list[dict[str, Any]]:

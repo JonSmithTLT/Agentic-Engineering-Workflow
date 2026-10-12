@@ -122,3 +122,33 @@ def test_a_profile_may_omit_the_provider_in_the_schema():
     validate("execution", policy(standard={"model": "vendor/model-a"}), source="test")
     with pytest.raises(ValidationFailed):
         validate("execution", policy(standard={"provider": "vendor"}), source="test")  # the model stays required
+
+
+CATALOG_SHAPES = [models.from_catalog("vendor", "model-a"), models.from_catalog("router", "maker/model-b"),
+                  models.from_catalog("router", "router/auto"), models.from_listing("vendor/model-a"),
+                  models.from_listing("router/maker/model-b"), models.from_listing("router/router/auto")]
+
+
+@pytest.mark.parametrize("identity", CATALOG_SHAPES, ids=lambda x: x.catalog_id)
+def test_a_chooser_saving_the_harness_reference_round_trips_every_catalog_shape(identity):
+    """A chooser writes ``model: <harness_ref>`` and no provider (review of PR #214, F3): that profile resolves to the
+    very pair the catalog entry named, whatever the model id contains."""
+    fields = identity.profile_fields()
+    assert fields == {"model": identity.harness_ref}
+    got = pin(policy(standard=fields))
+    assert (got["provider"], got["model"]) == (identity.provider, identity.model)
+
+
+def test_the_split_pair_of_a_nested_catalog_id_is_not_a_profile_form():
+    """Documented, not guaranteed: written back split, a routing provider's nested model is a conflicting prefix."""
+    nested = models.from_catalog("router", "maker/model-b")
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard={"provider": nested.provider, "model": nested.model}))
+    assert refused.value.details["reason"] == "model_id_provider_conflict"
+
+
+def test_a_providers_own_model_id_that_begins_with_its_name_is_written_in_full():
+    """The provider's own prefix is removed silently (N1): ``router/auto`` under ``router`` pins ``auto``; the model
+    OpenCode prints as ``router/router/auto`` is written in full."""
+    assert (pin(policy(standard={"provider": "router", "model": "router/auto"}))["model"]) == "auto"
+    assert (pin(policy(standard={"model": "router/router/auto"}))["model"]) == "router/auto"

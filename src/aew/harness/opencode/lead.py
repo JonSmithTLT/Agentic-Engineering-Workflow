@@ -53,7 +53,7 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     for name, why in agentenv.provider_env_problems(provider_env, base):  # the one rule (doctor and launch share it)
         raise UsageError(f"--provider-env {name}: {why}", variable=name)
     for name in provider_env:
-        env[name] = base[name]
+        env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
     agentenv.bypass_proxy_for_loopback(env)
     env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(projection.lead_config(guide), sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})

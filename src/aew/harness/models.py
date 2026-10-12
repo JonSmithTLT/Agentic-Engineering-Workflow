@@ -19,6 +19,16 @@ joins them:
 A provider's own catalog (``GET /v1/models``) lists bare ids, which are never stripped: :func:`from_catalog`. Each
 result carries the raw catalog identity, AEW's pair, and the harness reference, so a chooser (register F46.3) fills
 the id from the catalog and never prefixes or strips anything itself.
+
+**What a chooser writes back: ``model: <harness_ref>``, with no separate ``provider``**
+(:meth:`ModelIdentity.profile_fields`). Only that form round-trips: ``from_profile(None, x.harness_ref)`` is ``x``'s
+pair for every identity ``x`` this module returns. The split pair does not, for a model whose own id contains ``/``:
+``from_catalog("router", "maker/model-b")`` is the pair ``(router, maker/model-b)``, and a profile
+``{provider: router, model: maker/model-b}`` is refused as a conflicting prefix (review of PR #214, F3).
+
+**The silent strip has one consequence to know.** ``{provider: p, model: p/m}`` always pins ``(p, m)``. A provider
+whose own model id itself begins with ``p/`` (OpenCode prints it ``p/p/m``) is therefore written in full, as OpenCode
+prints it: ``model: p/p/m``, for example ``router/router/auto`` (review of PR #214, N1).
 """
 
 from __future__ import annotations
@@ -41,6 +51,11 @@ class ModelIdentity:
     @property
     def harness_ref(self) -> str:
         return f"{self.provider}{SEP}{self.model}"
+
+    def profile_fields(self) -> dict[str, str]:
+        """What a profile (or a chooser's save) writes to select this model: the harness reference as ``model`` and no
+        ``provider``, the one form that maps back to this same pair whatever the model id contains."""
+        return {"model": self.harness_ref}
 
     def as_dict(self) -> dict[str, str]:
         return {"catalog_id": self.catalog_id, "provider": self.provider, "model": self.model,

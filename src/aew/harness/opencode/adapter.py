@@ -136,8 +136,8 @@ def binary_command() -> list[str]:
     configured = os.environ.get(BIN_ENV)
     path = Path(configured) if configured else default_binary()
     if path is None or not path.exists():
-        raise HarnessIncompatible(f"no OpenCode binary: set {BIN_ENV} to the OpenCode CLI "
-                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)})",
+        raise HarnessIncompatible(f"no OpenCode binary: {BIN_ENV} names the OpenCode CLI "
+                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)}); {agentenv.env_fix(BIN_ENV)}",
                                   looked_for=str(path) if path else None)
     return [sys.executable, str(path)] if path.suffix == ".py" else [str(path)]
 
@@ -160,7 +160,7 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
                                   + "; ".join(why for _, why in problems), reason="provider_env",
                                   variables=[name for name, _ in problems])
     for name in provider_env:
-        env[name] = base[name]
+        env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
     agentenv.bypass_proxy_for_loopback(env)
     for kind in ("config", "data", "state", "cache"):
         directory = state_dir / f"xdg-{kind}"

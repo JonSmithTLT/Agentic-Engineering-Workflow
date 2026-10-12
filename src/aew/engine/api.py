@@ -415,9 +415,15 @@ def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
 
     names = [str(n) for n in policy.get("provider_env") or []]
     problems = agentenv.provider_env_problems(names, os.environ)
+    # Doctor reads its own terminal's environment; a Lead session already running reads the one it started with
+    # (review of PR #214, F2), so both lines say so.
+    caveat = ("doctor checks this terminal's environment; a Lead session (`aew opencode`, `aew lead session`) that "
+              "is already running keeps the environment it started with")
     if problems:
-        return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems))
-    return "PASS", f"set in this environment: {', '.join(names)} (values not shown)"
+        return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems)
+                        + f" ({caveat})")
+    return "PASS", (f"set in this environment: {', '.join(names)} (values not shown; {caveat}: restart one that "
+                    "started before they were set)")
 
 
 class Engine:

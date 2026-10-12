@@ -204,7 +204,7 @@ def test_the_server_gets_basics_named_provider_variables_and_private_state(tmp_p
 
 
 @pytest.mark.parametrize(("name", "why"), [("MISSING", "MISSING is not set in this environment: set MISSING in the "
-                                                     "terminal you launch AEW from"),
+                                                     "terminal you start AEW from"),
                                          ("AEW_LEAD_TOKEN", "AEW_LEAD_TOKEN is an AEW variable"),
                                          ("SNEAKY", "SNEAKY holds an AEW credential")])
 def test_a_provider_variable_the_server_cannot_get_refuses_the_start_naming_it_never_silently_dropped(tmp_path, name,

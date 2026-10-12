@@ -181,6 +181,14 @@ thing. Both are now refused before any launch, by one rule each, and `aew doctor
   reference (`provider/model`). A provider's own catalog (`GET /v1/models`) lists bare ids, which `from_catalog` never
   strips. The model catalog of the Operator Settings Surface (register F46) fills ids from these, and a browser never
   prefixes or strips anything.
+- **What a chooser writes: `model: <harness reference>`, with no separate `provider`**
+  (`ModelIdentity.profile_fields`). Only that form round-trips for every model. A routing provider's catalog entry
+  `maker/model-b` under `router` is the pair `(router, maker/model-b)`; written back split, as
+  `{provider: router, model: maker/model-b}`, it is refused as a conflicting prefix. A test checks the round trip over
+  the catalog's shapes.
+- **A provider whose own model id begins with its own name** (OpenCode prints it `p/p/m`, for example
+  `router/router/auto`) is written in full, as OpenCode prints it: `{provider: p, model: p/m}` always pins `(p, m)`,
+  because the provider's own prefix is removed.
 - **An adapter whose harness names models differently** overrides `model_identity`; every other adapter inherits the
   rule.
 

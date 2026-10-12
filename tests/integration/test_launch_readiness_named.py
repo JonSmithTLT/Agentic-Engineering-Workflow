@@ -46,7 +46,7 @@ def test_a_launch_with_an_unset_provider_variable_is_refused_naming_it_before_an
     rev = lab.project.rev()
     res = lab.lead_res("work", "assign", wid, "--launch")
     assert res.returncode != 0 and res.error["code"] == "HARNESS_INCOMPATIBLE", res.error
-    assert f"set {KEY} in the terminal you launch AEW from" in res.error["message"], res.error
+    assert f"set {KEY} in the terminal you start AEW from" in res.error["message"], res.error
     assert res.error["details"]["reason"] == "provider_env" and res.error["details"]["variables"] == [KEY]
     assert lab.project.rev() == rev and runs(lab) == []  # nothing dispatched, no run recorded or started
     assert lab.ok("work", "show", wid)["control"]["state"] == "READY"
@@ -69,10 +69,26 @@ def test_a_launch_with_the_provider_variable_set_starts(lab, tmp_path):
 def test_doctor_names_an_unset_provider_variable_and_the_fix_and_never_a_value(lab):
     found = doctor(lab)["provider-env"]
     assert found["status"] == "FAIL", found
-    assert f"set {KEY} in the terminal you launch AEW from" in found["detail"]
+    assert f"set {KEY} in the terminal you start AEW from" in found["detail"]
     assert "export" in found["detail"] and f"$env:{KEY}" in found["detail"]
     found = doctor(lab, env={KEY: "synthetic-secret-value"})["provider-env"]
     assert found["status"] == "PASS" and KEY in found["detail"] and "synthetic-secret-value" not in found["detail"]
+
+
+def test_doctor_exits_1_with_a_fail_line_in_both_output_modes_and_0_without(lab):
+    """The exit status never depends on the output format (review of PR #214, F1): any FAIL line exits 1; WARN lines
+    (Windows' platform line, containment) leave it 0."""
+    for args in (("doctor",), ("doctor", "--json")):
+        failing = lab.aew(*args)
+        assert failing.returncode == 1 and "provider-env" in failing.stdout, (args, failing.stdout)
+        passing = lab.aew(*args, env={KEY: "x"})
+        assert passing.returncode == 0, (args, passing.stdout)
+
+
+def test_doctor_says_a_running_lead_session_keeps_the_environment_it_started_with(lab):
+    for env in (None, {KEY: "x"}):
+        detail = doctor(lab, env=env)["provider-env"]["detail"]
+        assert "keeps the environment it started with" in detail, detail
 
 
 def test_doctor_shows_each_profile_model_as_the_harness_is_given_it(lab):
@@ -106,4 +122,4 @@ def test_a_policy_without_provider_variables_reports_none_to_check(tmp_path):
 
 def test_the_lead_session_refuses_the_same_way_for_its_own_provider_variable(lab):
     res = lab.aew("opencode", "--provider-env", KEY, "--print-config")
-    assert res.returncode != 0 and f"set {KEY} in the terminal you launch AEW from" in res.error["message"], res.error
+    assert res.returncode != 0 and f"set {KEY} in the terminal you start AEW from" in res.error["message"], res.error

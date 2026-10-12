@@ -4,6 +4,9 @@ amendment 2026-10-11).** One rule, owned by the harness adapter (`HarnessAdapter
 pair, and the harness reference. A model typed as OpenCode prints it (`provider/model`) is accepted, with or without a
 separate `provider`; a prefix naming another provider is refused, naming the field and both ids it may mean. A
 provider's own catalog lists bare ids, which `from_catalog` never strips. The model catalog here fills ids through the
-same functions, so a browser never prefixes or strips anything. `aew doctor` reports each profile's harness reference
+same functions, so a browser never prefixes or strips anything. **A chooser saves `model: <harness reference>` with no
+separate `provider` (`ModelIdentity.profile_fields`), never the split pair:** only that form round-trips for a model
+whose own id contains `/` (a routing provider's `maker/model-b` under `router` saved split is refused as a
+conflicting prefix). `aew doctor` reports each profile's harness reference
 (`model-refs`) and any `provider_env` variable a launch from the current environment would be refused for
 (`provider-env`), which a launch now refuses up front instead of dropping silently.

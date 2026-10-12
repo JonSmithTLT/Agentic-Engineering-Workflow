@@ -38,7 +38,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 
 **Gates on the way** ([`future-work.md`](implementation/future-work.md) §1): real-repository dogfood waited on containment
 (built in M4-B) and the custody-hardening item (closed); network containment (F28) before internal alpha; the F15
-promotion before M4-E (met 2026-10-05); the vertical UAT enforced on Linux before feature work resumes (F47.5). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
+promotion before M4-E (met 2026-10-05); the vertical UAT enforced on Linux before feature work resumes (F47.5; Windows excluded, reported UNQUALIFIED until F48 qualifies it). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
 
 ## What governs, in order
 

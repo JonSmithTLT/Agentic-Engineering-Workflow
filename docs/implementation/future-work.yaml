@@ -33,11 +33,13 @@ sections:
   - Source
   rows:
   - Gate: '**Before feature work resumes, and before any release**'
-    Condition: The vertical UAT, the release gate (designer, 2026-10-11), runs in `enforce` on Linux (F47.5; flipping it
-      is the operator's decision, once its lane is green), every vertical-path slice having re-run the `vertical` lane and
-      shown its ledger diff. Windows is excluded until F48 qualifies it, and is reported as UNQUALIFIED in every verdict
-      and summary, never silently absent (operator, 2026-10-11). Until then, feature work outside the vertical path stays
-      paused (operator, 2026-10-11), except the configuration work the path carries (F46.1 to F46.4).
+    Condition: 'The vertical UAT, the release gate (designer, 2026-10-11), runs in `enforce` on Linux (F47.5; flipping it
+      is the operator''s decision, once its lane is green), every vertical-path slice having re-run the `vertical` lane
+      and shown its ledger diff. Windows is excluded until F48 qualifies it, and is reported as UNQUALIFIED in every verdict
+      and summary, never silently absent (operator, 2026-10-11). Feature work outside the vertical path is paused while
+      the path is built (the Lead''s plan, 2026-10-11: the operator approved working the vertical path first, and the approved
+      configuration direction states that normal feature work is paused); the duration, until this gate, and the exemption
+      of the configuration work the path carries (F46.1 to F46.4) are the plan''s.'
     Source: the designer's decisions of 2026-10-11 on the Lead's diagnosis after the M4 operator acceptance session (the
       vertical UAT as release gate); [`vertical-uat.md`](vertical-uat.md); F47
 
@@ -2226,8 +2228,8 @@ sections:
       F46.1 to F46.4 are the configuration work the path carries.'
     Source (governing): the designer's decisions of 2026-10-11 on the Lead's diagnosis after the M4 operator acceptance
       session (all five shifts approved, the operator session with the refinement above); the operator's answers of 2026-10-11
-      and the designer's of 2026-10-12 on the implementation plan's questions; the Lead's implementation plan for the vertical
-      path (v10, independently reviewed; not in the repository)
+      and the designer's of 2026-10-12 on the implementation plan's questions; the vertical-path plan (Lead, 2026-10-11/12;
+      independently reviewed CLEAR; not in the repository)
     Belongs to or gated by: '**M4.** Mainline, ahead of other feature work (the §1 gate). Three build lanes: A, the Lead''s
       surface; B, the operator session and containment; C, readiness and configuration'
     Notes: 'Slices, each of which re-runs the `vertical` lane and puts its ledger diff in its pull request: D0, this register
@@ -2324,29 +2326,32 @@ sections:
       (below); F47
     Belongs to or gated by: '**M4.** Slices B4 (the Linux Lead''s containment, after D0 and D0b), B1 (the endpoint as the
       operator session, after B4 and D0b) and B3 (F46.2, after B1)'
-    Notes: 'The operator''s decisions (2026-10-11). **Plan approval** is given in chat and recorded as the Lead''s decision
-      quoting the operator''s answer; an operator-attributed record exists only through the endpoint. **Publish** is console-approved
-      from B1, attributed to the operator and bound to the change''s digest (the Ticket''s diff against its base, the first
-      candidate recorded), so it carries over a clean, re-verified rebuild (F47.2); there is no chat-relayed alternative.
-      Until B1, the slices that land earlier publish the chat-relayed way, as today, and the publish hard limit stays "main
-      moved only after the operator''s yes". **The provider credential:** AEW itself, outside any sandbox, seeds the Lead''s
-      and each worker''s private harness state with only the selected provider''s credential, from the operator''s saved
-      login, which stays masked from every sandbox; this is transitional local behaviour that the gateway replaces where
-      one exists, and the designer confirmed it on 2026-10-12 as acceptable transitional local custody, the gateway remaining
-      the end state. **The operator PIN** is entered only in the operator console, read by the endpoint itself, never at
-      the requesting terminal, in the Lead''s chat or as an argument; it is stored only as a salted slow-KDF verifier in
-      per-user, operator-only state outside any project, denied read, write and delete to every sandbox; it is asked once
-      per endpoint lifetime (per project, per login session); failed attempts back off, then lock out. **Its reset:** on
-      lockout only the console shows the store''s path and the command to delete it; with the store gone, the next open
-      asks for a new PIN in the console, entered twice; a reset journal beside the store, also denied to sandboxes, lets
-      every endpoint warn of a reset it has not yet shown. **Windows on the desktop:** the product may open a console window
-      when it needs one (the endpoint''s), and tests and background work never open one (`CREATE_NO_WINDOW`; auto-open is
-      proved with a mocked launcher, and the live variant checks it). On Linux, B1 ends by dropping `dev` and recording
-      a non-dev operator guarantee once B4''s containment and B1''s self-tests pass (designer, 2026-10-12). On Windows,
-      until F48 qualifies, every operator-principal operation keeps a per-action console challenge, "authenticate once"
-      stays off, and the PIN is development-grade. Amendments owed with its slices: ADR-0005 (the endpoint as the operator
-      session, attachment, takeover across operator sessions only) and ADR-0009 (the contained Lead with a writable tree
-      and private harness state). Builds part of F31; F18.6 stays the hardened profile.'
+    Notes: '**The operator''s decisions (2026-10-11), as given:** plans are approved in chat; a publish needs the enforced,
+      console-approved keystroke, attributed to the operator and bound to the change (not one candidate), with no chat-relayed
+      alternative; the selected provider''s credential is projected into the Lead''s and workers'' private harness state
+      as transitional local behaviour, the gateway replacing it where one exists (the designer confirmed it on 2026-10-12
+      as acceptable transitional local custody, the gateway remaining the end state); an operator PIN may be asked when
+      a session opens, entered in the operator console; if it is forgotten, the lockout prompt says to delete the store,
+      and the next open asks for a new PIN; the product may open a terminal window when it needs to, and testing must not.
+      **The plan''s implementation of them (the Lead''s plan, 2026-10-11/12):** a plan approval given in chat is recorded
+      as the Lead''s decision quoting the operator''s answer, and an operator-attributed record exists only through the
+      endpoint; the publish binds the change''s digest (the Ticket''s diff against its base, the first candidate recorded),
+      so it carries over a clean, re-verified rebuild (F47.2), and until B1 the slices that land earlier publish the chat-relayed
+      way, as today, the publish hard limit staying "main moved only after the operator''s yes"; AEW itself, outside any
+      sandbox, reads the operator''s saved login, which stays masked from every sandbox; the PIN is read by the endpoint
+      itself, never at the requesting terminal, in the Lead''s chat or as an argument, stored only as a salted slow-KDF
+      verifier in per-user, operator-only state outside any project, denied read, write and delete to every sandbox, and
+      asked once per endpoint lifetime (per project, per login session); failed attempts back off, then lock out; on lockout
+      only the console shows the store''s path and the deletion command, a new PIN is entered twice, and a reset journal
+      beside the store, also denied to sandboxes, lets every endpoint warn of a reset it has not yet shown; background work,
+      like tests, never opens a window (`CREATE_NO_WINDOW`; auto-open is proved with a mocked launcher, and the live variant
+      checks it); on Windows, every operator-principal operation keeps a per-action console challenge, "authenticate once"
+      stays off and the PIN is development-grade until F48 qualifies **and** B5q shows the console unreachable from Low;
+      if it cannot, the per-action challenges stay after B5. On Linux, B1 ends by dropping `dev` and recording a non-dev
+      operator guarantee once B4''s containment and B1''s self-tests pass (designer, 2026-10-12). Amendments owed with its
+      slices: ADR-0005 (the endpoint as the operator session, attachment, takeover across operator sessions only, and the
+      `dev` drop after qualification) and ADR-0009 (the contained Lead with a writable tree and private harness state).
+      Builds part of F31; F18.6 stays the hardened profile.'
 
   - '#': F47.4
     Work: 'Shift 4, doctor, preflight and live preflight. Doctor stays structural: it adds the normalized model reference
@@ -2392,11 +2397,12 @@ sections:
       request, which changes [`vertical-uat.md`](vertical-uat.md) and the test: the scripted Lead supplies judgment inputs;
       `decisions_required` means operator-owned; the mismatch scenario does not rely on `__pycache__`; the `open` row opens
       the operator console and asks for the PIN, the auto-opened console not counted, with a live check of auto-open; the
-      PIN is counted under "authenticate at most once", at most once per endpoint lifetime; a `windows_console_challenges`
-      counter; Windows excluded as above; the containment limit includes the Lead''s label and only ratchets up. From B1,
-      the publish hard limit also checks that the publish record is console-approved and attributed to the operator; that
-      follows from the operator''s publish decision, and since thresholds are operator-gated D0b''s pull request says so.
-      A1, B1, B4 and B5 depend on D0b.'
+      PIN is counted under "authenticate at most once", at most once per session open (the operator''s amendment), session
+      open being the endpoint''s lifetime as the plan defines it; a `windows_console_challenges` counter; Windows excluded
+      as above; the containment limit includes the Lead''s label and only ratchets up. From B1, the publish hard limit also
+      checks that the publish record is console-approved and attributed to the operator; that follows from the operator''s
+      publish decision, and since thresholds are operator-gated D0b''s pull request says so. A1, B1, B4 and B5 depend on
+      D0b.'
 
   - '#': F47.6
     Work: 'The discovery layer: mechanisms that find a whole class of problem without being pointed at it, over the vertical
@@ -2420,15 +2426,16 @@ sections:
   - '#': F48
     Work: 'The Windows containment backend for the Lead and the workers, so Windows can qualify. **B5q,** measurement first:
       the Lead''s harness completing a real turn under a Low-integrity token with a writable Low workspace, its MCP server
-      reaching a Low-labelled broker pipe; whether the endpoint''s console is reachable from Low; Lead and worker cross-access
-      at Low; an AppContainer worker against a Low Lead, memory reads both ways; whether a Low process can read Credential
-      Manager or DPAPI secrets; that a Low process cannot send input to the Medium console; and that it cannot write or
-      delete the PIN store. **B5a,** the withheld set, the paths no run may read: the operator''s secret directories, the
-      harness login, `.aew/withheld/`, the endpoint''s directory, the PIN store and its reset journal, each with its ancestors
-      at Medium and never under a Low-labelled tree. "Exhaustive" is the engine-owned, versioned set, plus the policy''s
-      `hide`, plus an enumerated list of known credential stores, with a discovery check that finds candidate files rather
-      than trusting the list. AEW applies NO_READ_UP with the original descriptors recorded, verifies it in doctor and preflight,
-      and can restore it (`aew containment restore`); a per-path self-test attempts a read, a write and a delete; a missing
+      reaching a Low-labelled broker pipe; whether the endpoint''s console is reachable from Low (if B5q cannot show it
+      unreachable, Windows keeps per-action console challenges after B5, F47.3); Lead and worker cross-access at Low; an
+      AppContainer worker against a Low Lead, memory reads both ways; whether a Low process can read Credential Manager
+      or DPAPI secrets; that a Low process cannot send input to the Medium console; and that it cannot write or delete the
+      PIN store. **B5a,** the withheld set, the paths no run may read: the operator''s secret directories, the harness login,
+      `.aew/withheld/`, the endpoint''s directory, the PIN store and its reset journal, each with its ancestors at Medium
+      and never under a Low-labelled tree. "Exhaustive" is the engine-owned, versioned set, plus the policy''s `hide`, plus
+      an enumerated list of known credential stores, with a discovery check that finds candidate files rather than trusting
+      the list. AEW applies NO_READ_UP with the original descriptors recorded, verifies it in doctor and preflight, and
+      can restore it (`aew containment restore`); a per-path self-test attempts a read, a write and a delete; a missing
       label is detected and fails closed; `masked` equals the set; the label''s `host` field lands here. **B5,** the Mandatory
       Integrity Control backend for workers and the Lead (the Lead''s working tree writable, `.aew/` at Medium) on B5a''s
       set, plus the required isolation between runs and of authority: AppContainer workers, or per-run restricting SIDs

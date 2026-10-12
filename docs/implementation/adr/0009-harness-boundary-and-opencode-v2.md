@@ -726,26 +726,32 @@ the same-uid residual of this ADR applies to them as to the run record. See
 
 ## Amendment 2026-10-11 — the Windows containment label (decided, not built; register F48)
 
-The designer's Windows containment decisions (2026-10-11, and 2026-10-12 on isolation between runs and on dropping
-`dev` after qualification) settle the label a contained Windows run carries; register F48 builds it, in the vertical
-path's B5q, B5a and B5 (with B5b if B5 splits). Until then Windows runs keep `workdir_separation_only`, as above.
+The designer's Windows containment decisions (2026-10-11, and 2026-10-12 on isolation between runs and on selecting
+the backend) settle the label a contained Windows run carries; register F48 builds it. Until then Windows runs keep
+`workdir_separation_only`, as above. Each bullet says which parts are the designer's and which are implementation
+choices recorded in register F48.
 
-- **The vocabulary.** `filesystem` gains `os_integrity_label`, with `mechanism: mandatory_integrity_control` (Windows
-  Mandatory Integrity Control: the run's tree labelled Low, `.aew/` and AEW's own state at Medium).
-- **Isolation between runs.** The MIC-only label states `runs_isolated_from_each_other: false`: runs at one Low level
-  are not isolated from each other.
-- **`masked` is an exhaustive read-deny**, not a best-effort list: every withheld or secret path carries NO_READ_UP,
-  and the self-test proves the denial for each path. AEW applies the labels, verifies them (in `doctor` and
-  preflight) and can restore the original descriptors; a missing label fails closed.
-- **Confirmers** count as capable on Windows when the withheld set's requirements hold (every withheld path read-denied
-  and verified). The vertical path's plan further requires the isolated backend below before a Windows label claims it.
-- **Native and WSL** are both supported, as deployment profiles chosen per installation or project, never per run; the
-  label's `host` field records the profile.
-- **The isolated backend.** Isolation between runs and of authority is required for qualification at the governed
-  reviewer and verifier boundary and the worker-to-Lead boundary; a truthful "not independent" label is not enough.
-  B5 delivers it with AppContainer workers or per-run restricting SIDs or write-restricted tokens, chosen on measured
-  evidence. That backend gets **its own** label value and mechanism, stating only what its self-tests prove. Its
-  wording is not written here: it is owed to the designer as a later amendment to this ADR (register F48's item in
-  [decisions due](../decisions-due.md)).
-- **The operator endpoint** drops `dev` on a platform once it is qualified (its Lead contained and its qualification
-  self-tests passing), and records a non-dev guarantee there.
+- **The vocabulary (designer).** `filesystem` gains `os_integrity_label`, with `mechanism:
+  mandatory_integrity_control` (Windows Mandatory Integrity Control). *Implementation (register F48):* the run's tree
+  labelled Low, `.aew/` and AEW's own state at Medium.
+- **Isolation between runs (designer).** The MIC-only label states `runs_isolated_from_each_other: false`: runs at
+  one Low level are not isolated from each other.
+- **`masked` is an exhaustive read-deny (designer)**, not a best-effort list: every withheld or secret path is
+  read-denied, and the self-test proves the denial for each path. AEW applies the NO_READ_UP labels, verifies them
+  and can restore the original descriptors (designer). *Implementation (register F48):* verification in `doctor` and
+  preflight; a missing label fails closed.
+- **Confirmers (designer)** count as capable on Windows when the withheld set's requirements hold (every withheld path
+  read-denied and verified). Register F48 further requires the isolated backend below before a Windows label claims
+  it.
+- **Native and WSL (designer)** are both supported, the backend selected per project or profile, never per run.
+  *Implementation (register F48):* the label's `host` field records the profile.
+- **The isolated backend (designer).** Isolation between runs and of authority is required for qualification at the
+  governed reviewer and verifier boundary and the worker-to-Lead boundary; a truthful "not independent" label is not
+  enough. It is delivered by AppContainer workers or per-run restricting SIDs or write-restricted tokens, chosen on
+  measured evidence. That backend gets **its own** label value and mechanism, stating only what its self-tests prove.
+  Its wording is not written here: it is owed to the designer as a later amendment to this ADR (register F48's item
+  in [decisions due](../decisions-due.md)).
+
+Dropping the operator endpoint's `dev` label once a platform is qualified (designer, 2026-10-12) concerns the
+endpoint, not this label: ADR-0005's amendment, owed with the slices that build the operator session and qualify
+each platform (register F47.3 and F48), records it.

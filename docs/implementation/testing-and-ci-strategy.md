@@ -206,7 +206,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
 - `setup-aew` setup: 0.25 to 0.8 minutes;
 - the whole Linux `core` job: 4.8 to 7.8 minutes.
 
-`fastbase` (setup, one worktree, the same lane) takes about 6 to 6.5 minutes; its 15-minute timeout is at least twice the slowest step plus setup (`tests/unit/test_ci_tools.py` pins that against these numbers). `core`'s 20-minute timeout is unchanged.
+`fastbase` (setup, one worktree, the same lane) takes about 6 to 6.5 minutes; its 19-minute timeout is at least twice the slowest step plus setup, plus the 4 minutes the session deadline keeps clear of a job's timeout (`tests/unit/test_ci_tools.py` pins that against these numbers and `tests/helpers/bounds.py`). `core`'s timeout is 24 minutes: it was 20 until the session deadline (G3a, 2026-10-12) took those 4 minutes for its margins, and was raised by exactly that, so a job that fitted before still fits.
 
 Before and after:
 

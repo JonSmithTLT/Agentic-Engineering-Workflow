@@ -1710,6 +1710,16 @@ def strategy_fast_lane_minutes() -> tuple[float, float]:
     return float(step.group(1)), float(setup.group(1))
 
 
+def _deadline_margins_min() -> float:
+    """The minutes a job's session deadline keeps clear of its timeout (bounds.py: 3 minutes and two margins)."""
+    import bounds
+
+    return (bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S) / 60
+
+
+DEADLINE_MARGINS_MIN = _deadline_margins_min()
+
+
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     """Plan v7 §5 (V5-1, V6-1): fastbase needs changes, runs on the mode-independent decision, has a timeout of at
     least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
@@ -1725,12 +1735,13 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
     assert base["runs-on"] == "ubuntu-latest"
     step, setup = strategy_fast_lane_minutes()
-    assert base["timeout-minutes"] == 15 and base["timeout-minutes"] >= 2 * step + setup
+    # at least twice the slowest step plus setup, plus what the session deadline's margins take (G3, 2026-10-12)
+    assert base["timeout-minutes"] == 19 and base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
     assert lane["run"] == ("python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist "
-                           "--test-timeout 600 --session-deadline 660 "  # its own job's deadline and hang dir (G3)
+                           "--test-timeout 600 --session-deadline 900 "  # its own job's deadline and hang dir (G3)
                            '--hang-dir "${{ runner.temp }}/fastbase/hangs"')
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
@@ -1740,7 +1751,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == 20
+    assert core["timeout-minutes"] == 24  # 20, plus the 4 minutes the session deadline's margins take (2026-10-12)
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 

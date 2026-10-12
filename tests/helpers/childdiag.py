@@ -41,6 +41,7 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import IO, Any
 
@@ -104,10 +105,15 @@ class Diag:
     # ------------------------------------------------------------------ the repeating dump, bounded
 
     def arm(self) -> None:
+        # A native crash (a segfault, an access violation) writes every thread's stack here too: a child that dies
+        # without a Python exception is not silent either.
+        self._fatal = open(self.dir / f"fatal-{self.pid}.txt", "w", encoding="utf-8")  # noqa: SIM115
+        faulthandler.enable(file=self._fatal, all_threads=True)
         self._file = open(self.paths[0], "w", encoding="utf-8")  # noqa: SIM115  (faulthandler holds it)
         self._file.write(f"childdiag: pid {self.pid}, every thread's stack every {self.interval:g}s\n")
         self._file.flush()
         faulthandler.dump_traceback_later(self.interval, repeat=True, file=self._file)
+        self._armed_at = time.monotonic()
         threading.Thread(target=self._watch, name="childdiag-rotate", daemon=True).start()
 
     def rotate(self) -> None:
@@ -121,13 +127,22 @@ class Diag:
             self._file.write(f"childdiag: pid {self.pid}, generation {self.rotations + 1}\n")
             self._file.flush()
             faulthandler.dump_traceback_later(self.interval, repeat=True, file=self._file)
+            self._armed_at = time.monotonic()
             self.rotations += 1
             if old is not None:
                 old.close()
 
+    def _until_between_dumps(self) -> float:
+        """Seconds until halfway between two dumps of the current arming (each arm restarts faulthandler's phase)."""
+        since = time.monotonic() - self._armed_at
+        nxt = (since // self.interval) * self.interval + self.interval / 2
+        return nxt - since if nxt - since > 0.05 else nxt - since + self.interval
+
     def _watch(self) -> None:
-        poll = min(self.interval, 5.0)
-        while not self._stop.wait(poll):
+        """Checks the size half an interval after each dump is due, never as one fires: on Windows, CPython 3.13.1, a
+        cancel while faulthandler's thread is dumping a thread that runs crashed the process (an access violation in
+        ``rotate``; reproduced with a 1 s interval and the check in phase with the dumps)."""
+        while not self._stop.wait(self._until_between_dumps()):
             try:
                 if self._file is not None and os.fstat(self._file.fileno()).st_size > self.cap:
                     self.rotate()
@@ -145,19 +160,13 @@ class Diag:
             pass
 
     def _excepthook(self, args: threading.ExceptHookArgs) -> None:
-        stack = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
         name = args.thread.name if args.thread is not None else "?"
-        self.event("thread_exception", thread=name, error=args.exc_type.__name__, message=str(args.exc_value),
-                   stack=stack)
-        flight_recorder.record("thread_died", thread=name, error=args.exc_type.__name__, message=str(args.exc_value))
-        flight_recorder.flush_raw(self.dir)
+        if args.exc_value is not None:
+            died("thread_exception", name, args.exc_value)
         self._previous_thread_hook(args)
 
     def _sys_excepthook(self, exc_type: type[BaseException], exc: BaseException, tb: Any) -> None:
-        stack = "".join(traceback.format_exception(exc_type, exc, tb))
-        self.event("uncaught_exception", thread="MainThread", error=exc_type.__name__, message=str(exc), stack=stack)
-        flight_recorder.record("uncaught", error=exc_type.__name__, message=str(exc))
-        flight_recorder.flush_raw(self.dir)
+        died("uncaught_exception", "MainThread", exc)
         self._previous_sys_hook(exc_type, exc, tb)
 
     def hooks(self) -> None:
@@ -165,7 +174,15 @@ class Diag:
         self._previous_sys_hook = sys.excepthook
         threading.excepthook = self._excepthook
         sys.excepthook = self._sys_excepthook
-        atexit.register(lambda: flight_recorder.flush_raw(self.dir))
+        atexit.register(self._at_exit)
+
+    def _at_exit(self) -> None:
+        """Flush the recorder, and stop the repeating dump before the interpreter finalizes: a dump that fires while
+        its threads are being torn down can crash the process (seen on Windows, CPython 3.13.1: an access violation
+        whose fatal dump shows only threads with no Python frame). ``os._exit`` skips this, and skips finalization."""
+        with self._lock:
+            faulthandler.cancel_dump_traceback_later()
+        flight_recorder.flush_raw(self.dir)
 
     # ------------------------------------------------------------------ output
 
@@ -223,13 +240,48 @@ def install(directory: str | os.PathLike[str] | None = None, *, capture: str | N
 
 def install_beside(directory: Path, *, capture: str = "tee") -> Diag | None:
     """For a helper the product starts (whose environment the product curates): the diagnostics directory named in
-    ``<directory>/childdiag-dir.txt``, written there by the test (``autopsy.child_dir``), else the environment."""
+    ``<directory>/childdiag-dir.txt``, written there by the test (``autopsy.mark_helper_dir``), else the environment.
+    An optional second line is the dump interval (a test of this module asks for less than 30 s)."""
     marker = Path(directory) / DIR_FILE
     try:
-        where = marker.read_text(encoding="utf-8").strip() or None
+        lines = marker.read_text(encoding="utf-8").splitlines()
     except OSError:
-        where = None
-    return install(where, capture=capture)
+        lines = []
+    where = lines[0].strip() if lines and lines[0].strip() else None
+    interval = float(lines[1]) if len(lines) > 1 and lines[1].strip() else None
+    return install(where, capture=capture, interval=interval)
+
+
+# ---------------------------------------------------------------------------------------------- a dying thread
+
+DeathHook = Callable[[str, str, BaseException, dict[str, Any]], None]
+_on_death: list[DeathHook] = []
+
+
+def on_death(hook: DeathHook) -> Callable[[], None]:
+    """Also tell ``hook(kind, thread, exc, facts)`` of every death :func:`died` records (the scripted Lead keeps them
+    in its own events, which the vertical ledger reads). Returns the function that removes it."""
+    _on_death.append(hook)
+    return lambda: _on_death.remove(hook) if hook in _on_death else None
+
+
+def died(kind: str, thread: str, exc: BaseException, **facts: Any) -> None:
+    """The one way a helper child records a thread or a session that died of an exception: the uncaught-exception
+    hooks call it, and so does a helper that catches its own fatal error (the scripted Lead's ``lead_error``). It
+    writes the exception and its stack to ``events-<pid>.jsonl`` (when installed), records it in the flight recorder
+    and flushes that, then tells every :func:`on_death` hook. Never raises."""
+    stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    error, message = type(exc).__name__, str(exc)
+    if _installed is not None:
+        _installed.event(kind, thread=thread, error=error, message=message, stack=stack, **facts)
+    flight_recorder.record(kind, thread=thread, error=error, message=message)
+    if _installed is not None:
+        flight_recorder.flush_raw(_installed.dir)
+    for hook in list(_on_death):
+        try:
+            hook(kind, thread, exc, {"stack": stack, **facts})
+        except Exception:  # a hook's own failure never hides the death  # noqa: BLE001, S110
+            pass
 
 
 def child_env(directory: Path, env: dict[str, str] | None = None, *, capture: str = "redirect",

@@ -1901,9 +1901,14 @@ def _workflow_lanes():
 def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     """H3 and H5: every pytest invocation in every workflow passes --test-timeout and --session-deadline, with
     inner helper bounds < --test-timeout < --session-deadline (plus its two margins, times a loop's repetitions)
-    < the job's timeout-minutes less 3 minutes. A change to any one value that breaks the order fails here."""
+    < the job's timeout-minutes less 3 minutes. A change to any one value that breaks the order fails here. The
+    helpers declare their bounds when imported: the vertical UAT's are its chat, conversation and gate waits."""
     import bounds
+    import vertical.lead  # noqa: F401  (each declares its bounds)
+    import vertical.scripted_operator  # noqa: F401
+    import vertical.workers  # noqa: F401
 
+    assert {"vertical.chat", "vertical.conversation", "vertical.implementer_gate"} <= set(bounds.BOUNDS)
     problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
     assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
 

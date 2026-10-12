@@ -196,6 +196,7 @@ class AutopsyPlugin:
                 dest, name("file-holders"), proctree.describe_holders(proctree.holders(flight_recorder.failed_paths())),
                 budget=budget))
             step("workdirs", lambda: self._workdirs(item, dest, budget, errors))
+            step("bounds", lambda: hd.write_text(dest, "bounds", bounds_in_force(), budget=budget))
             if budget.refused or errors:
                 hd.write_text(dest, "collect-notes", "".join(f"{e}\n" for e in errors + budget.refused),
                               append=True)
@@ -226,12 +227,19 @@ class AutopsyPlugin:
     def _workdirs(self, item: pytest.Item | None, dest: Path, budget: hd.Budget, errors: list[str]) -> None:
         dirs: list[tuple[str, Path]] = []
         tmp = getattr(item, "funcargs", {}).get("tmp_path") if item is not None else None
-        if isinstance(tmp, Path):
+        mark = item.get_closest_marker(MARKER) if item is not None else None
+        whole = mark is None or mark.kwargs.get("tmp_path", True)  # autopsy(tmp_path=False): the registered parts only
+        if isinstance(tmp, Path) and whole:
             dirs.append(("tmp_path", tmp))
-        dirs += [(hd.safe_dir(str(p)), p) for p in self.workdirs if not (tmp and Path(p) == tmp)]
+        dirs += [(hd.safe_dir(str(p)), p) for p in self.workdirs if not (tmp and whole and Path(p) == tmp)]
         for name, path in dirs:
             if path.is_dir():
                 errors += hd.copy_tree(path, dest / "workdir" / name, budget=budget)[1]
+            elif path.is_file():
+                try:
+                    hd.copy_file(path, dest / "workdir", path.name, budget=budget)
+                except OSError as exc:
+                    errors.append(f"{path.name}: {type(exc).__name__}: {exc}")
 
     # ------------------------------------------------------------------ marked failures and crashed workers
 
@@ -273,20 +281,34 @@ def child_dir() -> Path | None:
     return _plugin.child_dir() if _plugin is not None else None
 
 
-def mark_helper_dir(directory: Path) -> Path | None:
+def mark_helper_dir(directory: Path, *, interval: float | None = None) -> Path | None:
     """For a helper the product starts (the fake OpenCode launcher reads it): write ``<directory>/childdiag-dir.txt``
-    naming the running test's children directory. Returns that directory, or None outside an autopsy session."""
+    naming the running test's children directory (and, for a test of the mechanism only, a shorter dump interval).
+    Returns that directory, or None outside an autopsy session."""
     import childdiag
 
     where = child_dir()
     if where is not None:
         Path(directory).mkdir(parents=True, exist_ok=True)
-        (Path(directory) / childdiag.DIR_FILE).write_text(str(where), encoding="utf-8")
+        text = str(where) + (f"\n{interval:g}" if interval is not None else "")
+        (Path(directory) / childdiag.DIR_FILE).write_text(text, encoding="utf-8")
     return where
 
 
+def bounds_in_force() -> str:
+    """Every bound the helpers declared (``bounds.py``), as the autopsy keeps them: with the test's own limit, they
+    show whether the wait that ran out was the innermost one."""
+    import bounds
+
+    rows = [f"{b.name}: {b.seconds:g}s" + (f" within {b.within}" if b.within else "")
+            + (f" (lanes {', '.join(sorted(b.lanes))})" if b.lanes else "") + (f": {b.why}" if b.why else "")
+            for b in sorted(bounds.BOUNDS.values(), key=lambda b: b.name)]
+    return "\n".join(rows or ["no helper bound was declared in this process"]) + "\n"
+
+
 def register_workdir(path: Path) -> None:
-    """A helper's own temporary directory, copied (redacted, capped) into the autopsy if the test fails."""
+    """A helper's own temporary directory (or one file), copied (redacted, capped) into the autopsy if the test
+    fails."""
     if _plugin is not None:
         _plugin.workdirs.append(Path(path))
 

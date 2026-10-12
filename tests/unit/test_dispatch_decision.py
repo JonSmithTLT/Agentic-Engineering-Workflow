@@ -41,6 +41,7 @@ NOT_DISPATCHING = {
     "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
+    "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
     "work close", "work create", "work depend", "work list", "work move", "work promote", "work ready",
     "work reclassify", "work reconcile", "work roles", "work show", "work staff", "work transition", "work tree",

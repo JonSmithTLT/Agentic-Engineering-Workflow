@@ -44,6 +44,17 @@ vocabulary:
     forbidden-to-lead: operator, admin or diagnostic authority; exposed through neither Lead door (it leaves
       LEAD_REACHABLE)
     undecided: until A2's plan decides it, with its reason
+  # Where a `planned` row's disposition lands (the A1 slice plan, reviewed CLEAR, section 6): the slice whose change
+  # builds its homes and decides it.
+  lands:
+    A1a-1: projection v2 and the `harness_status` fold; `ticket_rework` (blocked on the G3 budget question)
+    A1a-2: "`resolve`'s `accept_plan` and `reconcile`"
+    A1b: the handoff and its acknowledged cursor
+    A2: the Lead's remaining typed homes, `work_amend` and the A2 debts
+    A4: the shell door closed; the operator paths (after B1)
+    C5b: the dead-custodian detector and the engine's own paths
+    F9-A: F9-A's typed message send
+    later: not in this plan; the row stays undecided and reachable, with its reason
 
 # Every entry's `refusals` lists the aew.errors codes it is known to raise: the floor its arguments imply (any
 # command: USAGE; a Lead credential: PERMISSION_DENIED and STALE_AUTHORITY; an expected revision: STALE_REVISION;
@@ -64,6 +75,88 @@ proposed:
   - name: preflight
     ideal_path: [preflight]
     note: "readiness before any Ticket, naming the cause and the fix (register F47.4, slice C2)"
+
+# The A1 slice plan's dispositions (reviewed CLEAR, section 2.1): the typed tools and `resolve` choices planned as
+# homes of still-undecided commands, before they exist. Each still-undecided command carries `planned: {disposition,
+# homes, primitive, lands, reason}`. A home is a typed tool (built, or proposed here) or `R(<choice>)`, a `resolve`
+# choice (built in aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE, or proposed here with its (subject kind: primitive)
+# pairs); `primitive: none` names none (a row that is not planned typed). These sections and the planned rows are
+# digest-pinned in the test and only shrink: a proposal leaves in the change that builds it, which also decides the
+# rows it homes ("home built => row decided"); a command leaves the Lead's shell door only decided ("out of the door
+# => row decided").
+proposed_tools:
+  - name: ticket_rework
+    expands_to: [work.transition, invoke.create.mutating, dispatch.launch]
+    transitions: [[REVIEW_FAILED, RUNNING]]
+    lands: A1a-1
+    note: "the mutating rework stage, shaped like ticket_request_review; blocked on the G3 budget question"
+  - name: work_amend
+    expands_to: [work.move, work.promote, work.reclassify, work.depend]
+    lands: A2
+    note: "one decomposition tool, with `change: move|promote|reclassify|depend`"
+  - name: message_send
+    expands_to: [message.send]
+    lands: F9-A
+    note: "F9-A's typed send (the F9 steer-vs-queue decision, 2026-10-10), offered only with coordination.messaging on"
+proposed_choices:
+  - name: accept_plan
+    pairs: {plan: plan.accept}
+    lands: A1a-2
+    note: "subject PLAN:<T>@<n>; arguments operator_answer (the quoted chat answer) and rationale"
+  - name: reconcile
+    pairs: {unit: work.reconcile}
+    lands: A1a-2
+    note: "subject UNIT:<T>, while INTERRUPTED; arguments to (an offered phase) and rationale"
+  - name: adopt_proposal
+    pairs: {plan: plan.adopt}
+    lands: A2
+  - name: reconfirm
+    pairs: {plan: plan.reconfirm}
+    lands: A2
+  - name: classify
+    pairs: {unit: verify.classify}
+    lands: A2
+    note: "while VERIFICATION_FAILED; argument class"
+  - name: cancel
+    pairs: {unit: work.cancel, invocation: invoke.cancel}
+    transitions: [["*", CANCELLED]]
+    lands: A2
+    note: "a unit, or a live invocation"
+  - name: close
+    pairs: {unit: work.close}
+    lands: A2
+    note: "a Story or Epic at ACCEPTANCE_PENDING"
+  - name: relaunch
+    pairs: {run: harness.launch}
+    lands: A2
+    note: "a failed run whose invocation is active"
+  - name: acknowledge_input
+    pairs: {input: work.acknowledge-input}
+    lands: A2
+  - name: waive
+    pairs: {gate: gate.waive}
+    lands: A2
+  - name: accept_record
+    pairs: {unit: work.accept}
+    lands: A2
+    note: "a non-mutating unit with a record"
+  - name: defer
+    pairs: {queue: integrate.defer}
+    lands: A2
+  - name: requeue
+    pairs: {queue: integrate.requeue}
+    lands: A2
+  # The A1-0 review's F1: escalation and its return, the A2 design item of the A1 slice plan §2.7.
+  - name: escalate
+    pairs: {unit: work.transition}
+    transitions: [["*", ESCALATED]]
+    lands: A2
+    note: "a judgment with a rationale; its typed home is the A2 design item (§2.7)"
+  - name: return_escalated
+    pairs: {unit: work.transition}
+    transitions: [[ESCALATED, RUNNING], [ESCALATED, REVIEW_PENDING], [ESCALATED, VERIFY_PENDING]]
+    lands: A2
+    note: "the escalation's outcome, with a rationale; the returns the phase order admits (§2.7, §3.1a)"
 
 commands:
   - name: doctor
@@ -168,6 +261,12 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: forbidden-to-lead
+      homes: []
+      primitive: none
+      lands: A4
+      reason: "joins OPERATOR_ONLY with the handoff family: reattach replaces the handoff (after B1)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: lead takeover
@@ -246,6 +345,7 @@ commands:
     door: typed
     via: [resolve]
     primitive: stage.resolve
+    via_choices: {continue: [stage_intent]}
     lead_disposition: typed
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
@@ -259,6 +359,7 @@ commands:
     door: typed
     via: [resolve]
     primitive: stage.resolve
+    via_choices: {abandon: [stage_intent]}
     lead_disposition: typed
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
@@ -361,6 +462,21 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [ticket_draft]
+      primitive: work.staff
+      lands: A2
+      reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, with one execute card, so re-staffing an existing Ticket and a several-card execute plan have no typed home yet (`uncovered`, the A1-0 review's F2 and the re-review's N3)"
+      options: {work_id: uncovered, "--execute": uncovered, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --execute"
+          - "option --forbid"
+          - "option --pin"
+          - "option --remove"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work transition
@@ -373,6 +489,39 @@ commands:
     partly_via: [ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare]
     primitive: work.transition
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [ticket_rework, ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare, "R(escalate)", "R(return_escalated)"]
+      primitive: work.transition
+      lands: A2
+      reason: "the stage steps, the rework (`ticket_rework`, blocked on the G3 budget question) and escalation and its return (A2) type some of its edges, and cancelling is `work cancel`'s; the replans, the regressions and the re-verification have no typed home yet (`uncovered`, the A1-0 review's F1), so it is decided in A2 at the earliest"
+      options: {work_id: homes, "--to": homes, "--reason": homes}
+      uncovered:
+        lands: A2
+        uses:
+          - "transition ASSIGNED -> REPLAN_REQUIRED"
+          - "transition BLOCKED -> REPLAN_REQUIRED"
+          - "transition COMMIT_READY -> REPLAN_REQUIRED"
+          - "transition COMMIT_READY -> RUNNING"
+          - "transition ESCALATED -> REPLAN_REQUIRED"
+          - "transition INTERRUPTED -> REPLAN_REQUIRED"
+          - "transition READY -> REPLAN_REQUIRED"
+          - "transition REVIEW_FAILED -> REPLAN_REQUIRED"
+          - "transition REVIEW_PASSED -> COMMIT_READY"
+          - "transition REVIEW_PASSED -> REPLAN_REQUIRED"
+          - "transition REVIEW_PASSED -> RUNNING"
+          - "transition REVIEW_PENDING -> REPLAN_REQUIRED"
+          - "transition REVIEW_PENDING -> RUNNING"
+          - "transition RUNNING -> COMMIT_READY"
+          - "transition RUNNING -> REPLAN_REQUIRED"
+          - "transition RUNNING -> VERIFY_PENDING"
+          - "transition VERIFICATION_INCONCLUSIVE -> REPLAN_REQUIRED"
+          - "transition VERIFICATION_INCONCLUSIVE -> RUNNING"
+          - "transition VERIFICATION_INCONCLUSIVE -> VERIFY_PENDING"
+          - "transition VERIFIED -> REPLAN_REQUIRED"
+          - "transition VERIFIED -> RUNNING"
+          - "transition VERIFY_PENDING -> REPLAN_REQUIRED"
+          - "transition VERIFY_PENDING -> RUNNING"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the stages run the transitions they own; a free transition (rework, a projection hint) has no typed home"
@@ -384,6 +533,23 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: []
+      primitive: work.dispatch
+      lands: A2
+      reason: "policy picks the executor and the loop runs it; its non-mutating start home is A2's design item, and it stays reachable until then"
+      options: {work_id: uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint work.dispatch"
+          - "option --card"
+          - "option --effort"
+          - "option --launch"
+          - "option --model"
+          - "option --profile"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work redispatch
@@ -394,6 +560,24 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: []
+      primitive: work.redispatch
+      lands: A2
+      reason: "retrying is judgment; its non-mutating start home is A2's design item (not the mutating `ticket_rework`), and it stays reachable until then"
+      options: {work_id: uncovered, "--reason": uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint work.redispatch"
+          - "option --card"
+          - "option --effort"
+          - "option --launch"
+          - "option --model"
+          - "option --profile"
+          - "option --reason"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "named by V2's redispatch fallback for a non-mutating Ticket; V2's Ticket is mutating"
@@ -405,6 +589,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(accept_record)"]
+      primitive: work.accept
+      lands: A2
+      reason: "evidence acceptance is the Lead's judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work close
@@ -415,6 +606,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(close)"]
+      primitive: work.close
+      lands: A2
+      reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work cancel
@@ -425,6 +623,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(cancel)"]
+      primitive: work.cancel
+      lands: A2
+      reason: "cancelling a unit is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work move
@@ -435,6 +640,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [work_amend]
+      primitive: work.move
+      lands: A2
+      reason: "decomposition; the engine keeps its own guards (no moving a committed Ticket)"
+      options: {work_id: homes, "--parent": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work promote
@@ -445,6 +657,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [work_amend]
+      primitive: work.promote
+      lands: A2
+      reason: "decomposition; the engine keeps its own guards"
+      options: {work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work reclassify
@@ -455,6 +674,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [work_amend]
+      primitive: work.reclassify
+      lands: A2
+      reason: "decomposition; risk only rises (the engine's guard)"
+      options: {work_id: homes, "--class": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work depend
@@ -465,6 +691,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [work_amend]
+      primitive: work.depend
+      lands: A2
+      reason: "decomposition; the engine keeps its own guards"
+      options: {work_id: homes, "--add": homes, "--remove": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work acknowledge-input
@@ -475,6 +708,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(acknowledge_input)"]
+      primitive: work.acknowledge-input
+      lands: A2
+      reason: "acknowledging an input is judgment"
+      options: {work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
@@ -493,6 +733,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(reconcile)"]
+      primitive: work.reconcile
+      lands: A1a-2
+      reason: "V2's reconcile, with the phases the engine offers; until then its recovery home covers V2"
+      options: {work_id: homes, "--to": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "V2's RECONCILE decision runs its cli_fallback"
@@ -505,6 +752,10 @@ commands:
     door: typed
     via: [resolve]
     primitive: work.dispose
+    via_choices:
+      accept_risk: [finding, claim, anomaly]
+      follow_up: [finding, claim, anomaly]
+      not_applicable: [finding, claim, anomaly]
     lead_disposition: typed
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
@@ -574,6 +825,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(accept_plan)"]
+      primitive: plan.accept
+      lands: A1a-2
+      reason: "asked of the operator and recorded by the Lead (decided_by: lead, quoting the chat answer); until then a recovery command"
+      options: {work_id: homes, "--revision": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted shell fallback after the operator approves the plan; its typed home will be a resolve
@@ -586,6 +844,21 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(adopt_proposal)"]
+      primitive: plan.adopt
+      lands: A2
+      reason: "adopting a proposal is judgment"
+      options: {work_id: homes, "--evidence": uncovered, "--from": uncovered, "--reason": homes, "--review": uncovered, "--verify": uncovered, "--assurance": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --assurance"
+          - "option --evidence"
+          - "option --from"
+          - "option --review"
+          - "option --verify"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: plan reconfirm
@@ -596,6 +869,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(reconfirm)"]
+      primitive: plan.reconfirm
+      lands: A2
+      reason: "reconfirming a plan is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke create
@@ -608,6 +888,24 @@ commands:
     partly_via: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish]
     primitive: invoke.create.mutating
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish, ticket_rework]
+      primitive: invoke.create.mutating
+      lands: A2
+      reason: "the request stages launch the attempts they reach through their own transitions, and `ticket_rework` a new implementer attempt from REVIEW_FAILED (blocked on the G3 budget question, a recovery exception until then); `integration_publish` re-creates a lost integration verifier. No home starts in ASSIGNED, RUNNING, REVIEW_PENDING or VERIFY_PENDING to replace a lost implementer, reviewer or verifier, nor creates an attempt without launching it, nor runs the non-mutating and parent-acceptance dispatches (`uncovered`, the A1-0 review's F1 and the re-review's N2 and N3)"
+      options: {work_id: homes, "--card": uncovered, "--role": homes, "--scope": homes, "--profile": homes, "--model": homes, "--effort": homes, "--launch": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint invoke.create.mutating in ASSIGNED"
+          - "entrypoint invoke.create.mutating in REVIEW_PENDING"
+          - "entrypoint invoke.create.mutating in RUNNING"
+          - "entrypoint invoke.create.mutating in VERIFY_PENDING"
+          - "entrypoint invoke.create.non_mutating"
+          - "entrypoint invoke.create.parent"
+          - "option --card"
+          - "option --launch"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the request stages create their reviewers and verifiers; a new implementer attempt (V2's redispatch
@@ -620,6 +918,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(cancel)"]
+      primitive: invoke.cancel
+      lands: A2
+      reason: "cancelling a live invocation is judgment; ended invocations close themselves (C5)"
+      options: {invocation: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke show
@@ -679,6 +984,17 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(relaunch)"]
+      primitive: harness.launch
+      lands: A2
+      reason: "relaunching a failed run is judgment"
+      options: {invocation: homes, "--replace": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --replace"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
@@ -713,6 +1029,12 @@ commands:
     mutates_basis: "stops a run's harness process (an external system)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: forbidden-to-lead
+      homes: []
+      primitive: none
+      lands: A4
+      reason: "retired, a half-state: A4 removes the command, and `resolve`'s cancel is the only stop"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
   - name: harness send
@@ -723,6 +1045,13 @@ commands:
     mutates_basis: "delivers a message into a run's harness session and records it (an external system)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [message_send]
+      primitive: message.send
+      lands: F9-A
+      reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
+      options: {run: homes, "--text": homes, "--file": homes, "--when": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     note: "messaging (F9-A1): A4 keeps a typed home or leaves it reachable, with its reason"
@@ -734,6 +1063,13 @@ commands:
     mutates_basis: "interrupts a run's current turn (an external system)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [message_send]
+      primitive: message.send
+      lands: F9-A
+      reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
+      options: {run: homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
   - name: harness config
@@ -760,6 +1096,17 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(waive)"]
+      primitive: gate.waive
+      lands: A2
+      reason: "waiving a gate is the Lead's (operator, 2026-10-06); `R(waive)` pairs only a gate, so waiving a required finding (`--finding`) has no typed home yet (`uncovered`, the A1-0 review's F2)"
+      options: {work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --finding"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: evidence ingest
@@ -770,6 +1117,12 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: engine-owned
+      homes: []
+      primitive: evidence.ingest
+      lands: C5b
+      reason: "mechanical: the engine ingests at a run's end, attributed to the run; acceptance stays the Lead's (`work accept`). Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: review ingest
@@ -804,6 +1157,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(classify)"]
+      primitive: verify.classify
+      lands: A2
+      reason: "classifying a verification failure is judgment"
+      options: {work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate prepare
@@ -838,6 +1198,12 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: engine-owned
+      homes: []
+      primitive: integrate.reconcile
+      lands: C5b
+      reason: "determined by the ref's compare-and-set: the dead-custodian detector runs it under the original publish's approval. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate validate
@@ -848,6 +1214,12 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: engine-owned
+      homes: []
+      primitive: integrate.validate
+      lands: C5b
+      reason: "the custodian's work: the engine spawns a custodian for a prepared candidate. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "recovery only, while no custody worker has registered for the candidate"
@@ -884,6 +1256,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(defer)"]
+      primitive: integrate.defer
+      lands: A2
+      reason: "deferring a queue entry is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate requeue
@@ -894,6 +1273,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: ["R(requeue)"]
+      primitive: integrate.requeue
+      lands: A2
+      reason: "requeueing a queue entry is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate reorder
@@ -904,6 +1290,12 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: forbidden-to-lead
+      homes: []
+      primitive: integrate.reorder
+      lands: A4
+      reason: "an operator command (OPERATOR_ONLY, after B1): queue order changes from day to day"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: history show
@@ -960,6 +1352,13 @@ commands:
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: typed
+      homes: [ticket_draft, ticket_rework]
+      primitive: history.load
+      lands: A2
+      reason: "a brief's input, as `context_refs`"
+      options: {record_id: homes, "--into": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: history audit
@@ -970,6 +1369,12 @@ commands:
     mutates_basis: "with --expect-rev it records the audit as a Lead mutation; without it, advisory"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: forbidden-to-lead
+      homes: []
+      primitive: none
+      lands: A4
+      reason: "integrity maintenance is the operator's: doctor runs the advisory audit, and recording it is OPERATOR_ONLY (after B1)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: history reindex
@@ -1020,6 +1425,12 @@ commands:
                    derived map state only (ADR-0015)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: engine-owned
+      homes: []
+      primitive: none
+      lands: later
+      reason: "a new feature, under the pause; derived state, so it stays reachable after A4 (stated)"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: map select-architecture
@@ -1031,6 +1442,12 @@ commands:
                    (--expect-map-rev); derived context, but a change the Lead makes, so declared mutating"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: forbidden-to-lead
+      homes: []
+      primitive: none
+      lands: later
+      reason: "a compare-and-set that stays reachable until a settings slice: the end-state metric's stated exception"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: map show
@@ -1067,6 +1484,15 @@ commands:
     probe: [operator, ping]
     probe_refused: "NOT_FOUND: no operator endpoint runs for the sample (it needs a console)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: settings show
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: renders Engine.configuration from the committed state and the file bytes; takes no lock"
+    probe: [[settings, show], [settings, show, execution]]
+    refusals: [INTEGRITY_ERROR, PROJECT_NOT_FOUND, USAGE]
+    note: "F46.1; the read half of `settings set` (proposed, F46.2). INTEGRITY_ERROR: a damaged control.yaml"
   - name: message thread
     home: diagnostic
     users: [operator, lead]
@@ -1093,6 +1519,12 @@ commands:
     mutates_basis: "with the Lead's credential it records what it showed (F9-A plan D-38)"
     door: "shell-only (pending A2/A4)"
     lead_disposition: undecided
+    planned:
+      disposition: engine-owned
+      homes: []
+      primitive: message.unseen
+      lands: A1b
+      reason: "the handoff serves unseen messages, triggered by the Lead's acknowledgment of a typed resume. Keep-out at A4"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"

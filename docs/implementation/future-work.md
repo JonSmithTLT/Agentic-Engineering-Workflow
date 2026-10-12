@@ -2030,6 +2030,66 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E71/`, oldest first (`python tools/register.py show E71`).*
 
+### E72
+
+**Work:** The Windows integration shards run close to their bound: a fifth Windows integration shard, or a faster integration suite, so that a slow runner does not reach the session deadline. Each of the four shards has a job timeout of 34 minutes (the pre-G3a 30 plus the session deadline's clearance), and its pytest session deadline is 1800 s after the job starts (`--session-deadline 1800`)
+
+**Source:** `main`'s push runs: the job wall times from the Actions API, and the per-shard pytest session times from each run's `cost-record` artifact (`platforms.win32.shards[].session_wall_s`); `.github/workflows/ci.yml` (`lanes`, the `windows-latest` integration entries, the 34-minute timeout and the 1800 s session deadline)
+
+**When:** **M4 candidate**: waits for the operator's decision (decisions-due). Owner: CI capacity. The Lead recommends a fifth shard
+
+**Notes:** Confirmed by the review of #223 from the Actions API and `ci.yml`: the Windows integration jobs took 17.0 to 26.6 minutes across runs 38271888021 (`938772c`), 38261462556 (`e69313b`), 38285596692 (`2129ac1`) and 38291227264 (`977d685`), against a 34-minute job timeout and an 1800 s session deadline. Per-shard pytest session times, from the `cost-record` artifacts (copied here because the artifacts expire after 7 days), in minutes: 17.1 to 25.3 on `938772c`, 20.9 to 25.5 on `e69313b`, 16.5 to 26.0 on `2129ac1` and 18.7 to 25.8 on `977d685`. A fifth shard adds one job per full run under the 40-job cap, so it falls under the operator's CI-capacity decisions. A faster suite is the other route ("a slower test is a regression to find, not a timeout to raise")
+
+*Later notes: `notes.d/E72/`, oldest first (`python tools/register.py show E72`).*
+
+### E73
+
+**Work:** The dashboard's registry reader treats `FileNotFoundError` as absent at once: `MapsReader.registry()` in `src/aew/dashboard/reader.py` (lines 224 to 250 at `977d685`) returns `NONE` on the first `FileNotFoundError` (lines 236 and 237), although it already retries a `PermissionError` on Windows (lines 242 to 246). On Windows a file in the middle of a writer's replace can be reported missing, so a present registry reads as absent. The fix is to converge on the store's one owner of lock-free reads, `aew.engine.store.read_lock_free`, which #220 adds with its retry of a missing file gated to Windows, once #220 merges, instead of keeping a second retry here
+
+**Source:** The review of #220 (F46.1 slice F1a): under a real replace loop, the configuration projection's lock-free reads reported a present file missing in 314 to 726 of about 24,000 reads per run until the owner retried `FileNotFoundError` as well
+
+**When:** **Unscheduled.** Owner: the dashboard API lane; after #220 merges
+
+**Notes:** The reader-side member of one class: readers and scanners that do not go through the one owner. E76 is its test-side twin, the writer's replace racing a raw read; E74 is the same class in the code-registry scan
+
+*Later notes: `notes.d/E73/`, oldest first (`python tools/register.py show E73`).*
+
+### E74
+
+**Work:** G2's code-registry scan resolves a module constant's name only where a code is passed as a call argument, so a code written through a constant anywhere else is invisible to it. `code_write_sites` in `tests/unit/test_discovery_registry.py` (at `977d685`) resolves names only for the arguments of callables that take a code (lines 65 to 76). A dict literal's `"code"` value, a `code=` keyword elsewhere, a class's `code =` and an `x.code =` assignment are read only as literals (lines 79 to 93), and `module_constants` binds only plain assignments (`ast.Assign`), so it misses constants assigned by tuple unpacking (`A, B = "A", "B"`) and annotated constants (`NAME: str = "X"`). The class is open on `main`, not only in #220. Five codes on `main` are written only through a module constant in a dict's `"code"` value; the scan does not see them, and the registry has no row for any: `GUARD_QUERY_DEFECT` (`src/aew/engine/guards.py:133`, constant at `:45`); `UNVERIFIED_ENTRIES_OVER_POLICY`, `UNVERIFIED_AGE_OVER_POLICY` and `FULL_VERIFICATION_OVERDUE` (`src/aew/engine/history_ops.py:550`, `:554`, `:567`, bound by tuple unpacking at `:65`, so both forms at once); and `RESOLVE_STAGE` (`src/aew/surface/availability.py:263`, constant at `:35`). G2 brings each into the scan and the registry, or excludes it explicitly. The fix is to resolve constant names wherever a code is written, proved by a planted test for each form: a dict value, a `code=` keyword, a class's `code =`, an `x.code =` assignment, a tuple-unpacked constant and an annotated constant
+
+**Source:** The review of #223: an AST enumeration of every non-literal `code` write and every module string constant `module_constants` does not bind, over `src/aew` at `977d685`, then the merged scan (`code_write_sites`) and the registry run against the codes it found. The other non-literal forms it found are out of the class: attribute reads (`exc.code`) re-emit a code written as a literal where it is defined, and dynamic values (variables, `x["code"]`, `.get(...)`) carry no constant. Also #220 (F46.1 slice F1a), whose data codes add more members once it merges: `UNPROCESSABLE` in a dict literal's value, `NO_SUCH_PROFILE` and `NO_DEFAULT_ROUTE` bound by tuple unpacking, and the schema-keyword codes. #218 (G2) closed the same class for the call-argument form
+
+**When:** **Unscheduled.** Owner: G2 (the discovery lane)
+
+**Notes:** A silent gap: a code the scan cannot see fails no test, so a code missing from the registry passes. The same class as E73 and E76 (a reader that does not go through the one owner)
+
+*Later notes: `notes.d/E74/`, oldest first (`python tools/register.py show E74`).*
+
+### E75
+
+**Work:** A wall-clock flake: `tests/integration/test_notifier.py::test_broker_liveness_is_local_and_beats_every_poll[wedged_watchdog_is_stale]` failed its healthy, pre-wedge assertion (line 258): `broker_liveness.judge()` returned stale ("the broker's watchdog has not completed an iteration for 1.2s (past 1.0s, its lock timeout plus 2 x POLL_S)"). The wedged case sets the store's `lock_timeout` to 0.5 s, so a healthy watchdog iteration that takes longer than 1.0 s on a loaded runner reads as stale. The fix is to prove the ordering with events or a controlled clock, never by comparing wall time with a threshold
+
+**Source:** Run 38291135208, attempt 1 (`aa7e4d7`, the run of #221), `core (windows-latest)`, the serial lane; attempt 2 passed
+
+**When:** **Unscheduled.** Owner: the hang-and-flake diagnosis plan, as the first wall-clock entry of its flake register (G3c); E3 holds it until that register exists
+
+**Notes:** A test that fails and then passes on a re-run is a defect to investigate. The flake register closes an entry only with a named root cause and a test that reproduces it deterministically, by event or fault injection
+
+*Later notes: `notes.d/E75/`, oldest first (`python tools/register.py show E75`).*
+
+### E76
+
+**Work:** A test helper reads control state raw while the engine replaces it: `tests/helpers/invariants.py`'s `load_control` (lines 39 to 41 at `977d685`) calls `Path.read_bytes` on `.aew/state/control.yaml`. That is a raw read racing the writer's replace, the Windows sharing-violation class. The fix is to route every test-helper read of control state through the one owner, the store's lock-free reader: `Store.read_committed` (`src/aew/engine/store.py:343-360`) today, which already retries a read that collides with the replace on Windows, and `read_lock_free` once #220 merges, for `project.yaml` and for reads that need the bytes. The hang-and-flake plan's test-helper retry (G3b, W1) is only for files outside the store's ownership. **Boundary: `tests/helpers`**, where the list is complete: `invariants.py:41` and `vertical/scripted_operator.py`'s `stage_intents` (lines 428 to 430: `exists()`, then `read_text`, of `state/control.yaml`), and the same shape outside `state/`, `invariants.py:138`, which reads `.aew/project.yaml`. **Test modules outside `tests/helpers`** hold 30 more raw `control.yaml` reads and 7 raw `project.yaml` reads. The rule for them is the row's own: a read moves to the owner only when a writer of the file can run during it. Three can, and move: `tests/integration/test_notifier.py:142` and `:146` (the operator endpoint `serve()` started holds an engine and can commit) and `tests/integration/test_harness_send_when.py:75` (around `harness send`, with the run's supervisor live). They compare bytes to prove nothing was written, so they take the owner's bytes reader (`read_lock_free`). The other 27 `control.yaml` reads stay raw, because no writer runs during them: `tests/integration/test_notifier.py:304` (after `broker.close()`); `tests/unit/test_notify.py:308` (before `watcher.start()`) and `:319` (after `watcher.close()`, and the watcher never commits); reads of a quiescent project or a bare store, `tests/acceptance/test_at4a_at7.py:57`, `tests/integration/test_authority.py:19` and `:398`, `tests/integration/test_coordination_store.py:95`, `tests/integration/test_guard_queries.py:610`, `tests/integration/test_migration.py:223`, `tests/integration/test_dashboard_api.py:536`, and `tests/unit/test_store.py:51`, `:55`, `:177`, `:186`, `:244` and `:254`; deliberate edits of the state (rewriting it to v1, corrupting it, injecting garbage), `tests/integration/test_dashboard_history_search.py:294` and `:362`, `tests/unit/test_store_cache.py:48` and `tests/integration/test_history_search.py:233`; beside a read-only dashboard server while the test holds the control lock, `tests/integration/test_dashboard_history_search.py:776` and `:780`; and before and after in-process commands, `tests/integration/test_history_search.py:632` and `:634` and `tests/integration/test_map_context.py:283`, `:285` and `:289`. The 7 `project.yaml` reads are manifest edits or reads of a quiescent project and stay raw: `tests/integration/test_authority.py:66` and `:294`, `tests/integration/test_history_search.py:216`, `tests/integration/test_stage_intent.py:162`, `tests/integration/test_usage_ledger.py:56` and `tests/regression/test_m4_control_state.py:28` and `:33`
+
+**Source:** `main`'s push run 38291227264 (`977d685`), attempt 1, `integration 3/4 (windows-latest)`: `tests/integration/test_integration_stages.py::test_broker_spawned_custody_worker_registers` failed with `PermissionError: [Errno 13]` on `.aew/state/control.yaml`. Call path: `test_integration_stages.py:590` (the `_wait_for` condition, line 572), then `control` (line 81), then `invariants.py:41` `load_control`, then `Path.read_bytes`. The inventory comes from the review of #223, at `977d685`: a syntax-tree pass over every `.py` under `tests/` for `control.yaml` and `project.yaml`. For each `read_bytes`, `read_text` or `open` call, it resolves a bare-name receiver to its last assignment earlier in the same function. Its limits: it does not follow a path across functions (one passed in or returned is found only where it is built) or through containers. It found 40 reads: 3 in `tests/helpers` (2 of `control.yaml`, 1 of `project.yaml`) and, in test modules, 30 of `control.yaml` and 7 of `project.yaml`. An earlier one-line search had found only 15, because it missed every read through a variable
+
+**When:** **Unscheduled.** Owner: the test helpers; the reads that need the bytes wait for #220
+
+**Notes:** The test-side twin of E73: the same class, readers that do not go through the one owner. E74 is the same class in the code-registry scan
+
+*Later notes: `notes.d/E76/`, oldest first (`python tools/register.py show E76`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

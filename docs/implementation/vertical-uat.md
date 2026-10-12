@@ -408,6 +408,13 @@ is passed by a constant's name (`Stop(BLOCKED)`), resolving module constants in 
 another. A stop code that is also written anywhere outside the steering loop, or is one of the typed surface's codes,
 is a refusal code too and keeps its row: today that is `STALE_AUTHORITY` and `STALE_POLICY`.
 
+The configuration projection's data-code vocabulary (register F46.1) is outside the registry by namespace too: the
+codes a successful read writes to describe a policy file's content (`document.yaml_error.code` and
+`document.violations[].code`), never a refusal's code. Its one definition is `aew.engine.configuration.DATA_CODES`:
+`YAML_SYNTAX`, `UNPROCESSABLE`, the execution policy's semantic codes and the schema keywords a violation names. The
+test derives the namespace from it, and fails when a data code is also written outside that module, is one of the
+typed surface's codes, or is listed here, so the vocabulary can never hide a refusal code.
+
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.
 

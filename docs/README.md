@@ -216,6 +216,7 @@ until then they are proposals and rank nowhere in "What governs".
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
 | [`dashboard-maps-and-history-search-v0.1.md`](design/proposals/dashboard-maps-and-history-search-v0.1.md) | F20.8 | Approved (operator, 2026-10-10): the contract 0.1.3 change note (the maps routes and the conditional raw-history search), the compatibility rule, and its appendix of OpenAPI additions; adopted unchanged in contract 0.1.3 (W1, PR #173) | S0 and W1 done; S1 serves the five maps routes; S2 search, then S3 acceptance |
+| [`dashboard-configuration-read-v0.1.md`](design/proposals/dashboard-configuration-read-v0.1.md) | F46.1 | Proposed (slice F1b; the F46.1 proposal is designer- and operator-approved): the contract 0.1.4 change note (`/configuration` and `/configuration/execution`, the `configuration` capability) and its appendix of OpenAPI additions, pinned to the projection's real output and to the engine's constants | W2 (the web developer applies Appendix A), then F1c serves the routes |
 
 ## Research and investigations ([`research/`](research/))
 

@@ -160,12 +160,13 @@ def accepted_reviews(approval: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def base_review(approval: dict[str, Any]) -> dict[str, Any]:
-    """The accepted review of :data:`BASE_VERSION`, whose ``reviewed_commit`` holds the contract every later minor
-    version is compared with."""
-    found = [r for r in accepted_reviews(approval) if r.get("contract_version") == BASE_VERSION]
+def base_review(approval: dict[str, Any], version: str = BASE_VERSION) -> dict[str, Any]:
+    """The accepted review of ``version`` (by default :data:`BASE_VERSION`, whose ``reviewed_commit`` holds the
+    contract every later minor version is compared with; a change note names its own base, as the 0.1.4 note names
+    0.1.3), the current review or an accepted previous one."""
+    found = [r for r in accepted_reviews(approval) if r.get("contract_version") == version]
     if len(found) != 1:
-        raise ValueError(f"the approval record must accept contract {BASE_VERSION} exactly once, as the current "
+        raise ValueError(f"the approval record must accept contract {version} exactly once, as the current "
                          f"review or as a previous review with disposition {ACCEPT}")
     return found[0]
 

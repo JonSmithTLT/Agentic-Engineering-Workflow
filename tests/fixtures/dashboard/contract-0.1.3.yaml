@@ -1,0 +1,5204 @@
+openapi: 3.1.0
+info:
+  title: AEW Read-only Dashboard API — C0 PROVISIONAL
+  version: 0.1.3
+  description: Not approved for domain implementation. AEW main-line contracts remain authoritative.
+    Every route is same-origin GET/HEAD with authenticated cookies; no durable storage layout
+    exposed. Compatibility rule (from 0.1.3) - a minor version adds new paths and never changes what
+    an existing path returns. An envelope's schema_version is the contract version that defined that
+    response's schema, so the 0.1.2 routes keep emitting 0.1.2. A change to a served path's
+    response, an existing parameter, or a new required parameter is a 0.2.0 change.
+servers:
+- url: /api/v1
+security:
+- session: []
+x-c0-review:
+  status: ACCEPTED
+  amends: 0.1.2
+  review_document: web/docs/c0-review-main-line-0.1.3.md
+  notes:
+  - Additive renewal against merged S0 Appendix A; existing response envelopes remain 0.1.2.
+  - Contract-only independent review; new routes await S1/S2 and live adoption remains pending.
+paths:
+  /project:
+    get:
+      operationId: projectResponse
+      parameters:
+      - &id001
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id002
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headProjectResponse
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id002
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /capabilities:
+    get:
+      operationId: capabilitiesResponse
+      parameters:
+      - &id003
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id004
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headCapabilitiesResponse
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id004
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /overview:
+    get:
+      operationId: overviewResponse
+      parameters:
+      - &id005
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: One coherent composite projection from a single control-state read.
+          headers: &id006
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headOverviewResponse
+      parameters:
+      - *id005
+      responses:
+        '200':
+          description: One coherent composite projection from a single control-state read.
+          headers: *id006
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /history/integrity:
+    get:
+      operationId: integrityResponse
+      parameters:
+      - &id007
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id008
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrityResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+      x-provisional: P2c
+      description: 'UNSUPPORTED until P2c PR #20 merges, AVAILABLE after the integrated backend
+        advertises it. Retain x-provisional: P2c until then. Clients suppress requests while
+        capability is not AVAILABLE.'
+    head:
+      operationId: headIntegrityResponse
+      parameters:
+      - *id007
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id008
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+      x-provisional: P2c
+      description: 'UNSUPPORTED until P2c PR #20 merges, AVAILABLE after the integrated backend
+        advertises it. Retain x-provisional: P2c until then. Clients suppress requests while
+        capability is not AVAILABLE.'
+  /work:
+    get:
+      operationId: workListResponse
+      parameters:
+      - &id009
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id010
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id011
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      - &id012
+        name: state
+        in: query
+        schema:
+          $ref: '#/components/schemas/WorkState'
+      - &id013
+        name: kind
+        in: query
+        schema:
+          type: string
+          x-known-values:
+          - epic
+          - story
+          - ticket
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+      - &id014
+        name: parent
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id015
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Default is hot work plus the most recent 20 archived DONE/CANCELLED units.
+        Pagination never expands that recent ring into all archive history. state=DONE or
+        state=CANCELLED explicitly selects archived work; kind and parent filter the selected
+        scope. ETags and cursors include all filters and limit.
+    head:
+      operationId: headWorkListResponse
+      parameters:
+      - *id009
+      - *id010
+      - *id011
+      - *id012
+      - *id013
+      - *id014
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id015
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+      description: Default is hot work plus the most recent 20 archived DONE/CANCELLED units.
+        Pagination never expands that recent ring into all archive history. state=DONE or
+        state=CANCELLED explicitly selects archived work; kind and parent filter the selected
+        scope. ETags and cursors include all filters and limit.
+  /work/{id}:
+    get:
+      operationId: workResponse
+      parameters:
+      - &id016
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - &id017
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id018
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headWorkResponse
+      parameters:
+      - *id016
+      - *id017
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id018
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /runs:
+    get:
+      operationId: InvocationListResponse
+      parameters:
+      - &id019
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id020
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id021
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Invocation projection, including manual submissions with no harness
+            runs.
+          headers: &id022
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvocationListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: headInvocationListResponse
+      parameters:
+      - *id019
+      - *id020
+      - *id021
+      responses:
+        '200':
+          description: Invocation projection, including manual submissions with no harness
+            runs.
+          headers: *id022
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+  /runs/{id}:
+    get:
+      operationId: InvocationResponse
+      parameters:
+      - &id023
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - &id024
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Invocation projection, including manual submissions with no harness
+            runs.
+          headers: &id025
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvocationResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headInvocationResponse
+      parameters:
+      - *id023
+      - *id024
+      responses:
+        '200':
+          description: Invocation projection, including manual submissions with no harness
+            runs.
+          headers: *id025
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /evidence:
+    get:
+      operationId: evidenceListResponse
+      parameters:
+      - &id026
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id027
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id028
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      - &id029
+        name: work
+        in: query
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id030
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: headEvidenceListResponse
+      parameters:
+      - *id026
+      - *id027
+      - *id028
+      - *id029
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id030
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+  /evidence/{id}:
+    get:
+      operationId: evidenceResponse
+      parameters:
+      - &id031
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - &id032
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id033
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headEvidenceResponse
+      parameters:
+      - *id031
+      - *id032
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id033
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /knowledge:
+    get:
+      operationId: knowledgeListResponse
+      parameters:
+      - &id034
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id035
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id036
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id037
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: headKnowledgeListResponse
+      parameters:
+      - *id034
+      - *id035
+      - *id036
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id037
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+  /knowledge/{id}:
+    get:
+      operationId: knowledgeResponse
+      parameters:
+      - &id038
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - &id039
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id040
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headKnowledgeResponse
+      parameters:
+      - *id038
+      - *id039
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id040
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /history:
+    get:
+      operationId: historyListResponse
+      parameters:
+      - &id041
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id042
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id043
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      - &id044
+        name: kind
+        in: query
+        schema:
+          type: string
+          x-known-values:
+          - unit
+          - annotation
+          - audit
+          - lead
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+      - &id045
+        name: since
+        in: query
+        schema:
+          $ref: '#/components/schemas/Timestamp'
+      - &id046
+        name: until
+        in: query
+        schema:
+          $ref: '#/components/schemas/Timestamp'
+      responses:
+        '200':
+          description: Bounded manifest entries; source must be displayed; these are historical
+            references, never current evidence.
+          headers: &id047
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Append-only manifest history, bounded by kind/since/until. The first cursor
+        pins the starting manifest count; later appends never invalidate it or enlarge that
+        pagination session. Stable seq determines order. Invalid/wrong-scope cursors are 400,
+        not revision-expiration 409.
+    head:
+      operationId: headHistoryListResponse
+      parameters:
+      - *id041
+      - *id042
+      - *id043
+      - *id044
+      - *id045
+      - *id046
+      responses:
+        '200':
+          description: Bounded manifest entries; source must be displayed; these are historical
+            references, never current evidence.
+          headers: *id047
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+      description: Append-only manifest history, bounded by kind/since/until. The first cursor
+        pins the starting manifest count; later appends never invalidate it or enlarge that
+        pagination session. Stable seq determines order. Invalid/wrong-scope cursors are 400,
+        not revision-expiration 409.
+  /history/{id}:
+    get:
+      operationId: historyResponse
+      parameters:
+      - &id048
+        name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueId'
+      - &id049
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      - &id050
+        name: annotations_limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id051
+        name: annotations_cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id052
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Opaque identity does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid annotation limit or cursor scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Historical manifest projection and a bounded annotations page. annotations_next_cursor
+        pins the starting manifest count and survives appends. No archive storage paths or
+        evidence-currentness conclusions.
+    head:
+      operationId: headHistoryResponse
+      parameters:
+      - *id048
+      - *id049
+      - *id050
+      - *id051
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id052
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '404':
+          description: Opaque identity does not exist.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid annotation limit or cursor scope.
+      description: Historical manifest projection and a bounded annotations page. annotations_next_cursor
+        pins the starting manifest count and survives appends. No archive storage paths or
+        evidence-currentness conclusions.
+  /attention:
+    get:
+      operationId: attentionListResponse
+      parameters:
+      - &id053
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id054
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id055
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id056
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttentionListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: headAttentionListResponse
+      parameters:
+      - *id053
+      - *id054
+      - *id055
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id056
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+  /activity:
+    get:
+      operationId: activityListResponse
+      parameters:
+      - &id057
+        name: limit
+        in: query
+        schema:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 250
+      - &id058
+        name: cursor
+        in: query
+        schema:
+          $ref: '#/components/schemas/Cursor'
+      - &id059
+        name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: &id060
+            ETag:
+              schema:
+                type: string
+              description: 'Validator computed from the full representation, not control_revision
+                alone: telemetry can change at the same revision. Includes route, project,
+                filters, limit and cursor scope.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityListResponse'
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    head:
+      operationId: headActivityListResponse
+      parameters:
+      - *id057
+      - *id058
+      - *id059
+      responses:
+        '200':
+          description: Validated read-only projection.
+          headers: *id060
+        '304':
+          description: Representation unchanged. No payload. Preserve generated_at and control_revision;
+            update only client last_checked_at.
+        '401':
+          description: Session required.
+        '403':
+          description: Capability unavailable.
+        '409':
+          description: Hot collection cursor expired because control_revision changed. Restart
+            this bounded query explicitly.
+        '500':
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+        '400':
+          description: Invalid limit, filter, or cursor for this query scope.
+  /maps:
+    get:
+      operationId: mapsResponse
+      description: The registry state, the selected structural map with its freshness, and the
+        architecture reference. Lock-free; never generates a map. Poll at most every 30 s, or when the
+        page regains focus.
+      parameters:
+        - name: against
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+          description: The commit freshness is computed against; the authoritative branch head by default.
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation; every control commit changes it, as do
+                a map selection and a new authoritative head.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapsResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed against, or an unknown parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headMapsResponse
+      parameters:
+        - name: against
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+          description: The commit freshness is computed against; the authoritative branch head by default.
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation; every control commit changes it, as do
+                a map selection and a new authoritative head.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed against, or an unknown parameter.
+        "401":
+          description: Session required.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /maps/structural:
+    get:
+      operationId: structuralListResponse
+      description: The stored structural maps, keyset-paged by root; source_revision selects the maps of
+        one commit. A control commit never expires the cursor.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+        - name: cursor
+          in: query
+          schema:
+            $ref: "#/components/schemas/Cursor"
+        - name: source_revision
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project, filters, limit
+                and cursor in its scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuralListResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: An invalid limit, source_revision or cursor, or an unknown parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headStructuralListResponse
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+        - name: cursor
+          in: query
+          schema:
+            $ref: "#/components/schemas/Cursor"
+        - name: source_revision
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project, filters, limit
+                and cursor in its scope.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: An invalid limit, source_revision or cursor, or an unknown parameter.
+        "401":
+          description: Session required.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /maps/structural/{root}:
+    get:
+      operationId: structuralDetailResponse
+      description: One stored map, its sections projected from allowlists with the API's caps. Fetched on
+        navigation, never polled.
+      parameters:
+        - name: root
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: against
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+        - name: section
+          in: query
+          schema:
+            type: string
+            enum:
+              - directories
+              - languages
+              - build_descriptors
+              - entry_point_candidates
+              - test_candidates
+              - generated_and_vendor
+              - semantic_prerequisites
+              - limits_and_omissions
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and query in its
+                scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuralDetailResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed root, against or section, or an unknown parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has this root.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headStructuralDetailResponse
+      parameters:
+        - name: root
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: against
+          in: query
+          schema:
+            $ref: "#/components/schemas/ObjectId"
+        - name: section
+          in: query
+          schema:
+            type: string
+            enum:
+              - directories
+              - languages
+              - build_descriptors
+              - entry_point_candidates
+              - test_candidates
+              - generated_and_vendor
+              - semantic_prerequisites
+              - limits_and_omissions
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and query in its
+                scope.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed root, against or section, or an unknown parameter.
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has this root.
+        "422":
+          description: MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /maps/structural/{root}/inputs:
+    get:
+      operationId: structuralInputsResponse
+      description: The map's recorded metadata inputs, paged by position in the immutable sorted list. The
+        cursor is bound to the root. Fetched on navigation, never polled.
+      parameters:
+        - name: root
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 250
+        - name: cursor
+          in: query
+          schema:
+            $ref: "#/components/schemas/Cursor"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project, limit and cursor
+                in its scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuralInputsResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed root, an invalid limit or cursor, or an unknown parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has this root.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headStructuralInputsResponse
+      parameters:
+        - name: root
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 250
+        - name: cursor
+          in: query
+          schema:
+            $ref: "#/components/schemas/Cursor"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project, limit and cursor
+                in its scope.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A malformed root, an invalid limit or cursor, or an unknown parameter.
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has this root.
+        "422":
+          description: MAP_ARTIFACT_CORRUPT; delete the stored map and generate it again.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /maps/diff:
+    get:
+      operationId: mapDiffResponse
+      description: A typed comparison of two stored maps. Never generates a map. Fetched on navigation,
+        never polled.
+      parameters:
+        - name: a
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: b
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and both operands
+                in its scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapDiffResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A missing or malformed operand, or an unknown parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has one of the roots.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: MAP_ARTIFACT_CORRUPT for one of the operands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+    head:
+      operationId: headMapDiffResponse
+      parameters:
+        - name: a
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: b
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Sha256"
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and both operands
+                in its scope.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: A missing or malformed operand, or an unknown parameter.
+        "401":
+          description: Session required.
+        "404":
+          description: No stored map has one of the roots.
+        "422":
+          description: MAP_ARTIFACT_CORRUPT for one of the operands.
+        "500":
+          description: Projection refresh failed. Keep last-known-good content visibly stale.
+  /history/search:
+    get:
+      operationId: historySearchResponse
+      description: Raw-history search, offered only while the history_search capability is present.
+        User-initiated only - never polled and never search-as-you-type - since a request may extend
+        the derived index and takes up to 1.25 s.
+      parameters:
+        - name: term
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+              maxLength: 512
+            minItems: 1
+            maxItems: 16
+          description: A phrase; repeat for more, the terms are ANDed. At most 512 characters in all.
+        - name: kind
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              x-known-values:
+                - unit
+                - annotation
+                - audit
+                - lead
+                - evidence
+            maxItems: 16
+        - name: since
+          in: query
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: until
+          in: query
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and query in its
+                scope; stable only on a quiescent project with complete coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistorySearchResponse"
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: Invalid terms, kind, timestamp or limit, or a repeated non-repeatable parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Session required.
+        "403":
+          description: Capability unavailable (MIGRATION_REQUIRED, FTS5_UNAVAILABLE, RECALL_NOT_IN_INVOCATIONS).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "414":
+          description: The query exceeds the server's bounds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Projection refresh failed.
+    head:
+      operationId: headHistorySearchResponse
+      parameters:
+        - name: term
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+              maxLength: 512
+            minItems: 1
+            maxItems: 16
+          description: A phrase; repeat for more, the terms are ANDed. At most 512 characters in all.
+        - name: kind
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              x-known-values:
+                - unit
+                - annotation
+                - audit
+                - lead
+                - evidence
+            maxItems: 16
+        - name: since
+          in: query
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: until
+          in: query
+          schema:
+            $ref: "#/components/schemas/Timestamp"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated read-only projection.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Validator computed from the full representation, with route, project and query in its
+                scope; stable only on a quiescent project with complete coverage.
+        "304":
+          description: Representation unchanged. No payload.
+        "400":
+          description: Invalid terms, kind, timestamp or limit, or a repeated non-repeatable parameter.
+        "401":
+          description: Session required.
+        "403":
+          description: Capability unavailable.
+        "414":
+          description: The query exceeds the server's bounds.
+        "500":
+          description: Projection refresh failed.
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: aew_session
+      description: Illustrative cookie name pending backend bootstrap/security review; frontend
+        uses same-origin credentials.
+  schemas:
+    OpaqueId:
+      type: string
+      description: Server-declared path-safe opaque identity (including project/card slugs).
+        Do not parse identity, order, or storage layout.
+      minLength: 1
+      pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+    Timestamp:
+      type: string
+      format: date-time
+      pattern: Z$
+      description: UTC timestamp.
+    Reason:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Any backend code string. A shared registry (including contradictions)
+            is main-line integration work. Always show the backend message; never derive conclusions
+            from this code.
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - code
+      - message
+      additionalProperties: false
+    EntityRef:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - id
+      - kind
+      - title
+      additionalProperties: false
+    RichText:
+      type: object
+      properties:
+        format:
+          type: string
+          x-known-values:
+          - plain
+          - markdown
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        text:
+          type: string
+      required:
+      - format
+      - text
+      additionalProperties: false
+    Capability:
+      type: object
+      properties:
+        state:
+          type: string
+          x-known-values:
+          - AVAILABLE
+          - UNAVAILABLE
+          - UNSUPPORTED
+          - UNKNOWN
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - state
+      - reasons
+      additionalProperties: false
+    Capabilities:
+      type: object
+      properties:
+        maps:
+          $ref: "#/components/schemas/Capability"
+          description: The maps pages (from 0.1.3). AVAILABLE on every project; having no map is a state of
+            the data, shown by /maps, not of the capability.
+        history_search:
+          $ref: "#/components/schemas/Capability"
+          description: Raw-history search (from 0.1.3). Present only while the project's adopted execution
+            policy switches it on; absent means not offered on this project, not UNKNOWN, and the client
+            requests nothing. Never admitted Knowledge.
+        overview:
+          $ref: '#/components/schemas/Capability'
+        work:
+          $ref: '#/components/schemas/Capability'
+        runs:
+          $ref: '#/components/schemas/Capability'
+        evidence:
+          $ref: '#/components/schemas/Capability'
+        knowledge:
+          $ref: '#/components/schemas/Capability'
+        history:
+          $ref: '#/components/schemas/Capability'
+        integrity:
+          $ref: '#/components/schemas/Capability'
+          description: 'UNSUPPORTED until P2c PR #20 merges; AVAILABLE once the integrated
+            backend advertises the merged audit.'
+        queue:
+          $ref: '#/components/schemas/Capability'
+          description: UNSUPPORTED on the reviewed engine baseline. No queue API is declared
+            in 0.1.2; M4/M5 owns its future semantics.
+        action_projection:
+          $ref: '#/components/schemas/Capability'
+        activity:
+          $ref: '#/components/schemas/Capability'
+      required: []
+      additionalProperties:
+        $ref: '#/components/schemas/Capability'
+      description: Known keys are optional. Missing means UNKNOWN. New capability keys validate
+        as Capability objects and display an explicit unknown-capability warning without triggering
+        requests.
+    Health:
+      type: object
+      properties:
+        status:
+          type: string
+          x-known-values:
+          - HEALTHY
+          - DEGRADED
+          - UNHEALTHY
+          - UNKNOWN
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        observed_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+      - status
+      - reasons
+      - observed_at
+      additionalProperties: false
+    Project:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        name:
+          type: string
+        aew_version:
+          type: string
+      required:
+      - id
+      - name
+      - aew_version
+      additionalProperties: false
+    Work:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - epic
+          - story
+          - ticket
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        title:
+          type: string
+        state:
+          $ref: '#/components/schemas/WorkState'
+        parent_id:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        has_attention:
+          type: boolean
+        summary:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        related:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+        risk_class:
+          anyOf:
+          - type: integer
+            minimum: 0
+            maximum: 4
+          - type: 'null'
+        plan_revision:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+        mutating:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+        archived:
+          type: boolean
+        blocked_by:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpaqueId'
+          maxItems: 250
+        children_truncated:
+          type: boolean
+          description: True when the bounded child-ID preview omits children. Backend rollup
+            remains complete. Use bounded /work queries with parent and explicit terminal-state
+            filters to inspect archived children.
+        rollup:
+          anyOf:
+          - $ref: '#/components/schemas/WorkCounts'
+          - type: 'null'
+        integration:
+          anyOf:
+          - $ref: '#/components/schemas/Integration'
+          - type: 'null'
+      required:
+      - id
+      - kind
+      - title
+      - state
+      - parent_id
+      - has_attention
+      - summary
+      - reasons
+      - related
+      - updated_at
+      - risk_class
+      - plan_revision
+      - mutating
+      - archived
+      - blocked_by
+      - children
+      - children_truncated
+      - rollup
+      - integration
+      additionalProperties: false
+      description: Hot or archived work projection. Archived-by-ID includes later moves; backend
+        owns blockers, counts and integration facts. Assurance is omitted until its structured
+        mapping is reviewed.
+    Evidence:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - implementation_report
+          - review
+          - verification
+          - check_result
+          - discovery_record
+          - research_record
+          - plan_proposal
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        result:
+          anyOf:
+          - type: string
+            x-known-values:
+            - pass
+            - fail
+            - inconclusive
+            - blocked
+            description: Open backend semantic value. Unknown values display their raw string
+              with a warning; no client conclusion is inferred.
+          - type: 'null'
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        currentness:
+          type: string
+          x-known-values:
+          - CURRENT
+          - STALE
+          - UNKNOWN
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        requires_disposition:
+          type: boolean
+        claim:
+          $ref: '#/components/schemas/RichText'
+        body:
+          $ref: '#/components/schemas/RichText'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        deviations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        bindings:
+          $ref: '#/components/schemas/EvidenceBindings'
+        provenance:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+      required:
+      - id
+      - kind
+      - result
+      - subject
+      - currentness
+      - requires_disposition
+      - claim
+      - body
+      - findings
+      - deviations
+      - bindings
+      - provenance
+      additionalProperties: false
+    Knowledge:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - decision
+          - fact
+          - assumption
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        title:
+          type: string
+        state:
+          type: string
+        body:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        provenance:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+        decision_type:
+          anyOf:
+          - $ref: '#/components/schemas/DecisionType'
+          - type: 'null'
+      required:
+      - id
+      - kind
+      - title
+      - state
+      - body
+      - reasons
+      - provenance
+      - decision_type
+      additionalProperties: false
+    History:
+      type: object
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+        kind:
+          type: string
+          x-known-values:
+          - unit
+          - annotation
+          - audit
+          - lead
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        state:
+          anyOf:
+          - $ref: '#/components/schemas/WorkState'
+          - type: 'null'
+        unit_kind:
+          anyOf:
+          - type: string
+            x-known-values:
+            - epic
+            - story
+            - ticket
+            description: Open backend semantic value. Unknown values display their raw string
+              with a warning; no client conclusion is inferred.
+          - type: 'null'
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+        parent:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        subject:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        rel:
+          anyOf:
+          - type: string
+          - type: 'null'
+        links:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/OpaqueId'
+            maxItems: 250
+          description: 'Backend omits the completion relation: its values are storage paths.
+            The completion record is reachable through the unit itself. All projected relation
+            values are AEW IDs or git commit hashes (integration_commit), never paths.'
+          x-known-relations:
+          - depends_on
+          - invocations
+          - tokens
+          - evidence
+          - integration_commit
+          - moved_to
+          - audit_finding
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        source:
+          type: string
+          x-known-values:
+          - engine
+          - operator
+          - model
+          - external
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+      required:
+      - seq
+      - kind
+      - id
+      - at
+      - state
+      - unit_kind
+      - title
+      - parent
+      - subject
+      - rel
+      - links
+      - sha256
+      - source
+      additionalProperties: false
+      description: Path-free manifest entry projection, ordered by stable seq, with moves
+        applied to current parent. Always display source and a historical-reference warning.
+        Never current evidence. No storage path or currentness field.
+    Integrity:
+      type: object
+      properties:
+        status:
+          type: string
+        current_root:
+          $ref: '#/components/schemas/HistoryRoot'
+        verified:
+          anyOf:
+          - $ref: '#/components/schemas/VerifiedRoot'
+          - type: 'null'
+        backlog:
+          type: integer
+          minimum: 0
+        last_audit:
+          anyOf:
+          - $ref: '#/components/schemas/EntityRef'
+          - type: 'null'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+          description: Backend-provided over-policy findings. Threshold conclusions are never
+            computed in the frontend.
+        last_full:
+          anyOf:
+          - $ref: '#/components/schemas/VerifiedRoot'
+          - type: 'null'
+        oldest_unverified_at:
+          anyOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+      required:
+      - status
+      - current_root
+      - verified
+      - backlog
+      - last_audit
+      - reasons
+      - last_full
+      - oldest_unverified_at
+      additionalProperties: false
+      x-provisional: P2c
+      description: 'P2c audit projection matched to PR #20 at bdabff9. Capability stays UNSUPPORTED
+        until PR #20 merges and is AVAILABLE after integration advertises it. Retain x-provisional:
+        P2c until merge. verified and last_full distinguish incremental verification from
+        the last full verification; backlog and oldest_unverified_at are backend-computed.'
+    Attention:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        kind:
+          type: string
+          x-known-values:
+          - decision_required
+          - blocker
+          - required_finding
+          - anomaly
+          description: Open semantic value. Unknown strings must display an explicit warning
+            with the raw value.
+        severity:
+          type: string
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        title:
+          type: string
+        summary:
+          $ref: '#/components/schemas/RichText'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+        first_seen_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+      - id
+      - kind
+      - severity
+      - subject
+      - title
+      - summary
+      - reasons
+      - first_seen_at
+      additionalProperties: false
+    Activity:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        subject:
+          $ref: '#/components/schemas/EntityRef'
+        occurred_at:
+          $ref: '#/components/schemas/Timestamp'
+        title:
+          type: string
+        reason:
+          anyOf:
+          - $ref: '#/components/schemas/Reason'
+          - type: 'null'
+      required:
+      - id
+      - subject
+      - occurred_at
+      - title
+      - reason
+      additionalProperties: false
+    Overview:
+      type: object
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        health:
+          $ref: '#/components/schemas/Health'
+        summary:
+          $ref: '#/components/schemas/RichText'
+        work:
+          type: array
+          items:
+            $ref: '#/components/schemas/Work'
+          maxItems: 6
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invocation'
+          maxItems: 6
+        attention:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attention'
+          maxItems: 6
+        activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/Activity'
+          maxItems: 10
+        counts:
+          type: object
+          properties:
+            work:
+              $ref: '#/components/schemas/WorkCounts'
+            runs:
+              type: integer
+              minimum: 0
+            attention:
+              type: integer
+              minimum: 0
+          required:
+          - work
+          - runs
+          - attention
+          additionalProperties: false
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/Work'
+          maxItems: 20
+      required:
+      - project
+      - health
+      - summary
+      - work
+      - runs
+      - attention
+      - activity
+      - counts
+      - capabilities
+      - recent
+      additionalProperties: false
+      description: One coherent backend read of control state, with hot work preview and a
+        separate most-recent archived ring (maximum 20). Counts and all conclusions are backend
+        supplied.
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - code
+      - message
+      - reasons
+      additionalProperties: false
+    ProjectResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Project'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    CapabilitiesResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Capabilities'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    OverviewResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Overview'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    IntegrityResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Integrity'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    WorkResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Work'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    EvidenceResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Evidence'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    KnowledgeResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Knowledge'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    HistoryResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/HistoryDetail'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    WorkListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Work'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    EvidenceListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Evidence'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    KnowledgeListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Knowledge'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    HistoryListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/History'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    AttentionListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Attention'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    ActivityListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Activity'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    Cursor:
+      type: string
+      minLength: 1
+      description: Opaque cursor; not an entity ID. Scope includes project, route, filters
+        and limit. History cursors pin the starting manifest count and stable sequence, and
+        survive appends. Hot collection cursors expire on control_revision changes.
+    ControlRevision:
+      type: string
+      pattern: ^(0|[1-9][0-9]*)$
+      description: Engine integer control revision serialized as a decimal string; monotonic
+        per project. Observed harness telemetry can change without advancing this revision.
+    Sha256:
+      type: string
+      pattern: ^[0-9a-f]{64}$
+    TicketState:
+      type: string
+      x-known-values:
+      - BLOCKED
+      - READY
+      - ASSIGNED
+      - RUNNING
+      - REVIEW_PENDING
+      - REVIEW_FAILED
+      - REVIEW_PASSED
+      - VERIFY_PENDING
+      - VERIFICATION_FAILED
+      - VERIFICATION_INCONCLUSIVE
+      - VERIFIED
+      - COMMIT_READY
+      - DONE
+      - INTERRUPTED
+      - REPLAN_REQUIRED
+      - ESCALATED
+      - CANCELLED
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    ParentState:
+      type: string
+      x-known-values:
+      - PLANNING
+      - IN_PROGRESS
+      - ACCEPTANCE_PENDING
+      - DONE
+      - CANCELLED
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    WorkState:
+      type: string
+      x-known-values:
+      - BLOCKED
+      - READY
+      - ASSIGNED
+      - RUNNING
+      - REVIEW_PENDING
+      - REVIEW_FAILED
+      - REVIEW_PASSED
+      - VERIFY_PENDING
+      - VERIFICATION_FAILED
+      - VERIFICATION_INCONCLUSIVE
+      - VERIFIED
+      - COMMIT_READY
+      - DONE
+      - INTERRUPTED
+      - REPLAN_REQUIRED
+      - ESCALATED
+      - CANCELLED
+      - PLANNING
+      - IN_PROGRESS
+      - ACCEPTANCE_PENDING
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    InvocationRole:
+      type: string
+      x-known-values:
+      - implementer
+      - reviewer
+      - verifier
+      - planner
+      - investigator
+      - researcher
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    InvocationStatus:
+      type: string
+      x-known-values:
+      - active
+      - completed
+      - cancelled
+      - interrupted
+      - revoked
+      - superseded
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    HarnessStatus:
+      type: string
+      x-known-values:
+      - starting
+      - running
+      - launch_failed
+      - ended_with_evidence
+      - ended_without_evidence
+      - crashed
+      - terminated
+      - unconfirmed
+      - lost
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    DecisionType:
+      type: string
+      x-known-values:
+      - verification_failure_classification
+      - authority_transfer
+      - authority_acceptance
+      - authority_rejection
+      - waiver
+      - manifest_adoption
+      - state_regression
+      - cancellation
+      - reconciliation
+      - plan_acceptance
+      - promotion
+      - role_plan_change
+      - closeout
+      - evidence_acceptance
+      - hierarchy_change
+      - dependency_change
+      - plan_reconfirmation
+      - input_acknowledgement
+      - attempt_supersession
+      description: Open backend semantic value. Unknown values display their raw string with
+        a warning; no client conclusion is inferred.
+    WorkCounts:
+      type: object
+      properties:
+        open:
+          type: integer
+          minimum: 0
+        done:
+          type: integer
+          minimum: 0
+        cancelled:
+          type: integer
+          minimum: 0
+      required:
+      - open
+      - done
+      - cancelled
+      additionalProperties: false
+      description: Backend-computed counts. For Work.rollup, open counts Tickets in the entire
+        parent subtree that are not DONE or CANCELLED; done and cancelled count subtree Tickets
+        in those states, including archived Tickets through the parent summary. children contains
+        direct children, and its bounded preview never determines rollup. For Overview.counts.work,
+        open counts hot open units; done and cancelled are archived counts by state.
+    Integration:
+      type: object
+      properties:
+        status:
+          anyOf:
+          - type: string
+            x-known-values:
+            - integrated
+            - prepared
+            - publishing
+            - conflict
+            - superseded
+            description: Open backend semantic value. Unknown values display their raw string
+              with a warning; no client conclusion is inferred.
+          - type: 'null'
+        commit:
+          anyOf:
+          - type: string
+          - type: 'null'
+        commit_ready_seq:
+          anyOf:
+          - type: integer
+            minimum: 0
+          - type: 'null'
+      required:
+      - status
+      - commit
+      - commit_ready_seq
+      additionalProperties: false
+    HarnessRun:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        harness:
+          $ref: '#/components/schemas/OpaqueId'
+        launched_at:
+          $ref: '#/components/schemas/Timestamp'
+        kind:
+          type: string
+          x-known-values:
+          - launch
+          - relaunch
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        status:
+          $ref: '#/components/schemas/HarnessStatus'
+        authority:
+          type: string
+          description: Backend-reported authority text; never interpreted as a permission
+            or gate conclusion.
+      required:
+      - id
+      - harness
+      - launched_at
+      - kind
+      - status
+      - authority
+      additionalProperties: false
+    Invocation:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        role:
+          $ref: '#/components/schemas/InvocationRole'
+        status:
+          $ref: '#/components/schemas/InvocationStatus'
+        work:
+          $ref: '#/components/schemas/EntityRef'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/HarnessRun'
+          maxItems: 250
+        summary:
+          $ref: '#/components/schemas/RichText'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRef'
+          maxItems: 250
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+          maxItems: 250
+      required:
+      - id
+      - role
+      - status
+      - work
+      - created_at
+      - runs
+      - summary
+      - evidence
+      - reasons
+      additionalProperties: false
+      description: An engine invocation, including invocations with no harness run. /runs
+        lists these objects. Nested statuses are observed harness telemetry and do not establish
+        invocation completion or authority.
+    EvaluatedSnapshot:
+      type: object
+      properties:
+        base_revision:
+          anyOf:
+          - type: string
+          - type: 'null'
+        relevant_inputs_fingerprint:
+          type: string
+          description: Opaque engine fingerprint, including git-tree:<hex>. Do not interpret
+            as a bare SHA-256.
+        artifact_digests:
+          type: array
+          items:
+            type: string
+            description: Opaque engine artifact digest string.
+          maxItems: 250
+      required:
+      - base_revision
+      - relevant_inputs_fingerprint
+      - artifact_digests
+      additionalProperties: false
+      description: Explicit path-free snapshot projection. workspace_id and storage/workspace/observation
+        paths are excluded.
+    EvidencePlanRevision:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+      required:
+      - revision
+      - sha256
+      additionalProperties: false
+    Producer:
+      type: object
+      properties:
+        role:
+          $ref: '#/components/schemas/InvocationRole'
+        invocation:
+          $ref: '#/components/schemas/OpaqueId'
+        run:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+        provider:
+          anyOf:
+          - type: string
+          - type: 'null'
+        harness:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+      required:
+      - role
+      - invocation
+      - run
+      - model
+      - provider
+      - harness
+      additionalProperties: false
+      description: Curated producer identity; model/provider are declared metadata, not independently
+        verified. No credential, run_dir, execution paths or arbitrary fields.
+    EvidenceBindings:
+      type: object
+      properties:
+        evaluated_snapshot:
+          anyOf:
+          - $ref: '#/components/schemas/EvaluatedSnapshot'
+          - type: 'null'
+        plan_revision:
+          anyOf:
+          - $ref: '#/components/schemas/EvidencePlanRevision'
+          - type: 'null'
+        producer:
+          $ref: '#/components/schemas/Producer'
+      required:
+      - evaluated_snapshot
+      - plan_revision
+      - producer
+      additionalProperties: false
+    Annotation:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        rel:
+          type: string
+          x-known-values:
+          - moved_to
+          - superseded_by
+          - promoted_to
+          - lineage
+          - audit_finding
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        object:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        decision:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        source:
+          type: string
+          x-known-values:
+          - engine
+          - operator
+          - model
+          - external
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - id
+      - rel
+      - object
+      - at
+      - decision
+      - source
+      - note
+      additionalProperties: false
+    HistoryDetail:
+      type: object
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+        kind:
+          type: string
+          x-known-values:
+          - unit
+          - annotation
+          - audit
+          - lead
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        id:
+          $ref: '#/components/schemas/OpaqueId'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        state:
+          anyOf:
+          - $ref: '#/components/schemas/WorkState'
+          - type: 'null'
+        unit_kind:
+          anyOf:
+          - type: string
+            x-known-values:
+            - epic
+            - story
+            - ticket
+            description: Open backend semantic value. Unknown values display their raw string
+              with a warning; no client conclusion is inferred.
+          - type: 'null'
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+        parent:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        subject:
+          anyOf:
+          - $ref: '#/components/schemas/OpaqueId'
+          - type: 'null'
+        rel:
+          anyOf:
+          - type: string
+          - type: 'null'
+        links:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/OpaqueId'
+            maxItems: 250
+          description: 'Backend omits the completion relation: its values are storage paths.
+            The completion record is reachable through the unit itself. All projected relation
+            values are AEW IDs or git commit hashes (integration_commit), never paths.'
+          x-known-relations:
+          - depends_on
+          - invocations
+          - tokens
+          - evidence
+          - integration_commit
+          - moved_to
+          - audit_finding
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        source:
+          type: string
+          x-known-values:
+          - engine
+          - operator
+          - model
+          - external
+          description: Open backend semantic value. Unknown values display their raw string
+            with a warning; no client conclusion is inferred.
+        annotations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Annotation'
+          maxItems: 250
+        annotations_next_cursor:
+          anyOf:
+          - $ref: '#/components/schemas/Cursor'
+          - type: 'null'
+      required:
+      - seq
+      - kind
+      - id
+      - at
+      - state
+      - unit_kind
+      - title
+      - parent
+      - subject
+      - rel
+      - links
+      - sha256
+      - source
+      - annotations
+      - annotations_next_cursor
+      additionalProperties: false
+      description: Manifest projection plus the bounded annotation list. Relation links replace
+        a separate lineage array. No raw storage record is exposed.
+    HistoryRoot:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        head_h:
+          $ref: '#/components/schemas/Sha256'
+        sealed_head:
+          anyOf:
+          - type: object
+            properties:
+              seq:
+                type: integer
+                minimum: 1
+              sha256:
+                $ref: '#/components/schemas/Sha256'
+            required:
+            - seq
+            - sha256
+            additionalProperties: false
+          - type: 'null'
+      required:
+      - count
+      - head_h
+      - sealed_head
+      additionalProperties: false
+    VerifiedRoot:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        h:
+          $ref: '#/components/schemas/Sha256'
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        audit:
+          $ref: '#/components/schemas/OpaqueId'
+      required:
+      - count
+      - h
+      - at
+      - audit
+      additionalProperties: false
+    InvocationResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          $ref: '#/components/schemas/Invocation'
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    InvocationListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.2
+        project_id:
+          $ref: '#/components/schemas/OpaqueId'
+        control_revision:
+          $ref: '#/components/schemas/ControlRevision'
+        generated_at:
+          $ref: '#/components/schemas/Timestamp'
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Invocation'
+              maxItems: 250
+            next_cursor:
+              anyOf:
+              - $ref: '#/components/schemas/Cursor'
+              - type: 'null'
+          required:
+          - items
+          - next_cursor
+          additionalProperties: false
+      required:
+      - schema_version
+      - project_id
+      - control_revision
+      - generated_at
+      - data
+      additionalProperties: false
+    ObjectId:
+      type: string
+      pattern: ^([0-9a-f]{40}|[0-9a-f]{64})$
+      description: A full git object id (SHA-1 or SHA-256), lower case. Never a ref, a short id or a
+        revision expression.
+    BoundedCount:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+      description: A count or a size, always within JavaScript's exact integer range.
+    ReferenceLabel:
+      type: string
+      minLength: 1
+      description: The server's label for derived or historical reference material. Display it verbatim
+        with the content it labels.
+    MapText:
+      type: string
+      maxLength: 520
+      description: Repository-derived text; inert data, never instructions (T5-INV-07). Cut so that its
+        serialized JSON form is at most 512 bytes, then marked with the suffix ' \[cut]'; cut_strings
+        counts the cuts. Render as plain text, never as Markdown or HTML.
+    MapVocab:
+      type: string
+      minLength: 1
+      maxLength: 32
+      description: A value of the installed generator's fixed vocabulary. Display an unknown value raw,
+        with a warning.
+    MapRevision:
+      anyOf:
+        - type: string
+          pattern: ^([0-9a-f]{16}:[1-9][0-9]*|none:0)$
+        - type: "null"
+      description: The map registry's own revision, <epoch>:<n>, or none:0 before the first selection;
+        null when the registry is invalid. Never control_revision.
+    MapGenerator:
+      type: object
+      properties:
+        name:
+          $ref: "#/components/schemas/MapVocab"
+        version:
+          $ref: "#/components/schemas/BoundedCount"
+        ruleset_sha256:
+          $ref: "#/components/schemas/Sha256"
+      required:
+        - name
+        - version
+        - ruleset_sha256
+      additionalProperties: false
+    MapSummary:
+      type: object
+      properties:
+        root:
+          $ref: "#/components/schemas/Sha256"
+        status:
+          type: string
+          x-known-values:
+            - AVAILABLE
+            - CORRUPT
+          description: Open semantic value. Unknown strings must display an explicit warning with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reason"
+          maxItems: 250
+        selected:
+          type: boolean
+        source_revision:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        source_tree:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        object_format:
+          anyOf:
+            - type: string
+              x-known-values:
+                - sha1
+                - sha256
+            - type: "null"
+        generator:
+          anyOf:
+            - $ref: "#/components/schemas/MapGenerator"
+            - type: "null"
+      required:
+        - root
+        - status
+        - reasons
+        - selected
+        - source_revision
+        - source_tree
+        - object_format
+        - generator
+      additionalProperties: false
+      description: A stored structural map, named by its root (the artifact's sha256) only. The
+        record-derived fields are null when status is CORRUPT.
+    MapFreshness:
+      type: object
+      properties:
+        status:
+          type: string
+          x-known-values:
+            - CURRENT
+            - STALE
+            - UNKNOWN
+          description: Open semantic value. Unknown strings must display an explicit warning with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reason"
+          maxItems: 250
+        against_commit:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        against_tree:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        metadata_paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapText"
+          maxItems: 50
+        metadata_paths_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - status
+        - reasons
+        - against_commit
+        - against_tree
+        - metadata_paths
+        - metadata_paths_omitted
+      additionalProperties: false
+      description: Computed on every read against the commit named (the authoritative head by default);
+        never stored. STALE and UNKNOWN stay visible with their reasons (T5-INV-10).
+    ArchitectureFreshness:
+      type: object
+      properties:
+        status:
+          type: string
+          x-known-values:
+            - CURRENT
+            - STALE
+            - UNKNOWN
+            - UNAVAILABLE
+          description: Open semantic value. Unknown strings must display an explicit warning with the raw value.
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reason"
+          maxItems: 250
+        basis:
+          anyOf:
+            - $ref: "#/components/schemas/MapVocab"
+            - type: "null"
+        observed_commit:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        authoritative_commit:
+          anyOf:
+            - $ref: "#/components/schemas/ObjectId"
+            - type: "null"
+        scope:
+          anyOf:
+            - $ref: "#/components/schemas/MapVocab"
+            - type: "null"
+        changed_paths:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapText"
+          maxItems: 50
+        changed_paths_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - status
+        - reasons
+        - basis
+        - observed_commit
+        - authoritative_commit
+        - scope
+        - changed_paths
+        - changed_paths_omitted
+      additionalProperties: false
+    ArchitectureReference:
+      type: object
+      properties:
+        evidence:
+          anyOf:
+            - $ref: "#/components/schemas/EntityRef"
+            - type: "null"
+          description: The selected discovery evidence, linking to /evidence/{id}; null when the registry
+            holds an id that is not a valid opaque id (ARCHITECTURE_UNAVAILABLE).
+        freshness:
+          $ref: "#/components/schemas/ArchitectureFreshness"
+        note:
+          $ref: "#/components/schemas/ReferenceLabel"
+      required:
+        - evidence
+        - freshness
+        - note
+      additionalProperties: false
+      description: A navigation reference. Selection is not truth, and a stale reference blocks nothing.
+    MapsOverview:
+      type: object
+      properties:
+        map_revision:
+          $ref: "#/components/schemas/MapRevision"
+        registry:
+          type: object
+          properties:
+            state:
+              type: string
+              x-known-values:
+                - PRESENT
+                - NONE
+                - INVALID
+              description: Open semantic value. Unknown strings must display an explicit warning with the raw value.
+            reasons:
+              type: array
+              items:
+                $ref: "#/components/schemas/Reason"
+              maxItems: 250
+          required:
+            - state
+            - reasons
+          additionalProperties: false
+        structural:
+          type: object
+          properties:
+            state:
+              type: string
+              x-known-values:
+                - AVAILABLE
+                - UNAVAILABLE
+              description: Open semantic value. Unknown strings must display an explicit warning with the raw
+                value. UNAVAILABLE is never shown as an empty map (T5-INV-04).
+            reasons:
+              type: array
+              items:
+                $ref: "#/components/schemas/Reason"
+              maxItems: 250
+            summary:
+              anyOf:
+                - $ref: "#/components/schemas/MapSummary"
+                - type: "null"
+            freshness:
+              anyOf:
+                - $ref: "#/components/schemas/MapFreshness"
+                - type: "null"
+          required:
+            - state
+            - reasons
+            - summary
+            - freshness
+          additionalProperties: false
+        architecture:
+          anyOf:
+            - $ref: "#/components/schemas/ArchitectureReference"
+            - type: "null"
+        stored:
+          type: object
+          properties:
+            count:
+              $ref: "#/components/schemas/BoundedCount"
+          required:
+            - count
+          additionalProperties: false
+        label:
+          $ref: "#/components/schemas/ReferenceLabel"
+      required:
+        - map_revision
+        - registry
+        - structural
+        - architecture
+        - stored
+        - label
+      additionalProperties: false
+    MapsResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          $ref: "#/components/schemas/MapsOverview"
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false
+    StructuralListResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapSummary"
+              maxItems: 50
+            next_cursor:
+              anyOf:
+                - $ref: "#/components/schemas/Cursor"
+                - type: "null"
+            scan_incomplete:
+              anyOf:
+                - type: object
+                  properties:
+                    examined:
+                      $ref: "#/components/schemas/BoundedCount"
+                    stored:
+                      $ref: "#/components/schemas/BoundedCount"
+                    reasons:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/Reason"
+                      maxItems: 250
+                  required:
+                    - examined
+                    - stored
+                    - reasons
+                  additionalProperties: false
+                - type: "null"
+              description: Set when this request reached the scan bound (256 maps or 64 MiB read, MAP_SCAN_LIMIT);
+                continue with next_cursor.
+            label:
+              $ref: "#/components/schemas/ReferenceLabel"
+          required:
+            - items
+            - next_cursor
+            - scan_incomplete
+            - label
+          additionalProperties: false
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false
+    MapLimits:
+      type: object
+      properties:
+        tracked_paths:
+          type: object
+          properties:
+            seen:
+              $ref: "#/components/schemas/BoundedCount"
+            capped:
+              type: boolean
+          additionalProperties: false
+        metadata_bytes:
+          type: object
+          properties:
+            read:
+              $ref: "#/components/schemas/BoundedCount"
+            limit:
+              $ref: "#/components/schemas/BoundedCount"
+            capped:
+              type: boolean
+          additionalProperties: false
+        metadata_blob_bytes:
+          type: object
+          properties:
+            limit:
+              $ref: "#/components/schemas/BoundedCount"
+            skipped:
+              $ref: "#/components/schemas/BoundedCount"
+          additionalProperties: false
+      additionalProperties: false
+    MapInputsSummary:
+      type: object
+      properties:
+        path_listing_sha256:
+          $ref: "#/components/schemas/Sha256"
+        count:
+          $ref: "#/components/schemas/BoundedCount"
+        read:
+          $ref: "#/components/schemas/BoundedCount"
+        capped_size:
+          $ref: "#/components/schemas/BoundedCount"
+        capped_total:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - path_listing_sha256
+        - count
+        - read
+        - capped_size
+        - capped_total
+      additionalProperties: false
+    MapDirectoryRow:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        depth:
+          $ref: "#/components/schemas/BoundedCount"
+        files:
+          $ref: "#/components/schemas/BoundedCount"
+        languages:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapVocab"
+          maxItems: 20
+        languages_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        label:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - path
+        - label
+        - languages
+        - languages_omitted
+      additionalProperties: false
+    MapSubmodule:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        object:
+          $ref: "#/components/schemas/ObjectId"
+      required:
+        - path
+      additionalProperties: false
+    MapUnknownExtension:
+      type: object
+      properties:
+        extension:
+          $ref: "#/components/schemas/MapText"
+        files:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - extension
+      additionalProperties: false
+    MapBuildDescriptor:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        kind:
+          $ref: "#/components/schemas/MapVocab"
+        status:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - path
+        - kind
+        - status
+      additionalProperties: false
+    MapEntryPoint:
+      type: object
+      properties:
+        label:
+          $ref: "#/components/schemas/MapVocab"
+        path:
+          $ref: "#/components/schemas/MapText"
+        name:
+          $ref: "#/components/schemas/MapText"
+        target:
+          $ref: "#/components/schemas/MapText"
+        rule:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - label
+        - path
+      additionalProperties: false
+    MapTestCandidate:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/MapVocab"
+        path:
+          $ref: "#/components/schemas/MapText"
+        pattern:
+          $ref: "#/components/schemas/MapText"
+        files:
+          $ref: "#/components/schemas/BoundedCount"
+        runner:
+          $ref: "#/components/schemas/MapVocab"
+        source:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - kind
+      additionalProperties: false
+      description: A candidate only. Never a required check, and never something to run.
+    MapGeneratedOrVendor:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/MapVocab"
+        source:
+          $ref: "#/components/schemas/MapVocab"
+        pattern:
+          $ref: "#/components/schemas/MapText"
+        files:
+          $ref: "#/components/schemas/BoundedCount"
+        attributes_file:
+          $ref: "#/components/schemas/MapText"
+      required:
+        - kind
+        - source
+        - pattern
+      additionalProperties: false
+    MapSemanticPrerequisite:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        kind:
+          $ref: "#/components/schemas/MapVocab"
+        source:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - path
+        - kind
+        - source
+      additionalProperties: false
+    MapCapHit:
+      type: object
+      properties:
+        section:
+          $ref: "#/components/schemas/MapVocab"
+        field:
+          $ref: "#/components/schemas/MapVocab"
+        limit:
+          $ref: "#/components/schemas/BoundedCount"
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - section
+        - field
+      additionalProperties: false
+    MapParseFailure:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        code:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - path
+        - code
+      additionalProperties: false
+    MapUnsupported:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        reason:
+          $ref: "#/components/schemas/MapVocab"
+      required:
+        - path
+        - reason
+      additionalProperties: false
+    MapDirectoriesSection:
+      type: object
+      properties:
+        max_depth:
+          $ref: "#/components/schemas/BoundedCount"
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapDirectoryRow"
+          maxItems: 200
+        rows_total:
+          $ref: "#/components/schemas/BoundedCount"
+        rows_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        submodules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapSubmodule"
+          maxItems: 200
+        submodules_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - rows
+        - submodules
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapLanguagesSection:
+      type: object
+      properties:
+        counts:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/BoundedCount"
+          propertyNames:
+            minLength: 1
+            maxLength: 32
+          maxProperties: 100
+        counts_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        unknown_files:
+          $ref: "#/components/schemas/BoundedCount"
+        unknown_extensions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapUnknownExtension"
+          maxItems: 20
+        unknown_extensions_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - counts
+        - counts_omitted
+        - unknown_extensions
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapBuildDescriptorsSection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapBuildDescriptor"
+          maxItems: 200
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - items
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapEntryPointsSection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapEntryPoint"
+          maxItems: 100
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - items
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapTestCandidatesSection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapTestCandidate"
+          maxItems: 100
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - items
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapGeneratedAndVendorSection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapGeneratedOrVendor"
+          maxItems: 200
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - items
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapSemanticPrerequisitesSection:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapSemanticPrerequisite"
+          maxItems: 100
+        omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - items
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapLimitsAndOmissionsSection:
+      type: object
+      properties:
+        caps_hit:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapCapHit"
+          maxItems: 20
+        caps_hit_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        parse_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapParseFailure"
+          maxItems: 100
+        parse_failures_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        unsupported:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapUnsupported"
+          maxItems: 100
+        unsupported_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        lfs_pointers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapText"
+          maxItems: 100
+        lfs_pointers_omitted:
+          $ref: "#/components/schemas/BoundedCount"
+        metadata_unread:
+          $ref: "#/components/schemas/BoundedCount"
+        non_utf8_names:
+          $ref: "#/components/schemas/BoundedCount"
+        symlinks:
+          $ref: "#/components/schemas/BoundedCount"
+        submodules:
+          $ref: "#/components/schemas/BoundedCount"
+        unknown_extension_files:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_fields:
+          $ref: "#/components/schemas/BoundedCount"
+        dropped_items:
+          $ref: "#/components/schemas/BoundedCount"
+      required:
+        - caps_hit
+        - parse_failures
+        - unsupported
+        - lfs_pointers
+        - dropped_fields
+        - dropped_items
+      additionalProperties: false
+    MapSections:
+      type: object
+      properties:
+        directories:
+          $ref: "#/components/schemas/MapDirectoriesSection"
+        languages:
+          $ref: "#/components/schemas/MapLanguagesSection"
+        build_descriptors:
+          $ref: "#/components/schemas/MapBuildDescriptorsSection"
+        entry_point_candidates:
+          $ref: "#/components/schemas/MapEntryPointsSection"
+        test_candidates:
+          $ref: "#/components/schemas/MapTestCandidatesSection"
+        generated_and_vendor:
+          $ref: "#/components/schemas/MapGeneratedAndVendorSection"
+        semantic_prerequisites:
+          $ref: "#/components/schemas/MapSemanticPrerequisitesSection"
+        limits_and_omissions:
+          $ref: "#/components/schemas/MapLimitsAndOmissionsSection"
+      additionalProperties: false
+      description: Every section, or only the one the section parameter names.
+    StructuralDetailResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          type: object
+          properties:
+            summary:
+              $ref: "#/components/schemas/MapSummary"
+            freshness:
+              $ref: "#/components/schemas/MapFreshness"
+            limits:
+              $ref: "#/components/schemas/MapLimits"
+            inputs:
+              $ref: "#/components/schemas/MapInputsSummary"
+            sections:
+              $ref: "#/components/schemas/MapSections"
+            cut_strings:
+              $ref: "#/components/schemas/BoundedCount"
+            dropped_fields:
+              $ref: "#/components/schemas/BoundedCount"
+            label:
+              $ref: "#/components/schemas/ReferenceLabel"
+          required:
+            - summary
+            - freshness
+            - limits
+            - inputs
+            - sections
+            - cut_strings
+            - dropped_fields
+            - label
+          additionalProperties: false
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false
+    MapInput:
+      type: object
+      properties:
+        path:
+          $ref: "#/components/schemas/MapText"
+        git_oid:
+          $ref: "#/components/schemas/ObjectId"
+        size:
+          $ref: "#/components/schemas/BoundedCount"
+        read:
+          type: boolean
+        sha256:
+          $ref: "#/components/schemas/Sha256"
+        reason:
+          type: string
+          x-known-values:
+            - capped_size
+            - capped_total
+          description: Why the generator did not read this input. Open semantic value. Unknown strings must
+            display an explicit warning with the raw value.
+      required:
+        - path
+        - read
+      additionalProperties: false
+    StructuralInputsResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          type: object
+          properties:
+            root:
+              $ref: "#/components/schemas/Sha256"
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapInput"
+              maxItems: 250
+            next_cursor:
+              anyOf:
+                - $ref: "#/components/schemas/Cursor"
+                - type: "null"
+            cut_strings:
+              $ref: "#/components/schemas/BoundedCount"
+            dropped_fields:
+              $ref: "#/components/schemas/BoundedCount"
+            label:
+              $ref: "#/components/schemas/ReferenceLabel"
+          required:
+            - root
+            - items
+            - next_cursor
+            - cut_strings
+            - dropped_fields
+            - label
+          additionalProperties: false
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false
+    MapDiffOperand:
+      type: object
+      properties:
+        root:
+          $ref: "#/components/schemas/Sha256"
+        source_revision:
+          $ref: "#/components/schemas/ObjectId"
+        source_tree:
+          $ref: "#/components/schemas/ObjectId"
+      required:
+        - root
+        - source_revision
+        - source_tree
+      additionalProperties: false
+    MapValueChanges:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          from:
+            anyOf:
+              - $ref: "#/components/schemas/BoundedCount"
+              - type: boolean
+              - type: "null"
+          to:
+            anyOf:
+              - $ref: "#/components/schemas/BoundedCount"
+              - type: boolean
+              - type: "null"
+        required:
+          - from
+          - to
+        additionalProperties: false
+      propertyNames:
+        minLength: 1
+        maxLength: 64
+      maxProperties: 128
+      description: Counter changes by field name; null where the field is absent on one side.
+    MapEnvelopeChanges:
+      type: object
+      properties:
+        source_revision:
+          type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/ObjectId"
+            to:
+              $ref: "#/components/schemas/ObjectId"
+          required:
+            - from
+            - to
+          additionalProperties: false
+        source_tree:
+          type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/ObjectId"
+            to:
+              $ref: "#/components/schemas/ObjectId"
+          required:
+            - from
+            - to
+          additionalProperties: false
+        object_format:
+          type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/MapVocab"
+            to:
+              $ref: "#/components/schemas/MapVocab"
+          required:
+            - from
+            - to
+          additionalProperties: false
+        generator:
+          type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/MapGenerator"
+            to:
+              $ref: "#/components/schemas/MapGenerator"
+          required:
+            - from
+            - to
+          additionalProperties: false
+        path_listing_sha256:
+          type: object
+          properties:
+            from:
+              $ref: "#/components/schemas/Sha256"
+            to:
+              $ref: "#/components/schemas/Sha256"
+          required:
+            - from
+            - to
+          additionalProperties: false
+      additionalProperties: false
+      description: Only the envelope fields that differ are present.
+    MapDirectoriesChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        rows:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapDirectoryRow"
+              maxItems: 200
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapDirectoryRow"
+              maxItems: 200
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        submodules:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapSubmodule"
+              maxItems: 200
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapSubmodule"
+              maxItems: 200
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapLanguagesChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        unknown_extensions:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapUnknownExtension"
+              maxItems: 20
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapUnknownExtension"
+              maxItems: 20
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapBuildDescriptorsChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        items:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapBuildDescriptor"
+              maxItems: 200
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapBuildDescriptor"
+              maxItems: 200
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapEntryPointsChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        items:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapEntryPoint"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapEntryPoint"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapTestCandidatesChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        items:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapTestCandidate"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapTestCandidate"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapGeneratedAndVendorChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        items:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapGeneratedOrVendor"
+              maxItems: 200
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapGeneratedOrVendor"
+              maxItems: 200
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapSemanticPrerequisitesChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        items:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapSemanticPrerequisite"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapSemanticPrerequisite"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapLimitsAndOmissionsChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        beyond_cap:
+          type: boolean
+        caps_hit:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapCapHit"
+              maxItems: 20
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapCapHit"
+              maxItems: 20
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        parse_failures:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapParseFailure"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapParseFailure"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        unsupported:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapUnsupported"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapUnsupported"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        lfs_pointers:
+          type: object
+          properties:
+            added:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapText"
+              maxItems: 100
+            removed:
+              type: array
+              items:
+                $ref: "#/components/schemas/MapText"
+              maxItems: 100
+          required:
+            - added
+            - removed
+          additionalProperties: false
+        values:
+          $ref: "#/components/schemas/MapValueChanges"
+      required:
+        - changed
+        - beyond_cap
+        - values
+      additionalProperties: false
+    MapDiffResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          type: object
+          properties:
+            a:
+              $ref: "#/components/schemas/MapDiffOperand"
+            b:
+              $ref: "#/components/schemas/MapDiffOperand"
+            identical:
+              type: boolean
+            envelope:
+              $ref: "#/components/schemas/MapEnvelopeChanges"
+            sections:
+              type: object
+              properties:
+                directories:
+                  $ref: "#/components/schemas/MapDirectoriesChange"
+                languages:
+                  $ref: "#/components/schemas/MapLanguagesChange"
+                build_descriptors:
+                  $ref: "#/components/schemas/MapBuildDescriptorsChange"
+                entry_point_candidates:
+                  $ref: "#/components/schemas/MapEntryPointsChange"
+                test_candidates:
+                  $ref: "#/components/schemas/MapTestCandidatesChange"
+                generated_and_vendor:
+                  $ref: "#/components/schemas/MapGeneratedAndVendorChange"
+                semantic_prerequisites:
+                  $ref: "#/components/schemas/MapSemanticPrerequisitesChange"
+                limits_and_omissions:
+                  $ref: "#/components/schemas/MapLimitsAndOmissionsChange"
+              required:
+                - directories
+                - languages
+                - build_descriptors
+                - entry_point_candidates
+                - test_candidates
+                - generated_and_vendor
+                - semantic_prerequisites
+                - limits_and_omissions
+              additionalProperties: false
+            cut_strings:
+              $ref: "#/components/schemas/BoundedCount"
+            dropped_fields:
+              $ref: "#/components/schemas/BoundedCount"
+            dropped_items:
+              $ref: "#/components/schemas/BoundedCount"
+            label:
+              $ref: "#/components/schemas/ReferenceLabel"
+          required:
+            - a
+            - b
+            - identical
+            - envelope
+            - sections
+            - cut_strings
+            - dropped_fields
+            - dropped_items
+            - label
+          additionalProperties: false
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false
+    HistorySearchHit:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/OpaqueId"
+        kind:
+          type: string
+          x-known-values:
+            - unit
+            - annotation
+            - audit
+            - lead
+            - evidence
+          description: A history entry kind, or evidence. Never a Knowledge kind. Open semantic value; unknown
+            strings display their raw value with a warning.
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        subject:
+          anyOf:
+            - $ref: "#/components/schemas/OpaqueId"
+            - type: "null"
+        source:
+          type: string
+          x-known-values:
+            - engine
+            - operator
+            - model
+            - external
+          description: Open semantic value. Unknown strings display their raw value with a warning.
+        trust:
+          type: object
+          properties:
+            source:
+              type: string
+            label:
+              $ref: "#/components/schemas/ReferenceLabel"
+          required:
+            - source
+            - label
+          additionalProperties: false
+        truncated:
+          type: boolean
+        snippet:
+          type: string
+          maxLength: 400
+          description: The authenticated record's matching text, inert and credential-redacted, inside the
+            response's fence. Plain text, never Markdown.
+        expand:
+          type: object
+          properties:
+            cli:
+              type: array
+              items:
+                type: string
+                minLength: 1
+                maxLength: 256
+              minItems: 1
+              maxItems: 8
+              description: The command that shows the whole record, as an argv array; render each element escaped.
+            link:
+              anyOf:
+                - $ref: "#/components/schemas/EntityRef"
+                - type: "null"
+              description: /evidence/{id} or /history/{id}; null when there is no page for it.
+          required:
+            - cli
+            - link
+          additionalProperties: false
+      required:
+        - id
+        - kind
+        - at
+        - subject
+        - source
+        - trust
+        - truncated
+        - snippet
+        - expand
+      additionalProperties: false
+    HistorySearch:
+      type: object
+      properties:
+        label:
+          $ref: "#/components/schemas/ReferenceLabel"
+        trust_label:
+          $ref: "#/components/schemas/ReferenceLabel"
+        query:
+          type: object
+          properties:
+            terms:
+              type: array
+              items:
+                type: string
+                minLength: 1
+                maxLength: 512
+              minItems: 1
+              maxItems: 16
+            kinds:
+              type: array
+              items:
+                type: string
+              maxItems: 16
+            since:
+              anyOf:
+                - $ref: "#/components/schemas/Timestamp"
+                - type: "null"
+            until:
+              anyOf:
+                - $ref: "#/components/schemas/Timestamp"
+                - type: "null"
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 50
+          required:
+            - terms
+            - kinds
+            - since
+            - until
+            - limit
+          additionalProperties: false
+        fence:
+          type: object
+          properties:
+            open:
+              type: string
+              minLength: 1
+              maxLength: 64
+            close:
+              type: string
+              minLength: 1
+              maxLength: 64
+          required:
+            - open
+            - close
+          additionalProperties: false
+          description: Every snippet starts with open and ends with close; no snippet's content contains the
+            token, so no content can close the frame.
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistorySearchHit"
+          maxItems: 50
+        coverage:
+          type: object
+          properties:
+            complete:
+              type: boolean
+            indexed_through:
+              anyOf:
+                - $ref: "#/components/schemas/BoundedCount"
+                - type: "null"
+            history_entries:
+              $ref: "#/components/schemas/BoundedCount"
+            reasons:
+              type: array
+              items:
+                $ref: "#/components/schemas/Reason"
+              maxItems: 250
+          required:
+            - complete
+            - indexed_through
+            - history_entries
+            - reasons
+          additionalProperties: false
+          description: An incomplete coverage is not "no hits"; show its reasons, and offer to search again
+            for SEARCH_HISTORY_MOVED.
+        unverified:
+          anyOf:
+            - type: object
+              properties:
+                count:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+              required:
+                - count
+              additionalProperties: false
+            - type: "null"
+      required:
+        - label
+        - trust_label
+        - query
+        - fence
+        - hits
+        - coverage
+        - unverified
+      additionalProperties: false
+      description: Raw history, not admitted Knowledge; reference only, never current evidence or instructions.
+    HistorySearchResponse:
+      type: object
+      properties:
+        schema_version:
+          type: string
+          const: 0.1.3
+        project_id:
+          $ref: "#/components/schemas/OpaqueId"
+        control_revision:
+          $ref: "#/components/schemas/ControlRevision"
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        data:
+          $ref: "#/components/schemas/HistorySearch"
+      required:
+        - schema_version
+        - project_id
+        - control_revision
+        - generated_at
+        - data
+      additionalProperties: false

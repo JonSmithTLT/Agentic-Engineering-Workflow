@@ -36,16 +36,55 @@ def approval(root: Path = ROOT) -> dict[str, Any]:
     return json.loads((root / CT.APPROVAL_REL).read_text(encoding="utf-8"))
 
 
-def base_contract(root: Path = ROOT) -> dict[str, Any]:
-    """The accepted 0.1.2 contract, from the vendored fixture, its digest checked against the approval record."""
-    review = CT.base_review(approval(root))
-    raw = (root / BASE_FIXTURE_REL).read_bytes()
-    assert hashlib.sha256(raw).hexdigest() == review["sha256"], "the vendored 0.1.2 contract is the accepted one"
+def vendored_contract(version: str, fixture_rel: str, root: Path = ROOT) -> dict[str, Any]:
+    """An accepted contract from its vendored fixture, its digest checked against the approval record's accepted
+    review of ``version`` (the current review, or an accepted previous one once a later version is accepted)."""
+    review = CT.base_review(approval(root), version)
+    raw = (root / fixture_rel).read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == review["sha256"], f"the vendored {version} contract is the accepted one"
     return yaml.safe_load(raw.decode("utf-8"))
 
 
-def note_text(root: Path = ROOT) -> str:
-    return (root / NOTE_REL).read_text(encoding="utf-8")
+def base_contract(root: Path = ROOT) -> dict[str, Any]:
+    """The accepted 0.1.2 contract, from the vendored fixture, its digest checked against the approval record."""
+    return vendored_contract(CT.BASE_VERSION, BASE_FIXTURE_REL, root)
+
+
+# The configuration read's change note (register F46.1, slice F1b): contract 0.1.4, merged into the accepted 0.1.3.
+CONFIG_NOTE_REL = "docs/design/proposals/dashboard-configuration-read-v0.1.md"
+CONFIG_BASE_VERSION, CONFIG_BASE_FIXTURE_REL = "0.1.3", "tests/fixtures/dashboard/contract-0.1.3.yaml"
+
+
+def config_base_contract(root: Path = ROOT) -> dict[str, Any]:
+    """The accepted 0.1.3 contract the 0.1.4 note's appendix merges into, from its vendored fixture."""
+    return vendored_contract(CONFIG_BASE_VERSION, CONFIG_BASE_FIXTURE_REL, root)
+
+
+def note_text(root: Path = ROOT, rel: str = NOTE_REL) -> str:
+    return (root / rel).read_text(encoding="utf-8")
+
+
+# Stand-ins for a later version's routes, which the pending answers are tested on: one no template matches and one a
+# template does (``/runs/latest`` is ``/runs/{id}`` with the id ``latest``).
+LATER_ROUTES = frozenset({"/maps/semantic", "/runs/latest"})
+
+
+def proposed_routes(root: Path = ROOT) -> set[str]:
+    """Every route a change note proposes over its base (the 0.1.3 note over 0.1.2, the 0.1.4 note over 0.1.3), read
+    from the notes themselves: the one owner of "proposed" that the dashboard's pending-route tests derive from."""
+    out: set[str] = set()
+    for rel, base in ((NOTE_REL, base_contract(root)), (CONFIG_NOTE_REL, config_base_contract(root))):
+        out |= set(proposed(note_text(root, rel), base)["paths"]) - set(base["paths"])
+    return out
+
+
+def expected_pending(contract_paths: set[str], served: set[str], conditional: set[str], root: Path = ROOT) -> set[str]:
+    """The routes the dashboard's tests expect pending: the later stand-ins, and every route that a change note
+    proposes or the accepted contract adds over the latest vendored base (0.1.3) and that no slice serves yet: the
+    0.1.4 note's two until F1c, under the names the web developer gives them if W2 renames one. Every 0.1.3 route
+    stays served, so one left pending still fails."""
+    added = proposed_routes(root) | (set(contract_paths) - set(config_base_contract(root)["paths"]))
+    return set(LATER_ROUTES) | (added - served - conditional)
 
 
 def appendix(text: str) -> list[dict[str, Any]]:
@@ -74,7 +113,7 @@ def appendix(text: str) -> list[dict[str, Any]]:
 
 
 def proposed(text: str, base: dict[str, Any]) -> dict[str, Any]:
-    """The contract the note proposes: 0.1.2 with the appendix merged in."""
+    """The contract the note proposes: its base (0.1.2 for the 0.1.3 note) with the appendix merged in."""
     return CT.merged(base, *appendix(text))
 
 
@@ -102,7 +141,7 @@ def stripped(document: dict[str, Any]) -> dict[str, Any]:
 def note_problems(text: str, accepted: dict[str, Any], base: dict[str, Any]) -> list[str]:
     """Why the note and the accepted contract disagree, in the mode the note's status line sets (change note,
     "Readiness on the main line"); empty when they agree. The appendix itself must always compile and pass the
-    compatibility check against 0.1.2."""
+    compatibility check against its base (0.1.2 for the 0.1.3 note, 0.1.3 for the 0.1.4 note)."""
     mine = proposed(text, base)
     base_paths = set(base["paths"])
     problems = [f"appendix: {p}" for p in CT.compile_problems(mine) + CT.compatibility(base, mine, base_paths)]
@@ -110,7 +149,8 @@ def note_problems(text: str, accepted: dict[str, Any], base: dict[str, Any]) -> 
     line = adopted(text)
     version = str(accepted["info"]["version"])
     if line is None:  # one-way: any amendment of the additions passes, a change to a 0.1.2 shape does not
-        problems += [f"contract against 0.1.2: {p}" for p in CT.compatibility(base, accepted, base_paths)]
+        problems += [f"contract against {base['info']['version']}: {p}"
+                     for p in CT.compatibility(base, accepted, base_paths)]
     elif version == line[0]:  # strict at the adopted version: the note and the contract cannot drift apart
         if stripped(mine) != stripped(accepted):
             problems.append(f"contract {version} differs from the note's appendix, which it adopted")

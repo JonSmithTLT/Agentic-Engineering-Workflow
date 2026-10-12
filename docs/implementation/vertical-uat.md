@@ -55,7 +55,9 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
    projection is the policy's own step, never counted as a guess.
 2. If `decisions_required` holds a decision the projection gives to the operator (`owner: operator`), ask the
    operator and wait for the reply. **`decisions_required` counts operator-owned decisions only** (v2): one whose
-   stated owner is the Lead or the mechanism, the Lead takes itself and never asks, and the ledger lists it apart.
+   stated owner is exactly `lead` or `mechanical`, the Lead takes itself and never asks, and the ledger lists it
+   apart. Any other stated owner is asked of the operator, compared like any question, and recorded as a finding
+   (`unknown_owner`).
    **Until the projection states owners** (projection v2), no decision has one: the Lead asks the operator, as
    today, and the summary shows "owner not stated" for each.
 3. Otherwise call the single action the projection marks as next, with **exactly the arguments the projection
@@ -63,8 +65,9 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
    several are AVAILABLE, `ambiguous_next_action` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator: the diff, an evidence summary and the commit.
 
-**Judgment inputs (v2).** Where an action or a decision names `judgment_inputs`, the Lead supplies them, as its own
-judgment, and asks no one: a value the projection offers (or the first of its `options`) fills an argument the
+**Judgment inputs (v2).** Where an action, or a decision owned by the Lead or the mechanism, names `judgment_inputs`,
+the Lead supplies them, as its own judgment, and asks no one (never on an operator's decision, whose choice is the
+operator's): a value the projection offers (or the first of its `options`) fills an argument the
 projection's arguments leave out, and the names are recorded as the Lead's (`lead.judgment`). Today's projection names
 none; projection v2 does, with its `next`.
 
@@ -109,6 +112,10 @@ installed tool: its variables are not the operator's.
   into the profile's `model`, and AEW passes the provider and the id apart, so the reference it uses is doubled
   (`<provider>/<provider>/<model>`). The ideal outcome is that AEW accepts the id as typed (no error at all);
   otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic.
+- **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
+  FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
+  the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for preflight and for the doctor fact the
+  ledger records.
 - **Opening AEW (v2).** The ideal `open` step is `aew opencode`, which opens the operator console (when no endpoint is
   live for the project) and the console asks for the operator's PIN. **The auto-opened console is not a counted
   step**: the test records whether it opened (`open.console`). The PIN is counted under "authenticate at most once"
@@ -227,6 +234,13 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).
   `tests/unit/test_ci_tools.py` proves the Windows job stays in the matrix.
+- **No `enforce` while the Lead is uncontained.** `VERTICAL_MODE` cannot be `enforce` while the Lead is uncontained on
+  an enforced platform: each enforced platform's Lead minimum must be above `none`, and the test must read the Lead's
+  label from the product rather than assume none (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py`
+  checks whenever the mode is `enforce`). Today both conditions block it.
+- **Stale revisions are attributed.** For each `STALE_REVISION` the Lead meets, the ledger records the commit that
+  staled it (its actor and operation, from the transition log), so a steering loop's race shows as the loop's, not as
+  the Lead's behaviour. It is evidence, not a counter.
 
 ## 6. Later (not v1)
 

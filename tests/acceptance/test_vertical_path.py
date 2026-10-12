@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -29,7 +28,7 @@ from conftest import git, run_aew
 from notifier import recorder
 from vertical import workers
 from vertical.chat import Mailbox
-from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger
+from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger, diagnoses
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -226,12 +225,49 @@ def assert_verdict(op: Operator, problems: list[str]) -> None:
 def finish(op: Operator, session) -> None:
     op.end_session(session, "exit")
     merge_lead(op)
+    stale_attribution(op)
     containment(op.lab, op.ledger)
     if op.ledger.steering:
         steering_facts(op)
     if "publish_needs_decision" not in op.ledger.hard_limits:
         op.check_heads("at the end")
         op.ledger.hard_limits.setdefault("publish_needs_decision", {"outcome": HELD})
+
+
+def stale_attribution(op: Operator) -> None:
+    """For each STALE_REVISION the Lead met, the commit that staled it: the first transition after the revision the
+    call expected, with its actor and operation, read from the transition log. It makes the steering-on variance
+    attributable (the loop's commit, or another's); it is recorded, never counted (counting stays with
+    `stale_retries` and `refusals`)."""
+    from aew.engine.outbox import LogView
+
+    def expect_rev(e: dict[str, Any]) -> Any:
+        args = e.get("arguments")
+        return (args.get("expect_rev") if isinstance(args, dict) else
+                args[args.index("--expect-rev") + 1] if isinstance(args, list) and "--expect-rev" in args else None)
+
+    view = LogView(op.lab.aew_root, None)
+    events = lead_events(op.lab)
+    # The Lead's own successful calls, by the revision they expected: a commit at that revision + 1 is the Lead's.
+    # The steering loop commits under the Lead's credential, so the transition's actor alone cannot tell them apart.
+    own = {str(expect_rev(e)) for e in events if e.get("kind") == "call" and e.get("ok") and expect_rev(e) is not None}
+    for e in events:
+        error = ((e.get("stopped") or {}).get("error") or {}) if e.get("kind") == "call" else {}
+        if error.get("code") != "STALE_REVISION":
+            continue
+        expected = expect_rev(e)
+        record: dict[str, Any] = {}
+        try:
+            record = view.resolve(int(expected) + 1) or {} if expected is not None else {}
+        except Exception as exc:  # recorded, never hidden: attribution is evidence, not a verdict  # noqa: BLE001
+            record = {"actor": f"unreadable: {exc}"[:200]}
+        actor = record.get("actor")
+        kind = actor.get("kind") if isinstance(actor, dict) else actor
+        by = ("the Lead's own call" if str(expected) in own else
+              "not the Lead's own calls (the steering loop, or another)" if kind == "lead" else f"{kind}")
+        op.ledger.observe("stale_revision", tool=e.get("tool"), expect_rev=expected, step=e.get("step"), by=by,
+                          actor=actor, op=record.get("op"), summary=record.get("summary"),
+                          revision=record.get("revision"))
 
 
 def steering_facts(op: Operator) -> None:
@@ -714,15 +750,15 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
         accepted = bool(want.get("accept_as_typed")) and res.returncode == 0
         op.ledger.observe("v3", case=case, preflight_exit=res.returncode, preflight=said[-1500:],
                           doctor_exit=doctor.returncode,
-                          doctor_names_cause=bool(re.search(want["cause"], doctor.stdout + doctor.stderr)),
+                          doctor_names_cause=diagnoses(doctor.stdout + doctor.stderr, want["cause"]),
                           operator_input_was_the_harness_id=bool(want.get("accept_as_typed")),
                           accepted_as_typed=accepted)
         if not accepted:
             if res.returncode == 0:
                 problems.append(f"readiness passed with the cause in place: {said[-300:]}")
-            elif not re.search(want["cause"], said):
+            elif not diagnoses(said, want["cause"]):
                 problems.append(f"readiness did not name the cause {want['cause']}: {said[-300:]}")
-            elif not re.search(want["fix"], said):
+            elif not diagnoses(said, want["fix"]):
                 problems.append(f"readiness did not name the fix {want['fix']}: {said[-300:]}")
         launched = launched_anything(op)
         if launched:

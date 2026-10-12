@@ -9,16 +9,19 @@ Lead broker), and its shell commands run in the TUI's own environment.
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
 2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
-   stated (every one today), ask the operator and wait for the reply. One it gives to the Lead or the mechanism, the
-   Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned decisions only).
+   stated (every one today), ask the operator and wait for the reply. One whose owner is exactly ``lead`` or
+   ``mechanical``, the Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned
+   decisions only). Any other stated owner is asked too, and recorded as ``unknown_owner``.
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator.
 
-**Judgment inputs** (spec v2): where an action or a decision names ``judgment_inputs``, the Lead supplies them, its
-own judgment, with nothing asked: a value the projection offers (or the first of its ``options``) goes into the call's
-arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1) does.
+**Judgment inputs** (spec v2): where an action, or a decision the projection gives to the Lead or the mechanism,
+names ``judgment_inputs``, the Lead supplies them, its own judgment, with nothing asked (never on the operator's
+decisions, whose choice is the operator's): a value the projection offers (or the first of its ``options``) goes
+into the call's arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1)
+does.
 
 **Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
 call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
@@ -72,7 +75,7 @@ from pathlib import Path
 from typing import Any
 
 from vertical.chat import Gone, Mailbox
-from vertical.ledger import OPERATOR_OWNER
+from vertical.ledger import OPERATOR_OWNER, SELF_OWNERS
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 LOOP_WAIT_S = 120.0  # the bound on waiting for the steering loop's event
@@ -288,7 +291,7 @@ class Lead:
             return False
         decisions = proj.get("decisions_required") or []
         for d in decisions:  # a decision the projection gives to the Lead or the mechanism is never asked (spec v2)
-            if d.get("owner") not in (None, OPERATOR_OWNER):
+            if d.get("owner") in SELF_OWNERS:
                 return self.own_decision(d)
         if decisions:
             return self.decide(decisions[0], proj)
@@ -330,6 +333,8 @@ class Lead:
             return self.decision_refused(d, proj)
         self.seen[asked] = 1
         label = "publish" if d["decision"] == "PUBLISH" else d["decision"].lower()
+        if d.get("owner") not in (None, OPERATOR_OWNER):  # neither the operator's nor one the Lead takes: asked
+            self.event("unknown_owner", decision=d["decision"], owner=d.get("owner"))  # and recorded as a finding
         question = (f"{d['decision'].replace('_', ' ').lower()} for {d.get('subject')}"
                     + (f" (evidence {', '.join(d.get('evidence') or [])})" if d.get("evidence") else "") + "?")
         answer = self.ask(question, label=label, detail={"decision": d["decision"], "tool": d.get("tool"),
@@ -339,7 +344,9 @@ class Lead:
             self.hear()
             return True
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
-            self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
+            # The operator's decision: its arguments as the projection supplied them, never a choice the Lead filled
+            # (judgment inputs are the Lead's, for actions and its own decisions only; review of #213, F3).
+            self.call(d["tool"], d["arguments"], offered=True)
             return True
         cli = list(d.get("cli_fallback") or [])
         if d["decision"] == "RECONCILE" and "<phase>" in cli:

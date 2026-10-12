@@ -342,3 +342,86 @@ def test_every_operator_fallback_is_listed_and_the_document_says_it_fails_the_ve
     assert [o["step"] for o in led.operator_fallbacks()] == ["caches"]
     assert "operator fallbacks: caches" in led.summary()
     assert "**Any operator fallback fails the verdict.**" in DOC.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------------------------- review of #213
+
+
+def test_enforce_is_refused_while_the_lead_is_uncontained_on_an_enforced_platform():
+    """§5: `VERTICAL_MODE` cannot be `enforce` while the Lead is uncontained on an enforced platform, nor while the
+    test assumes the Lead's label instead of reading it (F1). Today both block it; whenever the mode is `enforce`,
+    nothing may."""
+    from vertical import scripted_operator
+
+    blockers = L.enforce_blockers(lead_label_wired=scripted_operator.LEAD_LABEL_WIRED)
+    if L.VERTICAL_MODE == "enforce":
+        assert blockers == [], blockers
+    else:
+        assert any("linux" in b for b in blockers) and any("lead_label" in b for b in blockers)
+    assert "No `enforce` while the Lead is uncontained." in DOC.read_text(encoding="utf-8")
+
+
+def _ticking(lead: _Lead, decisions: list[dict]) -> None:
+    """One step of the Lead's policy over a projection that requires ``decisions``."""
+    lead.lead.subject, lead.lead.steering, lead.lead.step = "T-0001", False, ""
+    projection = {"state": "REVIEW_PENDING", "revision": 4, "decisions_required": decisions, "actions": []}
+    lead.lead.read = lambda: {"projection": projection}
+    lead.lead.tick()
+
+
+def test_only_an_exact_lead_or_mechanical_owner_is_taken_by_the_lead():
+    """F2: a decision is the Lead's only when its owner is exactly `lead` or `mechanical`. Any other stated owner (a
+    case variant, a new value, an empty string) is asked of the operator and recorded as a finding."""
+    for owner in ("Operator", "operator_console", ""):
+        lead = _Lead(["ticket_request_verification"])
+        _ticking(lead, [{"decision": "ACCEPT_REVIEW_EVIDENCE", "owner": owner, "tool": "ticket_request_verification",
+                         "arguments": {"expect_rev": 4, "work_id": "T-0001"}}])
+        assert len(lead.asked) == 1, owner
+        assert [e["owner"] for e in lead.events if e["kind"] == "unknown_owner"] == [owner]
+        assert not any(e["kind"] == "own_decision" for e in lead.events)
+    for owner in ("lead", "mechanical"):
+        lead = _Lead(["ticket_request_verification"])
+        _ticking(lead, [{"decision": "ACCEPT_REVIEW_EVIDENCE", "owner": owner, "tool": "ticket_request_verification",
+                         "arguments": {"expect_rev": 4, "work_id": "T-0001"}}])
+        assert lead.asked == [] and any(e["kind"] == "own_decision" for e in lead.events)
+    assert L.SELF_OWNERS == {"lead", "mechanical"}
+    led = L.Ledger("unit")
+    led.lead_event({"kind": "unknown_owner", "decision": "PUBLISH", "owner": "Operator"})
+    assert "unknown owners (asked of the operator): PUBLISH [owner 'Operator']" in led.summary()
+
+
+def test_the_lead_never_fills_an_operator_decisions_choice():
+    """F3: after the operator's answer the Lead calls the decision's tool with the arguments the projection supplied;
+    judgment inputs are the Lead's, for actions and its own decisions only."""
+    lead = _Lead(["integration_publish"])
+    args = {"expect_rev": 4, "work_id": "T-0001"}
+    _ticking(lead, [{"decision": "PUBLISH", "owner": "operator", "tool": "integration_publish", "arguments": args,
+                     "judgment_inputs": {"prepared_candidate": {"options": ["cand-1", "cand-2"]}}}])
+    assert len(lead.asked) == 1
+    assert lead.calls == [("integration_publish", args)]
+    assert not any(e["kind"] == "judgment" for e in lead.events)
+
+
+def test_each_stale_revision_names_the_commit_that_staled_it():
+    led = L.Ledger("unit", steering=True)
+    led.observe("stale_revision", tool="ticket_start", expect_rev=6, actor={"kind": "lead"}, op="work.assign",
+                by="not the Lead's own calls (the steering loop, or another)")
+    assert ("stale revisions, staled by: ticket_start at 6: work.assign, not the Lead's own calls (the steering loop, "
+            "or another)") in led.summary()
+
+
+def test_a_pass_line_echoing_the_cause_is_not_a_diagnosis():
+    """F4 (from the C1 run): V3 counts only a FAIL or WARN entry that names the cause (or its fix). Doctor's PASS line
+    that echoes the configured model id is not a diagnosis, nor is an INFO detail inside a PASS line."""
+    passing = ("aew 0.1 (spec set x)\n"
+               "model-refs            PASS         configured: vuatprov/vuat-missing-model\n"
+               "policy:pricing        PASS         INFO: no price table (FAIL means nothing here)\n"
+               "doctor: 0 failure(s)\n")
+    assert not L.diagnoses(passing, r"vuat-missing-model") and L.failing_entries(passing) == []
+    failing = ("model-refs            FAIL         vuat-missing-model is not listed by the harness\n"
+               "                                   use vuatprov/vuat-model\n"
+               "containment           WARN         workdir separation only\n"
+               "git                   PASS         2.45\n")
+    assert L.diagnoses(failing, r"vuat-missing-model") and L.diagnoses(failing, r"use vuatprov/vuat-model\b")
+    assert len(L.failing_entries(failing)) == 2 and not L.diagnoses(failing, r"2\.45")
+    assert L.diagnoses('{"status": "FAIL", "detail": "VUAT_PROVIDER_KEY is unset"}', r"VUAT_PROVIDER_KEY")

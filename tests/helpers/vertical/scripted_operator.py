@@ -330,6 +330,11 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+# Whether `lead_label` reads the Lead's label from the product. False while it returns the hard-coded `None`; the slice
+# that records the Lead's label sets it, and `enforce` is refused until it is True (ledger.enforce_blockers; F1).
+LEAD_LABEL_WIRED = False
+
+
 def lead_label(lab: HarnessLab) -> str | None:
     """The Lead session's containment label. Nothing records one today: the Lead is uncontained on every platform, so
     it is ``None`` (no label). B4 (Linux) and B5 (Windows) give the Lead a label and read it here, raising the Lead's

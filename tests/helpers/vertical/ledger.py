@@ -49,6 +49,10 @@ V1_DECISIONS = ("plan", "publish")
 # not stated"). One owned by the Lead or the mechanism it takes itself; it is listed apart and never asked. Every
 # question that does reach the operator is an operator decision and is compared, whatever owner it names.
 OPERATOR_OWNER, OWNER_NOT_STATED = "operator", "not stated"
+# The only owners the Lead takes a decision for. Any other stated owner (a new value, a case variant, an empty
+# string) is asked of the operator and compared like any other question, and is recorded as a finding
+# (`lead.unknown_owner`): an unrecognised owner never lets a decision leave the comparison (review of #213, F2).
+SELF_OWNERS = frozenset({"lead", "mechanical"})
 HARD_LIMITS = ("semantic_conflict", "evidence_mismatch", "publish_needs_decision", "containment")
 # Publish (spec v2, from the operator's Q3 answer): from B1, the limit also checks that the publish record is
 # console-approved and attributed to the operator. Until B1 builds that channel the limit stays "main moved only after
@@ -109,6 +113,49 @@ def _words(argv: list[str]) -> tuple[str, ...]:
 
 def _starts(words: tuple[str, ...], prefixes: tuple[tuple[str, ...], ...]) -> bool:
     return any(words[:len(p)] == p for p in prefixes)
+
+
+def enforce_blockers(*, lead_label_wired: bool) -> list[str]:
+    """Why ``VERTICAL_MODE`` may not be ``enforce`` yet (vertical-uat.md §5; review of #213, F1): the gate cannot be
+    enforced while the Lead is uncontained on an enforced platform, which today it is everywhere. Each enforced
+    platform needs a Lead minimum above "no label", and the test must read the Lead's label from the product
+    (``scripted_operator.lead_label``), not the hard-coded ``None`` it returns today."""
+    out = [f"{p}: the Lead's containment minimum is no label (the Lead is uncontained)"
+           for p in ENFORCED_PLATFORMS if CONTAINMENT_MINIMUM[p][LEAD] is None]
+    if not lead_label_wired:
+        out.append("the Lead's label is not read from the product (scripted_operator.lead_label returns None)")
+    return out
+
+
+# A readiness report's statuses (doctor's, and preflight's when it exists). A line's status is the first of these words
+# on it: the status column comes before the detail, so a PASS line whose detail says "INFO" or "FAIL" is still PASS.
+STATUS = re.compile(r"\b(PASS|WARN|FAIL|INFO|UNAVAILABLE)\b")
+FAILING = frozenset({"FAIL", "WARN"})
+
+
+def failing_entries(text: str) -> list[str]:
+    """The FAIL and WARN entries of a readiness report: each line whose status is FAIL or WARN, with the lines after
+    it that carry no status of their own (a wrapped detail, a fix on the next line). A PASS or INFO entry is never one,
+    even when it echoes the configured value a cause names (review of #213, F4: a PASS line echoing the model id is
+    not a diagnosis)."""
+    out: list[str] = []
+    current: list[str] | None = None
+    for line in text.splitlines():
+        status = STATUS.search(line)
+        if status is not None:
+            if current is not None:
+                out.append("\n".join(current))
+            current = [line] if status.group(1) in FAILING else None
+        elif current is not None:
+            current.append(line)
+    if current is not None:
+        out.append("\n".join(current))
+    return out
+
+
+def diagnoses(text: str, pattern: str) -> bool:
+    """Whether a FAIL or WARN entry of ``text`` names ``pattern`` (a cause, or its fix)."""
+    return any(re.search(pattern, entry) for entry in failing_entries(text))
 
 
 def at_least(label: str | None, minimum: str | None) -> bool:
@@ -316,6 +363,14 @@ class Ledger:
         if others:
             lines.append("not the operator's: " + "; ".join(f"{o.get('decision')} [owner {o.get('owner')}]"
                                                              for o in others))
+        unknown = [o for o in self.observations if o["kind"] == "lead.unknown_owner"]
+        if unknown:  # a finding: asked of the operator and compared, but the owner is not one the spec names
+            lines.append("unknown owners (asked of the operator): " + "; ".join(
+                f"{o.get('decision')} [owner {o.get('owner')!r}]" for o in unknown))
+        staled = [o for o in self.observations if o["kind"] == "stale_revision"]
+        if staled:  # which actor's commit staled each STALE_REVISION the Lead met (the loop's, or another's)
+            lines.append("stale revisions, staled by: " + "; ".join(
+                f"{o.get('tool')} at {o.get('expect_rev')}: {o.get('op')}, {o.get('by')}" for o in staled))
         lines.append("operator fallbacks: " + (", ".join(o.get("step") or "?" for o in self.operator_fallbacks())
                                                or "none"))
         for name, r in sorted(self.hard_limits.items()):

@@ -2044,7 +2044,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E73
 
-**Work:** The dashboard's registry reader treats `FileNotFoundError` as absent at once: `MapsReader.registry()` in `src/aew/dashboard/reader.py` (lines 224 to 247 at `977d685`) returns `NONE` on the first `FileNotFoundError` (lines 236 and 237), although it already retries a `PermissionError` on Windows (lines 243 to 246). On Windows a file in the middle of a writer's replace can be reported missing, so a present registry reads as absent. The fix is to converge on the store's one owner of lock-free reads, `aew.engine.store.read_lock_free`, which #220 adds with its retry of a missing file gated to Windows, once #220 merges, instead of keeping a second retry here
+**Work:** The dashboard's registry reader treats `FileNotFoundError` as absent at once: `MapsReader.registry()` in `src/aew/dashboard/reader.py` (lines 224 to 250 at `977d685`) returns `NONE` on the first `FileNotFoundError` (lines 236 and 237), although it already retries a `PermissionError` on Windows (lines 242 to 246). On Windows a file in the middle of a writer's replace can be reported missing, so a present registry reads as absent. The fix is to converge on the store's one owner of lock-free reads, `aew.engine.store.read_lock_free`, which #220 adds with its retry of a missing file gated to Windows, once #220 merges, instead of keeping a second retry here
 
 **Source:** The review of #220 (F46.1 slice F1a): under a real replace loop, the configuration projection's lock-free reads reported a present file missing in 314 to 726 of about 24,000 reads per run until the owner retried `FileNotFoundError` as well
 
@@ -2056,7 +2056,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E74
 
-**Work:** G2's code-registry scan resolves a module constant's name only where a code is passed as a call argument, so a code written through a constant anywhere else is invisible to it. `code_write_sites` in `tests/unit/test_discovery_registry.py` (at `977d685`) resolves names only for the arguments of callables that take a code (lines 69 to 76). A dict literal's `"code"` value, a `code=` keyword elsewhere, a class's `code =` and an `x.code =` assignment are read only as literals (lines 78 to 93), and `module_constants` does not bind constants assigned by tuple unpacking (`A, B = "A", "B"`). The fix is to resolve constant names wherever a code is written, proved by a planted test for each form
+**Work:** G2's code-registry scan resolves a module constant's name only where a code is passed as a call argument, so a code written through a constant anywhere else is invisible to it. `code_write_sites` in `tests/unit/test_discovery_registry.py` (at `977d685`) resolves names only for the arguments of callables that take a code (lines 65 to 76). A dict literal's `"code"` value, a `code=` keyword elsewhere, a class's `code =` and an `x.code =` assignment are read only as literals (lines 79 to 93), and `module_constants` does not bind constants assigned by tuple unpacking (`A, B = "A", "B"`). The fix is to resolve constant names wherever a code is written, proved by a planted test for each form
 
 **Source:** The review of #220 (F46.1 slice F1a), whose data codes are written through constants in these forms: `UNPROCESSABLE` in a dict literal's value, `NO_SUCH_PROFILE` and `NO_DEFAULT_ROUTE` bound by tuple unpacking, and the schema-keyword codes. #218 (G2) closed the same class for the other forms
 

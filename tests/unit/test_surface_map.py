@@ -17,6 +17,7 @@ with a decided ``lead_disposition`` that the live code honours (check ``new_surf
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import copy
 import hashlib
@@ -820,7 +821,8 @@ def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
 
 # ---------------------------------------------------------------------------------------------- coverage (F1)
 # The A1-0 review's F1: a typed plan's homes must cover every use of its command before `home_built` may decide it.
-# The USES are derived from the code, by three scans, for every planned row:
+# The USES are derived from the code, by four scans, for every planned row (the fourth, state-selected entrypoint
+# uses, is below `stage_edges`):
 # - **transition edges:** every `transitions.RULES` edge whose operation (`via`, or one of its `also`) the command runs,
 #   by `transitions._COMMANDS` (the engine's own via -> command table), else `work <via>` when that command is live
 #   (`reconcile`: `work_ops.work_reconcile` checks via "reconcile");
@@ -830,15 +832,19 @@ def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
 # What a home COVERS is read from the code when it is built and from its proposal when it is not:
 # - a built stage's `work.transition` step covers the edges into its fixed target (`availability.STAGES`) from the
 #   state its producing step leaves (`produced_by`: `availability._product` for `work.assign`, else the targets of the
-#   producer's own edges), or from every source when no earlier step produces the state;
+#   producer's own edges), or, when no earlier step produces the state, from the sources whose edge the step's own
+#   arguments can take (an edge requiring a reason only with a reason: the re-review's N1);
+# - a built stage's dispatch step covers a state-selected use only when the stage starts in that state;
 # - a proposal covers the edges its `transitions` name (`*` for any state), which a proposal running
 #   `work.transition` must declare; a built `resolve` choice running `work.transition` covers no edge until its edges
 #   have a code owner (none does today);
 # - any other edge is covered by a home running a primitive that names the edge's command (`primitive_names`);
 # - an entrypoint, by a home running it; an option, by the plan's `options` classification.
 # What the scans cannot see: whether a home's argument implements an option's meaning (the classification is a
-# judgment; its completeness is derived); a stage running from more states than its producer leaves; routes of two or
-# more steps; a command's uses that are neither an edge, an entrypoint nor an option.
+# judgment; its completeness is derived); a stage running from more states than its producer leaves; a stage's earlier
+# steps against a state-selected use's state; a state check inside a helper a guard calls; routes of two or more
+# steps; a command's uses that are none of the four. `_COMMANDS` is one-valued: three operations have more callers in
+# the code (surface-map.md says which, and why none hides a gap today).
 COVERED_BY_ALL_HOMES, UNCOVERED_USE, RETIRED_USE = "homes", "uncovered", "retired"
 ANY_STATE = "*"
 
@@ -877,7 +883,8 @@ def stage_edges(name: str) -> set[tuple[str, str]]:
     for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES.get(name, ()), strict=False)):
         if primitive != "work.transition":
             continue
-        to = (build({"work_id": "T-0001"}) or {}).get("to")
+        args = build({"work_id": "T-0001"}) or {}
+        to = args.get("to")
         producers = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
         if producers:
             p = t.expands_to[producers[0] - 1]
@@ -885,8 +892,120 @@ def stage_edges(name: str) -> set[tuple[str, str]]:
             sources = {fixed} if fixed else {d for (_, d), r in transitions.RULES.items() if p in (r.via, *r.also)}
         else:
             sources = {s for (s, d), r in transitions.RULES.items() if d == to and r.via == "transition"}
-        out |= {(s, to) for s in sources if (s, to) in transitions.RULES}
+        # The A1-0 re-review's N1: an edge that requires a reason is taken only by a step that passes one.
+        out |= {(s, to) for s in sources if (s, to) in transitions.RULES
+                and (args.get("reason") or not transitions.RULES[(s, to)].reason_required)}
     return out
+
+
+# The fourth scan (the A1-0 re-review's N2): a dispatch guard whose if/elif chain selects among a unit's states gives
+# its entrypoint one use per state (`invoke.slot`: ASSIGNED/RUNNING execute, REVIEW_PENDING review, VERIFY_PENDING
+# verify, a prepared COMMIT_READY with scope integration). Derived from the guards' source (every `DispatchGuard`
+# registration under src/aew/engine); a guard with a single state precondition selects nothing, so it is no branch.
+ENGINE_SRC = ROOT / "src" / "aew" / "engine"
+Constraint = tuple[str, Any, bool, Any]  # (facts key, value, equal?, the key's default)
+
+
+def _literals(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return (node.value,)
+    if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
+        return tuple(e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str))
+    return ()
+
+
+def _state_branches(fn: ast.FunctionDef) -> list[tuple[tuple[Constraint, ...], tuple[str, ...]]]:
+    """The longest if/elif chain in ``fn`` whose links test a unit's state: per link, the `facts.get(...)` equalities
+    its test (or an earlier link's, negated) sets, and the states it selects (in its test, or its body's tests)."""
+    assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)]
+    units = {a.targets[0].id for a in assigns  # type: ignore[union-attr]
+             if any(isinstance(c, ast.Constant) and c.value == "work" for c in ast.walk(a.value))}
+
+    def is_state_subscript(e: ast.AST) -> bool:
+        return isinstance(e, ast.Subscript) and isinstance(e.slice, ast.Constant) and e.slice.value == "state" \
+            and isinstance(e.value, ast.Name) and e.value.id in units
+
+    names = {a.targets[0].id for a in assigns if is_state_subscript(a.value)}  # type: ignore[union-attr]
+
+    def states(tests: list[ast.AST]) -> tuple[str, ...]:
+        return tuple(s for t in tests for c in ast.walk(t) if isinstance(c, ast.Compare)
+                     and (is_state_subscript(c.left) or isinstance(c.left, ast.Name) and c.left.id in names)
+                     for s in _literals(c.comparators[0]))
+
+    def facts(test: ast.AST) -> list[Constraint]:
+        return [(c.left.args[0].value, c.comparators[0].value, isinstance(c.ops[0], ast.Eq),
+                 c.left.args[1].value if len(c.left.args) > 1 and isinstance(c.left.args[1], ast.Constant) else None)
+                for c in ast.walk(test) if isinstance(c, ast.Compare) and isinstance(c.left, ast.Call)
+                and isinstance(c.left.func, ast.Attribute) and c.left.func.attr == "get"
+                and isinstance(c.left.func.value, ast.Name) and c.left.func.value.id == "facts"
+                and c.left.args and isinstance(c.left.args[0], ast.Constant)
+                and isinstance(c.comparators[0], ast.Constant) and isinstance(c.ops[0], (ast.Eq, ast.NotEq))]
+
+    elifs = {id(n.orelse[0]) for n in ast.walk(fn) if isinstance(n, ast.If) and len(n.orelse) == 1
+             and isinstance(n.orelse[0], ast.If)}
+    best: list[tuple[tuple[Constraint, ...], tuple[str, ...]]] = []
+    for head in (n for n in ast.walk(fn) if isinstance(n, ast.If) and id(n) not in elifs):
+        links, before, node = [], [], head
+        while isinstance(node, ast.If):
+            own = facts(node.test)
+            selected = states([node.test]) or states([n.test for n in node.body if isinstance(n, ast.If)])
+            if selected:
+                links.append((tuple(own + [(k, v, not eq, d) for k, v, eq, d in before]), selected))
+            before += own
+            node = node.orelse[0] if len(node.orelse) == 1 else None
+        if len(links) > len(best):
+            best = links
+    return best if len(best) >= 2 else []
+
+
+@cache
+def guard_branches() -> dict[str, list[tuple[tuple[Constraint, ...], tuple[str, ...]]]]:
+    """Every registered dispatch guard that selects among a unit's states, with its branches."""
+    methods: dict[tuple[str, str], ast.FunctionDef] = {}
+    registered: dict[str, tuple[str, str]] = {}
+    for f in sorted(ENGINE_SRC.glob("*.py")):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.FunctionDef):
+                methods[(f.name, node.name)] = node
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "DispatchGuard" \
+                    and len(node.args) >= 2 and isinstance(node.args[0], ast.Constant) \
+                    and isinstance(node.args[1], ast.Attribute):
+                registered[str(node.args[0].value)] = (f.name, node.args[1].attr)
+    out = {}
+    for guard, where in registered.items():
+        fn = methods.get(where)
+        branches = _state_branches(fn) if fn is not None else []
+        if branches:
+            out[guard] = branches
+    return out
+
+
+def state_uses(name: str) -> list[tuple[str, str, tuple[Constraint, ...], str]]:
+    """Command ``name``'s state-selected entrypoint uses: (entrypoint, state, the facts it needs, its label)."""
+    out = []
+    for ep in command_entrypoints(name):
+        for guard in dispatch.ENTRYPOINTS[ep].guards:
+            for constraints, states in guard_branches().get(guard, []):
+                selected = "".join(f" ({k}={v})" for k, v, eq, _ in constraints if eq)
+                out += [(ep, s, constraints, f"entrypoint {ep} in {s}{selected}") for s in states]
+    return out
+
+
+def starts_with(tool: str, ep: str, constraints: tuple[Constraint, ...]) -> bool:
+    """Whether built stage ``tool`` runs entrypoint ``ep`` in the state it STARTS in (no earlier step of it produces
+    the state) with arguments that select the branch (the re-review's N2: a home that reaches the state through its own
+    earlier step cannot replace a lost invocation of a unit already there)."""
+    t = contract.TOOLS.get(tool)
+    if t is None or tool not in availability.STAGES:
+        return False
+    for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES[tool], strict=False)):
+        if primitive != ep:
+            continue
+        args = build({"work_id": "T-0001"}) or {}
+        produced = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
+        if not produced and all((args.get(k, d) == v) == eq for k, v, eq, d in constraints):
+            return True
+    return False
 
 
 def typed_homes(reg: dict[str, Any], built_only: bool) -> list[tuple[str, set[str], set[tuple[str, str]]]]:
@@ -910,13 +1029,6 @@ def _edge_matches(patterns: set[tuple[str, str]], s: str, d: str) -> bool:
     return any(a in (s, ANY_STATE) and b in (d, ANY_STATE) for a, b in patterns)
 
 
-def row_uses(name: str, plan: dict[str, Any]) -> list[str]:
-    """Every use of command ``name`` the three scans derive, as stable strings."""
-    return ([f"{via} {s} -> {d}" for s, d, via in command_edges(name)]
-            + [f"entrypoint {ep}" for ep in command_entrypoints(name)]
-            + [f"option {o}" for o in command_options(name)])
-
-
 def row_uncovered(reg: dict[str, Any], name: str, plan: dict[str, Any], *, built_only: bool = False) -> list[str]:
     """The uses of a typed plan's command that no typed home covers (built ones only, with ``built_only``). A plan
     that is not typed has no typed uses: its command leaves the Lead's doors."""
@@ -933,6 +1045,8 @@ def row_uncovered(reg: dict[str, Any], name: str, plan: dict[str, Any], *, built
         if not covered:
             out.append(f"{via} {s} -> {d}")
     out += [f"entrypoint {ep}" for ep in command_entrypoints(name) if not any(ep in ps for _, ps, _ in pool)]
+    out += [use for ep, _, constraints, use in state_uses(name)
+            if not any(starts_with(h, ep, constraints) for h, _, _ in pool)]
     options = plan.get("options") or {}
     for o in command_options(name):
         v = options.get(o)
@@ -2181,9 +2295,13 @@ ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
     ("planned_coverage", lambda ab: ab.setitem(transitions.RULES, ("READY", "VERIFIED"),
                                                transitions.Rule("transition")),
      "'transition READY -> VERIFIED'"),
+    # N2: the slot guard taken off `invoke.create.mutating` drops its four state-selected gaps.
+    ("planned_coverage", lambda ab: ab.setitem(dispatch.ENTRYPOINTS, "invoke.create.mutating", dispatch.ENTRYPOINTS[
+        "invoke.create.mutating"]._replace(guards=tuple(g for g in dispatch.ENTRYPOINTS[
+            "invoke.create.mutating"].guards if g != "invoke.slot"))),
+     "`aew invoke create`'s plan: `uncovered` is {lands: <slice>, uses: ['entrypoint invoke.create.non_mutating'"),
     ("planned_coverage", lambda ab: ab.delitem(dispatch.ENTRYPOINTS, "invoke.create.parent"),
-     "`aew invoke create`'s plan: `uncovered` is {lands: <slice>, uses: ['entrypoint invoke.create.non_mutating', "
-     "'option --card']}"),
+     "'entrypoint invoke.create.non_mutating', 'option --card', 'option --launch']}"),
     ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
         "ticket_request_review"]._replace(name="ticket_rework")), "proposed tool `ticket_rework` is built now"),
     ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
@@ -2239,20 +2357,34 @@ def test_home_built_waits_until_every_use_is_covered(monkeypatch):
         reg = copy.deepcopy(load())
         for name in ("work transition", "invoke create"):
             assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg))
-        _entry(reg, "invoke create")["planned"]["options"]["--card"] = COVERED_BY_ALL_HOMES
-        for name in ("work transition", "invoke create"):
+        for option in ("--card", "--launch"):
+            _entry(reg, "invoke create")["planned"]["options"][option] = COVERED_BY_ALL_HOMES
+        def remove(gap: str) -> None:
+            kind, _, rest = gap.partition(" ")
+            if kind == "entrypoint" and " in " in rest:  # a state-selected use: drop the guard that selects it
+                ep = dispatch.ENTRYPOINTS[rest.split(" in ")[0]]
+                ab.setitem(dispatch.ENTRYPOINTS, ep.name, ep._replace(
+                    guards=tuple(g for g in ep.guards if g not in guard_branches())))
+            elif kind == "entrypoint":
+                ab.delitem(dispatch.ENTRYPOINTS, rest)
+            else:
+                s, _, d = rest.partition(" -> ")
+                ab.delitem(transitions.RULES, (s, d))
+
+        # The re-review's N1 edge (no built home can take it) and N2's lost-reviewer use are the last gaps standing:
+        # while either remains, the row is not decided; once it goes, it is.
+        last = {"work transition": "transition ESCALATED -> REVIEW_PENDING",
+                "invoke create": "entrypoint invoke.create.mutating in REVIEW_PENDING"}
+        for name, kept in last.items():
             gaps = row_uncovered(reg, name, _entry(reg, name)["planned"], built_only=True)
-            assert gaps, name
+            assert kept in gaps, (name, gaps)
             for gap in gaps:
-                kind, _, rest = gap.partition(" ")
-                if kind == "entrypoint":
-                    ab.delitem(dispatch.ENTRYPOINTS, rest)
-                else:
-                    s, _, d = rest.partition(" -> ")
-                    ab.delitem(transitions.RULES, (s, d))
-        findings = check_home_built(reg)
-        for name in ("work transition", "invoke create"):
-            assert any(f"every home of `aew {name}`" in f for f in findings), (name, findings)
+                if gap != kept and not (" in " in gap and gap.split(" in ")[0] == kept.split(" in ")[0]):
+                    remove(gap)
+            assert row_uncovered(reg, name, _entry(reg, name)["planned"], built_only=True)
+            assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg)), name
+            remove(kept)
+            assert any(f"every home of `aew {name}`" in f for f in check_home_built(reg)), name
     finally:
         ab.restore()
 
@@ -2271,6 +2403,65 @@ def test_the_option_scan_reads_the_live_parser():
         for option in action.option_strings:
             parser_of._option_string_actions.pop(option, None)
     assert check_planned_coverage(load()) == []
+
+
+def test_a_stage_takes_only_the_edges_its_arguments_can(monkeypatch):
+    """The A1-0 re-review's N1: `ticket_request_review`'s transition has no state-producing step, and ESCALATED ->
+    REVIEW_PENDING requires a reason its step does not pass, so the stage is not credited with it (the stage stops
+    with USAGE there). Give the step a reason, in memory, and it is."""
+    edge = ("ESCALATED", "REVIEW_PENDING")
+    assert transitions.RULES[edge].via == "transition" and transitions.RULES[edge].reason_required
+    assert edge not in stage_edges("ticket_request_review")
+    assert ("RUNNING", "REVIEW_PENDING") in stage_edges("ticket_request_review")
+    steps = availability.STAGES["ticket_request_review"]
+    first = steps[contract.TOOLS["ticket_request_review"].expands_to.index("work.transition")]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(availability.STAGES, "ticket_request_review",
+                   (lambda a: {**(first(a) or {}), "reason": "given"}, *steps[1:]))
+        assert edge in stage_edges("ticket_request_review")
+    finally:
+        ab.restore()
+
+
+def test_the_state_selected_scan_reads_the_guards():
+    """The A1-0 re-review's N2: the fourth scan derives `invoke.slot`'s branches from the guard's source (two or more
+    links of an if/elif chain on the unit's state), and a guard with a single state precondition selects nothing."""
+    slot = guard_branches()["invoke.slot"]
+    assert [states for _, states in slot] == [("COMMIT_READY",), ("ASSIGNED", "RUNNING"), ("REVIEW_PENDING",),
+                                              ("VERIFY_PENDING",)]
+    assert slot[0][0] == (("scope", "integration", True, "ticket"),)
+    assert all(c == (("scope", "integration", False, "ticket"),) for c, _ in slot[1:])
+    assert set(guard_branches()) == {"invoke.slot"}  # nm.invoke, parent.acceptance, redispatch.state: one precondition
+
+    def parsed(src: str) -> list[Any]:
+        fn = ast.parse(src).body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        return _state_branches(fn)
+
+    two = ("def g(state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
+           "    if st == 'A':\n        x = 1\n    elif st in {'B', 'C'}:\n        x = 2\n")
+    assert [s for _, s in parsed(two)] == [("A",), ("B", "C")]
+    assert parsed(two.split("    elif")[0]) == []  # one precondition: no branch
+    entry = two.replace("state['work'][w]", "state['queue']['entries'][w]")
+    assert parsed(entry) == []  # a queue entry's state is not a unit's
+
+
+def test_a_home_covers_a_state_selected_use_only_if_it_starts_there(monkeypatch):
+    """The A1-0 re-review's N2: `integration_publish` starts in a prepared COMMIT_READY and invokes there with scope
+    integration, so it covers that use; the request stages reach REVIEW_PENDING and VERIFY_PENDING through their own
+    transitions, so they do not. Remove `ticket_request_review`'s state producer, in memory, and it is credited."""
+    uses = {s: c for ep, s, c, _ in state_uses("invoke create") if ep == "invoke.create.mutating"}
+    assert starts_with("integration_publish", "invoke.create.mutating", uses["COMMIT_READY"])
+    assert not starts_with("ticket_request_review", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    assert not starts_with("integration_publish", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    t = contract.TOOLS["ticket_request_review"]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(contract.TOOLS, t.name, t._replace(produced_by=()))
+        assert starts_with("ticket_request_review", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    finally:
+        ab.restore()
 
 
 def test_the_ideal_path_check_reads_the_vertical_module(tmp_path, monkeypatch):

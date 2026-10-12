@@ -467,11 +467,12 @@ commands:
       homes: [ticket_draft]
       primitive: work.staff
       lands: A2
-      reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, so re-staffing an existing Ticket has no typed home yet (`uncovered`, the A1-0 review's F2)"
-      options: {work_id: uncovered, "--execute": ticket_draft, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
+      reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, with one execute card, so re-staffing an existing Ticket and a several-card execute plan have no typed home yet (`uncovered`, the A1-0 review's F2 and the re-review's N3)"
+      options: {work_id: uncovered, "--execute": uncovered, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
       uncovered:
         lands: A2
         uses:
+          - "option --execute"
           - "option --forbid"
           - "option --pin"
           - "option --remove"
@@ -892,14 +893,19 @@ commands:
       homes: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish, ticket_rework]
       primitive: invoke.create.mutating
       lands: A2
-      reason: "the request stages launch their mutating attempts, and `ticket_rework` a new mutating implementer attempt (V2's redispatch; blocked on the G3 budget question, a recovery exception until then); the non-mutating and parent-acceptance dispatches have no typed home yet (`uncovered`, the A1-0 review's F1)"
-      options: {work_id: homes, "--card": uncovered, "--role": homes, "--scope": homes, "--profile": homes, "--model": homes, "--effort": homes, "--launch": homes}
+      reason: "the request stages launch the attempts they reach through their own transitions, and `ticket_rework` a new implementer attempt from REVIEW_FAILED (blocked on the G3 budget question, a recovery exception until then); `integration_publish` re-creates a lost integration verifier. No home starts in ASSIGNED, RUNNING, REVIEW_PENDING or VERIFY_PENDING to replace a lost implementer, reviewer or verifier, nor creates an attempt without launching it, nor runs the non-mutating and parent-acceptance dispatches (`uncovered`, the A1-0 review's F1 and the re-review's N2 and N3)"
+      options: {work_id: homes, "--card": uncovered, "--role": homes, "--scope": homes, "--profile": homes, "--model": homes, "--effort": homes, "--launch": uncovered}
       uncovered:
         lands: A2
         uses:
+          - "entrypoint invoke.create.mutating in ASSIGNED"
+          - "entrypoint invoke.create.mutating in REVIEW_PENDING"
+          - "entrypoint invoke.create.mutating in RUNNING"
+          - "entrypoint invoke.create.mutating in VERIFY_PENDING"
           - "entrypoint invoke.create.non_mutating"
           - "entrypoint invoke.create.parent"
           - "option --card"
+          - "option --launch"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the request stages create their reviewers and verifiers; a new implementer attempt (V2's redispatch

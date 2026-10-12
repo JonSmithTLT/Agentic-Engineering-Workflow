@@ -202,20 +202,37 @@ registry records the plan, not the decision:
   holds exactly the pinned entries less those that graduated, so one leaves only through its graduated list, and none
   is added.
 - **Every use is accounted for** (`planned_coverage`; the A1-0 review's F1 and F2). A typed plan's homes must cover
-  every use of its command before the row can be decided. Three scans derive the uses from the code, for every
+  every use of its command before the row can be decided. Four scans derive the uses from the code, for every
   planned row:
-  - **transition edges:** every `transitions.RULES` edge whose operation the command runs (the engine's own
-    `transitions._COMMANDS`, else `work <via>` when that command is live);
+  - **transition edges:** every `transitions.RULES` edge whose operation the command runs. The operation's command
+    comes from the engine's own `transitions._COMMANDS`, else `work <via>` when that command is live. That table is
+    one-valued: it gives one command per operation, while in the code three operations have more callers (`work
+    cancel`'s cascade and `work promote` also take `transition` edges, `work dispatch` also takes `assign`, and
+    `integrate.validate` maps to no command). None hides a gap today: `R(cancel)` and `work_amend` cover their
+    fixed edges, `work dispatch`'s row is wholly uncovered, and the validation row is engine-owned.
   - **dispatch entrypoints:** every `dispatch.ENTRYPOINTS` entry whose `cli` is the command;
+  - **state-selected entrypoint uses** (the re-review's N2): a dispatch guard whose if/elif chain selects among a
+    unit's states (two links or more, read from the guard's source) gives its entrypoint one use per state. Today
+    that is `invoke.slot`: a prepared COMMIT_READY with scope integration, ASSIGNED and RUNNING (implementer),
+    REVIEW_PENDING (reviewer) and VERIFY_PENDING (verifier).
   - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
     credential, the expected revisions, the print-only options).
 
-  A built stage covers the edges its `work.transition` step takes: into its fixed target (`availability.STAGES`),
-  from the state its producing step leaves, or from any state when no earlier step produces one. A proposal covers
-  the edges its `transitions` name (`*` for any state); a proposal running `work.transition` must name them. Any
-  other edge is covered by a home whose primitive names the edge's command, and an entrypoint by a home that runs it.
-  Options are covered by the plan's `options` map, which classifies every option the parser gives (none missing,
-  none stray) as `homes` (all of the row's homes), one named home, `uncovered` or `retired`.
+  **What covers a use:**
+  - **A built stage's transition step** covers the edges its `work.transition` step takes, into its fixed target
+    (`availability.STAGES`). The sources are the state its producing step leaves, or, when no earlier step produces
+    one, the sources of edges into the target that the step's own arguments can take. An edge that requires a reason
+    is taken only by a step that passes one (the re-review's N1).
+  - **A built stage's dispatch step** covers a state-selected use only if the stage *starts* in that state: no
+    earlier step of it produces the state, and its arguments select the branch. A home that reaches the state
+    through its own transition cannot replace a lost invocation of a unit already there.
+  - **A proposal** covers the edges its `transitions` name (`*` for any state); a proposal running `work.transition`
+    must name them. A proposal covers no state-selected use.
+  - **Any other edge** is covered by a home whose primitive names the edge's command, and an entrypoint by a home
+    that runs it.
+  - **Options** are covered by the plan's `options` map. It classifies every option the parser gives (none missing,
+    none stray) as `homes` (all of the row's homes), one named home, `uncovered` or `retired`. A covered option is
+    covered over its whole domain: a flag's both values, and every value of a repeatable option.
 
   The uses no typed home covers, built or proposed, are the plan's `uncovered: {lands, uses}`. That list is the
   scans' output, checked equal to them, never typed in. A plan that is not typed has neither key: its command leaves
@@ -233,9 +250,13 @@ registry records the plan, not the decision:
   - The option scan derives the option set, not its meaning. Whether a home's argument really does what an option
     does is the classification's judgment, which review checks.
   - A stage that runs from more states than its producing step leaves is not credited with them.
+  - A built stage's earlier steps are not checked against a state-selected use's state. The scan credits a dispatch
+    step that has no state-producing step before it with every branch its arguments select.
+  - A state check inside a helper a guard calls (`require_launchable`, for example) is a single precondition, not a
+    branch. A guard selecting by something other than an if/elif chain on the unit's state is not seen.
   - A built `resolve` choice that runs `work.transition` covers no edge until its edges have an owner in the code.
   - Routes of two or more steps are not scanned.
-  - A use that is neither an edge, an entrypoint nor an option is not seen.
+  - A use that is neither an edge, an entrypoint, a state-selected entrypoint use nor an option is not seen.
 
 ## The end-state metric
 
@@ -291,7 +312,7 @@ each check.
 | `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
 | `home_built` | enforce | a proposed tool or `resolve` choice is built now and still proposed; every home of a planned row is built and runs its primitive, and built homes cover every use of its command, yet the row is undecided |
-| `planned_coverage` | enforce | a typed plan does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
+| `planned_coverage` | enforce | a typed plan's `uncovered` differs from what the four scans derive (transition edges, entrypoints, state-selected entrypoint uses, options); it does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
 | `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
 | `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
 | `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |

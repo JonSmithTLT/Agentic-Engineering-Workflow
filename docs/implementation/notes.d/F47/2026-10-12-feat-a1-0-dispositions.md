@@ -6,9 +6,10 @@ and reason, and lists the homes not built yet under `proposed_tools` (`ticket_re
 review's F1). The planned rows and both lists are digest-pinned and only shrink.
 
 Three new enforced checks hold the rule:
-- `planned_coverage`: every use of a typed plan's command (its transition edges, dispatch entrypoints and options,
-  derived from the code) is covered by a typed home, or listed in the plan's `uncovered`, which is the scans' output
-  (the A1-0 review's F1 and F2). Today 52 uses are uncovered, across eight rows, all landing in A2.
+- `planned_coverage`: every use of a typed plan's command is covered by a typed home, or listed in the plan's
+  `uncovered`, which is the scans' output. The uses are derived from the code: its transition edges, dispatch
+  entrypoints, state-selected entrypoint uses and options (the A1-0 review's F1 and F2, and the re-review's N1 to
+  N3). Today 58 uses are uncovered, across eight rows, all landing in A2.
 - `home_built` ("home built ⇒ row decided"): it fires only once built homes also cover every use.
 - `out_of_door` ("out of the door ⇒ row decided").
 

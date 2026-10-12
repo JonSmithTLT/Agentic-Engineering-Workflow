@@ -182,3 +182,120 @@ def test_every_property_the_appendix_defines_is_emitted(contract, tmp_path):
     yaml_case = build(tmp_path / "y", "hostile", "yaml_mark")
     seen |= {k for _, data in projections(yaml_case) for k in emitted_keys(data)}
     assert sorted(defined - seen) == [], json.dumps(sorted(defined - seen))
+
+
+# The optional properties of FieldValue (the note's §5.1): each is present in some of the four cases, never in all.
+OPTIONAL = {"FieldValue": {"value", "withheld", "effective", "effective_source", "allowed", "description"}}
+
+
+def object_keys(schemas: dict[str, Any], node: Any, instance: Any, where: str, acc: dict[str, set[str]]) -> None:
+    """Record, per object schema (a named one by its name, an inline one by its path), the intersection of the key sets
+    of every emitted instance: the keys that were present in all of them."""
+    if "$ref" in node:
+        name = node["$ref"].rsplit("/", 1)[1]
+        return object_keys(schemas, schemas[name], instance, name, acc)
+    if "anyOf" in node:
+        kind = {dict: "object", list: "array", str: "string", type(None): "null", bool: "boolean"}.get(type(instance))
+        for i, branch in enumerate(node["anyOf"]):
+            resolved = schemas[branch["$ref"].rsplit("/", 1)[1]] if "$ref" in branch else branch
+            if kind == resolved.get("type") or (kind == "object" and "properties" in resolved):
+                return object_keys(schemas, branch, instance, f"{where}/anyOf{i}", acc)
+        return None
+    if isinstance(instance, dict) and "properties" in node:
+        acc[where] = acc[where] & set(instance) if where in acc else set(instance)
+        for key, value in instance.items():
+            if key in node["properties"]:
+                object_keys(schemas, node["properties"][key], value, f"{where}/{key}", acc)
+    elif isinstance(instance, list) and "items" in node:
+        for value in instance:
+            object_keys(schemas, node["items"], value, f"{where}[]", acc)
+    return None
+
+
+def required_gaps(doc: dict[str, Any], instances: list[tuple[str, Any]]) -> list[str]:
+    """Every object whose emitted instances all carry a key its `required` lacks (and that is not declared optional)."""
+    schemas = doc["components"]["schemas"]
+    acc: dict[str, set[str]] = {}
+    for name, data in instances:
+        object_keys(schemas, schemas[name], data, name, acc)
+    out = []
+    for where, always in sorted(acc.items()):
+        node = schemas[where] if where in schemas else None
+        required = set(node["required"]) if node else None
+        if required is None:  # an inline object: find it by walking its path
+            required = set(inline(schemas, where).get("required", []))
+        missing = always - required - OPTIONAL.get(where, set())
+        if missing:
+            out.append(f"{where}: {sorted(missing)}")
+    return out
+
+
+def inline(schemas: dict[str, Any], where: str) -> dict[str, Any]:
+    head, *rest = where.split("/")
+    node = schemas[head]
+    for step in rest:
+        while "$ref" in node:
+            node = schemas[node["$ref"].rsplit("/", 1)[1]]
+        if step.endswith("[]"):
+            node = node["properties"][step[:-2]]["items"]
+        elif step.startswith("anyOf"):
+            node = node["anyOf"][int(step[5:])]
+        else:
+            node = node["properties"][step]
+    while "$ref" in node:
+        node = schemas[node["$ref"].rsplit("/", 1)[1]]
+    return node
+
+
+@pytest.fixture(scope="module")
+def emitted(tmp_path_factory) -> list[tuple[str, Any]]:
+    out: list[tuple[str, Any]] = []
+    for i, (kind, name) in enumerate(CORPUS):
+        out += projections(build(tmp_path_factory.mktemp(f"c{i}"), kind, name))
+    return out
+
+
+def test_every_key_emitted_in_every_instance_is_required(contract, emitted):
+    """The projection never omits a key its object has in every instance, so Appendix A must require it: a `required`
+    list that has lost a name would let the page treat an always-sent field as optional. The optional FieldValue set
+    is stated once, above; the check is derived from the output over the whole corpus."""
+    assert len(emitted) >= 2 * len(CORPUS)
+    assert required_gaps(contract.document, emitted) == []
+
+
+def test_the_required_check_finds_a_dropped_name(contract, emitted):
+    doc = json.loads(json.dumps(contract.document))
+    schemas = doc["components"]["schemas"]
+    schemas["FieldValue"]["required"] = [r for r in schemas["FieldValue"]["required"] if r != "editable"]
+    profile = schemas["ExecutionProfile"]
+    profile["required"] = [r for r in profile["required"] if r != "connection_id"]
+    gaps = required_gaps(doc, emitted)
+    assert any(g.startswith("FieldValue") and "editable" in g for g in gaps), gaps
+    assert any(g.startswith("ExecutionProfile") and "connection_id" in g for g in gaps), gaps
+
+
+def test_the_paths_and_routes_fit_their_bounds(contract, emitted):
+    """The contract-only bounds (the note's §5.4): every emitted locator is within `ConfigurationPath`'s 256 and every
+    `routed_by` entry within 256, over the whole corpus."""
+    schemas = contract.document["components"]["schemas"]
+    path_max = schemas["ConfigurationPath"]["maxLength"]
+    route_max = schemas["ExecutionProfile"]["properties"]["routed_by"]["items"]["maxLength"]
+    paths: list[str] = []
+    routes: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("path", "field_path") and isinstance(value, str):
+                    paths.append(value)
+                elif key == "routed_by":
+                    routes.extend(value)
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    for _name, data in emitted:
+        walk(data)
+    assert paths and routes
+    assert max(map(len, paths)) <= path_max and max(map(len, routes)) <= route_max

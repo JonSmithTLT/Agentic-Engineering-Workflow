@@ -216,6 +216,101 @@ def test_the_loose_bounds_hold_every_value_the_engine_can_write(mine):
     assert len(C.ACTIVITIES) <= at(s, "ConfigurationIndex", "properties", "activities", "maxItems")
 
 
+def unclosed(node: Any, where: str = "") -> list[str]:
+    """Every object schema (one with `properties`) under `node` not closed with `additionalProperties: false`."""
+    out: list[str] = []
+    if isinstance(node, dict):
+        if "properties" in node and node.get("additionalProperties") is not False:
+            out.append(where or "/")
+        for key, value in node.items():
+            if key not in ("if", "then", "else"):  # conditions on the (closed) parent, not shapes the engine emits
+                out += unclosed(value, f"{where}/{key}")
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            out += unclosed(value, f"{where}/{i}")
+    return out
+
+
+def test_every_object_the_appendix_adds_or_changes_is_closed(base, mine):
+    """The note says every object is closed (§5, §6): an open one would let the engine add a field the web developer's
+    parser then never sees declared. Walks every schema the appendix adds, and the `Capabilities` it changes."""
+    schemas = mine["components"]["schemas"]
+    added = {n: s for n, s in schemas.items() if n not in base["components"]["schemas"]}
+    assert added and unclosed(added) == []
+    # Capabilities is open by 0.1.3's own design (the compatibility check's exception); what 0.1.4 changes in it is one
+    # `configuration` property, a $ref to the shared Capability schema, which is tested above.
+    assert unclosed(schemas["Capability"]) == [] and set(schemas["Capabilities"]["properties"]) - set(
+        base["components"]["schemas"]["Capabilities"]["properties"]) == {"configuration"}
+    assert unclosed({"X": {"properties": {"a": {"type": "string"}}, "additionalProperties": True}}) == ["/X"]
+    assert unclosed({"X": {"properties": {"a": {"type": "string"}}}}) == ["/X"]
+
+
+# Bounds the engine does not enforce: the contract states them, and the values the engine writes are shown to fit.
+CONTRACT_ONLY = [
+    (("ConfigurationPath",), "maxLength", 256),
+    ((*PROFILE, "routed_by", "items"), "maxLength", 256),
+    ((*IDENTITY_ERROR, "hint"), "maxLength", 512),
+    ((*OBSERVED, "caption"), "maxLength", 512),
+    ((*EXECUTION, "pins_note"), "maxLength", 512),
+    (("Violation", "properties", "expected", "anyOf", 0), "maxLength", 512),
+]
+
+
+@pytest.mark.parametrize("where,keyword,bound", CONTRACT_ONLY, ids=lambda v: "/".join(map(str, v)) if isinstance(
+    v, tuple) else None)
+def test_the_contract_only_bounds_are_the_notes_and_named_there(mine, where, keyword, bound):
+    assert at(mine["components"]["schemas"], *where)[keyword] == bound
+    assert "contract-only bounds" in text() and "`ConfigurationPath`" in text()
+
+
+def schema_side(node: Any) -> list[str]:
+    """What `configuration._expected` can render for a schema keyword: a scalar, or a type/enum/required list joined."""
+    out: list[str] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("description", "title") or key.startswith("x-"):
+                continue
+            if key in ("type", "enum", "required") and isinstance(value, list):
+                out.append("|".join(map(str, value)))
+            elif isinstance(value, (str, int, float, bool)):
+                out.append(str(value))
+            out += schema_side(value)
+    elif isinstance(node, list):
+        for value in node:
+            out += schema_side(value)
+    return out
+
+
+def test_the_values_the_engine_writes_fit_the_contract_only_bounds(mine):
+    s = mine["components"]["schemas"]
+    longest_name = max(len(k) for k in _property_names(schema("execution")))
+    key = "k" * P.SHOWN_KEY_MAX_BYTES  # a shown key is at most 128 bytes
+    assert P.shown_key(key)
+    worst_path = max(len(P.encode(("profiles", key, "x" * longest_name), {"profiles": {key: {}}})),
+                     len(P.encode(("routing", "cards", key), {"routing": {"cards": {key: 0}}})),
+                     len(P.encode(("profiles", "p", "x" * longest_name), {"profiles": {"p": {}}})))
+    assert worst_path <= s["ConfigurationPath"]["maxLength"]
+    assert len("card:" + key) <= at(s, *PROFILE, "routed_by", "items")["maxLength"]
+    assert len(C.MODEL_ID_HINT) <= at(s, *IDENTITY_ERROR, "hint")["maxLength"]
+    assert max(map(len, C.OBSERVED_CAPTIONS.values())) <= at(s, *OBSERVED, "caption")["maxLength"]
+    assert len(C.PINS_NOTE) <= at(s, *EXECUTION, "pins_note")["maxLength"]
+    assert max(map(len, schema_side(schema("execution")))) <= at(
+        s, "Violation", "properties", "expected", "anyOf", 0)["maxLength"]
+
+
+def _property_names(node: Any) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        if isinstance(node.get("properties"), dict):
+            found |= set(node["properties"])
+        for value in node.values():
+            found |= _property_names(value)
+    elif isinstance(node, list):
+        for value in node:
+            found |= _property_names(value)
+    return found
+
+
 COMPLETE = {"activities", "allowed", "resolution_order", "switches", "reasons"}  # the note's §5.3
 
 

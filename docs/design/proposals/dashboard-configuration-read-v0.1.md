@@ -142,6 +142,11 @@ A string the projection would show is withheld when it fails its shape rule or h
 review). A value is never clipped: a clipped value would show content that is not the file's. A name over its bound is
 `null`. The schemas state the bounds as `maxLength` in characters, which every value within its byte bound satisfies.
 
+Most bounds are the engine's own caps, each compared to its owner constant. Six are contract-only bounds, which the
+engine does not enforce: `ConfigurationPath` (256), the `routed_by` entries (256), and `hint`, `caption`, `pins_note`
+and `Violation.expected` (512). The engine writes values that fit them, and the tests show that (the longest value the
+engine can write is checked against each); they are not caps the engine would hold if its values grew.
+
 ### 5.5 Structured errors
 
 A document's problems are structure, never a validator's message: `violations[]` of `{path, code, expected,
@@ -175,13 +180,13 @@ against the projection's real output (§6). In each case the projection is the o
 
 | # | The proposal's Appendix A | The projection, and this note |
 |---|---|---|
-| 1 | `withheld`: `not_a_model_id`, `not_a_name`, `not_a_harness_name`, `credential_shaped` | adds `too_long`: a string over 512 bytes is withheld, never clipped (F1a review, the operator's decision) |
+| 1 | `withheld`: `not_a_model_id`, `not_a_name`, `not_a_harness_name`, `credential_shaped` | adds `too_long`: a string over 512 bytes is withheld, never clipped (F1a review, the operator's decision); so `identity_error.withheld_reason` also gains `too_long` |
 | 2 | `Violation.code`: a schema keyword, `NO_SUCH_PROFILE` or `NO_DEFAULT_ROUTE` | adds `UNPROCESSABLE`: one violation at the root for a document the walk cannot process (F1a review) |
 | 3 | §3.5's complete lists: activities, allowed, resolution_order, switches | adds `Capability.reasons`, bounded by the registered reason codes |
 | 4 | `FieldValue.description`: "the schema's description of the field" | the field's own description or absent, never an enclosing object's (F1a review); today no projected field has one of its own, so the page shows none until the schema gains them (a register note on F46) |
 | 5 | `provider_env.state: FieldValue` over a list | its `value` is the entry count |
-| 6 | `FieldValue.path` and the other locators: an RFC 6901 pointer | the same, and an index is accepted only as `0` or `[1-9][0-9]*` in ASCII, after `@` too (F1a review) |
-| 7 | Strings at most 512 bytes "unless stated" | stated per field: shown names and keys 128 bytes, harness names 64, model ids 128, paths 256, everything else 512 |
+| 6 | `FieldValue.path` and the other locators: an RFC 6901 pointer | the same, and an index is accepted only as `0` or `[1-9][0-9]*` in ASCII, after `@` too (F1a review). This rule is descriptive: it is F1a's parser behaviour, and the `ConfigurationPath` pattern does not express it, so `/profiles/01` validates against the schema |
+| 7 | Strings at most 512 bytes "unless stated" | stated per field: shown names and keys 128 bytes, harness names 64, model ids 128, paths 256, everything else 512; `ModelIdentity.harness_ref` (`<provider><separator><model>`) is 257 |
 | 8 | The document state, the digest, a path and a connection id written inline at each use | named once as `ConfigurationDocumentState`, `ConfigurationDigest`, `ConfigurationPath` and `ConnectionId`, with the same shapes, so each bound and pattern has one definition |
 
 ## 8. What stays out until F1c

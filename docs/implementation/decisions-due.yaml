@@ -62,6 +62,13 @@ items:
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
 
+- row: E72
+  needs: decision
+  owner: operator
+  due: M4
+  what: Whether the Windows integration lane gets a fifth shard (one more job per full run under the 40-job cap; the Lead's
+    recommendation) or the integration suite is made faster, so that no Windows shard runs close to its session deadline
+
 - row: F48
   needs: adoption
   owner: designer

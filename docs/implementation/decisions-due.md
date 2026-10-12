@@ -49,6 +49,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E72
+
+**Due by:** M4 · **Owner:** operator · **Needs:** decision
+
+**What:** Whether the Windows integration lane gets a fifth shard (one more job per full run under the 40-job cap; the Lead's recommendation) or the integration suite is made faster, so that no Windows shard runs close to its session deadline
+
+**Blocks:** -
+
 ### F48
 
 **Due by:** M4 · **Owner:** designer · **Needs:** adoption

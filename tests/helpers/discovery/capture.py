@@ -31,15 +31,13 @@ from typing import Any
 
 import pytest
 
-from discovery import rules
+from discovery import allowed, rules
 
 SCHEMA = "aew/discovery-findings/v1"
 WORKER_KEY = "aew_discovery"
 
 
-def out_path_for(lane_report: Path) -> Path:
-    """The findings file beside a lane report (another schema, so assurance's report loader skips it)."""
-    return lane_report.with_name(lane_report.stem + ".discovery.json")
+out_path_for = allowed.findings_path_for  # the pairing's one owner, which the ratchet reads too
 
 
 def out_path(config: pytest.Config) -> Path | None:
@@ -253,8 +251,15 @@ class CapturePlugin:
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
+        """Merge a worker's findings. A worker that went down with an error, or without handing any findings on, lost
+        them: that is a capture error, never silence (review of #218, G1)."""
         try:
-            theirs = getattr(node, "workeroutput", {}).get(WORKER_KEY)
+            theirs = (getattr(node, "workeroutput", None) or {}).get(WORKER_KEY)
+            if error is not None or theirs is None:
+                name = getattr(node, "gateway", None)
+                worker = getattr(name, "id", None) or "a worker"
+                self.recorder.error(RuntimeError(f"{worker} went down without its findings"
+                                                 + (f" ({str(error)[:120]})" if error is not None else "")))
             if theirs:
                 self.recorder.merge(theirs)
         except Exception as exc:  # noqa: BLE001  (observing only)

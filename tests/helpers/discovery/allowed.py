@@ -27,6 +27,13 @@ import yaml
 from discovery import modes
 
 PATH = Path(__file__).with_name("allowed.yaml")
+FINDINGS_SUFFIX = ".discovery.json"
+
+
+def findings_path_for(lane_report: Path) -> Path:
+    """The findings file beside a lane report: the capture plugin writes it there and the ratchet expects it there (one
+    owner for the pairing). Another schema, so assurance's report loader skips it."""
+    return lane_report.with_name(lane_report.stem + FINDINGS_SUFFIX)
 SCHEMA = "aew/discovery-allowed/v1"
 STATIC_PREFIXES = ("static:", "tool-arguments:")
 
@@ -85,20 +92,18 @@ class Verdict:
 
 
 def decide(observed: Iterable[str], allowed: set[str], *, stale_scope: str | None,
-           base: set[str] | None = None, mode_of: Mapping[str, str] = modes.MODES) -> Verdict:
-    """The verdict of one run. ``stale_scope``: which allow-listed keys the run's selection is complete for
-    (``"static"``, ``"runtime"``, ``"all"``, or ``None`` on a pull request's runtime selection, where absence proves
-    nothing). ``base``: the base branch's allow-list on a pull request (``None`` where there is none, or off a pull
-    request); a key added to it fails whatever its mode. An accepted residual is not decided here: only the ratchet,
-    which reads the pull request's labels live, can tell the operator's from the author's."""
+           mode_of: Mapping[str, str] = modes.MODES) -> Verdict:
+    """The verdict of one run over new and stale keys. ``stale_scope``: which allow-listed keys the run's selection is
+    complete for (``"static"``, ``"runtime"``, ``"all"``, or ``None`` on a pull request's runtime selection, where
+    absence proves nothing). Growth of the list against the base has one owner, the ratchet
+    (``tools/ci/discovery_ratchet.py``), which alone reads the pull request's labels live and so can tell the
+    operator's accepted residual from the author's."""
     seen = set(observed)
     v = Verdict()
     v.new = sorted(seen - allowed)
     if stale_scope is not None:
         in_scope = {k for k in allowed if stale_scope == "all" or (is_static(k) == (stale_scope == "static"))}
         v.stale = sorted(in_scope - seen)
-    if base is not None:
-        v.grown = sorted(allowed - base)
     enforce = {r for r, m in mode_of.items() if m == modes.ENFORCE}
     v.failing = sorted({*(k for k in v.new + v.stale if k.split(" ", 1)[0] in enforce), *v.grown})
     return v

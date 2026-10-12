@@ -35,22 +35,47 @@ sys.path.insert(0, str(ROOT / "tests" / "helpers"))
 from discovery import allowed, modes  # noqa: E402
 
 FINDINGS_SCHEMA = "aew/discovery-findings/v1"
+# tests/helpers/lanes.py's REPORT_SCHEMA, pinned equal by a test (lanes imports pytest, and this runs without it)
+LANE_REPORT_SCHEMA = "aew/lane-report/v1"
 OPERATOR_LABEL = "operator-merge"  # AGENTS.md §5: a pull request with it is merged by the operator
 
 
+def _read(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def load_findings(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, int], list[str]]:
-    """``(findings by key, capture errors, sources)`` merged over every findings file under ``root``."""
+    """``(findings by key, capture errors, sources)`` merged over every findings file under ``root``.
+
+    A lane's findings lost on the way count as capture errors, never as silence (review of #218, G1): every lane
+    report must have its findings file beside it (``allowed.findings_path_for``), and a findings file that does not
+    parse or carries another schema is an error, not a file to skip."""
     findings: dict[str, dict[str, Any]] = {}
     errors: dict[str, int] = {}
     sources = []
+
+    def error(name: str) -> None:
+        errors[name] = errors.get(name, 0) + 1
+
     for path in sorted(root.rglob("*.json")) if root.is_dir() else []:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except ValueError:
+        rel = path.relative_to(root).as_posix()
+        data = _read(path)
+        if path.name.endswith(allowed.FINDINGS_SUFFIX):
+            if not isinstance(data, dict):
+                error(f"findings file unreadable: {rel}")
+                continue
+            if data.get("schema") != FINDINGS_SCHEMA:
+                error(f"findings file of another schema: {rel}")
+                continue
+        else:
+            if isinstance(data, dict) and data.get("schema") == LANE_REPORT_SCHEMA:
+                if not allowed.findings_path_for(path).is_file():
+                    error(f"lane report without its findings file: {rel}")
             continue
-        if not isinstance(data, dict) or data.get("schema") != FINDINGS_SCHEMA:
-            continue
-        sources.append(str(path.relative_to(root)))
+        sources.append(rel)
         for key, entry in (data.get("findings") or {}).items():
             mine = findings.setdefault(key, {**entry, "count": 0})
             mine["count"] += int(entry.get("count") or 0)
@@ -81,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
                                        if args.allowlist.is_file() else None)
 
     if args.write:
+        if errors:  # a list written from a run that lost findings would drop keys it never judged
+            print(f"refused: the run has {sum(errors.values())} capture error(s):", file=sys.stderr)
+            print("\n".join(f"  {n} x {name}" for name, n in sorted(errors.items())[:20]), file=sys.stderr)
+            return 1
         keys = set(findings)
         if args.static:
             from discovery import static

@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 from pathlib import Path
 
+import pytest
 from discovery import modes, registry
 
 from aew import errors
@@ -16,37 +18,58 @@ from aew.surface import errors as surface_errors
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "implementation" / "vertical-uat.md"
 SRC = ROOT / "src" / "aew"
-# The one refusal code written as a literal rather than declared by a class: the `cli` escape's answer when its
-# command answered `ok: false`. The test finds it in the module that writes it.
-LITERAL_CODES = {"NOT_COMPLETED": SRC / "surface" / "run.py"}
+CODE_SHAPE = re.compile(r"^[A-Z][A-Z0-9_]{2,}$")
+# Codes the product writes that are not refusals, so outside the refusal registry (review of #218, G3): the assurance
+# lint and Class 0 eligibility blockers, which are entries in a refusal's or a lint's details, never its code. Pinned
+# here so each is named: a code that leaves this list or is no longer written fails the test.
+OUTSIDE_REGISTRY = frozenset({
+    "ACCEPTANCE_INPUT_IN_SCOPE", "INHERITED_ELEVATED_OBLIGATION",
+    "CLASS0_ACCEPTANCE_NOT_DETERMINISTIC", "CLASS0_ASSERTION_MISSING", "CLASS0_CONSEQUENTIAL_BOUNDARY",
+    "CLASS0_HARD_TRIGGER", "CLASS0_INHERITED_ELEVATED_OBLIGATION", "CLASS0_NO_ACCEPTANCE_REFERENCE",
+    "CLASS0_PLAN_LINT", "CLASS0_SUBJECT_UNBOUNDED",
+    "LINT_ACCEPTANCE_CHECK_UNKNOWN", "LINT_ACCEPTANCE_INPUT_WRITABLE", "LINT_AFFECTED_OUTSIDE_SCOPE",
+    "LINT_AFFECTED_PROTECTED", "LINT_NO_ACCEPTANCE_MECHANISM",
+})
 
 
 def page() -> str:
     return DOC.read_text(encoding="utf-8")
 
 
-def class_codes(root: Path = SRC) -> dict[str, str]:
-    """``code -> "module:Class"`` for every class in the product's source that declares a string ``code`` (review of
-    #218, m6): `aew.errors`, and the error classes other modules define (the dashboard's, the validation runner's)."""
+def code_writes(root: Path = SRC) -> dict[str, str]:
+    """``code -> "module:line"`` for every place the product's source writes a code string (review of #218, m6 and
+    G3), in each form it uses: a class's ``code =`` or ``code: T =``, a dict literal's ``"code": "X"``, a keyword
+    ``code="X"``, and an ``x.code = "X"`` assignment."""
     out: dict[str, str] = {}
+
+    def add(value: object, path: Path, line: int) -> None:
+        if isinstance(value, str) and CODE_SHAPE.match(value):
+            out.setdefault(value, f"{path.relative_to(root).as_posix()}:{line}")
+
     for path in sorted(root.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            for stmt in node.body:
-                if (isinstance(stmt, ast.Assign) and any(getattr(t, "id", None) == "code" for t in stmt.targets)
-                        and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)):
-                    out.setdefault(stmt.value.value, f"{path.relative_to(root).as_posix()}:{node.name}")
+            if isinstance(node, ast.ClassDef):
+                for stmt in node.body:
+                    targets = (stmt.targets if isinstance(stmt, ast.Assign)
+                               else [stmt.target] if isinstance(stmt, ast.AnnAssign) else [])
+                    if any(getattr(t, "id", None) == "code" for t in targets) and isinstance(stmt.value, ast.Constant):
+                        add(stmt.value.value, path, stmt.lineno)
+            elif isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values, strict=True):
+                    if isinstance(key, ast.Constant) and key.value == "code" and isinstance(value, ast.Constant):
+                        add(value.value, path, node.lineno)
+            elif isinstance(node, ast.keyword) and node.arg == "code" and isinstance(node.value, ast.Constant):
+                add(node.value.value, path, node.value.lineno)
+            elif (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                  and any(isinstance(t, ast.Attribute) and t.attr == "code" for t in node.targets)):
+                add(node.value.value, path, node.lineno)
     return out
 
 
 def defined_codes() -> dict[str, str]:
-    """Every refusal code the product defines that the Lead or the operator can see, with where it is defined."""
-    codes = class_codes()
+    """Every refusal code the product defines that the Lead or the operator can see, with where it is written."""
+    codes = {c: where for c, where in code_writes().items() if c not in OUTSIDE_REGISTRY}
     codes.update({c: "surface/errors.py:CODES" for c in surface_errors.CODES})
-    for code, module in LITERAL_CODES.items():
-        assert f'"{code}"' in module.read_text(encoding="utf-8"), f"{code} is no longer written in {module.name}"
-        codes[code] = f"{module.relative_to(SRC).as_posix()} (literal)"
     return codes
 
 
@@ -54,13 +77,30 @@ def test_the_source_scan_sees_every_class_aew_errors_defines():
     """The scan reads source; `aew.errors`' own classes, enumerated by import, are a subset of what it finds."""
     imported = {cls.code for _, cls in inspect.getmembers(errors, inspect.isclass)
                 if issubclass(cls, errors.AEWError) and cls.__module__ == errors.__name__}
-    assert len(imported) > 50 and imported <= set(class_codes())
-    assert {"INVALID_REQUEST", "VALIDATION_RUNNING", "VALIDATION_CONTAINMENT_UNAVAILABLE"} <= set(class_codes())
+    found = code_writes()
+    assert len(imported) > 50 and imported <= set(found)
+    assert {"INVALID_REQUEST", "VALIDATION_RUNNING", "VALIDATION_CONTAINMENT_UNAVAILABLE"} <= set(found)
+    assert {"NOT_COMPLETED", "BRIDGE_ERROR", "DEFECT"} <= set(found)  # dict literals (G3)
 
 
-def test_a_new_error_class_anywhere_in_the_source_is_caught(tmp_path):
-    (tmp_path / "m.py").write_text("class X(Exception):\n    code = 'BRAND_NEW'\n", encoding="utf-8")
-    assert class_codes(tmp_path) == {"BRAND_NEW": "m.py:X"}
+@pytest.mark.parametrize("source", [
+    "class X(Exception):\n    code = 'BRAND_NEW'\n",
+    "class X(Exception):\n    code: str = 'BRAND_NEW'\n",
+    "reply = {'ok': False, 'error': {'code': 'BRAND_NEW', 'message': 'm'}}\n",
+    "refuse(code='BRAND_NEW')\n",
+    "err.code = 'BRAND_NEW'\n",
+])
+def test_a_new_code_written_in_any_form_is_caught(tmp_path, source):
+    (tmp_path / "m.py").write_text(source, encoding="utf-8")
+    assert set(code_writes(tmp_path)) == {"BRAND_NEW"}
+    (tmp_path / "m.py").write_text("x = {'kind': 'BRAND_NEW'}\ncode_word = 'BRAND_NEW'\n", encoding="utf-8")
+    assert code_writes(tmp_path) == {}  # a string that is not written as a code
+
+
+def test_the_codes_outside_the_registry_are_named_and_still_written():
+    found = code_writes()
+    assert OUTSIDE_REGISTRY <= set(found), sorted(OUTSIDE_REGISTRY - set(found))
+    assert not OUTSIDE_REGISTRY & {str(r["code"]) for r in registry.rows(page())}
 
 
 def test_the_per_rule_modes_on_the_page_are_the_modes_the_helpers_pin():

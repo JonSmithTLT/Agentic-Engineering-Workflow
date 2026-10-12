@@ -458,31 +458,38 @@ def test_a_failed_findings_write_never_changes_the_sessions_outcome(tmp_path, ca
     assert "D2 capture: findings not written" in capsys.readouterr().err
 
 
-def test_the_recorder_keeps_counting_while_threads_record_and_snapshot():
-    """Review of #218, m1: product threads that outlive a test may record while the session snapshots."""
-    import threading
+def _lock_checked(recorder: capture.Recorder) -> None:
+    """Make every read and write of the recorder's shared state assert that its lock is held (no timing involved)."""
 
-    found_once = [rules.Finding("O-WORDS", "s", "unstructured refusal")]
-    recorder = capture.Recorder(judge=lambda output: [rules.Finding("O-WORDS", output.site, "x"), *found_once])
-    start = threading.Barrier(5)
+    def guard(name):
+        def method(self, *a, **k):
+            assert recorder._lock.locked(), f"{type(self).__name__}.{name} without the recorder's lock"
+            return getattr(super(type(self), self), name)(*a, **k)
+        return method
 
-    def writer(n: int) -> None:
-        start.wait(timeout=60)
-        for i in range(2000):
-            recorder.record(Output(site=f"s{n}-{i}"))
+    names = ("__setitem__", "__getitem__", "__contains__", "__iter__", "__len__", "get", "setdefault", "items",
+             "keys", "values", "copy")
+    checked_dict = type("CheckedDict", (dict,), {n: guard(n) for n in names})
+    checked_set = type("CheckedSet", (set,), {n: guard(n) for n in ("add", "__contains__", "__iter__", "__len__")})
+    recorder.findings, recorder.errors, recorder._judged = checked_dict(), checked_dict(), checked_set()
 
-    threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
-    for t in threads:
-        t.start()
-    start.wait(timeout=60)
-    snapshots = 0
-    while any(t.is_alive() for t in threads):
-        json.dumps(recorder.as_dict())  # never "dictionary changed size during iteration"
-        snapshots += 1
-    for t in threads:
-        t.join(timeout=60)
-    assert not recorder.errors and snapshots
-    assert len(recorder.findings) == 4 * 2000 + 1 and recorder.findings["O-WORDS s"]["count"] == 4 * 2000
+
+def test_the_recorder_touches_its_state_only_under_its_lock():
+    """Review of #218, m1 and the re-review's §4: product threads that outlive a test may record while the session
+    snapshots, so every read and write of the recorder's dicts holds its lock. Deterministic: each access asserts
+    the lock is held, so taking any `with self._lock` away fails here at once."""
+    recorder = capture.Recorder(judge=lambda output: [rules.Finding("O-WORDS", output.site, "x")])
+    _lock_checked(recorder)
+    recorder.record(Output(site="a"))
+    recorder.record(Output(site="a"))  # the dedupe read
+    recorder.error(RuntimeError("e"))
+    recorder.merge({"outputs": 1, "findings": {"O-WORDS b": {"rule": "O-WORDS", "site": "b", "count": 2}},
+                    "errors": {"RuntimeError: f": 1}})
+    snapshot = recorder.as_dict()
+    assert snapshot["outputs"] == 3 and set(snapshot["findings"]) == {"O-WORDS a", "O-WORDS b"}
+    assert snapshot["errors"] == {"RuntimeError: e": 1, "RuntimeError: f": 1}
+    with pytest.raises(AssertionError, match="without the recorder's lock"):
+        recorder.findings.get("O-WORDS a")  # the guard itself: an unlocked read is caught
 
 
 def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
@@ -595,6 +602,151 @@ def test_a_residual_passes_on_a_pull_request_the_operator_merges(tmp_path, monke
     """The operator-merge label reserves the merge for the operator (AGENTS.md §5): the merge is the sign-off."""
     assert _growth(tmp_path, monkeypatch, ["operator-merge"]) == 0
     assert "accepted residual O-CMD cli:aew x|result" in capsys.readouterr().out
+
+
+def _reports(tmp_path, *, findings: object = None, lane_report: bool = True):
+    """A reports directory holding one lane report and, unless ``findings`` is ``False``, its findings file
+    (``findings`` given as text is written as is)."""
+    reports = tmp_path / "reports" / "lane-report-Linux-core"
+    reports.mkdir(parents=True)
+    report = reports / "Linux-fast.json"
+    if lane_report:
+        report.write_text(json.dumps({"schema": "aew/lane-report/v1", "collected": []}), encoding="utf-8")
+    if findings is not False:
+        body = findings if isinstance(findings, str) else json.dumps(
+            {"schema": capture.SCHEMA, "outputs": 1, "findings": {}, "errors": {}})
+        allowed.findings_path_for(report).write_text(body, encoding="utf-8")
+    return reports.parent
+
+
+@pytest.mark.parametrize(("findings", "why"), [
+    (None, None),
+    (False, "lane report without its findings file"),
+    ("{not json", "findings file unreadable"),
+    ('{"schema": "aew/something-else/v1"}', "findings file of another schema"),
+])
+def test_a_lanes_findings_lost_on_the_way_fail_the_ratchet(tmp_path, capsys, findings, why):
+    """Review of #218, G1: every lane report is paired with its findings file, and a findings file that does not
+    parse or carries another schema is a capture error, never a file to skip."""
+    reports = _reports(tmp_path, findings=findings)
+    for event in ("pull_request", "push"):
+        code = _ratchet().main([str(reports), "--event", event, "--allowlist", str(tmp_path / "none.yaml")])
+        out = capsys.readouterr().out
+        assert code == (0 if why is None else 1), out
+        assert why is None or why in out
+
+
+def test_the_ratchet_and_the_plugin_share_their_schemas():
+    import lanes
+
+    ratchet = _ratchet()
+    assert ratchet.LANE_REPORT_SCHEMA == lanes.REPORT_SCHEMA and ratchet.FINDINGS_SCHEMA == capture.SCHEMA
+    assert capture.out_path_for is allowed.findings_path_for
+
+
+@pytest.mark.parametrize(("output", "error", "lost"), [
+    ({capture.WORKER_KEY: {"outputs": 2, "findings": {"O-CMD x": {"rule": "O-CMD", "site": "x", "count": 1}},
+                           "errors": {}}}, None, False),
+    ({}, None, True),  # down without handing its findings on
+    ({capture.WORKER_KEY: {"outputs": 1, "findings": {}, "errors": {}}}, "worker crashed", True),
+])
+def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output, error, lost):
+    """Review of #218, G1: `pytest_testnodedown` merges what a worker handed on, and counts a worker that died, or
+    handed nothing on, as a capture error."""
+    plugin = capture.CapturePlugin(None, None)  # type: ignore[arg-type]
+    node = type("Node", (), {"workeroutput": output, "gateway": type("G", (), {"id": "gw3"})()})()
+    plugin.pytest_testnodedown(node, error)
+    snapshot = plugin.recorder.as_dict()
+    assert bool(snapshot["errors"]) is lost
+    assert all("gw3 went down without its findings" in name for name in snapshot["errors"])
+    if not lost:
+        assert snapshot["findings"]["O-CMD x"]["count"] == 1 and snapshot["outputs"] == 2
+
+
+def test_o_ids_still_reads_a_line_that_does_not_parse():
+    """Review of #218, G2: O-IDS's fallbacks for a suggested line the parser refuses (here, an option it lacks): an id
+    option's value, and a placeholder outside a Ticket's slot."""
+    unparsed = rules.o_ids(Suggestion(("plan", "accept", "T-0001", "--revision", "3", "--expect-rev", "12",
+                                       "--bogus"), "", structured=False))
+    assert {"--expect-rev 12", "--revision 3"} <= set(unparsed)
+    assert rules.o_ids(Suggestion(("work", "show", "<run-id>", "--bogus"), "", structured=False)) == [
+        "placeholder in an unparsed line"]
+    assert rules.o_ids(Suggestion(("work", "show", "<T>", "--bogus"), "", structured=False)) == []
+    assert rules.o_ids(Suggestion(("work", "show", "T-0001", "--bogus", "x"), "", structured=False)) == []
+
+
+def test_a_suggestion_that_is_not_a_command_line_is_an_o_cmd_finding():
+    """Review of #218, G2: text the shell cannot split (an unclosed quote) is no command at all."""
+    assert found(prose("aew work show 'T-0001"), "O-CMD") == ["not a command line: \"aew work show 'T-0001\""]
+    assert not found(prose("aew work show 'T-0001'"), "O-CMD")
+
+
+def test_the_id_formats_are_found_in_the_schema_at_any_depth():
+    """Review of #218, G2: `_find_pattern` walks dicts and lists; the stage-intent pattern comes from the schema."""
+    assert rules._find_pattern({"a": [{"b": {"pattern": "^SI-[0-9]+$"}}]}, "SI-") == "^SI-[0-9]+$"
+    assert rules._find_pattern({"a": [{"pattern": "^OTHER$"}], "pattern": 3}, "SI-") == ""
+    assert any(p.match("SI-0001") for p in rules.id_patterns())
+    assert not any(p.match("T-0001") for p in rules.id_patterns())
+
+
+def test_the_capture_reads_aew_by_executable_name_and_echoes_stdin():
+    """Review of #218, G2: an `aew` executable is recognised by name as well as `python -m aew`, a command line that
+    is not aew is ignored, and a refusal's echo includes the input it was given on stdin."""
+    assert capture._aew_argv(["/usr/local/bin/aew", "status"]) == ["status"]
+    assert capture._aew_argv(["C:/venv/Scripts/aew.exe", "status"]) == ["status"]
+    assert capture._aew_argv([sys.executable, "-m", "aew", "status"]) == ["status"]
+    assert capture._aew_argv(["git", "status"]) is None and capture._aew_argv("aew status") is None
+    refusal = json.dumps({"ok": False, "error": {"code": "USAGE", "message": "`aew harness runs` is unknown"}})
+    echoed = capture.cli_outputs(["lead", "tool", "x"], "", refusal, stdin="aew harness runs")
+    assert echoed[0].echo[-1] == "aew harness runs"
+    assert not [f for f in rules.check(echoed[0]) if f.rule == "O-CMD"]  # echoed input is not a suggestion
+    plain = capture.cli_outputs(["lead", "tool", "x"], "", refusal)
+    assert plain[0].echo == ("lead", "tool", "x")
+
+
+def test_write_refuses_to_add_keys_unless_introducing_and_rescans_the_static_texts(tmp_path, capsys):
+    """Review of #218, G2: `--write` may only shrink the list (no `--introduce`), and `--static` rescans the texts."""
+    from pathlib import Path
+
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    observed = {"O-CMD cli:aew x|result": {"rule": "O-CMD", "site": "cli:aew x|result", "count": 1}}
+    reports = _reports(tmp_path, findings=json.dumps({"schema": capture.SCHEMA, "outputs": 1, "findings": observed,
+                                                      "errors": {}}))
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head)]) == 1
+    assert "refused: 1 key(s) the allow-list lacks" in capsys.readouterr().err
+    assert allowed.parse(head.read_text(encoding="utf-8"))[0] == set()
+    guides = Path(__file__).resolve().parents[2] / "docs" / "guides"
+    rewrite = [str(reports), "--write", "--introduce", "--static", str(guides), "--allowlist", str(head)]
+    assert ratchet.main(rewrite) == 0
+    keys = allowed.parse(head.read_text(encoding="utf-8"))[0]
+    assert "O-CMD cli:aew x|result" in keys and {k for k in keys if allowed.is_static(k)} == {
+        f.key for f in static.scan(static.read_guides(guides, "docs/guides"))}
+
+
+def test_write_refuses_a_run_that_lost_findings(tmp_path, capsys):
+    """Review of #218, G1: a list written from a run with capture errors would drop the keys it never judged."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    reports = _reports(tmp_path, findings=False)  # a lane report without its findings file
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head)]) == 1
+    assert "refused: the run has 1 capture error(s)" in capsys.readouterr().err
+    assert allowed.parse(head.read_text(encoding="utf-8"))[0] == {"O-CMD cli:aew x|result"}  # untouched
+
+
+def test_a_pull_requests_partial_selection_reports_nothing_stale(tmp_path, capsys):
+    """Review of #218, G2: a pull request runs only its tier's lanes, so a listed key it did not observe proves
+    nothing there; main and nightly, which run everything, report it."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    reports = _reports(tmp_path)
+    assert ratchet.main([str(reports), "--event", "pull_request", "--allowlist", str(head)]) == 0
+    assert "no longer observed" not in capsys.readouterr().out
+    assert ratchet.main([str(reports), "--event", "push", "--allowlist", str(head)]) == 0  # shadow: reported only
+    assert "1 stale (allow-listed, no longer observed)" in capsys.readouterr().out
 
 
 def test_a_capture_error_fails_the_ratchet(tmp_path):

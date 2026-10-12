@@ -384,11 +384,15 @@ this checkout's `src` with the version its `pyproject.toml` declares, or the run
 Every refusal code the product defines, and the Lead or the operator can see, is listed below, with its meaning,
 the causes allowed to use it, and the owner of the remedy. `tests/unit/test_discovery_registry.py` enumerates them,
 and fails on any code missing here or listed here and no longer defined, so the registry cannot drift:
-- every error class in `src/aew` that declares a `code` (`aew.errors`, the dashboard's two request errors and the
-  validation runner's two), read from the source;
-- the typed surface's input refusals, `aew.surface.errors.CODES`;
-- `NOT_COMPLETED`, the `cli` escape's answer when the command it ran answered `ok: false`, the one code written as a
-  literal (`aew.surface.run`), which the test finds there.
+- every code the source writes, read by a scan in each form the product uses: a class's `code` (`aew.errors`, the
+  dashboard's two request errors, the validation runner's two), a dict literal's `"code"` (`NOT_COMPLETED`, the
+  bridge's `BRIDGE_ERROR`, the broker's `DEFECT`), a `code=` keyword, and an `x.code =` assignment;
+- the typed surface's input refusals, `aew.surface.errors.CODES`.
+
+The scan also finds the assurance lint and Class 0 eligibility codes (`LINT_*`, `CLASS0_*`,
+`ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`). They are entries in a refusal's or a lint's details,
+never a refusal's code, so the test pins them as a named list outside the registry; one that is no longer written,
+or that this registry lists, fails it.
 
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.
@@ -461,6 +465,8 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `TOOL_NOT_EXPOSED` | A typed-tool call naming a tool the session's profile does not expose | `tool_not_exposed` | Lead |
 | `BROKER_UNREACHABLE` | The Lead broker could not be reached, so nothing ran | `broker_unreachable` | operator |
 | `NOT_COMPLETED` | The `cli` escape's command answered `ok: false`: it did not do what was asked | `command_not_completed` | Lead |
+| `BRIDGE_ERROR` | A worker's bridge request failed inside the supervisor with an unexpected error; the worker's CLI shows it as the refusal | `engine_defect` | engine |
+| `DEFECT` | The Lead broker's record of a typed-tool call that produced no answer at all | `engine_defect` | engine |
 
 The dashboard's `CAPABILITY_UNAVAILABLE` is the same code as `aew.errors`' and shares its row.
 

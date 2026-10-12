@@ -130,8 +130,9 @@ def test_a_failed_reference_shard_fails_the_aggregate():
 
 
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
-    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under a 60 minute
-    timeout, and the aggregate (which `report` waits for) requires both platforms."""
+    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under its timeout
+    (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance), and the aggregate (which `report` waits for) requires
+    both platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     reference = jobs["reference"]
     # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
@@ -185,8 +186,9 @@ def test_an_extra_run_whose_serial_lane_did_not_report_fails():
 
 def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
     """Structure of nightly.yml's `matrix-extra`: per OS, shards 1..N of one N over everything but the serial tests,
-    under xdist and a 60 minute timeout; the serial lane once per OS without xdist; every report uploaded; and an
-    aggregate that `report` waits for, requiring both platforms."""
+    under xdist and its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance); the serial lane once
+    per OS without xdist; every report uploaded; and an aggregate that `report` waits for, requiring both
+    platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     extra = jobs["matrix-extra"]
     # split the job further instead of raising the timeout; G3a's clearance is the one addition

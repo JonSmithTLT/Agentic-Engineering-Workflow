@@ -998,7 +998,26 @@ def _state_branches(fn: ast.FunctionDef, constants: dict[str, tuple[str, ...]] |
                     out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # reversed operands
                 elif isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and is_state(c.func.value):
                     out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # a method test on the state
+                elif isinstance(c, ast.Call) and any(is_state(n) or isinstance(n, ast.Name) and n.id in units
+                                                     for a in (*c.args, *(k.value for k in c.keywords))
+                                                     for n in ast.walk(a)):
+                    out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # a predicate given the state or the unit (N7)
         return tuple(out)
+
+    def mentions(e: ast.AST) -> bool:
+        """Whether ``e`` reads the unit's state anywhere, or passes the unit itself (or its state) to a call. A
+        unit's other fields (`unit["kind"]`) are not its state."""
+        return any(is_state(n) or isinstance(n, ast.Call) and any(
+            isinstance(a, ast.Name) and a.id in units for a in (*n.args, *(k.value for k in n.keywords)))
+            for n in ast.walk(e))
+
+    def link_states(test: ast.AST) -> tuple[str, ...]:
+        """A link's own test, failing closed (the re-review's N7): a negation that touches the state, or a test that
+        touches the unit or its state yet yields no states, is one `?` state carrying the test."""
+        if any(isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.Not) and mentions(n.operand)
+               for n in ast.walk(test)):
+            return (f"{UNRESOLVED}{ast.unparse(test)}",)
+        return states([test]) or ((f"{UNRESOLVED}{ast.unparse(test)}",) if mentions(test) else ())
 
     def facts(test: ast.AST) -> list[Constraint]:
         return [(c.left.args[0].value, c.comparators[0].value, isinstance(c.ops[0], ast.Eq),
@@ -1016,7 +1035,8 @@ def _state_branches(fn: ast.FunctionDef, constants: dict[str, tuple[str, ...]] |
         links, before, node = [], [], head
         while isinstance(node, ast.If):
             own = facts(node.test)
-            selected = states([node.test]) or states([n.test for n in node.body if isinstance(n, ast.If)])
+            # A body test keeps a negation's states: `if not (st == X ...): raise` is how a link requires X.
+            selected = link_states(node.test) or states([n.test for n in node.body if isinstance(n, ast.If)])
             if selected:
                 links.append((tuple(own + [(k, v, not eq, d) for k, v, eq, d in before]), selected))
             before += own
@@ -1036,21 +1056,40 @@ def _module_of(path: Path) -> str:
 def dispatch_guard_calls() -> list[str]:
     """Every `DispatchGuard(...)` call under src/aew, in any argument form (`file:line`): the count registered_guards
     must read in full (the re-review's N6)."""
-    return [f"{p.relative_to(ROOT).as_posix()}:{n.lineno}" for p in sorted(AEW_SRC.rglob("*.py"))
-            for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))) if _is_guard_call(n)]
+    out = []
+    for p in sorted(AEW_SRC.rglob("*.py")):
+        module = ast.parse(p.read_text(encoding="utf-8"))
+        out += [f"{p.relative_to(ROOT).as_posix()}:{n.lineno}" for n in _guard_calls(module)]
+    return out
 
 
-def _is_guard_call(n: ast.AST) -> bool:
-    return isinstance(n, ast.Call) and (isinstance(n.func, ast.Name) and n.func.id == "DispatchGuard"
-                                        or isinstance(n.func, ast.Attribute) and n.func.attr == "DispatchGuard")
+def _guard_names(module: ast.Module) -> frozenset[str]:
+    """The names a module calls `DispatchGuard` by (the re-review's N8): the plain name, an import alias
+    (`from ... import DispatchGuard as DG`), or a name assigned from either."""
+    names = {"DispatchGuard"}
+    names |= {a.asname for n in ast.walk(module) if isinstance(n, ast.ImportFrom) for a in n.names
+              if a.name == "DispatchGuard" and a.asname}
+    for n in ast.walk(module):
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Name) and n.value.id in names:
+            names |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+    return frozenset(names)
 
 
-def _registration(n: ast.AST) -> tuple[str, str] | None:
-    """(guard name, method) of a `DispatchGuard("name", self._method)` call, the one form registered_guards reads."""
-    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "DispatchGuard" \
-            and len(n.args) >= 2 and isinstance(n.args[0], ast.Constant) and isinstance(n.args[1], ast.Attribute):
-        return str(n.args[0].value), n.args[1].attr
-    return None
+def _guard_calls(module: ast.Module) -> list[ast.Call]:
+    """Every call of `DispatchGuard` in ``module``, by any name it binds or as an attribute (`D.DispatchGuard`)."""
+    names = _guard_names(module)
+    return [n for n in ast.walk(module) if isinstance(n, ast.Call)
+            and (isinstance(n.func, ast.Name) and n.func.id in names
+                 or isinstance(n.func, ast.Attribute) and n.func.attr == "DispatchGuard")]
+
+
+def _registrations(module: ast.Module) -> list[tuple[str, str]]:
+    """(guard name, method) of each `DispatchGuard("name", self._method)` call in ``module``, by any name the module
+    binds it to: the one form registered_guards reads."""
+    names = _guard_names(module)
+    return [(str(n.args[0].value), n.args[1].attr) for n in ast.walk(module)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names and len(n.args) >= 2
+            and isinstance(n.args[0], ast.Constant) and isinstance(n.args[1], ast.Attribute)]
 
 
 @cache
@@ -1061,13 +1100,12 @@ def registered_guards() -> dict[str, tuple[str, ast.FunctionDef]]:
     methods: dict[tuple[str, str], ast.FunctionDef] = {}
     registered: dict[str, tuple[str, str]] = {}
     for f in sorted(AEW_SRC.rglob("*.py")):
-        module = _module_of(f)
-        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+        module, parsed = _module_of(f), ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(parsed):
             if isinstance(node, ast.FunctionDef):
                 methods[(module, node.name)] = node
-            found = _registration(node)
-            if found is not None:
-                registered[found[0]] = (module, found[1])
+        for guard, method in _registrations(parsed):
+            registered[guard] = (module, method)
     return {g: (mod, methods[(mod, attr)]) for g, (mod, attr) in registered.items() if (mod, attr) in methods}
 
 
@@ -1096,7 +1134,8 @@ def guard_branches() -> dict[str, list[tuple[tuple[Constraint, ...], tuple[str, 
 BROAD_STATE_LINE = re.compile(
     r"""(\[['"]state['"]\]|\.get\(['"]state['"]\)|\bst\b|\b[A-Z_]*STATES?\b).*(==|!=|\bnot in\b|\bin\b)"""
     r"""|(==|!=|\bin\b).*(\[['"]state['"]\]|\.get\(['"]state['"]\)|\bst\b|\b[A-Z_]*STATES?\b)"""
-    r"""|\bst\.\w+\(""")  # the last: a method test on the state (`st.startswith(...)`; the re-review's N5)
+    r"""|\bst\.\w+\("""  # a method test on the state (`st.startswith(...)`; the re-review's N5)
+    r"""|[\w.]+\([^()]*(\bst\b|\bunit\b|\[['"]state['"]\])""")  # a call given the state or the unit (N7)
 BROAD_EXCLUSIONS = {"queue.order": "it selects among a queue entry's states, not a unit's (`integrate.prepare`, a "
                                    "decided command)"}
 
@@ -2616,11 +2655,16 @@ def test_both_state_detectors_read_every_form(form):
 
 
 _N5_HEAD = "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
-N5_PROBES = {  # (the middle link, the state the recogniser must report for it)
+N5_PROBES = {  # (the middle link, the state the recogniser must report for it): the reviews' position table, every row
     "module constant": ("st in H.TERMINAL", "?H.TERMINAL"),
     "reversed operands": ("'B' == st", "?'B' == st"),
     "method test": ("st.startswith('VERIF')", "?st.startswith('VERIF')"),
     "negation": ("st not in {'A', 'B'}", "?st not in {'A', 'B'}"),
+    "predicate on the state": ("is_terminal(st)", "?is_terminal(st)"),  # N7
+    "predicate on the unit": ("H.done(unit)", "?H.done(unit)"),  # N7
+    "not around a comparison": ("not (st == 'B')", "?not st == 'B'"),  # N7's note: a link's own test fails closed
+    "lookup keyed by the state": ("SLOTS[st] == 'review'", "?SLOTS[st] == 'review'"),
+    "membership or another condition": ("st in ('B',) or ready", "B"),
     "control": ("st == 'B'", "B"),
 }
 
@@ -2647,6 +2691,27 @@ def test_a_module_qualified_constant_resolves_through_its_module():
     assert [s for _, s in _state_branches(fn, {}, {"H": SimpleNamespace()})] == [("A",), ("?H.TERMINAL",)]
 
 
+# The review's registration forms (N6, N8): (the module's source, counted as a call, read as a registration).
+REGISTRATION_FORMS = {
+    "positional": ("DispatchGuard('p', self._g_p)", True, True),
+    "keyword": ("DispatchGuard(name='kw', fn=self._g_kw)", True, False),
+    "lambda": ("DispatchGuard('lam', lambda s, w, f: None)", True, False),
+    "module attribute": ("D.DispatchGuard('attr', self._g_attr)", True, False),
+    "import alias": ("DG('al', self._g_al)", True, True),
+}
+
+
+@pytest.mark.parametrize("form", sorted(REGISTRATION_FORMS))
+def test_every_registration_form_is_counted_and_the_positional_ones_read(form):
+    """The re-reviews' N6 and N8: every way a module can call `DispatchGuard` is counted (so the count-equals-read
+    assertion catches a form the reader skips), and a positional registration is read by any name the module binds
+    (an import alias included)."""
+    call, counted, read = REGISTRATION_FORMS[form]
+    module = ast.parse("from aew.engine.dispatch import DispatchGuard as DG\nfrom aew.engine import dispatch as D\n"
+                       f"class X:\n    def regs(self):\n        return [{call}]\n")
+    assert (len(_guard_calls(module)) == 1, len(_registrations(module)) == 1) == (counted, read)
+
+
 def test_the_two_state_detectors_agree_on_the_engine():
     """The re-review's N4, the class check: over every registered guard, the form-agnostic detector finds exactly the
     fourth scan's guards plus the stated exclusions, and no state the scan derived is unresolved. A guard the scan
@@ -2663,11 +2728,6 @@ def test_the_two_state_detectors_agree_on_the_engine():
         assert broad_state_lines(guards[g]) == len(branches), (g, broad_state_lines(guards[g]), branches)
     assert not any(s.startswith(UNRESOLVED) for branches in guard_branches().values()
                    for _, states in branches for s in states)
-    # N6's differential: a lambda or keyword registration is a call the positional rule does not read.
-    other_forms = ast.parse("class X:\n    def regs(self):\n        return [DispatchGuard('lam', lambda s, w, f: None),"
-                            " DispatchGuard(name='kw', fn=self._g_kw)]\n")
-    assert sum(map(_is_guard_call, ast.walk(other_forms))) == 2
-    assert [r for r in map(_registration, ast.walk(other_forms)) if r] == []
     # Differential: a guard the recogniser cannot read (its chain on a value it cannot tie to a unit) is found by the
     # broad detector alone, so the agreement fails.
     unread = _parsed("def g(self, state, w, facts):\n    st = lookup(state, w)\n" + _N4_BODY)

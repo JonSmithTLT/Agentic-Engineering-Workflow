@@ -224,9 +224,17 @@ registry records the plan, not the decision:
       through the guard's module and the engine's constants (`st in EXECUTE_STATES`); a module-qualified one
       (`H.TERMINAL`) resolves through the guard's module.
     - **What the scan cannot read** as "selects these states" becomes a `?` state carrying its source, never dropped
-      and never misread (the re-review's N5). That covers an unresolved constant, reversed operands (`'B' == st`), a
-      method test (`st.startswith(...)`) and a negation (`st not in {...}`). The agreement test refuses any `?`
-      state on the engine.
+      and never misread (the re-reviews' N5 and N7). That covers:
+      - an unresolved constant;
+      - reversed operands (`'B' == st`);
+      - a method test (`st.startswith(...)`);
+      - a negation (`st not in {...}`, or `not (...)` as a link's own test);
+      - a call given the state or the unit (`is_terminal(st)`, `H.done(unit)`);
+      - any other link test that reads the state, or passes the unit to a call, yet yields no states.
+
+      So the scan fails closed. A `not (...)` in a branch's body keeps its states, because
+      `if not (st == X ...): raise` is how a link requires X. The agreement test refuses any `?` state on the
+      engine.
 
     **A second, form-agnostic detector must agree.** It counts a guard's `if`/`elif` lines that compare anything
     reading like a state, or call a method on it. The agreement holds at two levels:
@@ -234,8 +242,10 @@ registry records the plan, not the decision:
       `queue.order` is excluded because it selects among a queue entry's states, not a unit's.
     - **Per link:** for each guard the scan finds, its line count must equal the scan's link count.
 
-    Both detectors read the guards that `DispatchGuard("name", self._method)` registers. The test also asserts that
-    this is every `DispatchGuard(...)` call in `src/aew`, in any form (the re-review's N6). So a chain, or a link,
+    Both detectors read the guards that `DispatchGuard("name", self._method)` registers, by any name the module
+    binds it to: an import alias such as `DispatchGuard as DG`, or an assignment. The test also asserts that this is
+    every `DispatchGuard` call in `src/aew`, in any form, including aliases and `module.DispatchGuard` (the
+    re-reviews' N6 and N8). So a chain, or a link,
     or a registration that one side cannot read fails the test rather than quietly dropping uses.
   - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
     credential, the expected revisions, the print-only options).

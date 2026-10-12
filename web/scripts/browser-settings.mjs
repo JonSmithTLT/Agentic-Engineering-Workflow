@@ -61,7 +61,9 @@ try {
         assert.equal(new URL(copied).searchParams.get('settings_digest'), `sha256:${'a'.repeat(64)}`);
         await page.goto(copied); await page.getByRole('heading', { name: 'Profile 1 (name withheld)', exact: true }).waitFor();
         for (const [scenario, text] of [['drifted', /On-disk configuration is drifted/], ['unpin', /Never adopted/], ['manifest', /Manifest drifted/], ['invalid', /Configuration is invalid/], ['absent', /Configuration is absent/], ['empty', 'No profiles supplied.'], ['partial', 'Profile list is truncated. Additional entries are not listed.'], ['unknown', /Unknown value: FUTURE_DOCUMENT_STATE/], ['error', 'Synthetic configuration read failed.']]) {
-          await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption(scenario); await page.getByText(text, { exact: typeof text === 'string' }).waitFor();
+          await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption(scenario);
+          const owner = scenario === 'unknown' ? page.locator('.settings-page > section.settings-panel') : page;
+          await owner.getByText(text, { exact: typeof text === 'string' }).waitFor();
         }
         await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption('long');
         await page.getByText(/<script>window.__settingsHostile=1<\/script>/).waitFor();

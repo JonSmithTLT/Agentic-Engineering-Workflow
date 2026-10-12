@@ -124,18 +124,18 @@ def surviving_words(redacted: str, original: str) -> set[str]:
 
 
 MARK = "<redacted>"
-RUN = re.compile(r"[A-Za-z0-9]{4,}")
+RUN = re.compile(r"[A-Za-z0-9_-]{4,}")  # the long-token form's characters, so `-` and `_` join a run, never end it
 
 
 def visible_runs(redacted: str) -> set[str]:
-    """Every run of four or more letters and digits a redacted text shows (the marker itself is not one)."""
+    """Every run of four or more of the long-token form's characters a redacted text shows (the marker is not one)."""
     return set(RUN.findall(redacted.replace(MARK, "\0")))
 
 
 def narrowed(text: str) -> set[str]:
     """What the current redaction shows that the frozen one did not: whole words it leaves that the frozen one hid,
-    and, at the level of characters, any run of letters and digits it shows that appears nowhere in the frozen
-    output. Empty when it redacts a superset."""
+    and, at the level of characters, any run it shows that appears nowhere in the frozen output. Empty when it
+    redacts a superset."""
     new, old = adapter.redact_key_shaped(text), frozen_redact(text)
     shown_by_old = old.replace(MARK, "\0")
     return (surviving_words(new, text) - surviving_words(old, text)) | {
@@ -156,6 +156,8 @@ def test_the_adapter_redaction_never_narrows():
                    for joiner in ("-", "_", "", ".") for prefix_ in ("", "ta", "x.")]
         inputs += [f"error {'Ab1' * n}{value} end" for n in range(1, 12)]
         inputs += [f"error {'Ab1' * n}{value}{'xY7' * n} end" for n in range(1, 12)]
+        inputs += [f"error {'Ab1-' * n}{value} end" for n in range(1, 12)]
+        inputs += [f"error {'Ab1_' * n}{value}{'-xY7' * n} end" for n in range(1, 12)]
     rng = random.Random(220)
     inputs += ["".join(rng.choice(SOUP) for _ in range(rng.randint(3, 30))) for _ in range(200_000)]
     witnesses = [text for text in inputs if narrowed(text)]

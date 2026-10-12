@@ -220,13 +220,23 @@ registry records the plan, not the decision:
     - **The unit:** a name assigned from an expression that indexes `"work"`, or that calls a `unit(...)` accessor
       (`self.units.unit(state, w)`).
     - **Its state:** `unit["state"]`, `unit.get("state")`, or a name assigned from either.
-    - **The states compared:** string literals, collections of them, or a constant's name resolved through the
-      guard's module and the engine's constants (`st in EXECUTE_STATES`).
+    - **The states compared:** string literals, collections of them, or a constant. A bare constant name resolves
+      through the guard's module and the engine's constants (`st in EXECUTE_STATES`); a module-qualified one
+      (`H.TERMINAL`) resolves through the guard's module.
+    - **What the scan cannot read** as "selects these states" becomes a `?` state carrying its source, never dropped
+      and never misread (the re-review's N5). That covers an unresolved constant, reversed operands (`'B' == st`), a
+      method test (`st.startswith(...)`) and a negation (`st not in {...}`). The agreement test refuses any `?`
+      state on the engine.
 
     **A second, form-agnostic detector must agree.** It counts a guard's `if`/`elif` lines that compare anything
-    reading like a state. Over every registered guard, its set must equal the scan's, less stated exclusions:
-    `queue.order` selects among a queue entry's states, not a unit's. So a chain one detector cannot read fails the
-    test rather than quietly dropping uses.
+    reading like a state, or call a method on it. The agreement holds at two levels:
+    - **Per guard:** over every registered guard, its set must equal the scan's, less stated exclusions.
+      `queue.order` is excluded because it selects among a queue entry's states, not a unit's.
+    - **Per link:** for each guard the scan finds, its line count must equal the scan's link count.
+
+    Both detectors read the guards that `DispatchGuard("name", self._method)` registers. The test also asserts that
+    this is every `DispatchGuard(...)` call in `src/aew`, in any form (the re-review's N6). So a chain, or a link,
+    or a registration that one side cannot read fails the test rather than quietly dropping uses.
   - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
     credential, the expected revisions, the print-only options).
 

@@ -73,6 +73,7 @@ commands:
     journeys: [V3]
     mutates: "no"
     mutates_basis: "a read: validates the environment and the project state and reports"
+    probe: [doctor]
     refusals: [USAGE]
     note: "V3's counted fallback while `aew preflight` does not exist"
   - name: init
@@ -88,6 +89,7 @@ commands:
     journeys: [V1, V2, V3, V4]
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [status]
     door: typed
     via: [status]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -98,6 +100,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only)"
+    probe: [resume]
     door: typed
     via: [resume]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -107,6 +110,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [guide]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: checkpoint
     home: product
@@ -133,6 +137,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [lead, show]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: lead acquire
     home: operator-admin
@@ -264,6 +269,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [authority, list]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: authority accept
     home: operator-admin
@@ -305,6 +311,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [work, show, "{ticket}"]
     door: typed
     via: [work_show]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -314,6 +321,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [work, list]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: work ready
     home: diagnostic
@@ -321,6 +329,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [work, ready]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: work assign
     home: product
@@ -340,6 +349,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [work, roles, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: work staff
     home: product
@@ -471,6 +481,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [work, tree]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: work reconcile
     home: recovery
@@ -501,6 +512,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only)"
+    probe: [dispatch, explain, "{ticket}"]
     door: typed
     via: [explain]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -510,6 +522,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [role, list]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: role show
     home: diagnostic
@@ -517,6 +530,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [role, show, engineer]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: role validate
     home: diagnostic
@@ -524,6 +538,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: validates the role catalog or one card file and reports"
+    probe: [role, validate]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: plan propose
     home: product
@@ -543,6 +558,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only)"
+    probe: [plan, lint, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: plan accept
     home: product
@@ -606,6 +622,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [invoke, show, INV-0001]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: context pack
     home: recovery
@@ -621,6 +638,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [context, show, INV-0001]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: check run
     home: product
@@ -642,6 +660,8 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    mutates_exempt: "a read: which invocation the credential acts as; the credential only identifies"
+    probe: [whoami]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: harness launch
     home: recovery
@@ -660,6 +680,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [harness, status]
     door: typed
     via: [harness_status]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -669,6 +690,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: blocks on run telemetry, commits nothing"
+    probe: [harness, wait, R-INV-0001-1, --timeout, 1]
     door: typed
     via: [harness_wait]
     refusals: [PROJECT_NOT_FOUND, USAGE]
@@ -709,6 +731,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read (its help: read-only): prints the projection a harness receives"
+    probe: [harness, config, opencode, --lead]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: gate show
     home: diagnostic
@@ -716,6 +739,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [gate, show, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: gate waive
     home: product
@@ -830,6 +854,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [integrate, breaker, status]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: integrate breaker reset
     home: operator-admin
@@ -874,6 +899,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [history, show, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history list
     home: diagnostic
@@ -881,6 +907,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [history, list]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history log
     home: diagnostic
@@ -888,6 +915,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [history, log, --since, 0]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history compact
     home: operator-admin
@@ -896,6 +924,7 @@ commands:
     mutates: "no"
     mutates_basis: "rewrites the transition log's physical representation only, never a logical transition
                    (Engine.history_compact, ADR-0012 D6)"
+    probe: [history, compact]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history links
     home: diagnostic
@@ -903,6 +932,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [history, links, "{ticket}"]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history load
     home: product
@@ -930,6 +960,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "rebuilds the derived history index from the manifest; changes no record"
+    probe: [history, reindex]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history search
     home: diagnostic
@@ -937,6 +968,8 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe_exempt: "registered only while switched on, and the sample project leaves it off (recall search, register
+                  F21)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while the adopted execution policy switches recall search on (register F21)"
   - name: dashboard serve
@@ -959,6 +992,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [dashboard, status]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: map generate
     home: product
@@ -988,6 +1022,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [map, show]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: map diff
     home: diagnostic
@@ -995,6 +1030,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe: [map, diff, --commit, HEAD, --commit, HEAD]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: operator serve
     home: operator-admin
@@ -1010,6 +1046,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: whether the operator endpoint answers"
+    probe: [operator, ping]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: message thread
     home: diagnostic
@@ -1017,6 +1054,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe_exempt: "registered only while switched on, and the sample project leaves it off (messaging, F9-A)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
   - name: message list
@@ -1025,6 +1063,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    probe_exempt: "registered only while switched on, and the sample project leaves it off (messaging, F9-A)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
     conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
   - name: message unseen
@@ -1046,6 +1085,7 @@ tools:
     journeys: [V1, V2, V3, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, status, --token, "{token}"]
     refusals: []
   - name: resume
     home: product
@@ -1053,6 +1093,7 @@ tools:
     journeys: [V1, V2, V3, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, resume, --token, "{token}"]
     refusals: []
   - name: work_show
     home: product
@@ -1060,6 +1101,7 @@ tools:
     journeys: []
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}', --token, "{token}"]
     refusals: []
   - name: explain
     home: diagnostic
@@ -1067,6 +1109,7 @@ tools:
     journeys: [V1, V2]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, explain, --arguments, '{"work_id": "{ticket}"}', --token, "{token}"]
     refusals: []
     note: "the Lead's counted fallback when nothing is offered"
   - name: harness_status
@@ -1075,6 +1118,7 @@ tools:
     journeys: []
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, harness_status, --token, "{token}"]
     refusals: []
   - name: harness_wait
     home: product
@@ -1082,6 +1126,7 @@ tools:
     journeys: [V1, V2, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
+    probe: [lead, tool, harness_wait, --arguments, '{"runs": ["R-INV-0001-1"], "timeout_s": 1}', --token, "{token}"]
     refusals: []
   - name: checkpoint
     home: product

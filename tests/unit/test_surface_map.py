@@ -17,15 +17,20 @@ with a decided ``lead_disposition`` that the live code honours (check ``new_surf
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
 import shlex
+import subprocess
+import sys
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -68,6 +73,8 @@ CHECKS: dict[str, str] = {
     "disposition_applied": REPORT,  # A4: engine-owned and forbidden-to-lead commands have left LEAD_REACHABLE
     "lead_shell_lifecycle": REPORT,  # A4: Lead shell lifecycle operations = 0
     "unevidenced": REPORT,  # a product, admin or recovery home that no vertical journey exercises yet
+    "probe": ENFORCE,  # a surface declared `mutates: "no"` leaves the sample project unchanged when run
+    "probe_coverage": REPORT,  # what the probe could not run, or ran only to a refusal
 }
 OWNERS = ("operator", "lead", "mechanical")
 REPORT_PREFIX = "SurfaceMapReport: surface map, check"
@@ -349,9 +356,19 @@ def check_home(reg: dict[str, Any]) -> list[str]:
     """The designer's positive definition (2026-10-12): a diagnostic surface observes or repairs implementation state,
     is needed by no supported normal workflow, and changes no authority, policy, work state, evidence admissibility,
     publication, lifecycle or external system."""
-    return [f"{label(kind, str(e.get('name')))} is homed diagnostic but its mutates is {e.get('mutates')!r}: "
-            "re-home it, or split the mutating form into its own command"
-            for kind, e in entries(reg) if e.get("home") == DIAGNOSTIC and mutates(e) != "no"]
+    out = [f"{label(kind, str(e.get('name')))} is homed diagnostic but its mutates is {e.get('mutates')!r}: "
+           "re-home it, or split the mutating form into its own command"
+           for kind, e in entries(reg) if e.get("home") == DIAGNOSTIC and mutates(e) != "no"]
+    for kind, e in entries(reg):
+        name = str(e.get("name"))
+        if e.get("home") != DIAGNOSTIC or baseline_key(kind, name) in BASELINE:
+            continue
+        why = str(e.get("diagnostic_justification") or "")
+        if not (re.search(r"\b(observes|repairs)\b", why) and "normal workflow" in why):
+            out.append(f"new {label(kind, name)} is homed diagnostic: give `diagnostic_justification`, one line saying "
+                       "what implementation state it observes or repairs, for whom, and why no supported normal "
+                       "workflow needs it")
+    return out
 
 
 def check_mutates(reg: dict[str, Any]) -> list[str]:
@@ -369,9 +386,10 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
             flag = "--" + dest.replace("_", "-")
             if m != "yes" and flag not in flags:
                 out.append(f"`aew {name}` takes {flag} (a compare-and-set): its mutates must be yes, or name {flag}")
-        if "token" in dests(name) and m not in ("yes", "with") and not e.get("mutates_exempt"):
-            out.append(f"`aew {name}` takes the Lead credential: its mutates must be yes or with, or give "
-                       "`mutates_exempt` with the reason")
+        credential = dests(name) & {"token", "invocation_token"}
+        if credential and m not in ("yes", "with") and not e.get("mutates_exempt"):
+            out.append(f"`aew {name}` takes a credential ({sorted(credential)[0]}): its mutates must be yes or with, "
+                       "or give `mutates_exempt` with the reason")
         if operator_only(name) and m not in ("yes", "with") and not (m == "no" and e.get("home") == DIAGNOSTIC):
             out.append(f"`aew {name}` is operator-only: it mutates, unless it is a pure read homed diagnostic")
         p = e.get("primitive")
@@ -559,6 +577,157 @@ def check_unevidenced(reg: dict[str, Any]) -> list[str]:
             for kind, e in entries(reg) if e.get("home") not in (DIAGNOSTIC, "internal") and not e.get("journeys")]
 
 
+# ---------------------------------------------------------------------------------------------- the behavioural probe
+# (designer, 2026-10-12): a label cannot make a mutating command "diagnostic". Every surface declared `mutates: "no"`
+# runs, in process, against a synthetic sample project, and must leave it as it found it: no file under .aew/ changed
+# (which covers the control state and its revision, transitions, evidence and the outbox) except the derived read
+# caches below, and no git ref, HEAD or working-tree change. One the sample cannot run says why (`probe_exempt`).
+
+READ_CACHES = re.compile(r"\.aew/local/history\.sqlite(-wal|-shm|-journal)?")  # the derived history index
+CREDENTIAL_ENV = ("AEW_LEAD_TOKEN", "AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY", "AEW_INVOCATION_TOKEN",
+                  "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY")
+NO_WINDOW: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+SAMPLE_BASE: list[Path] = []  # set by the module's fixture (pytest's temporary directory)
+
+
+@dataclass
+class Sample:
+    root: Path
+    token: str
+    ticket: str
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True, **NO_WINDOW).stdout
+
+
+def run_cli(root: Path, argv: list[str]) -> tuple[int, str, str]:
+    """``aew -C root *argv`` in this process, with no credential in the environment and its output captured."""
+    from aew.cli.main import main
+
+    saved = {k: os.environ.pop(k) for k in CREDENTIAL_ENV if k in os.environ}
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = main(["-C", str(root), *argv])
+            except SystemExit as exc:  # argparse
+                code = exc.code if isinstance(exc.code, int) else 2
+    finally:
+        os.environ.update(saved)
+    return code, out.getvalue(), err.getvalue()
+
+
+def build_sample(base: Path) -> Sample:
+    """A fresh project with a Lead and one Ticket: `aew init`, `lead acquire`, `work create`."""
+    root = base / "sample"
+    root.mkdir(parents=True)
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.name", "AEW Probe")
+    _git(root, "config", "user.email", "aew-probe@invalid")
+    _git(root, "config", "core.autocrlf", "false")
+    (root / "README.md").write_text("# sample\n", encoding="utf-8", newline="\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "initial")
+    assert run_cli(root, ["init"])[0] == 0
+    code, out, err = run_cli(root, ["--print-credential", "lead", "acquire", "--expect-rev", "0", "--session-label",
+                                    "probe"])
+    assert code == 0, err
+    token = json.loads(out)["token"]
+    rev = json.loads(run_cli(root, ["lead", "show"])[1])["revision"]
+    code, out, err = run_cli(root, ["work", "create", "ticket", "--title", "probe", "--class", "2", "--scope",
+                                    "src/**", "--token", token, "--expect-rev", str(rev)])
+    assert code == 0, err
+    return Sample(root, token, "T-0001")
+
+
+@cache
+def sample() -> Sample:
+    assert SAMPLE_BASE, "the probe's sample needs the module fixture"
+    return build_sample(SAMPLE_BASE[0])
+
+
+def snapshot(root: Path) -> dict[str, str]:
+    files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in sorted((root / ".aew").rglob("*")) if p.is_file()}
+    state = {k: v for k, v in files.items() if not READ_CACHES.fullmatch(k)}
+    state["git refs"] = _git(root, "for-each-ref", "--format=%(refname) %(objectname)")
+    state["git HEAD"] = _git(root, "rev-parse", "HEAD")
+    status = _git(root, "status", "--porcelain", "--untracked-files=all").splitlines()
+    state["git status"] = "\n".join(line for line in status if not READ_CACHES.fullmatch(line[3:]))
+    return state
+
+
+def probe_argv(e: dict[str, Any], s: Sample) -> list[str]:
+    return [str(a).replace("{token}", s.token).replace("{ticket}", s.ticket) for a in e.get("probe") or []]
+
+
+def probe_one(e: dict[str, Any], s: Sample) -> tuple[int, str, list[str]]:
+    """Run ``e``'s probe: its exit code, its refusal code (if any), and what it changed."""
+    before = snapshot(s.root)
+    code, _, err = run_cli(s.root, probe_argv(e, s))
+    after = snapshot(s.root)
+    refusal = ""
+    if code:
+        try:
+            refusal = json.loads(err)["error"]["code"]
+        except (ValueError, KeyError, TypeError):
+            refusal = f"exit {code}"
+    return code, refusal, sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+
+
+_PROBED: dict[str, tuple[int, str, list[str]]] = {}
+
+
+def probed(kind: str, e: dict[str, Any]) -> tuple[int, str, list[str]]:
+    key = kind + json.dumps(e, sort_keys=True, default=str)
+    if key not in _PROBED:
+        _PROBED[key] = probe_one(e, sample())
+    return _PROBED[key]
+
+
+def probe_target(kind: str, name: str, argv: list[str]) -> bool:
+    """Whether a probe's arguments run the entry itself (never another command)."""
+    if kind == "tool":
+        return argv[:3] == ["lead", "tool", name]
+    return resolve(argv) == name
+
+
+def check_probe(reg: dict[str, Any]) -> list[str]:
+    out = []
+    for kind, e in entries(reg):
+        name = str(e.get("name"))
+        if mutates(e) != "no" or not is_live(kind, name) or e.get("probe_exempt"):
+            continue
+        if not e.get("probe"):
+            out.append(f"{label(kind, name)} is declared mutates \"no\": give its `probe` (arguments that run it on "
+                       "the sample project), or `probe_exempt` with the reason")
+            continue
+        if not probe_target(kind, name, [str(a) for a in e["probe"]]):
+            out.append(f"{label(kind, name)}: its probe {e['probe']} does not run it")
+            continue
+        _, _, changed = probed(kind, e)
+        if changed:
+            out.append(f"{label(kind, name)} is declared mutates \"no\", but running it changed {changed}")
+    return out
+
+
+def check_probe_coverage(reg: dict[str, Any]) -> list[str]:
+    """What the probe could not show: an exempt surface, or one whose probe was refused before doing its work."""
+    out = []
+    for kind, e in entries(reg):
+        name = str(e.get("name"))
+        if mutates(e) != "no" or not is_live(kind, name):
+            continue
+        if e.get("probe_exempt"):
+            out.append(f"{label(kind, name)}: not run ({e['probe_exempt']})")
+        elif e.get("probe") and probe_target(kind, name, [str(a) for a in e["probe"]]):
+            code, refusal, _ = probed(kind, e)
+            if code:
+                out.append(f"{label(kind, name)}: ran, refused ({refusal}) on the sample: its full path is not probed")
+    return out
+
+
 CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "registered": check_registered, "live": check_live, "fields": check_fields, "users": check_users,
     "home": check_home, "mutates": check_mutates, "door": check_door, "disposition": check_disposition,
@@ -566,7 +735,7 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "refusal_floor": check_refusal_floor, "owner": check_owner, "structured_refusals": check_structured_refusals,
     "mutates_unknown": check_mutates_unknown, "undecided": check_undecided,
     "disposition_applied": check_disposition_applied, "lead_shell_lifecycle": check_lead_shell_lifecycle,
-    "unevidenced": check_unevidenced,
+    "unevidenced": check_unevidenced, "probe": check_probe, "probe_coverage": check_probe_coverage,
 }
 
 
@@ -591,6 +760,14 @@ def report(check: str, findings: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------------------------- the tests
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _sample_base(tmp_path_factory):
+    SAMPLE_BASE[:] = [tmp_path_factory.mktemp("g1-probe")]
+    yield
+    sample.cache_clear()
+    _PROBED.clear()
 
 
 @pytest.mark.parametrize("check", sorted(CHECKS))
@@ -680,11 +857,14 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("home", lambda r: _entry(r, "history audit").update(home=DIAGNOSTIC),
      "`aew history audit` is homed diagnostic but its mutates is"),
     ("home", lambda r: _entry(r, "init").update(home=DIAGNOSTIC), "`aew init` is homed diagnostic"),
+    ("home", lambda r: _new(r, "work list"), "new `aew work list` is homed diagnostic: give `diagnostic_just"),
+    ("home", lambda r: _new(r, "work list", diagnostic_justification="handy"), "new `aew work list` is homed diag"),
     ("mutates", lambda r: _entry(r, "ticket_start", "tool").update(mutates="no"), "tool `ticket_start`: mutates"),
     ("mutates", lambda r: _entry(r, "plan accept").update(mutates="no"), "`aew plan accept` takes --expect-rev"),
     ("mutates", lambda r: _entry(r, "map select-architecture").update(mutates="no"),
      "`aew map select-architecture` takes --expect-map-rev"),
-    ("mutates", lambda r: _entry(r, "harness stop").update(mutates="no"), "`aew harness stop` takes the Lead"),
+    ("mutates", lambda r: _entry(r, "harness stop").update(mutates="no"), "`aew harness stop` takes a credential"),
+    ("mutates", lambda r: _entry(r, "whoami").pop("mutates_exempt"), "`aew whoami` takes a credential"),
     ("mutates", lambda r: _entry(r, "dashboard open").update(mutates="no"), "`aew dashboard open` is operator-only"),
     ("door", lambda r: _entry(r, "plan accept").pop("door"), "`aew plan accept` is Lead-reachable: name its door"),
     ("door", lambda r: _entry(r, "work create").update(via=["ticket_start"]),
@@ -702,6 +882,13 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "`aew plan accept`: lead_disposition typed and door typed go together"),
     ("disposition", lambda r: _entry(r, "plan accept").update(lead_disposition="maybe"),
      "`aew plan accept`: unknown lead_disposition 'maybe'"),
+    # A home never exempts a Lead-reachable command (designer question, 2026-10-12): homed diagnostic, it still needs a
+    # disposition, and a new one a decided disposition.
+    ("disposition", lambda r: _entry(r, "message unseen").update(home=DIAGNOSTIC, mutates="no",
+                                                                 lead_disposition=None),
+     "`aew message unseen` is Lead-reachable: name its lead_disposition"),
+    ("new_surface", lambda r: _new(r, "message unseen", home=DIAGNOSTIC, mutates="no"),
+     "new `aew message unseen`: the Lead uses it to change state"),
     # The standing rule: a surface outside the baseline.
     ("new_surface", lambda r: _new(r, "plan accept"), "new `aew plan accept`: the Lead uses it to change state"),
     ("new_surface", lambda r: _new(r, "work create"),
@@ -714,6 +901,9 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "new `aew work assign` (forbidden-to-lead): it must not be reachable through a typed tool"),
     ("new_surface", lambda r: _new(r, "harness wait", mutates="yes"),
      "new `aew harness wait`: the Lead uses it to change state"),
+    ("probe", lambda r: _entry(r, "work list").pop("probe"), "`aew work list` is declared mutates \"no\": give"),
+    ("probe", lambda r: _entry(r, "work list").update(probe=["work", "show", "{ticket}"]),
+     "`aew work list`: its probe ['work', 'show', '{ticket}'] does not run it"),
     ("ideal_path", _drop("cli", "opencode"), "names `aew opencode`, which is not registered"),
     ("ideal_path", lambda r: r.update(proposed=[]), "is PROPOSED but not listed under `proposed`"),
     ("ideal_path", lambda r: r["proposed"].append({"name": "init", "ideal_path": []}),
@@ -747,6 +937,44 @@ def test_an_enforced_check_names_the_drift(check, edit, named):
     assert any(named in f for f in findings), findings
 
 
+def _mutate_on_read(how: str) -> Callable[..., Any]:
+    from aew.engine.api import Engine
+
+    original = Engine.work_list
+
+    def work_list(self: Any, *args: Any, **kwargs: Any) -> Any:
+        root = Path(self.aew_root)
+        if how == "file":  # a record written beside the control state
+            (root / "state" / "probe-drift.json").write_text("{}", encoding="utf-8")
+        else:  # a ref moved
+            _git(root.parent, "update-ref", "refs/heads/probe-drift", "HEAD")
+        return original(self, *args, **kwargs)
+    return work_list
+
+
+@pytest.mark.parametrize(("how", "changed"), [("file", ".aew/state/probe-drift.json"), ("ref", "git refs")])
+def test_the_probe_catches_a_mutating_command_labelled_diagnostic(tmp_path, monkeypatch, how, changed):
+    """The designer's question (2026-10-12): can a command that changes state pass as diagnostic by its label? No: a
+    command declared `mutates: "no"`, homed diagnostic and taking no credential is run, and what it changed is named.
+    Here `aew work list`'s implementation is made to write a record, or to move a ref."""
+    import sys as _sys
+
+    from aew.engine.api import Engine
+
+    module = _sys.modules[__name__]
+    own = build_sample(tmp_path)
+    monkeypatch.setattr(module, "sample", lambda: own)
+    monkeypatch.setattr(module, "_PROBED", {})
+    reg = {"commands": [copy.deepcopy(_entry(load(), "work list"))], "tools": []}
+    assert reg["commands"][0]["home"] == DIAGNOSTIC and "token" not in dests("work list")
+    assert check_probe(reg) == []
+    monkeypatch.setattr(Engine, "work_list", _mutate_on_read(how))
+    monkeypatch.setattr(module, "_PROBED", {})
+    findings = check_probe(reg)
+    assert len(findings) == 1 and "`aew work list` is declared mutates" in findings[0] and changed in findings[0], \
+        findings
+
+
 def test_a_new_surface_that_honours_its_disposition_passes():
     """The rule's positive side: a new command the engine owns, absent from both Lead doors, passes; so does a new
     read the Lead uses."""
@@ -756,6 +984,10 @@ def test_a_new_surface_that_honours_its_disposition_passes():
     reg = copy.deepcopy(load())
     _new(reg, "harness wait")
     assert _run("new_surface", reg) == []
+    reg = copy.deepcopy(load())
+    _new(reg, "work list", diagnostic_justification="observes the work units for the operator; no supported normal "
+                                                    "workflow needs it")
+    assert _run("home", reg) == []
 
 
 def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():

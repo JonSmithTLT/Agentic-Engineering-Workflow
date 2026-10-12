@@ -16,6 +16,12 @@ primitive declarations and the vertical UAT's `IDEAL_PATH`.
   - structured refusals and the undecided dispositions (A2);
   - dispositions applied, and Lead shell lifecycle operations at 0 (A4).
 
+**A label never exempts a surface.** Doors and dispositions key off `LEAD_REACHABLE` and the typed surface, never
+off `home`. A behavioural probe runs every surface declared `mutates: "no"` in process, against a synthetic sample
+project, and fails it if anything under `.aew/` (bar the derived history index), a git ref or the working tree
+changed. Of 43 such surfaces, 32 run to completion, 8 run only to a refusal on the sample, and 3 are exempt because
+they are switched off there; `probe_coverage` lists the last 11.
+
 **The end-state metric** (designer, 2026-10-12) is not one typed equivalent per command. It is every Lead lifecycle
 need covered by typed or engine-owned behaviour, with Lead shell lifecycle operations at 0. Today 36 of the 48
 Lead-reachable commands are shell-only and `undecided`. A2's plan decides each one, with its reason, and that decision

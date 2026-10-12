@@ -76,6 +76,28 @@ needs all of these:
   `invoke.create.mutating` starts with `invoke create`), or one of the aliases: `stage.resolve` for
   `stage continue` and `stage abandon`, and `steering` for `lead mode lower`.
 
+**A home never exempts anything** (the designer's question, 2026-10-12: can a lifecycle-changing command avoid
+the checks by being labelled diagnostic? No, by construction):
+
+- **Doors and dispositions key off the code, not the label.** The door, disposition and new-surface checks key off
+  `LEAD_REACHABLE` and the typed surface, never off `home`. A Lead-reachable command needs a disposition whatever its
+  home, and a new one needs a decided disposition.
+- **`mutates` is cross-checked against the code's markers.** A credential (`--token` or `--invocation-token`), any
+  expected revision, or membership of `OPERATOR_ONLY` means `"yes"` or `with`, unless the entry gives
+  `mutates_exempt` with its reason (reviewed like any change). A tool's `mutates` equals `contract.Tool.mutates`.
+- **A behavioural probe runs every surface declared `mutates: "no"`.** It runs in process against a synthetic sample
+  project (a git repository, `aew init`, a Lead, one Ticket), with the arguments in the entry's `probe`
+  (`{ticket}` and `{token}` are filled in). Afterwards it asserts that nothing changed:
+  - no file under `.aew/` changed, which covers the control state and its revision, transitions, evidence and the
+    outbox. The one exception is the derived history index (`.aew/local/history.sqlite`), a read cache;
+  - no git ref moved, HEAD did not move, and the working tree did not change.
+
+  A surface the sample cannot run gives `probe_exempt` with the reason. It is listed by `probe_coverage`, with every
+  probe that ran only to a refusal, and is never passed silently.
+- **A new diagnostic entry justifies its home.** It gives `diagnostic_justification`: one line matching the positive
+  definition, saying what implementation state it observes or repairs, for whom, and why no supported normal workflow
+  needs it.
+
 The registry also lists, under `proposed`, the commands the vertical UAT's ideal path (`IDEAL_PATH`) names that do not
 exist yet. When one is built, it moves to `commands`.
 
@@ -112,8 +134,8 @@ each check.
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
 | `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
-| `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"` |
-| `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking the Lead credential is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is `"no"` without being a read homed `diagnostic`; a command that runs a primitive is `"no"` |
+| `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`; a new diagnostic entry without its `diagnostic_justification` |
+| `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is `"no"` without being a read homed `diagnostic`; a command that runs a primitive is `"no"` |
 | `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
 | `new_surface` | enforce | an entry outside the baseline breaks the standing rule: undecided where the Lead changes state with it; `typed` without a proved typed door, or still in `LEAD_REACHABLE`; `engine-owned` or `forbidden-to-lead` still in `LEAD_REACHABLE` or run by a typed tool |
@@ -127,6 +149,8 @@ each check.
 | `disposition_applied` | report | an `engine-owned` or `forbidden-to-lead` command is still in `LEAD_REACHABLE`: until A4 |
 | `lead_shell_lifecycle` | report | a Lead-reachable command is reached by the shell only (the end-state metric, 0): until A4 |
 | `unevidenced` | report | a `product`, `operator-admin` or `recovery` entry that no vertical journey exercises yet |
+| `probe` | enforce | a surface declared `mutates: "no"` has neither `probe` nor `probe_exempt`; its probe runs another command; or running it changed the sample project (named) |
+| `probe_coverage` | report | a `mutates: "no"` surface the probe does not run (`probe_exempt`, with the reason), or whose probe was refused before doing its work |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 

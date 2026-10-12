@@ -404,32 +404,45 @@ def test_without_a_session_deadline_nothing_is_created(tmp_path):
     assert "aew session deadline" not in proc.stdout
 
 
-ORPHAN = '''import subprocess, sys, time
-
-from aew.harness.procs import pid_alive
+ORPHAN = '''import os, subprocess, sys, time
 
 NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
-CODE = ("import subprocess, sys; p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'], "
-        "start_new_session=True); print(p.pid)")
+HOLD = float(os.environ["G3_HOLD"])  # how long the orphan's launcher lives after starting it
+CODE = ("import subprocess, sys, time; p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'], "
+        f"start_new_session=True); print(p.pid, flush=True); time.sleep({HOLD})")
+ALIVE = "import sys; from aew.harness.procs import pid_alive; print(pid_alive(int(sys.argv[1])))"
+
+
+def alive_elsewhere(pid):
+    """As another process (an `aew` command, a worker) sees it: never this one, which would reap its own zombie."""
+    out = subprocess.run([sys.executable, "-c", ALIVE, str(pid)], capture_output=True, text=True, check=True,
+                         timeout=60, **NO_WINDOW)
+    return out.stdout.strip() == "True"
 
 
 def test_an_orphan_that_exits_is_seen_gone():
     pid = int(subprocess.run([sys.executable, "-c", CODE], capture_output=True, text=True, check=True, timeout=60,
                              **NO_WINDOW).stdout)
     deadline = time.monotonic() + 30
-    while pid_alive(pid) and time.monotonic() < deadline:
-        time.sleep(0.1)  # bounded: the deadline above
-    assert not pid_alive(pid)
+    while alive_elsewhere(pid) and time.monotonic() < deadline:
+        time.sleep(0.2)  # bounded: the deadline above
+    assert not alive_elsewhere(pid)
 '''
 
 
-@pytest.mark.parametrize("mode", [("-p", "no:xdist"), ("-n", "1")], ids=["one_process", "xdist"])
-def test_an_orphan_that_exits_under_the_session_is_seen_gone_by_every_process(tmp_path, mode):
+@pytest.mark.parametrize(("mode", "hold"), [(("-p", "no:xdist"), "0.5"), (("-n", "1"), "0.5"), (("-n", "1"), "0")],
+                         ids=["one_process", "xdist", "xdist-orphaned-at-once"])
+def test_an_orphan_that_exits_under_the_session_is_seen_gone_by_every_process(tmp_path, monkeypatch, mode, hold):
     """Linux: the controller is a subreaper, so a detached process whose launcher already ended is re-parented to it.
     When that orphan exits, the controller must reap it, or it stays a zombie that ``procs.pid_alive`` in any other
-    process (a worker, an ``aew`` command) reports as alive. The same test holds on Windows, where nothing is
-    re-parented."""
+    process (a worker, an ``aew`` command) reports as alive. Liveness is judged from a separate process.
+
+    Without xdist the controller reaps only a zombie it saw with another parent first, so the launcher lives 0.5 s
+    (longer than the reaper's poll). An orphan adopted within one poll is the stated gap there; under xdist the
+    controller's own children are known (its workers, the sentinel), so even one orphaned at once is reaped. The same
+    test holds on Windows, where nothing is re-parented."""
     hangs = tmp_path / "hangs"
+    monkeypatch.setenv("G3_HOLD", hold)
     proc = inner(project(tmp_path, ORPHAN), hangs, "--session-deadline", "120", *mode)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     sentinel_ends(session_dir(hangs))

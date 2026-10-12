@@ -106,7 +106,8 @@ class Diag:
 
     def arm(self) -> None:
         # A native crash (a segfault, an access violation) writes every thread's stack here too: a child that dies
-        # without a Python exception is not silent either.
+        # without a Python exception is not silent either. On Windows the handler also logs exceptions a library
+        # raises and handles itself, so an entry here is a crash only if the process ended with a failing code.
         self._fatal = open(self.dir / f"fatal-{self.pid}.txt", "w", encoding="utf-8")  # noqa: SIM115
         faulthandler.enable(file=self._fatal, all_threads=True)
         self._file = open(self.paths[0], "w", encoding="utf-8")  # noqa: SIM115  (faulthandler holds it)

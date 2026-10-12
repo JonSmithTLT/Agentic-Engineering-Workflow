@@ -69,10 +69,12 @@ WORKER_KEY = "aew_session_deadline"
 DIR_KEY = "aew_session_dir"
 STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "session-finished", "abnormal-exit"
 READY = "sentinel-ready"
+JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
 SNAPSHOT_EVERY_S = 2.0
 SENTINEL_READY_S = 20.0  # the bound on the sentinel opening the job before the controller joins it
 HOLDER_FILES = 200
+REAP_POLL_S = 0.1
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
@@ -94,6 +96,58 @@ def _holders_text(directory: Path, extra: list[str]) -> str:
     paths = [str(p) for p in sorted(directory.parent.parent.rglob("*")) if p.is_file()][:HOLDER_FILES]
     found = {k: v for k, v in proctree.holders(paths + extra).items() if v}
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
+
+
+class Reaper:
+    """Linux: a subreaper must reap what it adopts, as ``procs.py``'s session reaper does. Otherwise an orphan that
+    exits (a supervisor whose launching CLI has already ended) stays a zombie of the controller, and every other
+    process sees it alive: ``procs.pid_alive`` from a worker or an ``aew`` process reports a zombie that is not its own
+    child as alive. It never takes the exit status of a child the controller started itself:
+
+    - **under xdist** the controller's own children are its workers and the sentinel: any other zombie child is an
+      adopted orphan;
+    - **without xdist** the controller runs the tests, and they start children of their own: a zombie child is reaped
+      only if it was first seen with another parent (adopted). A process born, orphaned and adopted within one poll
+      (:data:`REAP_POLL_S`) counts as the controller's own and stays a zombie after it ends: the stated gap.
+    """
+
+    def __init__(self, own: Any, distributed: bool) -> None:
+        self.own = own  # () -> the pids of the controller's own children (workers, the sentinel)
+        self.distributed = distributed
+        self.me = os.getpid()
+        self.stop = threading.Event()
+        self.first_parent: dict[tuple[int, int], int] = {}
+        self.reaped = 0
+
+    def start(self) -> None:
+        threading.Thread(target=self._run, name="aew-session-reaper", daemon=True).start()
+
+    def poll(self) -> None:
+        seen: dict[tuple[int, int], int] = {}
+        zombies = []
+        for pid, ppid, start, state in proctree.linux_states():
+            ident = (pid, start)
+            seen[ident] = self.first_parent.get(ident, ppid)
+            if ppid == self.me and state == "Z":
+                zombies.append(ident)
+        self.first_parent = seen  # only what is in the process table now: bounded by it
+        own = self.own() if self.distributed else set()
+        for pid, start in zombies:
+            adopted = pid not in own if self.distributed else seen[(pid, start)] != self.me
+            if adopted:
+                try:
+                    if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                        self.reaped += 1
+                        flight_recorder.record("reaped", child=pid)
+                except ChildProcessError:
+                    pass
+
+    def _run(self) -> None:
+        while not self.stop.wait(REAP_POLL_S):  # bounded: it stops with the session (finish); a daemon thread
+            try:
+                self.poll()
+            except OSError:
+                continue
 
 
 # ---------------------------------------------------------------------------------------------- the pytest side
@@ -128,6 +182,17 @@ class Controller:
         self._expired = False
         self._finished = threading.Event()
         self.exit_status: int | None = None
+        self.reaper: Reaper | None = None
+
+    def _own_children(self) -> set[int]:
+        """The controller's own children under xdist: the sentinel and the workers (each records its pid)."""
+        pids = {self.sentinel.pid} if self.sentinel is not None else set()
+        for path in self.dir.glob("worker-*-pid.txt"):
+            try:
+                pids.add(int(path.read_text(encoding="utf-8").split()[-1]))
+            except (OSError, ValueError, IndexError):
+                continue
+        return pids
 
     # ------------------------------------------------------------------ start (pytest_configure, tryfirst)
 
@@ -143,6 +208,9 @@ class Controller:
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
         self.sentinel = self._spawn_sentinel(job_name)
+        if not proctree.IS_WINDOWS and self.job_note == "subreaper set":
+            self.reaper = Reaper(self._own_children, self.distributed)
+            self.reaper.start()
         if self.job is not None:  # pragma: windows-only
             ready = marker(self.dir, READY)
             try:
@@ -156,6 +224,8 @@ class Controller:
             except OSError as exc:  # recorded, not fatal: the thread-based deadline still runs
                 self.job_note += f"; the session job could not be joined (winerror {getattr(exc, 'winerror', None)})"
                 self.job = None
+                # the sentinel's job is empty: it falls back to the controller's descendants by start time
+                _write(self.dir, JOB_UNAVAILABLE, _stamp(self.job_note))
         _write(self.dir, STARTED, _stamp(f"session deadline {self.seconds:g}s (at {self.wall:.3f}), margin "
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"{self.job_note}; sentinel pid "
@@ -241,6 +311,8 @@ class Controller:
         if self._finished.is_set():
             return
         self._finished.set()
+        if self.reaper is not None:
+            self.reaper.stop.set()
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status})"))
 
     # ------------------------------------------------------------------ the pytest hooks
@@ -355,13 +427,17 @@ class Sentinel:
     def log(self, what: str) -> None:
         _write(self.dir, "sentinel-log", _stamp(what), append=True)
 
+    def joined(self) -> bool:
+        """The controller joined the job (else it wrote ``job-unavailable``, and the descendants rule applies)."""
+        return self.job is not None and not marker(self.dir, JOB_UNAVAILABLE).exists()
+
     def members(self) -> list[proctree.Proc]:
-        if self.job is not None:  # pragma: windows-only
+        if self.joined():  # pragma: windows-only
             return self.job.members()
         return proctree.descendants(self.controller, proctree.table(), exclude=[self.me] if self.me else [])
 
     def refresh(self) -> None:
-        if self.job is None and proctree.same(self.controller):
+        if not self.joined() and proctree.same(self.controller):
             members = self.members()
             controller = next((p for p in proctree.table() if p.identity == self.controller), None)
             snapshot = ([controller] if controller else []) + members
@@ -373,7 +449,7 @@ class Sentinel:
             self.snapshot = snapshot
 
     def end_set(self, why: str) -> None:
-        if self.job is not None:  # pragma: windows-only
+        if self.joined():  # pragma: windows-only
             listed = self.job.members()
             _write(self.dir, f"sentinel-processes-{why}", proctree.describe(listed, title="the session job's members:"))
             _write(self.dir, f"sentinel-file-holders-{why}", _holders_text(self.dir, []))
@@ -414,11 +490,12 @@ class Sentinel:
 
 
 def sentinel_main(raw: str) -> int:
-    sentinel = Sentinel(json.loads(raw))
+    args = json.loads(raw)
     try:
-        return sentinel.run()
-    except Exception as exc:
-        sentinel.log(f"the sentinel failed: {type(exc).__name__}: {exc}")
+        return Sentinel(args).run()
+    except Exception as exc:  # its own failure is written down, never silent (its stderr goes nowhere)
+        _write(Path(args["dir"]), "sentinel-log", _stamp(f"the sentinel failed: {type(exc).__name__}: {exc}"),
+               append=True)
         return 1
 
 

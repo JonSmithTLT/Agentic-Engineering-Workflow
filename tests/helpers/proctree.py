@@ -97,6 +97,21 @@ def _stat(pid: int, *, living: bool = False) -> tuple[int, int] | None:
         return None
 
 
+def linux_states() -> list[tuple[int, int, int, str]]:
+    """(pid, parent pid, start time, state) of every process, from ``/proc/*/stat`` only: cheap enough to poll."""
+    out = []
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open(f"/proc/{d}/stat", "rb") as f:
+                rest = f.read().decode("latin-1").rsplit(")", 1)[1].split()
+            out.append((int(d), int(rest[1]), int(rest[19]), rest[0]))
+        except (OSError, ValueError, IndexError):
+            continue
+    return out
+
+
 def _linux_table() -> list[Proc]:
     out = []
     for d in os.listdir("/proc"):

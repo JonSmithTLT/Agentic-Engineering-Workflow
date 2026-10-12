@@ -402,3 +402,34 @@ def test_without_a_session_deadline_nothing_is_created(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert not list(hangs.glob("autopsy/session-*"))
     assert "aew session deadline" not in proc.stdout
+
+
+ORPHAN = '''import subprocess, sys, time
+
+from aew.harness.procs import pid_alive
+
+NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+CODE = ("import subprocess, sys; p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'], "
+        "start_new_session=True); print(p.pid)")
+
+
+def test_an_orphan_that_exits_is_seen_gone():
+    pid = int(subprocess.run([sys.executable, "-c", CODE], capture_output=True, text=True, check=True, timeout=60,
+                             **NO_WINDOW).stdout)
+    deadline = time.monotonic() + 30
+    while pid_alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)  # bounded: the deadline above
+    assert not pid_alive(pid)
+'''
+
+
+@pytest.mark.parametrize("mode", [("-p", "no:xdist"), ("-n", "1")], ids=["one_process", "xdist"])
+def test_an_orphan_that_exits_under_the_session_is_seen_gone_by_every_process(tmp_path, mode):
+    """Linux: the controller is a subreaper, so a detached process whose launcher already ended is re-parented to it.
+    When that orphan exits, the controller must reap it, or it stays a zombie that ``procs.pid_alive`` in any other
+    process (a worker, an ``aew`` command) reports as alive. The same test holds on Windows, where nothing is
+    re-parented."""
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, ORPHAN), hangs, "--session-deadline", "120", *mode)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    sentinel_ends(session_dir(hangs))

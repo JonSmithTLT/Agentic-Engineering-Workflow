@@ -29,6 +29,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 | M4-D | The integration queue and lease; the transaction outbox (ADR-0012); deterministic integration validation; wait-any; the typed surface's read-only slice (F15.1) | In progress |
 | *(gate)* | The F15 direction promoted to governing: the typed Lead surface v0.2 adopted (designer and operator, 2026-10-05) | Met |
 | M4-E | Stage commands on the typed surface (F15.2), by the [M4-E plan v3](implementation/m4-e-plan-v3.md) (slices E1 to E9; [amendment 1](implementation/m4-e-plan-v3-amendment-1.md) splits E7 into E7a to E7d and E8 into E8a and E8b, and runs the independent ones in parallel) | In progress (E1 to E5a and E7a merged; E5b under way) |
+| Vertical path | The Lead's one door, the engine's own bookkeeping, one operator session with the Lead contained, doctor and preflight, measured by the [vertical UAT](implementation/vertical-uat.md), the release gate (register F47; Windows containment F48; configuration F46.1 to F46.4) | Planned: mainline ahead of other feature work |
 | M4-F | The queue's normal UX | Planned |
 | M4-G | Candidates: Lead and run UX items, the amendment index, Windows coverage, the structural map slice | Planned |
 | M4-H | Acceptance: metrics, the preregistered dogfood, independent review | Planned |
@@ -37,7 +38,7 @@ of every step: what may be dispatched, what evidence a gate needs, and what reac
 
 **Gates on the way** ([`future-work.md`](implementation/future-work.md) §1): real-repository dogfood waited on containment
 (built in M4-B) and the custody-hardening item (closed); network containment (F28) before internal alpha; the F15
-promotion before M4-E (met 2026-10-05). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
+promotion before M4-E (met 2026-10-05); the vertical UAT enforced on Linux before feature work resumes (F47.5; Windows excluded, reported UNQUALIFIED until F48 qualifies it). What is implemented today, staged or only designed: [`implementation-status.md`](implementation/implementation-status.md).
 
 ## What governs, in order
 

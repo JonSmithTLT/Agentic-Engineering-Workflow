@@ -29,7 +29,9 @@ try {
       await context.tracing.start({ screenshots: true, snapshots: true });
       try {
         await page.goto(`${base}/settings?fixture=F1`);
-        await page.getByRole('button', { name: 'standard', exact: true }).click();
+        const profileButton = page.getByRole('button', { name: 'standard', exact: true });
+        assert((await profileButton.boundingBox()).width >= 120, 'Profile name has readable width');
+        await profileButton.click();
         await page.getByRole('heading', { name: 'Profile standard', exact: true }).waitFor();
         assert.equal(await page.getByText('Configured null (NULL)', { exact: true }).count(), 1);
         if (width < 1024) assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Profile standard');

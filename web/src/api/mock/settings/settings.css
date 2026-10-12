@@ -14,3 +14,7 @@
 .settings-page h2[tabindex] { scroll-margin-top: 140px; }
 @media (max-width: 1023px) { .settings-fields { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 520px) { .settings-facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } .settings-panel { padding: 12px; } }
+
+.settings-profile-scroll table { min-width: 640px; }
+.settings-profile-scroll :is(th, td):first-child { width: 12rem; min-width: 12rem; }
+.settings-profile-scroll td button { width: 100%; }

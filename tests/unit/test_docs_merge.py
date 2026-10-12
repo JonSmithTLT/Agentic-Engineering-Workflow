@@ -538,6 +538,37 @@ def test_a_failed_git_merge_file_writes_nothing(repo, capsys, monkeypatch):
     assert (repo.path / REG_YAML).read_text(encoding="utf-8") == before
 
 
+def test_resolve_stops_before_parsing_a_side_would_lose_its_text(repo, capsys):
+    """Review of #225, U2: `resolve` parses each side, so a comment authored on one ("see #999") was gone before the
+    conflict was shown. It now names the side and line and writes nothing."""
+    first, _ = neighbours(DATA, 6)
+    last = section(DATA, 6)["columns"][-1]
+    theirs = register_files(changed(DATA, first, last, " Theirs."))
+    lines = theirs[REG_YAML].split("\n")
+    [at] = [i for i, line in enumerate(lines) if line.rstrip("'").endswith(" Theirs.")]
+    lines[at] += " see #999"
+    theirs[REG_YAML] = "\n".join(lines)
+    stopped_merge(repo, register_files(), register_files(changed(DATA, first, last, " Ours.")), theirs)
+    before = (repo.path / REG_YAML).read_text(encoding="utf-8")
+    assert register.resolve(repo.path) == 2
+    err = capsys.readouterr().err
+    assert f"{REG_YAML} (theirs):{at + 1}:" in err and "#999" in err and "nothing written" in err, err
+    assert (repo.path / REG_YAML).read_text(encoding="utf-8") == before
+
+
+def test_resolve_merges_but_does_not_render_over_text_a_render_would_lose(repo, capsys):
+    """`resolve` renders last; when a file it did not merge holds lost text, the render refuses and says so (the
+    merged YAML is written, the pages are not, and quoting the cell then `render` finishes)."""
+    a, b = same_gap(DATA)
+    stopped_merge(repo, register_files(), register_files(closed_into(DATA, a)), register_files(closed_into(DATA, b)))
+    due = repo.path / DUE_YAML
+    due.write_text(due.read_text(encoding="utf-8").replace("schema: aew/decisions-due/v1\n",
+                                                            "schema: aew/decisions-due/v1 #x\n", 1),
+                   encoding="utf-8", newline="\n")
+    assert register.resolve(repo.path) == 1
+    assert "merged, but not rendered" in capsys.readouterr().out
+
+
 # ------------------------------------------------------------------------------------------------ implementation status
 
 CAPABILITY = re.compile(r"^### (.+)$", re.M)

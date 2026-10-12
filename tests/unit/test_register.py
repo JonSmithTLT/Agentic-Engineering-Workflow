@@ -246,23 +246,71 @@ def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
     assert "due is one of" in out and "future-work.md differs" not in out, out
 
 
-# A cell's text survives the YAML round trip: in an unquoted cell " #" starts a comment, which render drops for good
-# ("by #224" became "by", review of #225, T1). render refuses and check reports instead (register.lost_text).
+# A cell's text survives the YAML round trip. render rewrites the YAML from what it parsed, so what parsing drops or
+# retypes is lost for good: "by #224" became "by" (review of #225, T1), and the re-review found five more ways (U1).
+# render refuses and check reports instead (register.text_problems: lost_text on the raw tokens, strict_problems on
+# the parsed values). Each case: the text, then how many problems lost_text and strict_problems each name.
 LOST = {
-    "right": ("Source: 'added by #224'\n", []),
-    "wrong": ("Source: added by #224\n", [1]),
-    "missing": ("Source: added by pull request 224\n", []),
-    "a hash inside a word": ("Source: see a#b\n", []),
-    "a block cell": ("Source: >-\n  added by #224\n", []),
-    "a later line": ("Work: 'quoted # stays'\nSource: plain\n  continued # lost\n", [3]),
+    "kept: quoted": ("Source: 'added by #224'\n", 0, 0),
+    "kept: no hash": ("Source: added by pull request 224\n", 0, 0),
+    "kept: a hash inside a word": ("Source: see a#b\n", 0, 0),
+    "kept: a block cell": ("Source: >-\n  added by #224\n", 0, 0),
+    "kept: a section number": ("sections:\n- number: 6\n  title: Follow-ups\n", 0, 0),
+    "comment": ("Source: added by #224\n", 1, 0),
+    "comment on a later line": ("Work: 'quoted # stays'\nSource: plain\n  continued # lost\n", 1, 0),
+    "anchor": ("Source: &ref see the record\n", 1, 0),
+    "anchor and alias": ("Work: &w see\nSource: *w\n", 2, 0),
+    "tag": ("Source: !!str see the record\n", 1, 0),
+    "double-quoted escape": ('Source: "C:\\new folder"\n', 1, 0),
+    "double-quoted line break": ('Source: "C:\n  new folder"\n', 1, 0),
+    "repeated key": ("Notes: first\nNotes: second\n", 0, 1),
+    "YAML 1.1 boolean": ("What: no\n", 0, 1),
+    "null": ("What: ~\n", 0, 1),
+    "float": ("Due: 1.10\n", 0, 1),
+    "octal-looking": ("Due: 012\n", 0, 1),
+    "date": ("Due: 2026-10-12\n", 0, 1),
+    "a key that is not text": ("no: x\n", 0, 1),
 }
 
 
 @pytest.mark.parametrize("case", sorted(LOST))
-def test_text_a_render_would_lose_is_named_by_line(case):
-    text, lines = LOST[case]
-    found = register.lost_text(text, "f.yaml")
-    assert [int(p.split(":")[1]) for p in found] == lines, found
+def test_text_a_render_would_lose_or_change_is_named(case):
+    text, raw, parsed = LOST[case]
+    assert len(register.lost_text(text, "f.yaml")) == raw, register.lost_text(text, "f.yaml")
+    assert len(register.strict_problems(text, "f.yaml")) == parsed, register.strict_problems(text, "f.yaml")
+    assert len(register.text_problems(text, "f.yaml")) == raw + parsed
+
+
+def test_a_comment_is_named_by_its_line():
+    assert [p.split(":")[1] for p in register.lost_text(LOST["comment on a later line"][0], "f.yaml")] == ["3"]
+
+
+E79_SOURCE = "    Source: Designer ruling, 2026-10-12, C3 (approved with amendment)\n"
+PLANTED = {  # the re-review's five ways a render lost text (U1), and T1's comment, each in E79's Source
+    "comment": E79_SOURCE[:-1] + " by #224\n",
+    "anchor": "    Source: &ref Designer ruling C3 anchored\n",
+    "tag": "    Source: !!str Designer ruling C3 tagged\n",
+    "repeated key": E79_SOURCE + "    Source: Designer ruling C3 second\n",
+    "YAML 1.1 boolean": "    Source: no\n",
+    "double-quoted escape": '    Source: "see C:\\new folder"\n',
+}
+
+
+@pytest.mark.parametrize("case", sorted(PLANTED))
+def test_render_refuses_each_way_of_losing_text_and_writes_nothing(tmp_path, case):
+    """Through the real render, on a copy of the register: each planted cell is named, and every file stays
+    byte-identical."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
+                                                                 register.DUE_MD)]
+    text = source.read_text(encoding="utf-8")
+    assert text.count(E79_SOURCE) == 1, "the planted cell's anchor (E79's Source) moved"
+    source.write_text(text.replace(E79_SOURCE, PLANTED[case]), encoding="utf-8", newline="\n")
+    before = [p.read_bytes() for p in shared]
+    refused = register.render(tmp_path)
+    assert refused and all(p.startswith("docs/implementation/future-work.yaml") for p in refused), refused
+    assert [p.read_bytes() for p in shared] == before
 
 
 def test_render_refuses_to_drop_authored_text_and_check_names_it(tmp_path, monkeypatch, capsys):
@@ -273,7 +321,7 @@ def test_render_refuses_to_drop_authored_text_and_check_names_it(tmp_path, monke
     shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
                                                                  register.DUE_MD)]
     text = source.read_text(encoding="utf-8")
-    anchor = "    Source: Designer ruling, 2026-10-12, C3 (approved with amendment)\n"
+    anchor = E79_SOURCE
     assert text.count(anchor) == 1, "the planted cell's anchor (E79's Source) moved"
     source.write_text(text.replace(anchor, anchor[:-1] + " by #224\n"), encoding="utf-8", newline="\n")
     before = [p.read_bytes() for p in shared]

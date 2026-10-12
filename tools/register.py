@@ -237,12 +237,20 @@ def load() -> dict[str, Any]:
 
 
 def lost_text(text: str, name: str) -> list[str]:
-    """Where authored YAML would lose text in its round trip: every comment. ``render`` rewrites the file from what
-    YAML parsed, so a comment is dropped for good, and in an unquoted cell `` #`` starts one: "by #224" parses as
-    "by" (review of #225, T1). The canonical layout has no comments, so any is authored text about to be lost. A ``#``
-    inside a token (a quoted or block cell, or ``a#b``) is text, and is not reported."""
-    spans = sorted((t.start_mark.index, t.end_mark.index) for t in yaml.scan(text)
-                   if t.end_mark.index > t.start_mark.index)
+    """Where authored YAML would lose text in its round trip, read from the raw text's tokens. ``render`` rewrites the
+    file from what YAML parsed, so whatever parsing drops or reinterprets is gone for good (review of #225, T1, U1):
+
+    - a comment: in an unquoted cell `` #`` starts one, so "by #224" parses as "by". The canonical layout has none;
+      a ``#`` inside a token (a quoted or block cell, or ``a#b``) is text, and is not reported;
+    - an anchor (``&ref``), an alias (``*ref``) or an explicit tag (``!!str``), which parsing consumes;
+    - a double-quoted cell: its escapes change the text (``"C:\\new"`` holds a line break), and a line break inside
+      it folds to a space. The canonical layout has none (it writes plain, single-quoted and block cells), so single
+      quotes are always available.
+
+    It does not see what only the parsed values show: a repeated key, or a cell that YAML types as something other
+    than text (``no``, ``~``, ``1.10``, ``012``). ``strict_problems`` covers those, and ``text_problems`` runs both."""
+    tokens = list(yaml.scan(text))
+    spans = sorted((t.start_mark.index, t.end_mark.index) for t in tokens if t.end_mark.index > t.start_mark.index)
     starts = [s for s, _ in spans]
     out = []
     for at, char in enumerate(text):
@@ -254,7 +262,64 @@ def lost_text(text: str, name: str) -> list[str]:
         line = text.count("\n", 0, at) + 1
         lost = text[at:text.find("\n", at) if "\n" in text[at:] else len(text)]
         out.append(f"{name}:{line}: {lost!r} is a YAML comment, which render drops; quote the cell to keep it")
+    for t in tokens:
+        raw = text[t.start_mark.index:t.end_mark.index]
+        if isinstance(t, (yaml.AnchorToken, yaml.AliasToken, yaml.TagToken)):
+            kind = {yaml.AnchorToken: "an anchor", yaml.AliasToken: "an alias", yaml.TagToken: "a tag"}[type(t)]
+            out.append(f"{name}:{t.start_mark.line + 1}: {raw!r} is {kind}, which render drops; quote the cell")
+        elif isinstance(t, yaml.ScalarToken) and t.style == '"':
+            out.append(f"{name}:{t.start_mark.line + 1}: a double-quoted cell, whose escapes and line folding can "
+                       "change its text (the canonical layout uses none); use single quotes")
+    return sorted(out, key=lambda p: int(p.split(":")[1]))
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """The safe loader, refusing a key repeated within one mapping, which a plain load keeps only the last of."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)  # type: ignore[no-untyped-call]
+            if key in seen:
+                raise yaml.constructor.ConstructorError(None, None, f"the key {key!r} is repeated, and render keeps "
+                                                        "only its last value", key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def strict_problems(text: str, name: str) -> list[str]:
+    """What only the parsed values show (``lost_text`` covers the rest): a repeated key, and any key or cell that YAML
+    loads as something other than text, such as ``no`` (false), ``~`` (null), ``1.10`` (1.1) or ``012`` (10). Every
+    cell of both files is text; the one exception is a section's ``number``."""
+    try:
+        data = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - _StrictLoader is a SafeLoader
+    except yaml.MarkedYAMLError as e:
+        mark = e.problem_mark
+        return [f"{name}:{mark.line + 1 if mark else '?'}: {e.problem}"]
+    out: list[str] = []
+
+    def walk(value: Any, where: tuple[Any, ...]) -> None:
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if not isinstance(key, str):
+                    out.append(f"{name}: at {'/'.join(map(str, where)) or 'the top'}, the key {key!r} is not text")
+                walk(inner, (*where, key))
+        elif isinstance(value, list):
+            for i, inner in enumerate(value):
+                walk(inner, (*where, inner.get("#", i) if isinstance(inner, dict) else i))
+        elif not isinstance(value, str) and not (len(where) == 3 and where[0] == "sections" and where[2] == "number"
+                                                 and type(value) is int):
+            out.append(f"{name}: {'/'.join(map(str, where))} loads as {type(value).__name__} {value!r}, not text; "
+                       "quote the cell")
+
+    walk(data, ())
     return out
+
+
+def text_problems(text: str, name: str) -> list[str]:
+    """Everything in authored register YAML that a render would lose or change: ``lost_text``, then
+    ``strict_problems``."""
+    return lost_text(text, name) + strict_problems(text, name)
 
 
 def dump(data: dict[str, Any]) -> str:
@@ -606,10 +671,10 @@ def _paths(root: Path) -> tuple[Path, Path, Path, Path]:
 
 
 def source_problems(root: Path = ROOT) -> list[str]:
-    """Authored text in either YAML file that a render would lose (``lost_text``)."""
+    """Authored text in either YAML file that a render would lose or change (``text_problems``)."""
     yaml_path, _, due_yaml, _ = _paths(root)
     return [p for path in (yaml_path, due_yaml)
-            for p in lost_text(path.read_text(encoding="utf-8"), path.relative_to(root).as_posix())]
+            for p in text_problems(path.read_text(encoding="utf-8"), path.relative_to(root).as_posix())]
 
 
 def render(root: Path = ROOT) -> list[str]:
@@ -846,6 +911,15 @@ def resolve(root: Path = ROOT) -> int:
         if path.exists() and not _MARKER_RE.search(path.read_text(encoding="utf-8")):
             print(f"{rel}: already resolved (no conflict markers), kept: `git add` it once it is right")
             continue
+        # Parsing a side would lose what it cannot carry, before anyone sees the conflict (review of #225, U2).
+        lossy = [p for side, s in (("base", base), ("ours", ours), ("theirs", theirs)) if s.returncode == 0
+                 for p in text_problems(s.stdout, f"{rel} ({side})")]
+        if lossy:
+            for problem in lossy:
+                print("problem:", problem, file=sys.stderr)
+            print(f"{rel}: nothing written: a side holds text the merge would lose; quote it on that side's branch "
+                  "(or resolve this file by hand), then run `resolve` again", file=sys.stderr)
+            return 2
         try:
             sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
         except yaml.YAMLError as e:

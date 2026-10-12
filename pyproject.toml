@@ -58,7 +58,12 @@ extend-exclude = ["web", "eval/m3/dogfood/fixture", "eval/experiments/*/fixture"
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, bugbear, Bandit's security rules, pyupgrade, import order.
-select = ["E", "W", "F", "B", "S", "UP", "I"]
+# pycodestyle's blank-line rules E301-E306 are preview-only in the pinned Ruff, so "E" alone never selects them.
+# Preview is on only so they can be named: with explicit-preview-rules, a preview rule runs only when its full code
+# is selected, so no other preview rule rides in on a prefix.
+select = ["E", "W", "F", "B", "S", "UP", "I", "E301", "E302", "E303", "E304", "E305", "E306"]
+preview = true
+explicit-preview-rules = true
 ignore = [
     "S603",  # every subprocess call passes an argv list; S602 (shell=True) stays on
     "S607",  # git, sh and the harness are found on PATH by design

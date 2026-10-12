@@ -36,6 +36,8 @@ from vertical.scripted_operator import (
     lead_events,
     lead_spec,
     new_world,
+    stage_intents,
+    staled_by,
 )
 
 from aew.harness import runlog
@@ -236,9 +238,9 @@ def finish(op: Operator, session) -> None:
 
 def stale_attribution(op: Operator) -> None:
     """For each STALE_REVISION the Lead met, the commit that staled it: the first transition after the revision the
-    call expected, with its actor and operation, read from the transition log. It makes the steering-on variance
-    attributable (the loop's commit, or another's); it is recorded, never counted (counting stays with
-    `stale_retries` and `refusals`)."""
+    call expected, read from the transition log, attributed through the stage intent it belongs to (the steering
+    loop's when that intent is auto-run; ``staled_by``). It makes the steering-on variance attributable; it is
+    recorded, never counted (counting stays with `stale_retries` and `refusals`)."""
     from aew.engine.outbox import LogView
 
     def expect_rev(e: dict[str, Any]) -> Any:
@@ -248,9 +250,7 @@ def stale_attribution(op: Operator) -> None:
 
     view = LogView(op.lab.aew_root, None)
     events = lead_events(op.lab)
-    # The Lead's own successful calls, by the revision they expected: a commit at that revision + 1 is the Lead's.
-    # The steering loop commits under the Lead's credential, so the transition's actor alone cannot tell them apart.
-    own = {str(expect_rev(e)) for e in events if e.get("kind") == "call" and e.get("ok") and expect_rev(e) is not None}
+    intents = stage_intents(op.lab.aew_root)
     for e in events:
         error = ((e.get("stopped") or {}).get("error") or {}) if e.get("kind") == "call" else {}
         if error.get("code") != "STALE_REVISION":
@@ -261,13 +261,9 @@ def stale_attribution(op: Operator) -> None:
             record = view.resolve(int(expected) + 1) or {} if expected is not None else {}
         except Exception as exc:  # recorded, never hidden: attribution is evidence, not a verdict  # noqa: BLE001
             record = {"actor": f"unreadable: {exc}"[:200]}
-        actor = record.get("actor")
-        kind = actor.get("kind") if isinstance(actor, dict) else actor
-        by = ("the Lead's own call" if str(expected) in own else
-              "not the Lead's own calls (the steering loop, or another)" if kind == "lead" else f"{kind}")
-        op.ledger.observe("stale_revision", tool=e.get("tool"), expect_rev=expected, step=e.get("step"), by=by,
-                          actor=actor, op=record.get("op"), summary=record.get("summary"),
-                          revision=record.get("revision"))
+        op.ledger.observe("stale_revision", tool=e.get("tool"), expect_rev=expected, step=e.get("step"),
+                          **staled_by(record, intents), actor=record.get("actor"), op=record.get("op"),
+                          summary=record.get("summary"), revision=record.get("revision"))
 
 
 def steering_facts(op: Operator) -> None:

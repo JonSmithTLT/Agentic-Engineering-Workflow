@@ -363,3 +363,45 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
                       **({} if lead else {"lead_note": "no label recorded for the Lead (uncontained today)"}))
     return weaker
 
+
+
+# ---------------------------------------------------------------------------------------------- stale attribution
+
+
+def stage_intents(aew_root: Path) -> dict[str, dict[str, Any]]:
+    """Every stage intent the project holds: the archived records (``**/stage-intents/*.yaml``) and the live ones in
+    the control state, the live copy winning."""
+    import yaml
+
+    found: dict[str, dict[str, Any]] = {}
+    for path in sorted(aew_root.glob("**/stage-intents/*.yaml")):
+        intent = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if intent.get("id"):
+            found[str(intent["id"])] = intent
+    control = aew_root / "state" / "control.yaml"
+    if control.exists():
+        state = yaml.safe_load(control.read_text(encoding="utf-8")) or {}
+        found.update({str(k): v for k, v in (state.get("stage_intents") or {}).items() if isinstance(v, dict)})
+    return found
+
+
+def staled_by(record: dict[str, Any], intents: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Whose commit ``record`` (a transition) was, through the stage intent it belongs to (review of #213, F5): the
+    intent its ``refs`` name (``stage.open`` and the other journal commits name theirs), else the intent that recorded
+    a step at its revision. An intent the steering loop ran carries ``auto_run``; any other is the Lead's stage. Only
+    when no intent is found does the actor's kind stand in, and a Lead credential then cannot tell the Lead from the
+    loop (the loop runs under it), which the attribution says."""
+    revision = record.get("revision")
+    intent = next((intents[r] for r in record.get("refs") or [] if isinstance(r, str) and r in intents), None)
+    if intent is None:
+        intent = next((si for si in intents.values() if (si.get("opened") or {}).get("rev") == revision
+                       or any(s.get("revision") == revision for s in si.get("steps") or [])), None)
+    if intent is not None:
+        loop = bool(intent.get("auto_run"))
+        return {"by": "the steering loop" if loop else "the Lead", "intent": intent.get("id"), "via": "stage intent",
+                "intent_tool": intent.get("tool")}
+    actor = record.get("actor")
+    kind = actor.get("kind") if isinstance(actor, dict) else actor
+    by = ("the Lead's credential, no stage intent (the Lead, or the loop under it)" if kind == "lead"
+          else str(kind))
+    return {"by": by, "intent": None, "via": "actor"}

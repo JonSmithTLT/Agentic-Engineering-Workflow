@@ -133,11 +133,56 @@ STATUS = re.compile(r"\b(PASS|WARN|FAIL|INFO|UNAVAILABLE)\b")
 FAILING = frozenset({"FAIL", "WARN"})
 
 
+def _json_objects(text: str) -> tuple[list[dict[str, Any]], str]:
+    """The JSON objects in ``text`` that start a line (the CLI's answers), and the text left without them."""
+    decoder = json.JSONDecoder()
+    found: list[dict[str, Any]] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(text):
+        end = text.find("\n", i)
+        end = len(text) if end == -1 else end + 1
+        if text[i:end].lstrip().startswith("{"):
+            start = i + len(text[i:end]) - len(text[i:end].lstrip())
+            try:
+                value, stop = decoder.raw_decode(text, start)
+            except ValueError:
+                value, stop = None, end
+            if isinstance(value, dict):
+                found.append(value)
+                nl = text.find("\n", stop)
+                i = len(text) if nl == -1 else nl + 1
+                continue
+        rest.append(text[i:end])
+        i = end
+    return found, "".join(rest)
+
+
 def failing_entries(text: str) -> list[str]:
-    """The FAIL and WARN entries of a readiness report: each line whose status is FAIL or WARN, with the lines after
-    it that carry no status of their own (a wrapped detail, a fix on the next line). A PASS or INFO entry is never one,
-    even when it echoes the configured value a cause names (review of #213, F4: a PASS line echoing the model id is
-    not a diagnosis)."""
+    """The FAIL and WARN entries of a readiness report. In a table, each line whose status is FAIL or WARN, with the
+    lines after it that carry no status of their own (a wrapped detail, a fix on the next line). A PASS or INFO entry is
+    never one, even when it echoes the configured value a cause names (review of #213, F4).
+
+    A refusal in the CLI's JSON shape (``{"ok": false, "error": {code, message, details}}``, or any object with an
+    ``error``) is one failing entry: its message and details (review of #213, F6). A JSON answer with ``ok: true`` never
+    is, whatever it echoes. Other JSON objects are read by the status-word rule, over their text."""
+    out: list[str] = []
+    objects, table = _json_objects(text)
+    for obj in objects:
+        error = obj.get("error")
+        if obj.get("ok") is True:
+            continue
+        if isinstance(error, dict) or obj.get("ok") is False:
+            error = error if isinstance(error, dict) else {}
+            out.append("\n".join([str(error.get("code") or ""), str(error.get("message") or ""),
+                                  json.dumps(error.get("details") or {}, sort_keys=True)]))
+        else:
+            out += _table_entries(json.dumps(obj))
+    return out + _table_entries(table)
+
+
+def _table_entries(text: str) -> list[str]:
+    """The status-word rule: each FAIL or WARN line with its continuation lines (no status of their own)."""
     out: list[str] = []
     current: list[str] | None = None
     for line in text.splitlines():

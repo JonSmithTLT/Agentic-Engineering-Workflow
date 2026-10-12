@@ -115,7 +115,8 @@ installed tool: its variables are not the operator's.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
   the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for preflight and for the doctor fact the
-  ledger records.
+  ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
+  entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW (v2).** The ideal `open` step is `aew opencode`, which opens the operator console (when no endpoint is
   live for the project) and the console asks for the operator's PIN. **The auto-opened console is not a counted
   step**: the test records whether it opened (`open.console`). The PIN is counted under "authenticate at most once"
@@ -239,8 +240,10 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   label from the product rather than assume none (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py`
   checks whenever the mode is `enforce`). Today both conditions block it.
 - **Stale revisions are attributed.** For each `STALE_REVISION` the Lead meets, the ledger records the commit that
-  staled it (its actor and operation, from the transition log), so a steering loop's race shows as the loop's, not as
-  the Lead's behaviour. It is evidence, not a counter.
+  staled it (from the transition log), attributed through the stage intent it belongs to: the steering loop's when
+  that intent was auto-run, else the Lead's. Only a commit in no stage falls back to its actor, and then a Lead
+  credential cannot tell the Lead from the loop, which the record says. So a steering loop's race shows as the loop's,
+  not as the Lead's behaviour. It is evidence, not a counter.
 
 ## 6. Later (not v1)
 

@@ -425,3 +425,52 @@ def test_a_pass_line_echoing_the_cause_is_not_a_diagnosis():
     assert L.diagnoses(failing, r"vuat-missing-model") and L.diagnoses(failing, r"use vuatprov/vuat-model\b")
     assert len(L.failing_entries(failing)) == 2 and not L.diagnoses(failing, r"2\.45")
     assert L.diagnoses('{"status": "FAIL", "detail": "VUAT_PROVIDER_KEY is unset"}', r"VUAT_PROVIDER_KEY")
+
+
+def test_a_stale_revision_is_attributed_through_its_stage_intent():
+    """F5: the commit is attributed through the stage intent it belongs to: the intent its refs name (stage.open), or
+    the one that recorded a step at its revision; `auto_run` makes it the loop's. A failed or multi-step Lead stage is
+    still the Lead's. With no intent, the actor's kind stands in and says it cannot separate the Lead from the loop."""
+    from vertical.scripted_operator import staled_by
+
+    lead = {"kind": "lead", "generation": 1}
+    intents = {
+        "SI-0002": {"id": "SI-0002", "tool": "ticket_request_review", "auto_run": {"mode": "run"},
+                    "opened": {"rev": 12}, "steps": [{"key": "SI-0002:1", "revision": 13}]},
+        "SI-0003": {"id": "SI-0003", "tool": "ticket_start", "status": "STOPPED", "opened": {"rev": 20},
+                    "steps": [{"key": "SI-0003:1", "revision": 21}, {"key": "SI-0003:2", "revision": 22}]},
+    }
+    loop_open = staled_by({"revision": 12, "op": "stage.open", "refs": ["SI-0002"], "actor": lead}, intents)
+    assert loop_open == {"by": "the steering loop", "intent": "SI-0002", "via": "stage intent",
+                         "intent_tool": "ticket_request_review"}
+    assert staled_by({"revision": 13, "op": "work.transition", "refs": [], "actor": lead}, intents)["by"] == \
+        "the steering loop"
+    # The Lead's stage, stopped after its steps (its call then failed): still the Lead's, at its open and later steps.
+    assert staled_by({"revision": 20, "op": "stage.open", "refs": ["SI-0003"], "actor": lead}, intents)["by"] == \
+        "the Lead"
+    assert staled_by({"revision": 22, "op": "work.assign", "refs": [], "actor": lead}, intents)["intent"] == "SI-0003"
+    fallback = staled_by({"revision": 40, "op": "lead.acquire", "refs": [], "actor": lead}, intents)
+    assert fallback["via"] == "actor" and "the Lead, or the loop under it" in fallback["by"]
+    assert staled_by({"revision": 41, "refs": [], "actor": {"kind": "operator"}}, intents)["by"] == "operator"
+    # Recorded beside the call's own fields, as the acceptance module records it: no key collides.
+    led = L.Ledger("unit", steering=True)
+    led.observe("stale_revision", tool="ticket_start", expect_rev=11, step="s", **loop_open, actor=lead,
+                op="stage.open", summary="", revision=12)
+    assert "ticket_start at 11: stage.open, the steering loop" in led.summary()
+
+
+def test_a_json_refusal_is_one_failing_entry_and_an_ok_answer_never_is():
+    """F6: the CLI refuses with JSON on stderr. A refusal naming the variable names the cause (in its message or its
+    details); an `ok: true` answer echoing it never does; a table keeps the status-word rule."""
+    refusal = ('{\n  "ok": false,\n  "error": {\n    "code": "PROVIDER_ENV_UNSET",\n    "message": "the policy names '
+               'VUAT_PROVIDER_KEY, which is not set",\n    "details": {"fix": "export VUAT_PROVIDER_KEY"}\n  }\n}\n')
+    assert L.diagnoses(refusal, r"VUAT_PROVIDER_KEY") and L.diagnoses(refusal, r"export VUAT_PROVIDER_KEY")
+    assert len(L.failing_entries(refusal)) == 1
+    in_details = ('{"ok": false, "error": {"code": "X", "message": "not ready", '
+                  '"details": {"model": "vuat-missing-model"}}}')
+    assert L.diagnoses(in_details, r"vuat-missing-model")
+    ok = '{\n  "ok": true,\n  "checks": [{"check": "model", "status": "FAIL", "detail": "vuat-missing-model"}]\n}\n'
+    assert not L.diagnoses(ok, r"vuat-missing-model") and L.failing_entries(ok) == []
+    mixed = "model-refs  PASS  configured: vuat-missing-model\n" + refusal
+    assert L.failing_entries(mixed)[0].startswith("PROVIDER_ENV_UNSET")
+    assert not L.diagnoses(mixed, r"vuat-missing-model")

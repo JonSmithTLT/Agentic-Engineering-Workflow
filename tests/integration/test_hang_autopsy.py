@@ -483,6 +483,8 @@ def test_the_reaper_never_takes_the_status_of_a_child_the_controller_started(tmp
 LEAKS = '''import os, subprocess, sys
 from pathlib import Path
 
+import pytest
+
 NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
 
 
@@ -491,13 +493,32 @@ def test_leaves_a_process(tmp_path):
     script.write_text("import time\\ntime.sleep(120)\\n", encoding="utf-8")
     child = subprocess.Popen([sys.executable, str(script)], cwd=tmp_path, **NO_WINDOW)  # never ended: the leak
     (Path(os.environ["G3_OUT"]) / "leaked.pid").write_text(str(child.pid), encoding="utf-8")
+
+
+@pytest.fixture
+def managed(tmp_path):
+    """A process a fixture starts and ends in its teardown, as HarnessLab does: never a leak."""
+    script = tmp_path / "managed.py"
+    script.write_text("import time\\ntime.sleep(120)\\n", encoding="utf-8")
+    # the base interpreter, not a venv's launcher: ending it ends the one process
+    proc = subprocess.Popen([getattr(sys, "_base_executable", sys.executable), str(script)], cwd=tmp_path,
+                            **NO_WINDOW)
+    (Path(os.environ["G3_OUT"]) / "managed.pid").write_text(str(proc.pid), encoding="utf-8")
+    yield proc
+    proc.kill()
+    proc.wait(30)
+
+
+def test_uses_a_process_its_fixture_ends(managed):  # the module's last test: its teardown precedes the scan
+    assert managed.poll() is None
 '''
 
 
 def test_a_process_a_test_leaves_running_is_reported_by_its_test_directory(tmp_path, monkeypatch):
     """Review of #217, (a), report-only: a process still running after its test, whose command line or working
     directory is in the session's base temporary directory, is listed at its module's end with the test directory
-    it is in (pytest's numbered name). Nothing fails for it yet (G3b enforces)."""
+    it is in (pytest's numbered name). A process a fixture ends in its teardown is not listed: the scan runs after the
+    module's last teardown (N1). Nothing fails for a leak yet (G3b enforces)."""
     hangs, out = tmp_path / "hangs", tmp_path / "out"
     out.mkdir()
     monkeypatch.setenv("G3_OUT", str(out))
@@ -507,6 +528,7 @@ def test_a_process_a_test_leaves_running_is_reported_by_its_test_directory(tmp_p
         pid = int((out / "leaked.pid").read_text(encoding="utf-8"))
         report = texts(hangs / "autopsy", "leaked-processes.*")
         assert re.search(rf"test_leaves_a_process\d*: pid {pid} .*sleeper\.py", report), report
+        assert "managed.py" not in report, report  # ended by its fixture's teardown: not a leak (review, N1)
     finally:
         ident = proctree.identity(int((out / "leaked.pid").read_text(encoding="utf-8")))
         if ident is not None:

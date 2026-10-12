@@ -257,8 +257,12 @@ class AutopsyPlugin:
             if crashed:  # a helper child that died natively names itself (review of #217, m5)
                 rep.sections.append(("aew helper child crash", crashed))
 
-    def pytest_runtest_teardown(self, item: pytest.Item, nextitem: pytest.Item | None) -> None:
-        if nextitem is None or nextitem.module is not item.module:  # each module's end
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_teardown(self, item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, Any, None]:
+        """Each module's end, after the teardown itself (review of #217, N1): a process a fixture ends in its teardown,
+        the module's own fixtures included, is never reported as leaked."""
+        yield
+        if nextitem is None or nextitem.module is not item.module:
             self.scan_leaks(f"after {item.module.__name__ if item.module else item.nodeid}")
 
     def pytest_sessionfinish(self, session: pytest.Session) -> None:

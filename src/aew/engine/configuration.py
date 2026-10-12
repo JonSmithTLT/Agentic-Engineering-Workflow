@@ -43,12 +43,10 @@ from aew.util import load_yaml, sha256_bytes
 DIGEST_SCHEME = "aew/config-digest/v2"
 PROJECT, EXECUTION = "project", "execution"
 PROJECTED = (EXECUTION,)  # the documents projected field by field in this slice; the others are UNSUPPORTED
-WORKFLOW_DOCUMENTS = ("gates", "guardrails", "checks")  # the workflow activity's documents (proposal §3.2)
 
 # Document states (§4.2), highest precedence first.
 MANIFEST_DRIFTED, DRIFTED, INVALID, ADOPTED, UNPINNED, ABSENT = (
     "MANIFEST_DRIFTED", "DRIFTED", "INVALID", "ADOPTED", "UNPINNED", "ABSENT")
-STATES = (MANIFEST_DRIFTED, DRIFTED, INVALID, ADOPTED, UNPINNED, ABSENT)
 # The digest's `adopted` and `on_disk` inputs besides a hash (§4.1, §4.2): each case is encoded distinctly.
 NO_PINS, PINNED_ABSENT, NOT_IN_PINS, ON_DISK_ABSENT = "no_pins", "pinned_absent", "not_in_pins", "absent"
 DRIFTED_INPUT = "manifest_drifted"  # `rel`, `adopted` and `on_disk` while the manifest is drifted (N2)

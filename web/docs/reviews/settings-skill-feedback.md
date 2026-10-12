@@ -22,6 +22,8 @@ Independent review exposed concrete gaps in the initial implementation: retireme
 
 ## Noise, conflicts and reuse
 
+Rendered phone verification exposed a pre-existing shared navigation issue: the open sidebar covered its own header toggle. The candidate's shared-owner guidance led to a small Shell close action, preserving selection and returning trigger focus, with sibling-screen verification. Test drivers also needed to distinguish duplicate disclosed warnings and open navigation before selecting a concealed theme control; compilation alone missed both.
+
 Marketing/asset examples contribute little here, but remain compact and impose no inappropriate choices. No instruction conflicts with the dashboard or offline gate observed. I would load the candidate again. This is a qualitative assessment, not demonstrated superiority over another skill.
 
 ## Context feedback

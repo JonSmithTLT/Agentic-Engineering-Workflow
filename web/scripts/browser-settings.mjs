@@ -35,7 +35,15 @@ try {
         if (width < 1024) assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Profile standard');
         else assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'standard');
         for (const theme of ['light', 'dark']) {
-          await page.getByLabel('Appearance', { exact: true }).selectOption(theme);
+          const appearance = page.getByLabel('Appearance', { exact: true });
+          const revealNavigation = !await appearance.isVisible();
+          if (revealNavigation) await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click();
+          await appearance.selectOption(theme);
+          if (revealNavigation) {
+            await page.getByRole('button', { name: 'Close navigation', exact: true }).click();
+            assert.equal(await page.getByRole('button', { name: 'Toggle navigation', exact: true }).getAttribute('aria-expanded'), 'false');
+            assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Toggle navigation');
+          }
           await page.screenshot({ path: `${output}/${adapter}-${width}-${theme}-profile.png`, fullPage: true });
           assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'No viewport overflow');
         }

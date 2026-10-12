@@ -8,6 +8,8 @@ Demo `/settings` supplies Execution profiles, routing and controls; Providers su
 
 Reuse shell, semantic tables, keyboard tabs, copy-link allowlist, theme tokens and heading-focus owner. Scenario selection is a fixture tool. Profile fields are data, not disabled editing controls implying a writer exists. NULL, ABSENT, withheld SET and supplied effective values remain distinct. Display supplied document state and in-force independently; derive neither adoption precedence nor guarantees.
 
+Phone theme verification exposed that the open shared sidebar covers its header toggle. The bounded shared-owner correction adds an explicit Close navigation button inside the sidebar, restores trigger focus and preserves the current route/selection. It changes no navigation targets or API reads; sibling screens are included in compiled regression coverage.
+
 ## Source seam and identity
 
 `src/api/mock/settings` loads dynamically only in demo mode. `SettingsSource` provides inventory/detail reads; runtime schemas validate Appendix A structures and identity before presentation. Source/session/case/activity changes retire reads; obsolete promises cannot update a replacement reader. Unsupported activities read inventory only. No configuration HTTP handler, intervals, accepted capability or contract registration.

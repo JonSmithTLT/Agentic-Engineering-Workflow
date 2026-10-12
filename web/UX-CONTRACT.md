@@ -4,6 +4,8 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
+Shared Shell owns a reachable Close navigation action inside the open phone sidebar. Closing restores focus to its header trigger without changing the current route or selection. Native theme selection remains sidebar-owned; browser checks open the sidebar rather than forcing interaction with concealed controls.
+
 Demo Settings uses shared InvestigationTabs, CopyDashboardLink and focusBelowHeader. Fields are read-only data; no Save or catalog action. SET/NULL/ABSENT/withheld/effective facts and completeness retain supplied meaning. Inventory and detail binding are validated before display. Unsupported activities issue no execution detail read. Source/session/scenario/activity changes retire late responses. Profile index is digest-bound, including masked locators; mismatched links never select a replacement profile. Production contains no Settings fixture UI or schemas. Live transport and adoption remain F1b/F1c work.
 
 Overview and the shared header label the supplied health projection as project health. Its status and reasons remain backend-owned; this label neither represents U1/H1 run health nor changes the API's `health` field or vocabulary.

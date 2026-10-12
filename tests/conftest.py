@@ -21,6 +21,7 @@ os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
+from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
 
 
@@ -28,11 +29,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     lanes.addoption(parser)
     watchdog.addoption(parser)
     harness_diagnostics.addoption(parser)
+    discovery_capture.addoption(parser)
 
 
 def pytest_configure(config: pytest.Config) -> None:
     lanes.configure(config)
     watchdog.configure(config)
+    discovery_capture.configure(config)
 
 
 def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:

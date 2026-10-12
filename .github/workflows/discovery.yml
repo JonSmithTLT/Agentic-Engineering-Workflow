@@ -1,0 +1,42 @@
+name: discovery
+
+# The discovery layer's `discovery` lane (tests/discovery; the D2 section of docs/implementation/vertical-uat.md): D2's
+# rules over the static texts (the Lead's system text and commands, the rendered guide, the operator guides, every
+# pack template), on every pull request and on main. The scan is complete, so a new key and a stale one are decided on
+# every run, each by its rule's mode (tests/helpers/discovery/modes.py). No required job collects this lane
+# (tests/helpers/lanes.py); D2's runtime findings are decided in ci.yml's `assurance`.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: discovery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  discovery:
+    name: discovery (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: pytest --lane discovery (D2 over the static texts)
+        run: python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600

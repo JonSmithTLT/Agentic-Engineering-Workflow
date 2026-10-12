@@ -412,6 +412,21 @@ jobs:
         run: >-
           python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
           --summary "$GITHUB_STEP_SUMMARY"
+      # D2, the discovery layer's output and text rules (tests/helpers/discovery): the findings every lane job wrote
+      # beside its lane report, decided against the allow-list. On a pull request a new key fails only when its rule
+      # is enforced, and the list may only shrink against the base; on main a listed key no longer observed is stale.
+      - name: "D2: no new violation of an enforced output rule, and the allow-list only shrinks"
+        if: always()
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          base=()
+          if [ "$EVENT" = pull_request ]; then
+            if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
+              base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
+            fi
+          fi
+          python tools/ci/discovery_ratchet.py lane-reports --event "$EVENT" "${base[@]}" --summary "$GITHUB_STEP_SUMMARY"
       - name: Every test job the tier requires succeeded (lanes are required unless the tier is known and reduced)
         if: always()
         env:

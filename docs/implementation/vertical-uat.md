@@ -285,3 +285,159 @@ Approved by the operator on 2026-10-11 (Q8: every listed amendment). Each thresh
 The PIN, the console challenge and the console attribution have no event to observe until the endpoint becomes the
 operator session: their counters read 0 and the attribution check stays off until then. That slice wires its console
 to `pin_entered`, `console_challenge` and the attribution check, and changes this page if a rule needs to.
+
+## 8. The discovery layer, D2: the output and text rules (DX1)
+
+The discovery-layer specification v3.4 extends this page. Its first slice, **DX1**, is D2: deterministic rules over
+what AEW says, scheduled by the operator as the anti-drift guard G2. Like the rest of this page, it is a test, not a
+feature: **it observes and changes no product code.** The violations it finds today are its baseline, an allow-list
+that may only shrink. It does not fix them.
+
+Code: `tests/helpers/discovery/` (`rules.py`, the capture plugin `capture.py`, `static.py`, the allow-list
+`allowed.py` and `allowed.yaml`, `modes.py`), the `discovery` lane (`tests/discovery/`), and
+`tools/ci/discovery_ratchet.py`. Tests: `tests/unit/test_discovery_rules.py` and
+`tests/unit/test_discovery_registry.py`.
+
+### 8.1 What it reads
+
+- **Runtime outputs.** A pytest plugin captures every output the existing suite produces:
+  - the CLI's answer and its refusal, in process (`aew.cli.main._main`'s stdout and stderr) and from every `aew`
+    process a test starts with `subprocess.run`;
+  - the typed surface's result (`aew.surface.run.run_tool`).
+
+  A process a test drives through `Popen` (a Lead session, the MCP server) is not seen.
+- **The output-site key.** It identifies the code path, never the message, because messages carry temporary paths
+  and live ids, and the keys are committed:
+  - `cli:aew <command words>|<code>` for the CLI. The words are read from the argument vector with the live parser.
+    The code is the refusal's code, or `result` for an answer.
+  - `tool:<name>|<code>` for the typed surface.
+
+  The specification's "the renderer's caller (module and function)" names a single function for every CLI command
+  (the entry point renders them all) and cannot be read from another process, so the command words stand in for it.
+- **Static texts.** These are checked with no test running:
+  - `LEAD_SYSTEM` and the Lead's commands;
+  - the rendered `aew guide`, from the policy `aew init` writes;
+  - `docs/guides/*.md`, which include the quickstart;
+  - every pack template (each role's launch contract, rendered from synthetic inputs);
+  - the typed tools' arguments (O-SECRET).
+
+  A static key names its source and the suggested input, for example `static:docs/guides/quickstart.md|aew ...`.
+- **A suggested input** is any of these:
+  - a backticked `aew …` span;
+  - a line of a fenced code block that starts with `aew`, with continued lines joined;
+  - a structured `next`, `next_action(s)`, `remedy`, `cli`, `cli_fallback` or `hint(s)` field.
+
+  Commands chained with `&&` count as one each.
+
+### 8.2 The rules
+
+| Rule | A violation |
+|---|---|
+| O-IDS | A suggested input asks for an id, decided by position with the live parser: <ul><li>any value of an id-typed argument (a revision, generation, invocation, run, stage intent or authority candidate);</li><li>a concrete id in the engine's formats;</li><li>a placeholder (`N`, `<…>`, `{…}`) in any other slot.</li></ul> These are exempt: a Ticket's slot, a slot whose values the text lists (an argument with choices), and the elision `...` for free text. |
+| O-CMD | A suggested input fails to parse in parse-only mode against the live parser. Placeholders are taken as values, and each alternative of `a`-or-`b` (written with a bar) must parse. A command named in text without its required arguments is a mention, but a structured argument list (`cli`, `cli_fallback`) must parse whole. A typed-tool name not in `contract.TOOLS` is also a violation. Text that echoes the input inside a refusal is excluded. |
+| O-CODE | A refusal whose cause is known is checked against the code registry (§8.4). In DX1 no cause is known: one is known only when an explorer injected it (DX2), or when the refusal states it in the refusal schema (DX3). So O-CODE judges nothing in the existing suite yet, as the specification's H5 requires. |
+| O-WORDS | A refusal without the refusal schema (`cause`, `remedy`, `owner`). Until the product emits it, this is the "unstructured refusal" finding, one per refusal site. |
+| O-SECRET | Any of these: <ul><li>an output that asks for a PIN anywhere other than the operator console;</li><li>one that asks a model (the Lead, or a worker through its pack) for a code;</li><li>one that asks its reader to set, copy or pass an AEW credential, the credential variables of `harness.contract.CREDENTIAL_ENV` and their options;</li><li>a typed tool with a PIN, code or credential argument.</li></ul> |
+| O-ENV | The Lead's system text, with the guide it is given, does not state the check environment. The expected statement is generated from `agentenv`'s allowlist: that checks run in a scrubbed environment, every variable kept, and `provider_env` as the way to give a check a variable. |
+
+### 8.3 The modes, the allow-list and the ratchet
+
+**The per-rule modes.** `tests/helpers/discovery/modes.py` pins the same values, and
+`tests/unit/test_discovery_registry.py` checks that the two agree. A mode changes only by the operator's decision.
+In `shadow` a finding is reported and never fails a run. Every rule starts in `shadow`, as the vertical UAT did.
+
+| Rule | Mode |
+|---|---|
+| O-IDS | `shadow` |
+| O-CMD | `shadow` |
+| O-CODE | `shadow` |
+| O-WORDS | `shadow` |
+| O-SECRET | `shadow` |
+| O-ENV | `shadow` |
+
+**The allow-list** is `tests/helpers/discovery/allowed.yaml`: every `(rule, site)` key observed when D2 was
+introduced, from the static scan and a capture run of the fast lane. It may only shrink.
+- **On a pull request,** `assurance` runs `discovery_ratchet.py` over the findings that the tier's lane jobs wrote
+  beside their lane reports.
+  - A key not on the list is **new**. It is reported, and fails the run if its rule is in `enforce`.
+  - A key added to the list relative to the base fails whatever its mode. The exception is an accepted residual: the
+    operator's decision, recorded under `residuals` with its reason.
+- **On main's full run and nightly,** the same tool also reports every listed key no longer observed as **stale**. A
+  stale key fails the run if its rule is in `enforce`, until a pull request removes it. CI never commits the removal.
+- **Static texts** are checked on every pull request by the `discovery` lane, in its own workflow (`discovery.yml`).
+  The scan is complete, so its new and stale keys are decided on every run.
+
+**The `discovery` lane** is its own lane. `tests/helpers/lanes.py` collects `tests/discovery/` only with
+`--lane discovery`, the same split as the vertical lane, and no tier requires it. `tests/unit/test_ci_tools.py`
+proves both.
+
+### 8.4 The code registry
+
+Every refusal code that `aew.errors` defines is listed below, with its meaning, the causes allowed to use it, and the
+owner of the remedy. `tests/unit/test_discovery_registry.py` enumerates `aew.errors` and fails on any code missing
+here, so the registry cannot drift. O-CODE checks an observed refusal's cause against its code's row. The cause ids
+are this registry's own vocabulary; the refusal schema will carry them.
+
+| Code | Meaning | Allowed causes | Remedy owner |
+|---|---|---|---|
+| `AEW_ERROR` | An unclassified failure, the base of every error. No refusal should carry it | `unclassified` | engine |
+| `USAGE` | Only malformed input, naming the field and the fault (invalid JSON versus the wrong type, U27) | `input_malformed`, `input_unset` | Lead |
+| `NOT_FOUND` | A named object does not exist | `object_missing` | Lead |
+| `PROJECT_NOT_FOUND` | No AEW project at the path | `project_missing` | operator |
+| `VALIDATION_FAILED` | Input or a record fails its schema or a validation rule | `input_invalid`, `record_invalid` | Lead |
+| `REPLY_NOT_IN_THREAD` | `in_reply_to` names no earlier message of the thread | `reply_target_invalid` | Lead |
+| `REF_UNKNOWN` | A message ref names no AEW id, or is malformed | `ref_unknown` | Lead |
+| `STALE_AUTHORITY` | A superseded Lead, or a revoked credential, attempted an authoritative write | `authority_superseded` | operator |
+| `STALE_POLICY` | The legality policy in force is not the one a staged action was bound to | `policy_changed` | Lead |
+| `STALE_REVISION` | Only a CAS mismatch. After A3, `CHANGED_SINCE_READ` carries the named semantic change | `cas_mismatch` | Lead |
+| `PERMISSION_DENIED` | Only an authority that actually denied the caller. Never "seat held", and never "input not set or malformed" | `authority_denied` | operator |
+| `CAPABILITY_UNAVAILABLE` | A capability switched off for the project, or refused where it was called | `capability_off` | operator |
+| `OPERATOR_AUTHORIZATION_REQUIRED` | The operation needs the operator's out-of-band authorization | `operator_authorization_missing` | operator |
+| `REF_OUT_OF_SCOPE` | A worker's message ref names something outside its own unit, thread, Ticket and runs | `ref_out_of_scope` | Lead |
+| `OBSERVATION_MUTATED` | A read-only invocation changed its observation workspace | `observation_mutated` | Lead |
+| `WORKSPACE_MUTATED` | An evaluated workspace no longer holds what it was dispatched to evaluate | `workspace_mutated` | Lead |
+| `ILLEGAL_TRANSITION` | Only a transition-table refusal, naming the state | `transition_refused` | Lead |
+| `GATE_UNSATISFIED` | A gate the transition requires is not met | `gate_unmet` | Lead |
+| `DISPOSITION_REQUIRED` | A finding or claim that policy marks for disposition has none | `disposition_missing` | Lead |
+| `CARD_CHOICE_REQUIRED` | A stage cannot choose the card a required gate needs | `card_ambiguous`, `card_missing` | Lead |
+| `DEPENDENCY_UNSATISFIED` | A unit's dependency is not met | `dependency_unmet` | Lead |
+| `CONCURRENCY_LIMIT` | A concurrency bound is reached | `concurrency_bound` | Lead |
+| `STALE_CANDIDATE` | The authoritative ref moved, so the integration candidate must be rebuilt | `ref_moved` | engine |
+| `QUEUE_ORDER` | An earlier integration queue entry can integrate now | `queue_order` | engine |
+| `LEASE_HELD` | Another queue entry holds the integration lease | `lease_held` | engine |
+| `LEASE_NOT_HELD` | The operation runs only under the Ticket's own integration lease | `lease_not_held` | engine |
+| `LEASE_RECONCILE_REQUIRED` | The integration lease lost its custodian | `lease_orphaned` | Lead |
+| `INPUT_STALE` | A consumed source-bound record no longer matches its source | `input_stale` | Lead |
+| `DISPATCH_REFUSED` | The dispatch predicate refused, naming every blocking condition | `dispatch_predicate` | Lead |
+| `STEERING_NOT_CONFIGURED` | A steering command on a project whose policy names no steering mode | `steering_unconfigured` | operator |
+| `MIGRATION_REQUIRED` | The project's control state is v1 and must be migrated first | `migration_pending` | Lead |
+| `MESSAGING_DISABLED` | A coordination message while messaging is off | `messaging_off` | operator |
+| `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
+| `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |
+| `MESSAGING_SNAPSHOT_MISMATCH` | A send to a run whose launch snapshot of the messaging switch disagrees with the project's | `messaging_switch_changed` | Lead |
+| `COORDINATION_LIMIT` | A coordination message beyond one of its bounds | `coordination_bound` | Lead |
+| `LEAD_INBOX_FULL` | The thread already holds the most worker messages not yet shown to the Lead | `inbox_full` | Lead |
+| `IDEMPOTENCY_CONFLICT` | An idempotency id already names a message with other content | `idempotency_conflict` | Lead |
+| `NOT_A_WORKER` | A coordination message to an invocation that is not a role-bearing worker | `recipient_not_worker` | Lead |
+| `RECIPIENT_INDEPENDENT` | A coordination message to an independent confirmer | `recipient_independent` | Lead |
+| `RUN_LIVE` | The invocation's latest run may still be running, so a relaunch needs `--replace` | `run_live` | Lead |
+| `INTEGRITY_ERROR` | Durable state is damaged, or was modified outside the engine | `state_damaged` | operator |
+| `HISTORY_MOVED` | A lock-free reader met a later commit: a race, not damage | `history_race` | engine |
+| `DISPATCH_UNDECIDED` | An engine defect: an invocation or run created without a dispatch decision | `engine_defect` | engine |
+| `THREAD_UNSEALED` | An engine defect: an invocation ended without its thread sealed | `engine_defect` | engine |
+| `MAP_ARTIFACT_CORRUPT` | A project-map artifact no longer hashes to its name, or fails its schema | `map_corrupt` | operator |
+| `MAP_REGISTRY_INVALID` | The project-map registry is malformed | `map_registry_invalid` | operator |
+| `MAP_ARTIFACT_NONDETERMINISTIC` | Regenerating the selected map gave different bytes | `map_nondeterministic` | operator |
+| `MAP_CURRENTNESS_UNPROVEN` | A project map cannot be generated or labelled current from complete inputs | `map_inputs_incomplete` | operator |
+| `WORKSPACE_NOT_AUTHORITY` | A workspace copy of AEW state was used as if it were authoritative | `workspace_copy` | Lead |
+| `GIT_ERROR` | A git command failed | `git_failed` | operator |
+| `LOCK_TIMEOUT` | The control lock could not be taken in time | `lock_contended` | engine |
+| `UNAVAILABLE` | This environment cannot provide a capability | `environment_lacks_capability` | operator |
+| `HARNESS_ERROR` | A harness run could not be started, supervised or reached | `harness_unreachable` | operator |
+| `HARNESS_INCOMPATIBLE` | The harness is unknown, or lacks a capability, model or variant the run needs | `harness_incompatible` | operator |
+| `HARNESS_LAUNCH_FAILED` | The launch was committed, but its supervisor did not take custody | `supervisor_no_custody` | Lead |
+| `CONTAINMENT_UNAVAILABLE` | Policy requires OS containment, and the run's sandbox could not be established | `containment_unavailable` | operator |
+
+Codes defined outside `aew.errors` are not in this registry yet. They are the typed surface's input refusals
+(`aew.surface.errors`), the validation runner's two codes, the dashboard's request codes, and the `cli` escape's
+`NOT_COMPLETED`. The specification names `aew.errors` as the registry's source.

@@ -36,12 +36,18 @@ sections:
     Condition: 'The vertical UAT, the release gate (designer, 2026-10-11), runs in `enforce` on Linux (F47.5; flipping it
       is the operator''s decision, once its lane is green), every vertical-path slice having re-run the `vertical` lane
       and shown its ledger diff. Windows is excluded until F48 qualifies it, and is reported as UNQUALIFIED in every verdict
-      and summary, never silently absent (operator, 2026-10-11). Feature work outside the vertical path is paused while
-      the path is built (the Lead''s plan, 2026-10-11: the operator approved working the vertical path first, and the approved
-      configuration direction states that normal feature work is paused); the duration, until this gate, and the exemption
-      of the configuration work the path carries (F46.1 to F46.4) are the plan''s.'
+      and summary, never silently absent (operator, 2026-10-11). Feature work outside the vertical path is paused until
+      this gate, except the settings editor, the configuration work the path carries (F46.1 to F46.4). The pause is the
+      operator''s decision of 2026-10-12 (it was first the Lead''s plan, 2026-10-11); its duration, until this gate, is
+      the plan''s, and the mapping of "the settings editor" to F46.1 to F46.4 is the Lead''s reading. The operator''s words
+      (capitals and punctuation added, `doesnt` corrected): "Fine with looser. I just REALLY think getting these items in
+      is truly important. If the first few slices go well, maybe we can adjust to allow one development agent to move progress
+      as long as it doesn''t hinder the current push. But for now, yes: no new feature work except for the settings editor."
+      They name a possible revisit once the first few slices have gone well: one development agent allowed on feature work,
+      provided it does not hinder the current push.'
     Source: the designer's decisions of 2026-10-11 on the Lead's diagnosis after the M4 operator acceptance session (the
-      vertical UAT as release gate); [`vertical-uat.md`](vertical-uat.md); F47
+      vertical UAT as release gate); the operator's decision of 2026-10-12 (the feature pause); [`vertical-uat.md`](vertical-uat.md);
+      F47
 
   - Gate: '**Before any real-repository dogfood, personal or internal alpha**'
     Condition: 'Real filesystem containment (F2) passes the containment regression gate. **Built in M4-B (2026-10-03):**
@@ -2487,6 +2493,61 @@ sections:
       the Lead, with a publish gate on admitted scope as the backstop while messaging is off), and F47.6 (class discovery
       in the product). Size limits stay soft for weaker models: a warning above the footprint, a scope request above a multiple
       of it.'
+
+  - '#': F50
+    Work: 'Operator rules, the record contract: standing guidance the operator makes binding, as a **new governed record
+      kind**, outside Knowledge''s authority (not a Knowledge subtype). **Fields:** the rule, why, how to apply, its source
+      with the verbatim quote, scope, status and `refers_to`. **Activation:** the Lead or the engine may propose a rule
+      (after a correction, or from a recurring finding class); only the operator activates it, deliberately, through the
+      rule lifecycle, and activation must not become a stream of approval prompts. Rules are retired, never deleted. **Provenance:**
+      a rule carries its id, scope and reason wherever it is served (for example `OR-0017`). **In briefs:** the engine compiles
+      the active rules automatically into role-scoped briefs, the Lead''s and the workers'' and reviewers'', with role and
+      scope checks; the Lead does not relay them, and cannot edit, suppress or paraphrase them. **Precedence:** a rule cannot
+      override a contract, grant a capability, waive a verification or create publication authority; it only influences
+      choices within existing authority. A rule that needs an enforceable policy change goes through the real policy mechanism:
+      there is no second policy language hidden in prompts. **Staleness:** a rule whose `refers_to` no longer exists is
+      flagged, not applied. **The Lead notebook** is permitted but not scheduled: advisory and never authoritative; no workflow
+      state, approval, security policy or consequential decision may exist only in it; under the deletion invariant, deleting
+      the whole notebook must not compromise reconstruction, resumption or enforcement; an entry becomes a rule only by
+      the operator''s activation through the rule lifecycle; it is scheduled later, on demonstrated value.'
+    Source (governing): the designer's decisions of 2026-10-12 on the Lead's experience-log batch 3, relayed by the operator
+      (operator rules are a new record kind outside Knowledge; rules reach worker briefs automatically, compiled by the
+      engine with role and scope checks; the correction on precedence and approval fatigue; the resolution of the Lead-notebook
+      conflict), read with the earlier ruling on the same brief (operator activation, provenance in briefs, no second policy
+      language); the vertical-path plan §1e (Lead, 2026-10-12; independently reviewed CLEAR; not in the repository)
+    Belongs to or gated by: '**Unscheduled.** Staged: the contract is adopted now, and its design draft follows as a proposal
+      through the ingestion gate; its implementation is not a prerequisite of the vertical gate (§1). Once active rules
+      exist, the Lead''s handoff (F47.1, slice A1) includes the relevant ones'
+    Notes: Rich recall, the rule-proposal UX, the Lead notebook and F19's memory experiments (an arm with rules served at
+      launch) are not vertical-gate prerequisites. The fields and the `refers_to` staleness rule are the proposal the designer
+      adopted as the record contract. Relates to F47.1 (the core engine-generated handoff that serves active rules) and
+      F19 (measurement)
+
+  - '#': F51
+    Work: 'The network-egress qualification gap: the vertical gate qualifies authenticated publication only. The vertical
+      path''s B6 shows that no model environment can obtain or use a publication credential; it does not show that a model-controlled
+      process cannot send content to an external endpoint without one, because model processes are not network-isolated
+      today (Linux runs are labelled `network: shared`, Windows runs `not_provided`; F28). Closing it means qualifying network
+      egress enforcement for model-controlled processes. **No solution is fixed:** routing all traffic through F28''s mediation,
+      a default-deny network namespace with permitted destinations, and how either accounts for the harness''s localhost
+      traffic all remain open. The residuals B6''s self-test reports (abstract unix sockets reachable from the sandbox)
+      are tracked here'
+    Source (governing): 'the designer''s egress-split amendment of 2026-10-12, relayed by the operator ("register network
+      egress as an explicit qualification gap"; prevention of unauthenticated network exfiltration is UNQUALIFIED and explicitly
+      reported; full network egress enforcement is separate M6/F28 qualification work); the designer''s Decision Record
+      of 2026-10-12 on the publication path, verbatim: "D3 — UNQUALIFIED: Unauthenticated network exfiltration remains outside
+      B6''s demonstrated guarantee until M6 network restrictions and appropriate F28 mediation are qualified. Report this
+      limitation explicitly." and "D5 — SCOPE: B6 qualification applies only to tested deployment profiles and accessible
+      surfaces. It does not establish universal absence of exfiltration routes."'
+    Belongs to or gated by: '**M6.** M6 owns enforcement of network capabilities and isolation; F28 owns mediated outbound
+      communication where appropriate. Not a vertical-gate prerequisite, and A1 does not grow into a network-security project.
+      Until this row closes, the vertical UAT''s verdict reads `egress.unauthenticated: UNQUALIFIED` beside `egress.authenticated`
+      (the spec line lands with slice D0c; F47.5)'
+    Notes: 'The verdict is scoped to the profile tested: passing on Linux never qualifies Windows, and passing with restricted
+      credentials never qualifies a host where credentials are reachable. No profile that passes the vertical gate is described
+      as complete egress containment, or as production-qualified where that guarantee is required. Relates to F28 (the §1
+      gate before internal alpha) and F37: an outbound sanitiser does not close the boundary while the shell or the network
+      can bypass it'
 
 - number: 3
   title: Deferred by the M3 plan (out of M3 scope)

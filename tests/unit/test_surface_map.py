@@ -17,6 +17,7 @@ with a decided ``lead_disposition`` that the live code honours (check ``new_surf
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import copy
 import hashlib
@@ -43,9 +44,9 @@ import yaml
 
 from aew import errors
 from aew.cli.main import build_parser
-from aew.engine import primitives
+from aew.engine import dispatch, primitives, transitions
 from aew.harness import bridge, lead_broker
-from aew.surface import contract
+from aew.surface import availability, contract
 from aew.surface.context import NORMAL
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -81,6 +82,12 @@ CHECKS: dict[str, str] = {
     "shell_reachable_mutation": REPORT,  # grandfathered mutating commands nothing keeps from the Lead's shell
     "keep_out": ENFORCE,  # a claim that the Lead is kept out is proved by running it in a Lead session's environment
     "keep_out_coverage": REPORT,  # the pinned KEEP_OUT_LIMITED claims the test cannot prove by running them
+    # The A1 slice plan's dispositions (reviewed CLEAR, §2.1): the planned rows and the proposed homes.
+    "home_built": ENFORCE,  # every planned home built and running the row's primitive: the row is decided, typed
+    "out_of_door": ENFORCE,  # a command that has left LEAD_REACHABLE is not `undecided`
+    "planned_sweep": REPORT,  # a planned row's home that does not run (or plan to run) its primitive: the A2 debts
+    "planned_by_slice": REPORT,  # the planned rows, by the slice they land in
+    "planned_coverage": ENFORCE,  # a typed plan's uses (edges, entrypoints, options) covered, or its derived gaps
 }
 OWNERS = ("operator", "lead", "mechanical")
 REPORT_PREFIX = "SurfaceMapReport: surface map, check"
@@ -92,6 +99,8 @@ DIAGNOSTIC = "diagnostic"
 PRIMITIVE_ALIASES: dict[str, frozenset[str]] = {
     "stage.resolve": frozenset({"stage continue", "stage abandon"}),
     "steering": frozenset({"lead mode lower"}),
+    # F9-A's typed send homes both (the A1 slice plan, reviewed CLEAR, §2.5).
+    "message.send": frozenset({"harness send", "harness interrupt"}),
 }
 
 # The grandfathered surfaces (operator, 2026-10-12): every entry registered when the standing rule was adopted. Their
@@ -124,6 +133,30 @@ tool:ticket_start|tool:work_show
 FROZEN_DIGEST = "1b32b35999eb5a75aeda9ec3723275afa2d6f439de42469d864ab19914ce5d81"
 GRADUATED: frozenset[str] = frozenset()  # entries that left the baseline (their disposition decided and honoured)
 BASELINE = FROZEN - GRADUATED
+
+# The A1 slice plan's dispositions (reviewed CLEAR, §2.1 item 1): the rows that carry `planned`, and the proposed tools
+# and `resolve` choices, as the registry stated them when A1-0 added them. Each only shrinks: pinned by its digest, and
+# what leaves the registry leaves through its graduated list, in the change that builds the home or decides the row.
+PLANNED_FROZEN: frozenset[str] = frozenset("""
+cli:evidence ingest|cli:gate waive|cli:harness interrupt|cli:harness launch|cli:harness send|cli:harness stop
+cli:history audit|cli:history load|cli:integrate defer|cli:integrate reconcile|cli:integrate reorder
+cli:integrate requeue|cli:integrate validate|cli:invoke cancel|cli:invoke create|cli:lead handoff cancel
+cli:map generate|cli:map select-architecture|cli:message unseen|cli:plan accept|cli:plan adopt|cli:plan reconfirm
+cli:verify classify|cli:work accept|cli:work acknowledge-input|cli:work cancel|cli:work close|cli:work depend
+cli:work dispatch|cli:work move|cli:work promote|cli:work reclassify|cli:work reconcile|cli:work redispatch
+cli:work staff|cli:work transition
+""".replace("\n", "|").strip("|").split("|"))
+PLANNED_DIGEST = "3fbe5e854364b78381f9001ecadd53003846a244dc52e48d9f417891aa8c1e77"
+PLANNED_GRADUATED: frozenset[str] = frozenset()
+PROPOSED_TOOLS: frozenset[str] = frozenset({"ticket_rework", "work_amend", "message_send"})
+PROPOSED_TOOLS_DIGEST = "80bf701d68e4277fdd2ce9420d8ce0e1a85444cfc1931cc5941f92980e0b1b9e"
+PROPOSED_TOOLS_GRADUATED: frozenset[str] = frozenset()
+PROPOSED_CHOICES: frozenset[str] = frozenset({
+    "accept_plan", "reconcile", "adopt_proposal", "reconfirm", "classify", "cancel", "close", "relaunch",
+    "acknowledge_input", "waive", "accept_record", "defer", "requeue",
+    "escalate", "return_escalated"})  # added by the A1-0 review's F1 (the plan's §2.7), before the pin was merged
+PROPOSED_CHOICES_DIGEST = "276fb77f6b0b57df2da4b901bfd973e7081718df16f8710529158769c60a39ba"
+PROPOSED_CHOICES_GRADUATED: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------------------------- the live surface
@@ -285,6 +318,28 @@ def proved_typed(name: str, e: dict[str, Any]) -> list[str]:
             out.append(f"{tool_name!r} is not a built tool on the normal profile")
         elif p not in t.expands_to:
             out.append(f"tool {tool_name!r} does not run {p!r}")
+    return out + resolve_home_problems(e)
+
+
+def resolve_home_problems(e: dict[str, Any]) -> list[str]:
+    """G1's pair check (the A1 slice plan, reviewed CLEAR, §2.1 item 4 and §2.5): `resolve` homes a command only
+    through the (choice, subject kind) pairs the entry names (`via_choices: {choice: [kind, ...]}`), and each pair is in
+    contract.RESOLVE_CHOICE_PRIMITIVE and runs the entry's primitive. So `resolve` is never accepted as the home of an
+    arbitrary primitive by its `expands_to` alone, and one choice can home two commands by subject kind (A2's
+    `cancel`: a unit's `work.cancel`, an invocation's `invoke.cancel`)."""
+    choices, p = e.get("via_choices"), e.get("primitive")
+    if "resolve" not in (e.get("via") or []):
+        return ["only a command `resolve` homes names `via_choices`"] if choices else []
+    if not isinstance(choices, dict) or not choices or not all(isinstance(k, list) and k for k in choices.values()):
+        return ["`resolve` homes it only through the pairs it names: give `via_choices: {choice: [subject kind, ...]}`"]
+    out = []
+    for choice, kinds in choices.items():
+        for kind in kinds:
+            runs = contract.RESOLVE_CHOICE_PRIMITIVE.get((choice, kind))
+            if runs is None:
+                out.append(f"`resolve` has no pair ({choice}, {kind}) (contract.RESOLVE_CHOICE_PRIMITIVE)")
+            elif runs != p:
+                out.append(f"`resolve`'s pair ({choice}, {kind}) runs {runs!r}, not {p!r}")
     return out
 
 
@@ -337,7 +392,7 @@ def check_fields(reg: dict[str, Any]) -> list[str]:
             out.append(f"{name}: `mutates_basis` says how its `mutates` was determined")
         if not isinstance(e.get("refusals"), list):
             out.append(f"{name}: `refusals` is a list of aew.errors codes")
-    return out
+    return out + planned_problems(reg)
 
 
 def check_users(reg: dict[str, Any]) -> list[str]:
@@ -459,6 +514,7 @@ def check_door(reg: dict[str, Any]) -> list[str]:
                 out.append(f"{label(kind, name)}: tool {tool_name!r} does not run {e['primitive']!r}")
         if e.get("primitive") and not primitive_names(name, e["primitive"]):
             out.append(f"{label(kind, name)}: primitive {e['primitive']!r} is not this command's step")
+        out += [f"{label(kind, name)}: {why}" for why in resolve_home_problems(e)]
     return sorted(set(out), key=out.index)
 
 
@@ -624,6 +680,599 @@ def check_lead_shell_lifecycle(reg: dict[str, Any]) -> list[str]:
 def check_unevidenced(reg: dict[str, Any]) -> list[str]:
     return [f"{label(kind, e['name'])} is homed {e['home']} but no vertical journey exercises it"
             for kind, e in entries(reg) if e.get("home") not in (DIAGNOSTIC, "internal") and not e.get("journeys")]
+
+
+# ---------------------------------------------------------------------------------------------- the planned rows
+# The A1 slice plan (reviewed CLEAR) §2.1: every still-undecided command carries `planned: {disposition, homes,
+# primitive, lands, reason}`, its homes being typed tools (built, or under `proposed_tools`) or `R(<choice>)`, a
+# `resolve` choice (built in contract.RESOLVE_CHOICE_PRIMITIVE, or under `proposed_choices`). What a home runs is read
+# from the code when it is built and from its proposal when it is not.
+
+PLANNED_KEYS = ("disposition", "homes", "primitive", "lands", "reason")
+PLANNED_OPTIONAL = ("options", "uncovered")  # a typed plan's option classification, and its derived gaps (F1)
+HOME_CHOICE = re.compile(r"R\(([a-z_]+)\)")
+BUILT, PROPOSED = "built", "proposed"
+
+
+def planned_rows(reg: dict[str, Any]) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+    return [(str(e.get("name")), e, e["planned"]) for kind, e in entries(reg)
+            if kind == "cli" and isinstance(e.get("planned"), dict)]
+
+
+def proposals(reg: dict[str, Any], section: str) -> dict[str, dict[str, Any]]:
+    return {str(p.get("name")): p for p in reg.get(section) or []}
+
+
+def home_runs(reg: dict[str, Any], home: str) -> tuple[str, set[str]] | None:
+    """Whether ``home`` is built or proposed, and the primitives it runs (or will), or ``None`` when it is neither."""
+    choice = HOME_CHOICE.fullmatch(home)
+    if choice:
+        built = {p for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if c == choice.group(1)}
+        if built:
+            return BUILT, built
+        proposal = proposals(reg, "proposed_choices").get(choice.group(1))
+        return (PROPOSED, set((proposal.get("pairs") or {}).values())) if proposal else None
+    t = contract.TOOLS.get(home)
+    if t is not None and t.built and NORMAL in t.profiles:
+        return BUILT, set(t.expands_to)
+    proposal = proposals(reg, "proposed_tools").get(home)
+    return (PROPOSED, set(proposal.get("expands_to") or [])) if proposal else None
+
+
+def planned_problems(reg: dict[str, Any]) -> list[str]:
+    """The planned rows' and the proposals' shape (part of `fields`): a planned row is exactly an undecided command,
+    with a planned disposition, homes that resolve, a primitive that names it, a landing slice and a reason; a typed
+    plan names its primitive and other plans home nothing; every proposal is some planned row's home."""
+    lands = set((reg.get("vocabulary") or {}).get("lands") or {})
+    out = [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
+           if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
+    homed: set[str] = set()
+    for name, e, plan in planned_rows(reg):
+        it = f"`aew {name}`'s plan"
+        if e.get("lead_disposition") != UNDECIDED:
+            out.append(f"`aew {name}` is decided ({e.get('lead_disposition')}): drop its `planned`")
+        if tuple(k for k in plan if k not in PLANNED_OPTIONAL) != PLANNED_KEYS or not set(plan) <= {
+                *PLANNED_KEYS, *PLANNED_OPTIONAL}:
+            out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, and may add {list(PLANNED_OPTIONAL)}; "
+                       f"not {list(plan)}")
+        d, homes, p = plan.get("disposition"), plan.get("homes"), plan.get("primitive")
+        if d not in (TYPED, *LEAVES_LEAD_DOORS):
+            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, *LEAVES_LEAD_DOORS]}")
+        if plan.get("lands") not in lands:
+            out.append(f"{it}: lands {plan.get('lands')!r} is not in the vocabulary's `lands`")
+        if not plan.get("reason"):
+            out.append(f"{it} gives no reason")
+        if not isinstance(homes, list):
+            out.append(f"{it}: `homes` is a list")
+            continue
+        homed |= set(homes)
+        out += [f"{it}: unknown home {h!r}, neither a typed tool nor a `resolve` choice, built or proposed"
+                for h in homes if home_runs(reg, str(h)) is None]
+        if d == TYPED and p in (None, "none"):
+            out.append(f"{it}: a typed plan names the primitive its homes run")
+        elif d != TYPED and homes:
+            out.append(f"{it}: only a typed plan has homes ({d} is reached through neither Lead door)")
+        if p not in (None, "none") and not primitive_names(name, str(p)):
+            out.append(f"{it}: primitive {p!r} is not this command's step")
+    for section, home in (("proposed_tools", "{}"), ("proposed_choices", "R({})")):
+        for name, proposal in proposals(reg, section).items():
+            if proposal.get("lands") not in lands:
+                out.append(f"{section} `{name}`: lands {proposal.get('lands')!r} is not in the vocabulary's `lands`")
+            if home.format(name) not in homed:
+                out.append(f"{section} `{name}` homes no planned row: drop it, or name it in a row's `homes`")
+    return out
+
+
+def check_home_built(reg: dict[str, Any]) -> list[str]:
+    """"Home built => row decided" (the A1 slice plan §2.1 item 2): a proposal that is built leaves its section, and a
+    row whose homes are all built and all run its primitive is decided `typed` in the same change (door typed, `via`,
+    `primitive`). A built home that does not run the primitive yet is an A2 debt (`planned_sweep`), not a built home."""
+    out = [f"proposed tool `{n}` is built now (contract.TOOLS): remove its proposal and decide the rows it homes"
+           for n in proposals(reg, "proposed_tools") if n in contract.TOOLS]
+    out += [f"proposed choice `{n}` is built now (contract.RESOLVE_CHOICE_PRIMITIVE): remove its proposal and decide "
+            "the rows it homes" for n in proposals(reg, "proposed_choices")
+            if any(c == n for c, _ in contract.RESOLVE_CHOICE_PRIMITIVE)]
+    for name, _, plan in planned_rows(reg):
+        homes, p = plan.get("homes") or [], plan.get("primitive")
+        runs = [home_runs(reg, str(h)) for h in homes]
+        # The A1-0 review's F1: built homes decide the row only when they also cover every use of the command (its
+        # transition edges, dispatch entrypoints and options), counted against BUILT homes alone.
+        if homes and all(r is not None and r[0] == BUILT and p in r[1] for r in runs) \
+                and not row_uncovered(reg, name, plan, built_only=True):
+            out.append(f"every home of `aew {name}` ({homes}) is built, runs {p!r} and covers every use of the "
+                       "command: set its lead_disposition typed, door typed, `via` and `primitive` in this change, "
+                       "and drop its `planned`")
+    return out
+
+
+def check_out_of_door(reg: dict[str, Any]) -> list[str]:
+    """"Out of the door => row decided" (the A1 slice plan §2.1 item 2): a command that has left LEAD_REACHABLE is
+    decided; `keep_out` then proves an `engine-owned` or `forbidden-to-lead` one."""
+    return [f"`aew {e['name']}` has left the Lead's shell door (lead_broker.LEAD_REACHABLE) but is undecided: decide "
+            "it in the same change" for kind, e in entries(reg)
+            if kind == "cli" and is_live(kind, str(e.get("name"))) and e.get("lead_disposition") == UNDECIDED
+            and not lead_reachable(str(e["name"]))]
+
+
+def check_planned_sweep(reg: dict[str, Any]) -> list[str]:
+    """The sweep's planned half (the A1 slice plan §2.1 item 3, §2.5): a planned typed row's home that does not run
+    its primitive, built or as proposed. The built half is `door`'s: a typed row's `via` tools and `via_choices` run
+    its primitive."""
+    out = []
+    for name, _, plan in planned_rows(reg):
+        p = plan.get("primitive")
+        for h in plan.get("homes") or [] if plan.get("disposition") == TYPED else []:
+            runs = home_runs(reg, str(h))
+            if runs is not None and p not in runs[1]:
+                out.append(f"`aew {name}`: its {runs[0]} home {h} does not run {p!r} yet (a debt of {plan['lands']})")
+    return out
+
+
+def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
+    """The planned rows by the slice they land in (the A1 slice plan §2.1 item 5), in the vocabulary's order."""
+    order = list((reg.get("vocabulary") or {}).get("lands") or {})
+    rows = sorted(planned_rows(reg), key=lambda r: (order.index(r[2]["lands"]) if r[2].get("lands") in order
+                                                    else len(order), r[0]))
+    return [f"{plan.get('lands')}: `aew {name}` -> {plan.get('disposition')}"
+            + (f" via {', '.join(map(str, plan['homes']))}" if plan.get("homes") else "")
+            + (f"; {len(plan['uncovered']['uses'])} use(s) uncovered until {plan['uncovered'].get('lands')}"
+               if isinstance(plan.get("uncovered"), dict) else "") for name, _, plan in rows]
+
+
+# ---------------------------------------------------------------------------------------------- coverage (F1)
+# The A1-0 review's F1: a typed plan's homes must cover every use of its command before `home_built` may decide it.
+# The USES are derived from the code, by four scans, for every planned row (the fourth, state-selected entrypoint
+# uses, is below `stage_edges`):
+# - **transition edges:** every `transitions.RULES` edge whose operation (`via`, or one of its `also`) the command runs,
+#   by `transitions._COMMANDS` (the engine's own via -> command table), else `work <via>` when that command is live
+#   (`reconcile`: `work_ops.work_reconcile` checks via "reconcile");
+# - **dispatch entrypoints:** every `dispatch.ENTRYPOINTS` entry whose `cli` is the command;
+# - **options:** every option and positional of the live parser's command, less those this module derives as generic
+#   (the Lead credential, the expected revisions, PRINT_ONLY).
+# What a home COVERS is read from the code when it is built and from its proposal when it is not:
+# - a built stage's `work.transition` step covers the edges into its fixed target (`availability.STAGES`) from the
+#   state its producing step leaves (`produced_by`: `availability._product` for `work.assign`, else the targets of the
+#   producer's own edges), or, when no earlier step produces the state, from the sources whose edge the step's own
+#   arguments can take (an edge requiring a reason only with a reason: the re-review's N1);
+# - a built stage's dispatch step covers a state-selected use only when the stage starts in that state;
+# - a proposal covers the edges its `transitions` name (`*` for any state), which a proposal running
+#   `work.transition` must declare; a built `resolve` choice running `work.transition` covers no edge until its edges
+#   have a code owner (none does today);
+# - any other edge is covered by a home running a primitive that names the edge's command (`primitive_names`);
+# - an entrypoint, by a home running it; an option, by the plan's `options` classification.
+# What the scans cannot see: whether a home's argument implements an option's meaning (the classification is a
+# judgment; its completeness is derived); a stage running from more states than its producer leaves; a stage's earlier
+# steps against a state-selected use's state; a state check inside a helper a guard calls; routes of two or more
+# steps; a command's uses that are none of the four. `_COMMANDS` is one-valued: three operations have more callers in
+# the code (surface-map.md says which, and why none hides a gap today).
+COVERED_BY_ALL_HOMES, UNCOVERED_USE, RETIRED_USE = "homes", "uncovered", "retired"
+ANY_STATE = "*"
+
+
+def via_command(via: str) -> str | None:
+    """The command that runs edges of operation ``via``: the words of its `_COMMANDS` template before the first
+    argument, else `work <via>`; ``None`` when no live command is named (the engine's own operations)."""
+    template = transitions._COMMANDS.get(via)
+    words = []
+    for w in (template.split()[1:] if template else ["work", via]):
+        if w.startswith(("{", "-", "<", ".")):
+            break
+        words.append(w)
+    name = " ".join(words)
+    return name if name in live_commands() else None
+
+
+def command_edges(name: str) -> list[tuple[str, str, str]]:
+    return [(s, d, via) for (s, d), r in sorted(transitions.RULES.items()) for via in (r.via, *r.also)
+            if via_command(via) == name]
+
+
+def command_entrypoints(name: str) -> list[str]:
+    return sorted(n for n, ep in dispatch.ENTRYPOINTS.items() if ep.cli and " ".join(ep.cli) == name)
+
+
+def command_options(name: str) -> list[str]:
+    generic = {"token", *PRINT_ONLY, *revision_dests(name)}
+    return [a.option_strings[-1] if a.option_strings else a.dest for a in live_commands()[name]._actions
+            if a.dest not in generic]
+
+
+def stage_edges(name: str) -> set[tuple[str, str]]:
+    """The edges a built stage's `work.transition` steps take (above)."""
+    t, out = contract.TOOLS[name], set()
+    for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES.get(name, ()), strict=False)):
+        if primitive != "work.transition":
+            continue
+        args = build({"work_id": "T-0001"}) or {}
+        to = args.get("to")
+        producers = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
+        if producers:
+            p = t.expands_to[producers[0] - 1]
+            fixed = availability._product(contract.STATE, p, {})
+            sources = {fixed} if fixed else {d for (_, d), r in transitions.RULES.items() if p in (r.via, *r.also)}
+        else:
+            sources = {s for (s, d), r in transitions.RULES.items() if d == to and r.via == "transition"}
+        # The A1-0 re-review's N1: an edge that requires a reason is taken only by a step that passes one.
+        out |= {(s, to) for s in sources if (s, to) in transitions.RULES
+                and (args.get("reason") or not transitions.RULES[(s, to)].reason_required)}
+    return out
+
+
+# The fourth scan (the A1-0 re-review's N2): a dispatch guard whose if/elif chain selects among a unit's states gives
+# its entrypoint one use per state (`invoke.slot`: ASSIGNED/RUNNING execute, REVIEW_PENDING review, VERIFY_PENDING
+# verify, a prepared COMMIT_READY with scope integration). Derived from the guards' source (every `DispatchGuard`
+# registration under src/aew/engine); a guard with a single state precondition selects nothing, so it is no branch.
+ENGINE_SRC = ROOT / "src" / "aew" / "engine"
+Constraint = tuple[str, Any, bool, Any]  # (facts key, value, equal?, the key's default)
+
+
+def _literals(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return (node.value,)
+    if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
+        return tuple(e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str))
+    return ()
+
+
+UNRESOLVED = "?"  # a state constant the scan could not resolve: named, never dropped (the agreement test refuses it)
+
+
+@cache
+def engine_constants() -> dict[str, tuple[str, ...]]:
+    """Every module-level string, or collection of strings, that aew.engine's modules define or import, by name: what
+    a guard's `st in EXECUTE_STATES` compares against (the re-review's N4)."""
+    out: dict[str, tuple[str, ...]] = {}
+    for f in sorted(ENGINE_SRC.glob("*.py")):
+        for name, value in vars(importlib.import_module(f"aew.engine.{f.stem}")).items():
+            states = _string_states(value) if name.isupper() and name not in out else None
+            if states is not None:
+                out[name] = states
+    return out
+
+
+def _string_states(value: Any) -> tuple[str, ...] | None:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, (tuple, list, set, frozenset)) and value and all(isinstance(v, str) for v in value):
+        return tuple(sorted(value)) if isinstance(value, (set, frozenset)) else tuple(value)
+    return None
+
+
+def _state_branches(fn: ast.FunctionDef, constants: dict[str, tuple[str, ...]] | None = None,
+                    namespace: dict[str, Any] | None = None) -> list[tuple[tuple[Constraint, ...], tuple[str, ...]]]:
+    """The longest if/elif chain in ``fn`` whose links test a unit's state: per link, the `facts.get(...)` equalities
+    its test (or an earlier link's, negated) sets, and the states it selects (in its test, or its body's tests).
+
+    A unit is a name assigned from an expression that indexes `"work"` or calls a `unit(...)` accessor
+    (`self.units.unit(state, w)`); its state is `unit["state"]`, `unit.get("state")`, or a name assigned from either.
+    The states compared are string literals, collections of them, or a constant: a name resolved through ``constants``
+    (default: :func:`engine_constants`), or a module-qualified one (`H.TERMINAL`) through ``namespace``, the guard's
+    module. What the scan cannot read as "selects these states" is kept as a `?` state carrying its source, never
+    dropped or misread (the re-review's N4 and N5): an unresolved constant (`?H.TERMINAL`), reversed operands
+    (`?'B' == st`), a method test (`?st.startswith(...)`) and a negation (`?st not in {...}`)."""
+    table = engine_constants() if constants is None else constants
+    assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)]
+
+    def unit_source(e: ast.AST) -> bool:
+        return any(isinstance(c, ast.Constant) and c.value == "work" for c in ast.walk(e)) or any(
+            isinstance(c, ast.Call) and (isinstance(c.func, ast.Attribute) and c.func.attr == "unit"
+                                         or isinstance(c.func, ast.Name) and c.func.id == "unit")
+            for c in ast.walk(e))
+
+    units = {a.targets[0].id for a in assigns if unit_source(a.value)}  # type: ignore[union-attr]
+
+    def is_state_read(e: ast.AST) -> bool:
+        if isinstance(e, ast.Subscript):
+            return isinstance(e.slice, ast.Constant) and e.slice.value == "state" \
+                and isinstance(e.value, ast.Name) and e.value.id in units
+        return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "get" \
+            and isinstance(e.func.value, ast.Name) and e.func.value.id in units \
+            and bool(e.args) and isinstance(e.args[0], ast.Constant) and e.args[0].value == "state"
+
+    names = {a.targets[0].id for a in assigns if is_state_read(a.value)}  # type: ignore[union-attr]
+
+    def is_state(e: ast.AST) -> bool:
+        return is_state_read(e) or isinstance(e, ast.Name) and e.id in names
+
+    def compared(node: ast.AST) -> tuple[str, ...]:
+        if isinstance(node, ast.Name):
+            return table.get(node.id, (f"{UNRESOLVED}{node.id}",))
+        if isinstance(node, ast.Attribute):
+            dotted, value, found = ast.unparse(node), None, False
+            parts = dotted.split(".")
+            if namespace is not None and parts[0] in namespace:
+                value, found = namespace[parts[0]], True
+                for part in parts[1:]:
+                    value, found = getattr(value, part, None), found and hasattr(value, part)
+            return (_string_states(value) if found else None) or (f"{UNRESOLVED}{dotted}",)
+        return _literals(node) or (f"{UNRESOLVED}{ast.unparse(node)}",)
+
+    def states(tests: list[ast.AST]) -> tuple[str, ...]:
+        out: list[str] = []
+        for t in tests:
+            for c in ast.walk(t):
+                if isinstance(c, ast.Compare) and is_state(c.left):
+                    out += [f"{UNRESOLVED}{ast.unparse(c)}"] if isinstance(c.ops[0], (ast.NotEq, ast.NotIn)) \
+                        else compared(c.comparators[0])
+                elif isinstance(c, ast.Compare) and any(is_state(x) for x in c.comparators):
+                    out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # reversed operands
+                elif isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and is_state(c.func.value):
+                    out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # a method test on the state
+                elif isinstance(c, ast.Call) and any(is_state(n) or isinstance(n, ast.Name) and n.id in units
+                                                     for a in (*c.args, *(k.value for k in c.keywords))
+                                                     for n in ast.walk(a)):
+                    out.append(f"{UNRESOLVED}{ast.unparse(c)}")  # a predicate given the state or the unit (N7)
+        return tuple(out)
+
+    def mentions(e: ast.AST) -> bool:
+        """Whether ``e`` reads the unit's state anywhere, or passes the unit itself (or its state) to a call. A
+        unit's other fields (`unit["kind"]`) are not its state."""
+        return any(is_state(n) or isinstance(n, ast.Call) and any(
+            isinstance(a, ast.Name) and a.id in units for a in (*n.args, *(k.value for k in n.keywords)))
+            for n in ast.walk(e))
+
+    def link_states(test: ast.AST) -> tuple[str, ...]:
+        """A link's own test, failing closed (the re-review's N7): a negation that touches the state, or a test that
+        touches the unit or its state yet yields no states, is one `?` state carrying the test."""
+        if any(isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.Not) and mentions(n.operand)
+               for n in ast.walk(test)):
+            return (f"{UNRESOLVED}{ast.unparse(test)}",)
+        return states([test]) or ((f"{UNRESOLVED}{ast.unparse(test)}",) if mentions(test) else ())
+
+    def facts(test: ast.AST) -> list[Constraint]:
+        return [(c.left.args[0].value, c.comparators[0].value, isinstance(c.ops[0], ast.Eq),
+                 c.left.args[1].value if len(c.left.args) > 1 and isinstance(c.left.args[1], ast.Constant) else None)
+                for c in ast.walk(test) if isinstance(c, ast.Compare) and isinstance(c.left, ast.Call)
+                and isinstance(c.left.func, ast.Attribute) and c.left.func.attr == "get"
+                and isinstance(c.left.func.value, ast.Name) and c.left.func.value.id == "facts"
+                and c.left.args and isinstance(c.left.args[0], ast.Constant)
+                and isinstance(c.comparators[0], ast.Constant) and isinstance(c.ops[0], (ast.Eq, ast.NotEq))]
+
+    elifs = {id(n.orelse[0]) for n in ast.walk(fn) if isinstance(n, ast.If) and len(n.orelse) == 1
+             and isinstance(n.orelse[0], ast.If)}
+    best: list[tuple[tuple[Constraint, ...], tuple[str, ...]]] = []
+    for head in (n for n in ast.walk(fn) if isinstance(n, ast.If) and id(n) not in elifs):
+        links, before, node = [], [], head
+        while isinstance(node, ast.If):
+            own = facts(node.test)
+            # A body test keeps a negation's states: `if not (st == X ...): raise` is how a link requires X.
+            selected = link_states(node.test) or states([n.test for n in node.body if isinstance(n, ast.If)])
+            if selected:
+                links.append((tuple(own + [(k, v, not eq, d) for k, v, eq, d in before]), selected))
+            before += own
+            node = node.orelse[0] if len(node.orelse) == 1 else None
+        if len(links) > len(best):
+            best = links
+    return best if len(best) >= 2 else []
+
+
+AEW_SRC = ROOT / "src" / "aew"
+
+
+def _module_of(path: Path) -> str:
+    return ".".join(("aew", *path.relative_to(AEW_SRC).with_suffix("").parts))
+
+
+def dispatch_guard_calls() -> list[str]:
+    """Every `DispatchGuard(...)` call under src/aew, in any argument form (`file:line`): the count registered_guards
+    must read in full (the re-review's N6)."""
+    out = []
+    for p in sorted(AEW_SRC.rglob("*.py")):
+        module = ast.parse(p.read_text(encoding="utf-8"))
+        out += [f"{p.relative_to(ROOT).as_posix()}:{n.lineno}" for n in _guard_calls(module)]
+    return out
+
+
+GUARD_CLASS_NAMES = ("GuardRegistration", "DispatchGuard")  # aew.engine.dispatch's class, and the engine's alias
+
+
+def _guard_names(module: ast.Module) -> frozenset[str]:
+    """The names a module calls the dispatch guard registration by (the re-reviews' N8 and N9): `DispatchGuard`,
+    the class's own name and every alias of either imported from `aew.engine.dispatch`
+    (`from aew.engine.dispatch import GuardRegistration as DispatchGuard`, `... as DG`), or a name assigned from
+    those. `aew.engine.seams.GuardRegistration`, the transition guards' class of the same name, is not one."""
+    names = {"DispatchGuard"}
+    names |= {a.asname or a.name for n in ast.walk(module) if isinstance(n, ast.ImportFrom)
+              and (n.module or "").split(".")[-1] == "dispatch" for a in n.names if a.name in GUARD_CLASS_NAMES}
+    if any(isinstance(n, ast.ClassDef) and n.name == "GuardRegistration" for n in module.body) \
+            and any(isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "ENTRYPOINTS"
+                    or isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "ENTRYPOINTS"
+                                                         for t in n.targets) for n in module.body):
+        names.add("GuardRegistration")  # aew.engine.dispatch itself
+    for n in ast.walk(module):
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Name) and n.value.id in names:
+            names |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+    return frozenset(names)
+
+
+def _guard_calls(module: ast.Module) -> list[ast.Call]:
+    """Every call of `DispatchGuard` in ``module``, by any name it binds or as an attribute (`D.DispatchGuard`)."""
+    names = _guard_names(module)
+    return [n for n in ast.walk(module) if isinstance(n, ast.Call)
+            and (isinstance(n.func, ast.Name) and n.func.id in names
+                 or isinstance(n.func, ast.Attribute) and n.func.attr in GUARD_CLASS_NAMES)]
+
+
+def _registrations(module: ast.Module) -> list[tuple[str, str]]:
+    """(guard name, method) of each `DispatchGuard("name", self._method)` call in ``module``, by any name the module
+    binds it to: the one form registered_guards reads."""
+    names = _guard_names(module)
+    return [(str(n.args[0].value), n.args[1].attr) for n in ast.walk(module)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names and len(n.args) >= 2
+            and isinstance(n.args[0], ast.Constant) and isinstance(n.args[1], ast.Attribute)]
+
+
+@cache
+def registered_guards() -> dict[str, tuple[str, ast.FunctionDef]]:
+    """Every `DispatchGuard(name, self._method)` registration under src/aew: its module and its function. A
+    registration in another form (a keyword, a lambda) is not read; `dispatch_guard_calls` counts them all, and the
+    agreement test fails when the two differ."""
+    methods: dict[tuple[str, str], ast.FunctionDef] = {}
+    registered: dict[str, tuple[str, str]] = {}
+    for f in sorted(AEW_SRC.rglob("*.py")):
+        module, parsed = _module_of(f), ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(parsed):
+            if isinstance(node, ast.FunctionDef):
+                methods[(module, node.name)] = node
+        for guard, method in _registrations(parsed):
+            registered[guard] = (module, method)
+    return {g: (mod, methods[(mod, attr)]) for g, (mod, attr) in registered.items() if (mod, attr) in methods}
+
+
+def module_constants(module: str) -> dict[str, tuple[str, ...]]:
+    """The constants a guard's own module sees (its definitions and imports) first, then the engine's."""
+    own = {name: states for name, value in vars(importlib.import_module(module)).items()
+           if name.isupper() and (states := _string_states(value)) is not None}
+    return {**engine_constants(), **own}
+
+
+@cache
+def guard_branches() -> dict[str, list[tuple[tuple[Constraint, ...], tuple[str, ...]]]]:
+    """Every registered dispatch guard that selects among a unit's states, with its branches."""
+    out = {}
+    for guard, (module, fn) in registered_guards().items():
+        branches = _state_branches(fn, module_constants(module), vars(importlib.import_module(module)))
+        if branches:
+            out[guard] = branches
+    return out
+
+
+# The second, form-agnostic detector (the re-review's N4): an if/elif line of a guard that compares anything that
+# reads like a state (`["state"]`, `.get("state")`, a name `st` or `state`, a `*_STATES` constant). Guards with two such
+# lines must be exactly `guard_branches()`, less the exclusions below, each with its reason. Two detectors written
+# differently must agree, so a chain one of them cannot read fails here instead of shrinking the derived gaps.
+BROAD_STATE_LINE = re.compile(
+    r"""(\[['"]state['"]\]|\.get\(['"]state['"]\)|\bst\b|\b[A-Z_]*STATES?\b).*(==|!=|\bnot in\b|\bin\b)"""
+    r"""|(==|!=|\bin\b).*(\[['"]state['"]\]|\.get\(['"]state['"]\)|\bst\b|\b[A-Z_]*STATES?\b)"""
+    r"""|\bst\.\w+\("""  # a method test on the state (`st.startswith(...)`; the re-review's N5)
+    r"""|[\w.]+\([^()]*(\bst\b|\bunit\b|\[['"]state['"]\])""")  # a call given the state or the unit (N7)
+BROAD_EXCLUSIONS = {"queue.order": "it selects among a queue entry's states, not a unit's (`integrate.prepare`, a "
+                                   "decided command)"}
+
+
+def broad_state_lines(fn: ast.FunctionDef) -> int:
+    """How many `if`/`elif` lines of ``fn`` compare something that reads like a state (per link: the re-review's N5)."""
+    return sum(1 for line in ast.unparse(fn).splitlines() if line.strip().startswith(("if ", "elif "))
+               and BROAD_STATE_LINE.search(line))
+
+
+def broad_state_guards(guards: dict[str, ast.FunctionDef]) -> set[str]:
+    return {g for g, fn in guards.items() if broad_state_lines(fn) >= 2}
+
+
+def state_uses(name: str) -> list[tuple[str, str, tuple[Constraint, ...], str]]:
+    """Command ``name``'s state-selected entrypoint uses: (entrypoint, state, the facts it needs, its label)."""
+    out = []
+    for ep in command_entrypoints(name):
+        for guard in dispatch.ENTRYPOINTS[ep].guards:
+            for constraints, states in guard_branches().get(guard, []):
+                selected = "".join(f" ({k}={v})" for k, v, eq, _ in constraints if eq)
+                out += [(ep, s, constraints, f"entrypoint {ep} in {s}{selected}") for s in states]
+    return out
+
+
+def starts_with(tool: str, ep: str, constraints: tuple[Constraint, ...]) -> bool:
+    """Whether built stage ``tool`` runs entrypoint ``ep`` in the state it STARTS in (no earlier step of it produces
+    the state) with arguments that select the branch (the re-review's N2: a home that reaches the state through its own
+    earlier step cannot replace a lost invocation of a unit already there)."""
+    t = contract.TOOLS.get(tool)
+    if t is None or tool not in availability.STAGES:
+        return False
+    for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES[tool], strict=False)):
+        if primitive != ep:
+            continue
+        args = build({"work_id": "T-0001"}) or {}
+        produced = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
+        if not produced and all((args.get(k, d) == v) == eq for k, v, eq, d in constraints):
+            return True
+    return False
+
+
+def typed_homes(reg: dict[str, Any], built_only: bool) -> list[tuple[str, set[str], set[tuple[str, str]]]]:
+    """Every typed home in the system, built (and, unless ``built_only``, proposed): its name, the primitives it runs
+    and the transition edges it covers (patterns, for a proposal)."""
+    out = [(t.name, set(t.expands_to), stage_edges(t.name)) for t in contract.TOOLS.values()
+           if t.built and NORMAL in t.profiles]
+    choices: dict[str, set[str]] = {}
+    for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items():
+        choices.setdefault(c, set()).add(p)
+    out += [(f"R({c})", ps, set()) for c, ps in choices.items()]
+    if not built_only:
+        out += [(n, set(p.get("expands_to") or []), {tuple(e) for e in p.get("transitions") or []})
+                for n, p in proposals(reg, "proposed_tools").items()]
+        out += [(f"R({n})", set((p.get("pairs") or {}).values()), {tuple(e) for e in p.get("transitions") or []})
+                for n, p in proposals(reg, "proposed_choices").items()]
+    return out  # type: ignore[return-value]
+
+
+def _edge_matches(patterns: set[tuple[str, str]], s: str, d: str) -> bool:
+    return any(a in (s, ANY_STATE) and b in (d, ANY_STATE) for a, b in patterns)
+
+
+def row_uncovered(reg: dict[str, Any], name: str, plan: dict[str, Any], *, built_only: bool = False) -> list[str]:
+    """The uses of a typed plan's command that no typed home covers (built ones only, with ``built_only``). A plan
+    that is not typed has no typed uses: its command leaves the Lead's doors."""
+    if plan.get("disposition") != TYPED or name not in live_commands():
+        return []
+    pool = typed_homes(reg, built_only)
+    built = {h for h, _, _ in typed_homes(reg, True)}
+    out = []
+    for s, d, via in command_edges(name):
+        if via == "transition":
+            covered = any(_edge_matches(edges, s, d) for _, _, edges in pool)
+        else:
+            covered = any(primitive_names(name, p) for _, ps, _ in pool for p in ps if p != "work.transition")
+        if not covered:
+            out.append(f"{via} {s} -> {d}")
+    out += [f"entrypoint {ep}" for ep in command_entrypoints(name) if not any(ep in ps for _, ps, _ in pool)]
+    out += [use for ep, _, constraints, use in state_uses(name)
+            if not any(starts_with(h, ep, constraints) for h, _, _ in pool)]
+    options = plan.get("options") or {}
+    for o in command_options(name):
+        v = options.get(o)
+        homes = [str(h) for h in plan.get("homes") or []] if v == COVERED_BY_ALL_HOMES else [str(v)]
+        if v == RETIRED_USE:
+            continue
+        if v in (None, UNCOVERED_USE) or not homes or (built_only and not set(homes) <= built):
+            out.append(f"option {o}")
+    return sorted(out)
+
+
+def check_planned_coverage(reg: dict[str, Any]) -> list[str]:
+    """The A1-0 review's F1: every typed plan classifies each of its command's options (the parser's set: none missing,
+    none stray) as covered by its homes (`homes`, or one of them), `uncovered` or `retired`; its `uncovered.uses` are
+    exactly the uses no typed home covers, built or proposed (derived, never typed in), with the slice that homes them;
+    a plan that is not typed has neither; a proposal running `work.transition` names the edges it takes."""
+    lands = set((reg.get("vocabulary") or {}).get("lands") or {})
+    out = []
+    for name, _, plan in planned_rows(reg):
+        it, options, typed = f"`aew {name}`'s plan", plan.get("options"), plan.get("disposition") == TYPED
+        if not typed:
+            out += [f"{it} is {plan.get('disposition')}: it has no `{k}`" for k in PLANNED_OPTIONAL if k in plan]
+            continue
+        if not isinstance(options, dict):
+            out.append(f"{it} classifies its command's options: give `options` ({command_options(name)})")
+            options = {}
+        live = command_options(name)
+        out += [f"{it}: option {o} is not classified (`options`)" for o in live if o not in options]
+        out += [f"{it}: `options` names {o}, which `aew {name}` does not take" for o in options if o not in live]
+        allowed = {COVERED_BY_ALL_HOMES, UNCOVERED_USE, RETIRED_USE, *map(str, plan.get("homes") or [])}
+        out += [f"{it}: option {o} is classified {v!r}, neither `homes`, one of its homes, `uncovered` nor `retired`"
+                for o, v in options.items() if v not in allowed]
+        derived = row_uncovered(reg, name, plan)
+        stated = plan.get("uncovered")
+        uses = stated.get("uses") if isinstance(stated, dict) else None
+        if derived and (uses != derived or stated.get("lands") not in lands):
+            out.append(f"{it}: `uncovered` is {{lands: <slice>, uses: {derived}}} (derived by the coverage scans); "
+                       f"not {stated!r}")
+        elif not derived and stated is not None:
+            out.append(f"{it}: every use is covered now: drop `uncovered`")
+    for section in ("proposed_tools", "proposed_choices"):
+        for n, p in proposals(reg, section).items():
+            runs = set(p.get("expands_to") or []) | set((p.get("pairs") or {}).values())
+            if "work.transition" in runs and not p.get("transitions"):
+                out.append(f"{section} `{n}` runs work.transition: name the edges it takes (`transitions`)")
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- the behavioural probe
@@ -1136,6 +1785,8 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "unevidenced": check_unevidenced, "probe": check_probe, "probe_coverage": check_probe_coverage,
     "probe_flags": check_probe_flags, "shell_reachable_mutation": check_shell_reachable_mutation,
     "keep_out": check_keep_out, "keep_out_coverage": check_keep_out_coverage,
+    "home_built": check_home_built, "out_of_door": check_out_of_door, "planned_sweep": check_planned_sweep,
+    "planned_by_slice": check_planned_by_slice, "planned_coverage": check_planned_coverage,
 }
 
 
@@ -1170,6 +1821,9 @@ def shared_state() -> dict[str, Any]:
 
     return {
         "contract.TOOLS": list(contract.TOOLS.items()),
+        "contract.RESOLVE_CHOICE_PRIMITIVE": list(contract.RESOLVE_CHOICE_PRIMITIVE.items()),
+        "transitions.RULES": list(transitions.RULES.items()),
+        "dispatch.ENTRYPOINTS": list(dispatch.ENTRYPOINTS.items()),
         "lead_broker.LEAD_REACHABLE": (id(lead_broker.LEAD_REACHABLE), sorted(map(sorted, lead_broker.LEAD_REACHABLE))),
         "lead_broker.NOT_RELAYED": (id(lead_broker.NOT_RELAYED), list(lead_broker.NOT_RELAYED)),
         "lead_broker.OPERATOR_ONLY": (id(lead_broker.OPERATOR_ONLY), list(lead_broker.OPERATOR_ONLY)),
@@ -1302,7 +1956,13 @@ def shrink_only_problems() -> list[str]:
             ("PROBE_LIMITED", PROBE_LIMITED, PROBE_LIMITED_DIGEST, PROBE_GRADUATED,
              "a new probe must run its command's real path"),
             ("TRANSPORTS", TRANSPORTS, TRANSPORTS_DIGEST, TRANSPORTS_GRADUATED,
-             "a command in NOT_RELAYED is not kept from the Lead's shell")):
+             "a command in NOT_RELAYED is not kept from the Lead's shell"),
+            ("PLANNED_FROZEN", PLANNED_FROZEN, PLANNED_DIGEST, PLANNED_GRADUATED,
+             "a row is planned only while undecided, and a new Lead-reachable command is decided when added"),
+            ("PROPOSED_TOOLS", PROPOSED_TOOLS, PROPOSED_TOOLS_DIGEST, PROPOSED_TOOLS_GRADUATED,
+             "a home not in the A1 slice plan is a plan change, reviewed as one"),
+            ("PROPOSED_CHOICES", PROPOSED_CHOICES, PROPOSED_CHOICES_DIGEST, PROPOSED_CHOICES_GRADUATED,
+             "a home not in the A1 slice plan is a plan change, reviewed as one")):
         if hashlib.sha256("\n".join(sorted(frozen)).encode()).hexdigest() != digest:
             out.append(f"{name} changed: an entry may only leave it, through its graduated list; {how}")
         if not graduated <= frozen:
@@ -1310,10 +1970,28 @@ def shrink_only_problems() -> list[str]:
     return out
 
 
+def proposal_pin_problems(reg: dict[str, Any]) -> list[str]:
+    """The registry's planned rows and proposals are exactly the pinned lists less what graduated (the A1 slice plan
+    §2.1 item 1): one may leave the registry only by graduating, and nothing is added."""
+    out = []
+    for section, have, pinned in (
+            ("planned rows", {baseline_key("cli", n) for n, _, _ in planned_rows(reg)},
+             PLANNED_FROZEN - PLANNED_GRADUATED),
+            ("proposed_tools", set(proposals(reg, "proposed_tools")), PROPOSED_TOOLS - PROPOSED_TOOLS_GRADUATED),
+            ("proposed_choices", set(proposals(reg, "proposed_choices")),
+             PROPOSED_CHOICES - PROPOSED_CHOICES_GRADUATED)):
+        if have != pinned:
+            out.append(f"the registry's {section} differ from the pinned list less what graduated: added "
+                       f"{sorted(have - pinned)}, removed without graduating {sorted(pinned - have)}")
+    return out
+
+
 def test_the_baseline_only_shrinks():
     """FROZEN is the registry when the standing rule was adopted; nothing is ever added to it (its digest is pinned),
-    and BASELINE is FROZEN minus what graduated. The same for KEEP_OUT_LIMITED and PROBE_LIMITED."""
+    and BASELINE is FROZEN minus what graduated. The same for KEEP_OUT_LIMITED and PROBE_LIMITED, and for the planned
+    rows and the proposed homes, which the registry holds exactly as pinned less what graduated."""
     assert shrink_only_problems() == [] and BASELINE <= FROZEN
+    assert proposal_pin_problems(load()) == []
 
 
 def test_the_registry_is_versioned_and_states_its_vocabulary():
@@ -1454,6 +2132,71 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("refusal_floor", lambda r: _entry(r, "map select-architecture")["refusals"].remove("STALE_REVISION"),
      "`aew map select-architecture`: its arguments imply refusals ['STALE_REVISION']"),
     ("refusal_floor", lambda r: _entry(r, "ticket_start", "tool").update(refusals=[]), "tool `ticket_start`: its"),
+    # The A1 slice plan (reviewed CLEAR) §2.1: the planned rows' shape (part of `fields`) and the two enforced checks.
+    ("fields", lambda r: _entry(r, "work staff").pop("planned"), "`aew work staff` is undecided: give its `planned`"),
+    ("fields", lambda r: _entry(r, "work staff").update(lead_disposition="engine-owned"),
+     "`aew work staff` is decided (engine-owned): drop its `planned`"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(homes=["ticket_fly"]),
+     "`aew work staff`'s plan: unknown home 'ticket_fly'"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(homes=["R(teleport)"]),
+     "`aew work staff`'s plan: unknown home 'R(teleport)'"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(primitive="plan.propose"),
+     "`aew work staff`'s plan: primitive 'plan.propose' is not this command's step"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(primitive="none"),
+     "`aew work staff`'s plan: a typed plan names the primitive its homes run"),
+    ("fields", lambda r: _entry(r, "evidence ingest")["planned"].update(homes=["ticket_draft"]),
+     "`aew evidence ingest`'s plan: only a typed plan has homes"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(lands="someday"),
+     "`aew work staff`'s plan: lands 'someday' is not in the vocabulary"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].pop("reason"), "`aew work staff`'s plan gives no reason"),
+    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "A2"}),
+     "proposed_tools `ticket_fly` homes no planned row"),
+    ("fields", lambda r: r["proposed_choices"].append({"name": "teleport", "pairs": {}, "lands": "A9"}),
+     "proposed_choices `teleport`: lands 'A9' is not in the vocabulary"),
+    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "A2"}),
+     "proposed choice `continue` is built now"),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "A2"}),
+     "proposed tool `ticket_start` is built now"),
+    # The A1-0 review's F1: a typed plan accounts for every use of its command (`planned_coverage`).
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"].pop("options"),
+     "`aew work transition`'s plan classifies its command's options"),
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["options"].pop("--reason"),
+     "`aew work transition`'s plan: option --reason is not classified"),
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["options"].update({"--teleport": "homes"}),
+     "`aew work transition`'s plan: `options` names --teleport"),
+    ("planned_coverage", lambda r: _entry(r, "gate waive")["planned"]["options"].update({"--gate": "ticket_fly"}),
+     "`aew gate waive`'s plan: option --gate is classified 'ticket_fly'"),
+    # A gap typed in by hand, or dropped, is named: `uncovered` is the scans' output.
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["uncovered"]["uses"].pop(),
+     "`aew work transition`'s plan: `uncovered` is {lands: <slice>, uses:"),
+    ("planned_coverage", lambda r: _entry(r, "gate waive")["planned"]["options"].update({"--finding": "homes"}),
+     "`aew gate waive`'s plan: every use is covered now: drop `uncovered`"),
+    ("planned_coverage", lambda r: _entry(r, "work staff")["planned"].pop("uncovered"),
+     "`aew work staff`'s plan: `uncovered` is {lands: <slice>, uses:"),
+    ("planned_coverage", lambda r: _entry(r, "evidence ingest")["planned"].update(options={}),
+     "`aew evidence ingest`'s plan is engine-owned: it has no `options`"),
+    ("planned_coverage", lambda r: proposals(r, "proposed_choices")["escalate"].pop("transitions"),
+     "proposed_choices `escalate` runs work.transition: name the edges it takes"),
+    # Without escalation's proposed homes, its 11 edges and the 3 returns are gaps again.
+    ("planned_coverage", lambda r: r.update(proposed_choices=[p for p in r["proposed_choices"]
+                                                              if p["name"] != "escalate"]),
+     "transition RUNNING -> ESCALATED"),
+    ("out_of_door", lambda r: _entry(r, "work list").update(lead_disposition=UNDECIDED),
+     "`aew work list` has left the Lead's shell door"),
+    # G1's pair check (§2.1 item 4): `resolve` homes a command only through choices that run its primitive.
+    ("door", lambda r: _entry(r, "stage continue").pop("via_choices"),
+     "`aew stage continue`: `resolve` homes it only through the pairs it names"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["continue"]),
+     "`aew stage continue`: `resolve` homes it only through the pairs it names"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"accept_risk": ["finding"]}),
+     "`aew stage continue`: `resolve`'s pair (accept_risk, finding) runs 'work.dispose', not 'stage.resolve'"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"teleport": ["stage_intent"]}),
+     "`aew stage continue`: `resolve` has no pair (teleport, stage_intent)"),
+    # A pair names its subject kind: a kind the choice does not take is no home.
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices={"continue": ["anomaly"]}),
+     "`aew stage continue`: `resolve` has no pair (continue, anomaly)"),
+    ("door", lambda r: _entry(r, "status").update(via_choices={"continue": ["stage_intent"]}),
+     "`aew status`: only a command `resolve` homes names `via_choices`"),
 ]
 
 
@@ -1724,6 +2467,32 @@ ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
      "NOT_FOUND is not a code in aew.errors"),
     ("home", lambda ab: ab.setattr(custody_ops_module(), "worker_argv", lambda repo_root, custodian: ["aew", "status"]),
      "starts `aew status`, not `aew integrate custody`"),
+    # The A1 slice plan (reviewed CLEAR) §2.1: building a home in the code decides its rows; leaving the shell door
+    # decides the command; a `resolve` pair that stops running a typed row's primitive breaks its door.
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_record", "unit"), "work.accept"),
+     "every home of `aew work accept`"),
+    # F1's scans read the code: a new transition edge, a dispatch entrypoint gone, change the derived gaps.
+    ("planned_coverage", lambda ab: ab.setitem(transitions.RULES, ("READY", "VERIFIED"),
+                                               transitions.Rule("transition")),
+     "'transition READY -> VERIFIED'"),
+    # N2: the slot guard taken off `invoke.create.mutating` drops its four state-selected gaps.
+    ("planned_coverage", lambda ab: ab.setitem(dispatch.ENTRYPOINTS, "invoke.create.mutating", dispatch.ENTRYPOINTS[
+        "invoke.create.mutating"]._replace(guards=tuple(g for g in dispatch.ENTRYPOINTS[
+            "invoke.create.mutating"].guards if g != "invoke.slot"))),
+     "`aew invoke create`'s plan: `uncovered` is {lands: <slice>, uses: ['entrypoint invoke.create.non_mutating'"),
+    ("planned_coverage", lambda ab: ab.delitem(dispatch.ENTRYPOINTS, "invoke.create.parent"),
+     "'entrypoint invoke.create.non_mutating', 'option --card', 'option --launch']}"),
+    ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
+        "ticket_request_review"]._replace(name="ticket_rework")), "proposed tool `ticket_rework` is built now"),
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
+     "every home of `aew plan accept`"),
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
+     "proposed choice `accept_plan` is built now"),
+    ("out_of_door", lambda ab: ab.setattr(lead_broker, "LEAD_REACHABLE",
+                                          lead_broker.LEAD_REACHABLE - {frozenset({"work", "staff"})}),
+     "`aew work staff` has left the Lead's shell door"),
+    ("door", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("continue", "stage_intent"), "work.dispose"),
+     "`aew stage continue`: `resolve`'s pair (continue, stage_intent) runs 'work.dispose', not 'stage.resolve'"),
 ]
 
 
@@ -1752,6 +2521,278 @@ def test_an_enforced_check_fails_when_its_code_input_loses_the_property(check, a
     finally:
         ab.restore()
     assert any(named in f for f in findings), findings
+
+
+def test_home_built_waits_until_every_use_is_covered(monkeypatch):
+    """The A1-0 review's F1, differentially: with every home of `work transition` (and of `invoke create`) built and
+    running its primitive, `home_built` still does not decide the row while a use of the command has no BUILT home;
+    take away exactly the uses the scans report uncovered (from the code: the RULES edges, the entrypoints) and
+    classify the remaining option, and it does."""
+    rework = contract.TOOLS["ticket_request_review"]._replace(name="ticket_rework")
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(contract.TOOLS, "ticket_rework", rework)
+        for choice in ("escalate", "return_escalated"):
+            ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, (choice, "unit"), "work.transition")
+        reg = copy.deepcopy(load())
+        for name in ("work transition", "invoke create"):
+            assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg))
+        for option in ("--card", "--launch"):
+            _entry(reg, "invoke create")["planned"]["options"][option] = COVERED_BY_ALL_HOMES
+        def remove(gap: str) -> None:
+            kind, _, rest = gap.partition(" ")
+            if kind == "entrypoint" and " in " in rest:  # a state-selected use: drop the guard that selects it
+                ep = dispatch.ENTRYPOINTS[rest.split(" in ")[0]]
+                ab.setitem(dispatch.ENTRYPOINTS, ep.name, ep._replace(
+                    guards=tuple(g for g in ep.guards if g not in guard_branches())))
+            elif kind == "entrypoint":
+                ab.delitem(dispatch.ENTRYPOINTS, rest)
+            else:
+                s, _, d = rest.partition(" -> ")
+                ab.delitem(transitions.RULES, (s, d))
+
+        # The re-review's N1 edge (no built home can take it) and N2's lost-reviewer use are the last gaps standing:
+        # while either remains, the row is not decided; once it goes, it is.
+        last = {"work transition": "transition ESCALATED -> REVIEW_PENDING",
+                "invoke create": "entrypoint invoke.create.mutating in REVIEW_PENDING"}
+        for name, kept in last.items():
+            gaps = row_uncovered(reg, name, _entry(reg, name)["planned"], built_only=True)
+            assert kept in gaps, (name, gaps)
+            for gap in gaps:
+                if gap != kept and not (" in " in gap and gap.split(" in ")[0] == kept.split(" in ")[0]):
+                    remove(gap)
+            assert row_uncovered(reg, name, _entry(reg, name)["planned"], built_only=True)
+            assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg)), name
+            remove(kept)
+            assert any(f"every home of `aew {name}`" in f for f in check_home_built(reg)), name
+    finally:
+        ab.restore()
+
+
+def test_the_option_scan_reads_the_live_parser():
+    """The A1-0 review's F2 class: an option the command gains is a use the plan must classify (the parser is the
+    source, never a list here)."""
+    parser_of = live_commands()["gate waive"]
+    assert check_planned_coverage(load()) == []
+    action = parser_of.add_argument("--teleport")
+    try:
+        assert any("`aew gate waive`'s plan: option --teleport is not classified" in f
+                   for f in check_planned_coverage(load()))
+    finally:
+        parser_of._remove_action(action)
+        for option in action.option_strings:
+            parser_of._option_string_actions.pop(option, None)
+    assert check_planned_coverage(load()) == []
+
+
+def test_a_stage_takes_only_the_edges_its_arguments_can(monkeypatch):
+    """The A1-0 re-review's N1: `ticket_request_review`'s transition has no state-producing step, and ESCALATED ->
+    REVIEW_PENDING requires a reason its step does not pass, so the stage is not credited with it (the stage stops
+    with USAGE there). Give the step a reason, in memory, and it is."""
+    edge = ("ESCALATED", "REVIEW_PENDING")
+    assert transitions.RULES[edge].via == "transition" and transitions.RULES[edge].reason_required
+    assert edge not in stage_edges("ticket_request_review")
+    assert ("RUNNING", "REVIEW_PENDING") in stage_edges("ticket_request_review")
+    steps = availability.STAGES["ticket_request_review"]
+    first = steps[contract.TOOLS["ticket_request_review"].expands_to.index("work.transition")]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(availability.STAGES, "ticket_request_review",
+                   (lambda a: {**(first(a) or {}), "reason": "given"}, *steps[1:]))
+        assert edge in stage_edges("ticket_request_review")
+    finally:
+        ab.restore()
+
+
+def test_the_state_selected_scan_reads_the_guards():
+    """The A1-0 re-review's N2: the fourth scan derives `invoke.slot`'s branches from the guard's source (two or more
+    links of an if/elif chain on the unit's state), and a guard with a single state precondition selects nothing."""
+    slot = guard_branches()["invoke.slot"]
+    assert [states for _, states in slot] == [("COMMIT_READY",), ("ASSIGNED", "RUNNING"), ("REVIEW_PENDING",),
+                                              ("VERIFY_PENDING",)]
+    assert slot[0][0] == (("scope", "integration", True, "ticket"),)
+    assert all(c == (("scope", "integration", False, "ticket"),) for c, _ in slot[1:])
+    assert set(guard_branches()) == {"invoke.slot"}  # nm.invoke, parent.acceptance, redispatch.state: one precondition
+
+    def parsed(src: str) -> list[Any]:
+        fn = ast.parse(src).body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        return _state_branches(fn)
+
+    two = ("def g(state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
+           "    if st == 'A':\n        x = 1\n    elif st in {'B', 'C'}:\n        x = 2\n")
+    assert [s for _, s in parsed(two)] == [("A",), ("B", "C")]
+    assert parsed(two.split("    elif")[0]) == []  # one precondition: no branch
+    entry = two.replace("state['work'][w]", "state['queue']['entries'][w]")
+    assert parsed(entry) == []  # a queue entry's state is not a unit's
+
+
+# The same two-link unit-state chain, written each way the engine's code reads a unit and its states (the re-review's
+# N4 probe, `state-scan-recognition.py`): each must be recognised by both detectors.
+_N4_BODY = "    if st == 'A':\n        x = 1\n    elif st in {'B', 'C'}:\n        x = 2\n"
+N4_FORMS = {
+    "work subscript": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n" + _N4_BODY,
+    "unit accessor": "def g(self, state, w, facts):\n    unit = self.units.unit(state, w)\n    st = unit['state']\n"
+                     + _N4_BODY,
+    ".get('state')": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit.get('state')\n"
+                     + _N4_BODY,
+    "inline": "def g(self, state, w, facts):\n    unit = state['work'][w]\n"
+              "    if unit['state'] == 'A':\n        x = 1\n    elif unit['state'] in {'B', 'C'}:\n        x = 2\n",
+    "nested check()": "def g(self, state, w, facts):\n    def check():\n        unit = state['work'][w]\n"
+                      "        st = unit['state']\n        if st == 'A':\n            x = 1\n"
+                      "        elif st in {'B', 'C'}:\n            x = 2\n    return checked(check)\n",
+    "states constant": "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
+                       "    if st in EXECUTE_STATES:\n        x = 1\n    elif st == 'REVIEW_PENDING':\n        x = 2\n",
+}
+
+
+def _parsed(src: str) -> ast.FunctionDef:
+    fn = ast.parse(src).body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    return fn
+
+
+@pytest.mark.parametrize("form", sorted(N4_FORMS))
+def test_both_state_detectors_read_every_form(form):
+    """The re-review's N4: each written form of a unit-state chain is a chain to both detectors, with its states
+    resolved (a module constant through the engine's own constants)."""
+    fn = _parsed(N4_FORMS[form])
+    branches = _state_branches(fn)
+    assert len(branches) == 2 and broad_state_guards({form: fn}) == {form}
+    assert not any(s.startswith(UNRESOLVED) for _, states in branches for s in states)
+    if form == "states constant":
+        assert branches[0][1] == tuple(sorted(engine_constants()["EXECUTE_STATES"]))
+
+
+_N5_HEAD = "def g(self, state, w, facts):\n    unit = state['work'][w]\n    st = unit['state']\n"
+N5_PROBES = {  # (the middle link, the state the recogniser must report for it): the reviews' position table, every row
+    "module constant": ("st in H.TERMINAL", "?H.TERMINAL"),
+    "reversed operands": ("'B' == st", "?'B' == st"),
+    "method test": ("st.startswith('VERIF')", "?st.startswith('VERIF')"),
+    "negation": ("st not in {'A', 'B'}", "?st not in {'A', 'B'}"),
+    "predicate on the state": ("is_terminal(st)", "?is_terminal(st)"),  # N7
+    "predicate on the unit": ("H.done(unit)", "?H.done(unit)"),  # N7
+    "not around a comparison": ("not (st == 'B')", "?not st == 'B'"),  # N7's note: a link's own test fails closed
+    "lookup keyed by the state": ("SLOTS[st] == 'review'", "?SLOTS[st] == 'review'"),
+    "membership or another condition": ("st in ('B',) or ready", "B"),
+    "control": ("st == 'B'", "B"),
+}
+
+
+@pytest.mark.parametrize("probe", sorted(N5_PROBES))
+def test_an_unreadable_link_is_a_visible_state_and_both_detectors_count_it(probe):
+    """The re-review's N5 probes: in a three-link chain, a middle link the recogniser cannot read as "selects these
+    states" is a `?` state carrying its source (never dropped, never misread: the negation does not select A and B),
+    and the broad detector counts the same three links."""
+    test, state = N5_PROBES[probe]
+    fn = _parsed(_N5_HEAD + f"    if st == 'A':\n        x = 1\n    elif {test}:\n        x = 2\n"
+                 "    elif st == 'C':\n        x = 3\n")
+    links = _state_branches(fn, {})
+    assert [s for _, s in links] == [("A",), (state,), ("C",)] and broad_state_lines(fn) == 3
+
+
+def test_a_module_qualified_constant_resolves_through_its_module():
+    """The re-review's N5: `st in H.TERMINAL` resolves through the guard's module namespace."""
+    from types import SimpleNamespace
+
+    fn = _parsed(_N5_HEAD + "    if st == 'A':\n        x = 1\n    elif st in H.TERMINAL:\n        x = 2\n")
+    namespace = {"H": SimpleNamespace(TERMINAL=frozenset({"DONE", "CANCELLED"}))}
+    assert [s for _, s in _state_branches(fn, {}, namespace)] == [("A",), ("CANCELLED", "DONE")]
+    assert [s for _, s in _state_branches(fn, {}, {"H": SimpleNamespace()})] == [("A",), ("?H.TERMINAL",)]
+
+
+# The review's registration forms (N6, N8): (the module's source, counted as a call, read as a registration).
+REGISTRATION_FORMS = {
+    "positional": ("DispatchGuard('p', self._g_p)", True, True),
+    "keyword": ("DispatchGuard(name='kw', fn=self._g_kw)", True, False),
+    "lambda": ("DispatchGuard('lam', lambda s, w, f: None)", True, False),
+    "module attribute": ("D.DispatchGuard('attr', self._g_attr)", True, False),
+    "import alias": ("DG('al', self._g_al)", True, True),
+    "the class's own name": ("GuardRegistration('gr', self._g_gr)", True, True),  # assurance_ops's form (N9)
+    "the transition guards' class": ("TransitionGuard('tg', self._g_tg)", False, False),  # seams', not dispatch's
+}
+
+
+@pytest.mark.parametrize("form", sorted(REGISTRATION_FORMS))
+def test_every_registration_form_is_counted_and_the_positional_ones_read(form):
+    """The re-reviews' N6 and N8: every way a module can call `DispatchGuard` is counted (so the count-equals-read
+    assertion catches a form the reader skips), and a positional registration is read by any name the module binds
+    (an import alias included)."""
+    call, counted, read = REGISTRATION_FORMS[form]
+    module = ast.parse("from aew.engine.dispatch import DispatchGuard as DG\nfrom aew.engine import dispatch as D\n"
+                       "from aew.engine.dispatch import GuardRegistration\n"
+                       "from aew.engine.seams import GuardRegistration as TransitionGuard\n"
+                       f"class X:\n    def regs(self):\n        return [{call}]\n")
+    assert (len(_guard_calls(module)) == 1, len(_registrations(module)) == 1) == (counted, read)
+
+
+def test_the_guard_reading_is_tied_to_what_the_dispatcher_runs(monkeypatch):
+    """The re-review's N9, differentially: the assurance guards registered by the class's own name are read (32 = 32),
+    and a guard an entrypoint runs that no registration the reading understands provides shows as referenced, not
+    read."""
+    referenced = {g for ep in dispatch.ENTRYPOINTS.values() for g in ep.guards}
+    assert {"protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers"} <= set(registered_guards())
+    assert set(registered_guards()) == referenced
+    ep = dispatch.ENTRYPOINTS["invoke.create.mutating"]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(dispatch.ENTRYPOINTS, ep.name, ep._replace(guards=(*ep.guards, "registered.elsewhere")))
+        now = {g for e in dispatch.ENTRYPOINTS.values() for g in e.guards}
+        assert now - set(registered_guards()) == {"registered.elsewhere"}
+    finally:
+        ab.restore()
+
+
+def test_the_two_state_detectors_agree_on_the_engine():
+    """The re-review's N4, the class check: over every registered guard, the form-agnostic detector finds exactly the
+    fourth scan's guards plus the stated exclusions, and no state the scan derived is unresolved. A guard the scan
+    cannot read fails here (the differential below), never silently dropping its uses."""
+    guards = {g: fn for g, (_, fn) in registered_guards().items()}
+    # N6: both detectors read registered_guards(); it reads every DispatchGuard(...) call in src/aew, in any form.
+    calls = dispatch_guard_calls()
+    assert len(calls) == len(guards), ("a DispatchGuard registration registered_guards does not read", calls)
+    # N9, the class fix: what the static reading finds is exactly what the dispatcher runs, the guard names
+    # dispatch.ENTRYPOINTS references. A registration in any form the reading misses is a referenced name not read.
+    referenced = {g for ep in dispatch.ENTRYPOINTS.values() for g in ep.guards}
+    assert set(guards) == referenced, ("referenced, not read", sorted(referenced - set(guards)),
+                                       "read, not referenced", sorted(set(guards) - referenced))
+    broad = broad_state_guards(guards)
+    assert broad - set(BROAD_EXCLUSIONS) == set(guard_branches()), (sorted(broad), sorted(guard_branches()))
+    assert set(BROAD_EXCLUSIONS) <= broad  # an exclusion that no longer matches is stale: drop it
+    # N5: per link, not per guard: a link either detector cannot read inside a chain both find is a difference.
+    for g, branches in guard_branches().items():
+        assert broad_state_lines(guards[g]) == len(branches), (g, broad_state_lines(guards[g]), branches)
+    assert not any(s.startswith(UNRESOLVED) for branches in guard_branches().values()
+                   for _, states in branches for s in states)
+    # Differential: a guard the recogniser cannot read (its chain on a value it cannot tie to a unit) is found by the
+    # broad detector alone, so the agreement fails.
+    unread = _parsed("def g(self, state, w, facts):\n    st = lookup(state, w)\n" + _N4_BODY)
+    assert broad_state_guards({"unread": unread}) == {"unread"} and _state_branches(unread) == []
+    # And the other way: a chain on a differently named state variable is the recogniser's alone.
+    renamed = _parsed(N4_FORMS["work subscript"].replace("st ", "phase ").replace("st =", "phase ="))
+    assert len(_state_branches(renamed)) == 2 and broad_state_guards({"renamed": renamed}) == set()
+    # What both miss, pinned as a probe (surface-map.md's "cannot see" list): a state read through an arbitrary helper
+    # into a variable not named like a state.
+    neither = _parsed(N4_FORMS["work subscript"].replace("st = unit['state']", "phase = lookup(state, w)")
+                      .replace("st ", "phase "))
+    assert _state_branches(neither) == [] and broad_state_guards({"neither": neither}) == set()
+
+
+def test_a_home_covers_a_state_selected_use_only_if_it_starts_there(monkeypatch):
+    """The A1-0 re-review's N2: `integration_publish` starts in a prepared COMMIT_READY and invokes there with scope
+    integration, so it covers that use; the request stages reach REVIEW_PENDING and VERIFY_PENDING through their own
+    transitions, so they do not. Remove `ticket_request_review`'s state producer, in memory, and it is credited."""
+    uses = {s: c for ep, s, c, _ in state_uses("invoke create") if ep == "invoke.create.mutating"}
+    assert starts_with("integration_publish", "invoke.create.mutating", uses["COMMIT_READY"])
+    assert not starts_with("ticket_request_review", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    assert not starts_with("integration_publish", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    t = contract.TOOLS["ticket_request_review"]
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(contract.TOOLS, t.name, t._replace(produced_by=()))
+        assert starts_with("ticket_request_review", "invoke.create.mutating", uses["REVIEW_PENDING"])
+    finally:
+        ab.restore()
 
 
 def test_the_ideal_path_check_reads_the_vertical_module(tmp_path, monkeypatch):
@@ -1839,6 +2880,23 @@ def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):
     monkeypatch.undo()
     monkeypatch.setattr(_sys_module(), "TRANSPORTS", TRANSPORTS | {"context pack"})
     assert any("TRANSPORTS changed" in p for p in shrink_only_problems())
+    monkeypatch.undo()
+    for name, pinned in (("PLANNED_FROZEN", PLANNED_FROZEN), ("PROPOSED_TOOLS", PROPOSED_TOOLS),
+                         ("PROPOSED_CHOICES", PROPOSED_CHOICES)):
+        monkeypatch.setattr(_sys_module(), name, pinned | {"teleport"})
+        assert any(f"{name} changed" in p for p in shrink_only_problems())
+        monkeypatch.undo()
+    # The registry against the pins: a proposal added, or one removed without graduating, is named.
+    reg = copy.deepcopy(load())
+    reg["proposed_tools"].append({"name": "ticket_fly"})
+    reg["proposed_choices"] = [p for p in reg["proposed_choices"] if p["name"] != "cancel"]
+    _entry(reg, "work staff").pop("planned")
+    problems = proposal_pin_problems(reg)
+    assert any("proposed_tools differ" in p and "added ['ticket_fly']" in p for p in problems), problems
+    assert any("proposed_choices differ" in p and "without graduating ['cancel']" in p for p in problems), problems
+    assert any("planned rows differ" in p and "without graduating ['cli:work staff']" in p for p in problems)
+    monkeypatch.setattr(_sys_module(), "PROPOSED_CHOICES_GRADUATED", frozenset({"cancel"}))
+    assert not any("proposed_choices" in p for p in proposal_pin_problems(reg))
 
 
 def test_the_mutation_proof_fails_when_the_command_no_longer_writes(tmp_path, monkeypatch):
@@ -1873,7 +2931,8 @@ def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():
     reg = copy.deepcopy(load())
     # A tripwire: when one of these is empty on main, its slice has landed: flip that check to enforce in CHECKS and
     # in surface-map.md's table.
-    for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle"):
+    for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle", "planned_sweep",
+                  "planned_by_slice"):
         assert CHECK_FUNCTIONS[check](reg), f"`{check}` reports nothing now: flip it to enforce (CHECKS and the doc)"
     reg["refusal_status"] = {"inventory": "complete", "structured": "yes"}
     for _, e in entries(reg):
@@ -1881,13 +2940,14 @@ def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():
             e["owner"] = "lead"
         if e.get("lead_disposition") == UNDECIDED:
             e["lead_disposition"] = "engine-owned"
+            e.pop("planned")
         if e.get("door") not in (None, TYPED):
             e.pop("door")
             e.pop("partly_via", None)
         if not e.get("journeys") and e.get("home") not in (DIAGNOSTIC, "internal"):
             e["journeys"] = ["V1"]
     for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle",
-                  "unevidenced"):
+                  "unevidenced", "planned_sweep", "planned_by_slice"):
         assert CHECK_FUNCTIONS[check](reg) == [], check
     assert check_disposition_applied(reg)  # engine-owned, yet still Lead-reachable: A4 has not closed the door
 

@@ -177,6 +177,128 @@ the checks by being labelled diagnostic? No, by construction):
 The registry also lists, under `proposed`, the commands the vertical UAT's ideal path (`IDEAL_PATH`) names that do not
 exist yet. When one is built, it moves to `commands`.
 
+**A `resolve` home is proved by its pair** (the A1 slice plan, reviewed CLEAR, §2.1 item 4). `resolve` runs one
+primitive per call, chosen by its `choice`, so its `expands_to` alone would accept it as the home of any of them. A
+command `resolve` homes names the (choice, subject kind) pairs that home it (`via_choices: {choice: [kind, ...]}`),
+and each must be in `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE` and run the command's primitive. So one choice can
+home two commands by subject kind (A2's `cancel`: a unit's `work.cancel`, an invocation's `invoke.cancel`). That
+mapping owns the choices, their order and `resolve`'s `expands_to`.
+
+## The planned dispositions (A1-0)
+
+The A1 slice plan (reviewed CLEAR, §2) decides where each still-`undecided` command goes. Until its homes exist, the
+registry records the plan, not the decision:
+
+- **`planned`**, on every `undecided` command and only there: `{disposition, homes, primitive, lands, reason}`.
+  - `disposition`: `typed`, `engine-owned` or `forbidden-to-lead`.
+  - `homes`: for a typed plan, the typed tools (built, or under `proposed_tools`) and `resolve` choices, written
+    `R(<choice>)` (built in `RESOLVE_CHOICE_PRIMITIVE`, or under `proposed_choices`), that will reach it. An empty list
+    means no home is designed yet (`work dispatch` and `work redispatch`, an A2 design item). Other plans have none.
+  - `primitive`: the step the homes run, named like a typed door's (or `none`).
+  - `lands`: the slice that builds the homes and decides the row, from the vocabulary's `lands`.
+- **`proposed_tools`** (with the `expands_to` each will have) and **`proposed_choices`** (with their
+  `(subject kind: primitive)` pairs): the homes not built yet.
+- **Shrink-only.** The planned rows and both proposal lists are pinned in the test by their digests. The registry
+  holds exactly the pinned entries less those that graduated, so one leaves only through its graduated list, and none
+  is added.
+- **Every use is accounted for** (`planned_coverage`; the A1-0 review's F1 and F2). A typed plan's homes must cover
+  every use of its command before the row can be decided. Four scans derive the uses from the code, for every
+  planned row:
+  - **transition edges:** every `transitions.RULES` edge whose operation the command runs. The operation's command
+    comes from the engine's own `transitions._COMMANDS`, else `work <via>` when that command is live. That table is
+    one-valued: it gives one command per operation, while in the code three operations have more callers (`work
+    cancel`'s cascade and `work promote` also take `transition` edges, `work dispatch` also takes `assign`, and
+    `integrate.validate` maps to no command). None hides a gap today: `R(cancel)` and `work_amend` cover their
+    fixed edges, `work dispatch`'s row is wholly uncovered, and the validation row is engine-owned.
+  - **dispatch entrypoints:** every `dispatch.ENTRYPOINTS` entry whose `cli` is the command;
+  - **state-selected entrypoint uses** (the re-review's N2): a dispatch guard whose if/elif chain selects among a
+    unit's states (two links or more, read from the guard's source) gives its entrypoint one use per state. Today
+    that is `invoke.slot`: a prepared COMMIT_READY with scope integration, ASSIGNED and RUNNING (implementer),
+    REVIEW_PENDING (reviewer) and VERIFY_PENDING (verifier).
+
+    **What counts as a unit's state** (the re-review's N4):
+    - **The unit:** a name assigned from an expression that indexes `"work"`, or that calls a `unit(...)` accessor
+      (`self.units.unit(state, w)`).
+    - **Its state:** `unit["state"]`, `unit.get("state")`, or a name assigned from either.
+    - **The states compared:** string literals, collections of them, or a constant. A bare constant name resolves
+      through the guard's module and the engine's constants (`st in EXECUTE_STATES`); a module-qualified one
+      (`H.TERMINAL`) resolves through the guard's module.
+    - **What the scan cannot read** as "selects these states" becomes a `?` state carrying its source, never dropped
+      and never misread (the re-reviews' N5 and N7). That covers:
+      - an unresolved constant;
+      - reversed operands (`'B' == st`);
+      - a method test (`st.startswith(...)`);
+      - a negation (`st not in {...}`, or `not (...)` as a link's own test);
+      - a call given the state or the unit (`is_terminal(st)`, `H.done(unit)`);
+      - any other link test that reads the state, or passes the unit to a call, yet yields no states.
+
+      So the scan fails closed. A `not (...)` in a branch's body keeps its states, because
+      `if not (st == X ...): raise` is how a link requires X. The agreement test refuses any `?` state on the
+      engine.
+
+    **A second, form-agnostic detector must agree.** It counts a guard's `if`/`elif` lines that compare anything
+    reading like a state, or call a method on it. The agreement holds at two levels:
+    - **Per guard:** over every registered guard, its set must equal the scan's, less stated exclusions.
+      `queue.order` is excluded because it selects among a queue entry's states, not a unit's.
+    - **Per link:** for each guard the scan finds, its line count must equal the scan's link count.
+
+    **Which guards the detectors read.** Both read the guards registered as `DispatchGuard("name", self._method)`,
+    under any name the module binds the class to. That covers the class's own name `GuardRegistration`, every alias
+    of it imported from `aew.engine.dispatch` (the engine's `GuardRegistration as DispatchGuard`, `... as DG`), and
+    assignments. `aew.engine.seams.GuardRegistration`, the transition guards' class of the same name, is not one of
+    them.
+
+    **The test ties this reading to the code.** It asserts two things (the re-reviews' N6, N8 and N9):
+    - the reading covers every such call in `src/aew`, in any form;
+    - the guard names it reads are exactly those `dispatch.ENTRYPOINTS` runs.
+
+    So a chain, a link, or a registration that one side cannot read fails the test rather than quietly dropping uses.
+  - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
+    credential, the expected revisions, the print-only options).
+
+  **What covers a use:**
+  - **A built stage's transition step** covers the edges its `work.transition` step takes, into its fixed target
+    (`availability.STAGES`). The sources are the state its producing step leaves, or, when no earlier step produces
+    one, the sources of edges into the target that the step's own arguments can take. An edge that requires a reason
+    is taken only by a step that passes one (the re-review's N1).
+  - **A built stage's dispatch step** covers a state-selected use only if the stage *starts* in that state: no
+    earlier step of it produces the state, and its arguments select the branch. A home that reaches the state
+    through its own transition cannot replace a lost invocation of a unit already there.
+  - **A proposal** covers the edges its `transitions` name (`*` for any state); a proposal running `work.transition`
+    must name them. A proposal covers no state-selected use.
+  - **Any other edge** is covered by a home whose primitive names the edge's command, and an entrypoint by a home
+    that runs it.
+  - **Options** are covered by the plan's `options` map. It classifies every option the parser gives (none missing,
+    none stray) as `homes` (all of the row's homes), one named home, `uncovered` or `retired`. A covered option is
+    covered over its whole domain: a flag's both values, and every value of a repeatable option.
+
+  The uses no typed home covers, built or proposed, are the plan's `uncovered: {lands, uses}`. That list is the
+  scans' output, checked equal to them, never typed in. A plan that is not typed has neither key: its command leaves
+  the Lead's doors.
+- **Home built ⇒ row decided** (`home_built`). The trigger is every home of a planned row built and running its
+  primitive, and every use of the command covered by a built home. When it holds, the same change sets the row
+  `typed` (door typed, `via`, `primitive`) and drops `planned`; a built proposal leaves its section. A built home
+  that does not run the primitive yet is an A2 debt, which `planned_sweep` reports.
+- **Out of the door ⇒ row decided** (`out_of_door`). A command that has left `LEAD_REACHABLE` is not `undecided`;
+  `keep_out` then proves an `engine-owned` or `forbidden-to-lead` one.
+- **What the checks cannot see.**
+  - `home_built` reads the homes a plan names. A tool that starts to run a planned row's primitive without being
+    named in its `homes` is not seen by it; `new_surface` and `door` still hold it to the standing rule once the row
+    is decided.
+  - The option scan derives the option set, not its meaning. Whether a home's argument really does what an option
+    does is the classification's judgment, which review checks.
+  - A stage that runs from more states than its producing step leaves is not credited with them.
+  - A built stage's earlier steps are not checked against a state-selected use's state. The scan credits a dispatch
+    step that has no state-producing step before it with every branch its arguments select.
+  - A state check inside a helper a guard calls (`require_launchable`, for example) is a single precondition, not a
+    branch.
+  - A guard selecting by something other than an if/elif chain on the unit's state is not seen.
+  - Both state detectors miss a chain on a state read through an arbitrary helper into a variable not named like a
+    state. The test pins this as a probe. Either detector alone seeing a chain fails the agreement test.
+  - A built `resolve` choice that runs `work.transition` covers no edge until its edges have an owner in the code.
+  - Routes of two or more steps are not scanned.
+  - A use that is neither an edge, an entrypoint, a state-selected entrypoint use nor an option is not seen.
+
 ## The end-state metric
 
 The end state is not "48 typed equivalents". It is **every Lead lifecycle need covered by typed or engine-owned
@@ -208,11 +330,11 @@ each check.
 |---|---|---|
 | `registered` | enforce | a live command or tool has no entry |
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
-| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary |
+| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing slice or reason is missing or invalid (below); a proposal homes no planned row |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
 | `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
-| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's |
+| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's; a command `resolve` homes without `via_choices`, or naming a (choice, subject kind) pair that is not in `RESOLVE_CHOICE_PRIMITIVE` or does not run its primitive; `via_choices` on any other command |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
 | `new_surface` | enforce | an entry outside the baseline breaks the standing rule: Lead-reachable and undecided; mutating with no credential and no mechanism keeping the Lead out (`lead_kept_out_by` with a decided disposition, `OPERATOR_ONLY`, or `internal` with its `launcher`); `typed` without a proved typed door, or still in `LEAD_REACHABLE`; `engine-owned` or `forbidden-to-lead` without its `primitive` (or `none` with a reason), still in `LEAD_REACHABLE`, or run by a typed tool |
 | `ideal_path` | enforce | an existing ideal-path command is not registered; a PROPOSED one is not under `proposed`; a proposed command exists now |
@@ -230,6 +352,11 @@ each check.
 | `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home other than a `NOT_RELAYED` transport) has no `keep_out_probe`; declares a refusal that does not mean "not here"; in a real Lead session's environment is not refused with it or changes the sample; or is refused the same way outside one; outside `KEEP_OUT_LIMITED` (empty) |
 | `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
+| `home_built` | enforce | a proposed tool or `resolve` choice is built now and still proposed; every home of a planned row is built and runs its primitive, and built homes cover every use of its command, yet the row is undecided |
+| `planned_coverage` | enforce | a typed plan's `uncovered` differs from what the four scans derive (transition edges, entrypoints, state-selected entrypoint uses, options); it does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
+| `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
+| `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
+| `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the

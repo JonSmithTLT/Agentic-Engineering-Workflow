@@ -1112,6 +1112,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F42.2/`, oldest first (`python tools/register.py show F42.2`).*
 
+### F42.3
+
+**Work:** Structured role-context and skill feedback: bounded feedback from each role, under the existing Observability and Feedback design, capturing the role, the task, the pack and skill versions, missing, wrong or noisy information, and rule candidates when applicable. No feedback is a valid answer. Feedback is advisory and never directly alters governed packs, skills or operator rules, and pack and skill versions stay stable within a review round
+
+**Source (governing):** Designer ruling, 2026-10-12, F1 (approved with amendment)
+
+**Belongs to or gated by:** **Unscheduled.** One of F42's intakes. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
+
+**Notes:** A rule candidate becomes binding only through F50's operator-rule activation, never from feedback directly. Version stability holds because skills are hash-pinned on the invocation (F26, the subset of F13's registry). The same ruling's F2 keeps any threshold for installing a skill after a few uses as pilot practice, not a frozen product acceptance rule; future qualification weighs behavioural outcomes, recurring defects and cost
+
+*Later notes: `notes.d/F42.3/`, oldest first (`python tools/register.py show F42.3`).*
+
 ### F43
 
 **Work:** The attention spine, three ordered slices; S1 and S2 together absorb every duplicate derivation of next actions, as consumers or producers where appropriate. **S1 (AX-05):** `ActionProjection` is the single derivation of next actions: `resume`'s next actions and the dashboard's attention and health derivation converge on it. **S2 (AX-04):** typed outbox kinds for every consequential control fact (anomalies, stage intents, steering, dispositions, unseen coordination), and the consumers read them instead of re-deriving: the operator notifier's condition derivation, the steering loop's consumption of decisions and the wake interpretation of invocation status (the notifier stays the operator's delivery channel with no semantic "what changed" of its own). **S3 (AX-03):** Lead-actionable facts reach the existing `wait --any` control lane through a run-less form; one decision-keyed Lead-attention lane
@@ -2092,13 +2104,13 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E77
 
-**Work:** Recurring finding classes across review rounds: a future AEW mechanism that detects a finding class recurring across review rounds and prompts method-level rework instead of repeated instance fixes. It uses stable finding identities, scope, invariant or check references, and explicit recurrence relationships where they are available; free-text class labels alone are not enough. Detection stays advisory until it is independently qualified, and no change is rejected automatically on unqualified similarity alone
+**Work:** Recurring finding classes across review rounds: a future AEW mechanism that detects a finding class recurring across review rounds and prompts method-level rework instead of repeated instance fixes. It uses stable finding identities, scope, invariant or check references, and explicit recurrence relationships where they are available; free-text class labels alone are not enough. Detection stays advisory until it is independently qualified, and nothing is rejected automatically on unqualified similarity alone
 
-**Source:** Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope, enumeration and coverage limits), is in AGENTS.md §1
+**Source:** Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope, enumeration and coverage limits), is added to AGENTS.md §1 by
 
 **When:** **Unscheduled.** Future product design; owners: the review protocol, with F42's detectors (Observability and Feedback). Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
 
-**Notes:** Its inputs are facts other owners produce (finding identities, review rounds), which F42.1's process-event model carries; this row owns the detection, not those facts
+**Notes:** Its inputs are facts other owners produce, and this row owns the detection, not those facts: F49 (scoped fix briefs) owns the instance-to-class step, every finding naming its class and a sweep over its sites, so F49's class names are among this row's invariant references; F42.1's process-event model carries the review rounds. M3's other clause, M1 in the reviewer and planner packs after PT-1, is a note on F35
 
 *Later notes: `notes.d/E77/`, oldest first (`python tools/register.py show E77`).*
 
@@ -2106,11 +2118,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Head-bound CI status in the product: the existing engine evidence and projection owners surface the CI status bound to the exact head in hand-backs, verdict records and the Lead projection. A required check that is missing, failing, pending, cancelled or unavailable is never silently treated as passing, and stale CI evidence never qualifies a newer head. A review may complete while CI is pending; integration and publication keep their existing evidence gates
 
-**Source:** Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and verdict carries the CI observation at its exact head), is in AGENTS.md §1
+**Source:** Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and verdict carries the CI observation at its exact head), is added to AGENTS.md §1 by
 
 **When:** **Unscheduled.** Owners: the existing engine evidence and projection owners, through planned work, with no new owner. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
 
-**Notes:** CI events are among the process facts F42.1 models and F42.2 ingests from the repository host; this row is their head-bound use in evidence and projections, not their ingestion
+**Notes:** CI events are among the process facts F42.1 models and F42.2 ingests from the repository host; this row is their head-bound use in evidence and projections, not their ingestion. Which checks a head requires is E53's (the tiers and their `assurance` gate), and the triage and attribution of a failed `main` run is E47's; this row consumes both
 
 *Later notes: `notes.d/E78/`, oldest first (`python tools/register.py show E78`).*
 
@@ -2122,21 +2134,9 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled.** Owners: the domain owners and their guards, with F44 (the consequential-fact owner registry). Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
 
-**Notes:** F44 records each fact's owner and consumers; this row uses that record to decide which guards a domain change must run, rather than restating the dependencies by hand
+**Notes:** F44 records each fact's owner and consumers; this row uses that record to decide which guards a domain change must run, rather than restating the dependencies by hand. The derived and validated "pins" relationships between tests and what they cover, with demonstrated detection of a missing or stale relationship, are already placed under E53 (affected-test selection) and F22.3's test relationship index (batch-3 ruling #30); this row builds on them and does not restate them
 
 *Later notes: `notes.d/E79/`, oldest first (`python tools/register.py show E79`).*
-
-### E80
-
-**Work:** Structured role-context and skill feedback: bounded feedback from each role, under the existing Observability and Feedback design, capturing the role, the task, the pack and skill versions, missing, wrong or noisy information, and rule candidates when applicable. No feedback is a valid answer. Feedback is advisory and never directly alters governed packs, skills or operator rules, and pack and skill versions stay stable within a review round
-
-**Source:** Designer ruling, 2026-10-12, F1 (approved with amendment)
-
-**When:** **Unscheduled.** Owner: F42 (Observability and Feedback), as one of its intakes. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
-
-**Notes:** The same ruling's F2 keeps any threshold for installing a skill after a few uses as pilot practice, not a frozen product acceptance rule; future qualification weighs behavioural outcomes, recurring defects and cost
-
-*Later notes: `notes.d/E80/`, oldest first (`python tools/register.py show E80`).*
 
 ### E47
 

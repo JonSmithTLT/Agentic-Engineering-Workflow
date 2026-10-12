@@ -2103,6 +2103,19 @@ sections:
     Notes: No separate repository-host analytics subsystem. When AEW's own development runs under AEW, it becomes one more
       producer of the same model, with no schema migration
 
+  - '#': F42.3
+    Work: 'Structured role-context and skill feedback: bounded feedback from each role, under the existing Observability
+      and Feedback design, capturing the role, the task, the pack and skill versions, missing, wrong or noisy information,
+      and rule candidates when applicable. No feedback is a valid answer. Feedback is advisory and never directly alters
+      governed packs, skills or operator rules, and pack and skill versions stay stable within a review round'
+    Source (governing): Designer ruling, 2026-10-12, F1 (approved with amendment)
+    Belongs to or gated by: '**Unscheduled.** One of F42''s intakes. Under the ruling''s S1, it is not an A1 vertical-recovery
+      gate dependency'
+    Notes: A rule candidate becomes binding only through F50's operator-rule activation, never from feedback directly. Version
+      stability holds because skills are hash-pinned on the invocation (F26, the subset of F13's registry). The same ruling's
+      F2 keeps any threshold for installing a skill after a few uses as pilot practice, not a frozen product acceptance
+      rule; future qualification weighs behavioural outcomes, recurring defects and cost
+
   - '#': F43
     Work: 'The attention spine, three ordered slices; S1 and S2 together absorb every duplicate derivation of next actions,
       as consumers or producers where appropriate. **S1 (AX-05):** `ActionProjection` is the single derivation of next actions:
@@ -3303,15 +3316,17 @@ sections:
     Work: 'Recurring finding classes across review rounds: a future AEW mechanism that detects a finding class recurring
       across review rounds and prompts method-level rework instead of repeated instance fixes. It uses stable finding identities,
       scope, invariant or check references, and explicit recurrence relationships where they are available; free-text class
-      labels alone are not enough. Detection stays advisory until it is independently qualified, and no change is rejected
+      labels alone are not enough. Detection stays advisory until it is independently qualified, and nothing is rejected
       automatically on unqualified similarity alone'
     Source: Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside
       the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope,
-      enumeration and coverage limits), is in AGENTS.md §1
+      enumeration and coverage limits), is added to AGENTS.md §1 by
     When: '**Unscheduled.** Future product design; owners: the review protocol, with F42''s detectors (Observability and
       Feedback). Under the ruling''s S1, it is not an A1 vertical-recovery gate dependency'
-    Notes: Its inputs are facts other owners produce (finding identities, review rounds), which F42.1's process-event model
-      carries; this row owns the detection, not those facts
+    Notes: 'Its inputs are facts other owners produce, and this row owns the detection, not those facts: F49 (scoped fix
+      briefs) owns the instance-to-class step, every finding naming its class and a sweep over its sites, so F49''s class
+      names are among this row''s invariant references; F42.1''s process-event model carries the review rounds. M3''s other
+      clause, M1 in the reviewer and planner packs after PT-1, is a note on F35'
 
   - '#': E78
     Work: 'Head-bound CI status in the product: the existing engine evidence and projection owners surface the CI status
@@ -3320,11 +3335,12 @@ sections:
       a newer head. A review may complete while CI is pending; integration and publication keep their existing evidence
       gates'
     Source: Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and
-      verdict carries the CI observation at its exact head), is in AGENTS.md §1
+      verdict carries the CI observation at its exact head), is added to AGENTS.md §1 by
     When: '**Unscheduled.** Owners: the existing engine evidence and projection owners, through planned work, with no new
       owner. Under the ruling''s S1, it is not an A1 vertical-recovery gate dependency'
     Notes: CI events are among the process facts F42.1 models and F42.2 ingests from the repository host; this row is their
-      head-bound use in evidence and projections, not their ingestion
+      head-bound use in evidence and projections, not their ingestion. Which checks a head requires is E53's (the tiers
+      and their `assurance` gate), and the triage and attribution of a failed `main` run is E47's; this row consumes both
 
   - '#': E79
     Work: 'Enumerated-domain guards: a change to an enumerated domain triggers every applicable domain guard. The guards''
@@ -3333,19 +3349,11 @@ sections:
     Source: Designer ruling, 2026-10-12, C3 (approved with amendment)
     When: '**Unscheduled.** Owners: the domain owners and their guards, with F44 (the consequential-fact owner registry).
       Under the ruling''s S1, it is not an A1 vertical-recovery gate dependency'
-    Notes: F44 records each fact's owner and consumers; this row uses that record to decide which guards a domain change
-      must run, rather than restating the dependencies by hand
-
-  - '#': E80
-    Work: 'Structured role-context and skill feedback: bounded feedback from each role, under the existing Observability
-      and Feedback design, capturing the role, the task, the pack and skill versions, missing, wrong or noisy information,
-      and rule candidates when applicable. No feedback is a valid answer. Feedback is advisory and never directly alters
-      governed packs, skills or operator rules, and pack and skill versions stay stable within a review round'
-    Source: Designer ruling, 2026-10-12, F1 (approved with amendment)
-    When: '**Unscheduled.** Owner: F42 (Observability and Feedback), as one of its intakes. Under the ruling''s S1, it is
-      not an A1 vertical-recovery gate dependency'
-    Notes: The same ruling's F2 keeps any threshold for installing a skill after a few uses as pilot practice, not a frozen
-      product acceptance rule; future qualification weighs behavioural outcomes, recurring defects and cost
+    Notes: 'F44 records each fact''s owner and consumers; this row uses that record to decide which guards a domain change
+      must run, rather than restating the dependencies by hand. The derived and validated "pins" relationships between tests
+      and what they cover, with demonstrated detection of a missing or stale relationship, are already placed under E53
+      (affected-test selection) and F22.3''s test relationship index (batch-3 ruling #30); this row builds on them and does
+      not restate them'
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

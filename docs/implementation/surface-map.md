@@ -20,7 +20,16 @@ finding 2).
   - Be homed `internal` with its `launcher`.
   - Declare a decided `lead_disposition` with `lead_kept_out_by`: the mechanism, in the code, that keeps the Lead out.
 
-  Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. `shell_reachable_mutation`
+  Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. **A keep-out claim is
+  proved, never stated** (PR 215 third review, finding 1). Every entry that claims the Lead is kept out is run
+  against the sample in a Lead session's environment (`custody_ops.LEAD_SESSION_VARS`, synthetic values) with its
+  `keep_out_probe`, and must be refused (`PERMISSION_DENIED`, or its declared `keep_out_refusal`) and change nothing.
+  That covers a `lead_kept_out_by`, an `engine-owned` or `forbidden-to-lead` disposition, and an `internal` home.
+  `integrate custody` passes today (`custody_ops.refuse_lead_session`). A claim the test cannot prove that way is
+  accepted only from the pinned, shrink-only `KEEP_OUT_LIMITED` list, with its reason (`keep_out_unproved`). Today
+  that list holds only `lead mcp`, the typed surface's transport, which the Lead's harness starts in the session by
+  design. An `internal` home's `launcher` is `{code: "module:attribute"}`: real code that the test resolves and that
+  names the command. `shell_reachable_mutation`
   reports the grandfathered commands that have no such mechanism today.
 
 The dispositions:
@@ -116,14 +125,17 @@ the checks by being labelled diagnostic? No, by construction):
     - one Ticket with an accepted plan, assigned without a launch, so its invocation `INV-0001`, its workspace and its
       pack exist.
 
-    It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface.
+    It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface. The
+    settling may remove only the spent redo records under `.aew/state/txn/`; anything else fails.
   - **The arguments.** The entry's `probe` is one argument list or several. `{ticket}`, `{invocation}`, `{token}` and
     `{invocation_token}` are filled in.
   - **What it asserts.** After each run, every file under the sample's directory is unchanged. That covers:
     - the project and its `.aew/` (the control state and its revision, transitions, evidence, the outbox);
     - the workspaces root beside the project;
     - ignored files;
-    - `.git/`'s refs, HEAD, config, hooks and worktrees.
+    - `.git/`'s refs, HEAD, config, hooks and worktrees;
+    - what git's index holds: what is staged, and what is marked assume-unchanged (`git status --porcelain=v2`,
+      `git ls-files -s -v`).
 
     The exceptions are the derived history and recall indexes and git's object store and index stat caches.
   - **Each probe must run the command's real path (exit 0).** A probe refused on the sample, or a `probe_exempt`, is
@@ -175,7 +187,7 @@ each check.
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
 | `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
-| `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry without its `launcher`; a new diagnostic entry without its `diagnostic_justification` |
+| `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
 | `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
@@ -192,6 +204,8 @@ each check.
 | `probe` | enforce | a surface declared `mutates: "no"` has no `probe`; a probe runs another command; a run changed the sample (named); a probe was refused, or the surface is exempt, outside `PROBE_LIMITED`; a limited surface now runs fully; a new command's probes leave an option unpassed |
 | `probe_coverage` | report | the `PROBE_LIMITED` surfaces, with why each is refused on the sample or not run |
 | `probe_flags` | report | an option of a `mutates: "no"` command that no probe passes |
+| `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home) has no `keep_out_probe`, or, run in a Lead session's environment, is not refused or changes the sample; outside `KEEP_OUT_LIMITED` |
+| `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.

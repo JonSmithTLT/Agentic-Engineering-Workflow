@@ -227,7 +227,10 @@ commands:
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
     mutates_basis: "serves the typed surface over stdio; its mutating tools commit through the broker"
-    launcher: "the Lead's harness, from the session's OpenCode configuration (`aew opencode`, `aew lead session`)"
+    launcher: {code: "aew.harness.opencode.projection:LEAD_MCP_COMMAND"}
+    keep_out_unproved: "it is the typed surface's transport, which the Lead's harness starts in the Lead session by
+                       design: it holds no credential and every call goes through the Lead broker's own checks;
+                       running it serves stdio until closed"
     refusals: [USAGE]
     note: "spawned by the Lead's harness in every Lead session (not relayed)"
   - name: opencode
@@ -857,8 +860,8 @@ commands:
     journeys: [V1, V2, V4]
     mutates: "yes"
     mutates_basis: "the custody worker validates or routes the candidate under the custody credential"
-    launcher: "the engine, on a lease grant (custody_ops.spawn_worker); it refuses to run in a Lead session
-              (custody_ops.refuse_lead_session)"
+    launcher: {code: "aew.engine.custody_ops:worker_argv"}
+    keep_out_probe: [integrate, custody, IA-0001]
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "started by the engine when it grants a lease (the publish path), never a Lead's command"
   - name: integrate breaker status

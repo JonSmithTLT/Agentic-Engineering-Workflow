@@ -101,7 +101,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   entry to `docs/implementation/surface-map.yaml`: home, mutates, users, journeys, refusals, and a decided
   `lead_disposition` if the Lead can use it to change anything. Reachability is decided by the mechanism, not by
   `users`: a mutating command that takes no Lead credential and is neither `OPERATOR_ONLY` nor internal (with its
-  `launcher`) states `lead_kept_out_by`. The code must honour that disposition in the same pull
+  `launcher`) states `lead_kept_out_by`, which the test proves by running the command in a Lead session's
+  environment (a stated claim is not enough). The code must honour that disposition in the same pull
   request. `typed` means the Lead reaches it through a typed tool with a proved primitive, never through the shell
   (keep it out of `lead_broker.LEAD_REACHABLE`). `engine-owned` means the engine does it, and it is absent from
   `LEAD_REACHABLE` and the typed surface. `forbidden-to-lead` means it is reachable through neither Lead door.

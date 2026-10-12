@@ -20,7 +20,9 @@ import argparse
 import contextlib
 import copy
 import hashlib
+import importlib
 import importlib.util
+import inspect
 import io
 import json
 import os
@@ -76,6 +78,8 @@ CHECKS: dict[str, str] = {
     "probe_coverage": REPORT,  # the pinned PROBE_LIMITED surfaces: refused on the sample, or not run
     "probe_flags": REPORT,  # options of a `mutates: "no"` command that no probe passes (enforced for new ones)
     "shell_reachable_mutation": REPORT,  # grandfathered mutating commands nothing keeps from the Lead's shell
+    "keep_out": ENFORCE,  # a claim that the Lead is kept out is proved by running it in a Lead session's environment
+    "keep_out_coverage": REPORT,  # the pinned KEEP_OUT_LIMITED claims the test cannot prove by running them
 }
 OWNERS = ("operator", "lead", "mechanical")
 REPORT_PREFIX = "SurfaceMapReport: surface map, check"
@@ -365,8 +369,8 @@ def check_home(reg: dict[str, Any]) -> list[str]:
         if e.get("home") == DIAGNOSTIC and e.get("journeys"):
             out.append(f"{label(kind, name)} is homed diagnostic, yet journeys {e['journeys']} use it: a supported "
                        "workflow needs it, so it is not diagnostic (PR 215 second review, finding 6)")
-        if e.get("home") == "internal" and not e.get("launcher"):
-            out.append(f"{label(kind, name)} is homed internal: name its `launcher` (what starts it)")
+        if e.get("home") == "internal" and kind == "cli" and launcher_problem(name, e):
+            out.append(f"{label(kind, name)} is homed internal: {launcher_problem(name, e)}")
     for kind, e in entries(reg):
         name = str(e.get("name"))
         if e.get("home") != DIAGNOSTIC or baseline_key(kind, name) in BASELINE:
@@ -644,11 +648,13 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True, **NO_WINDOW).stdout
 
 
-def run_cli(root: Path, argv: list[str]) -> tuple[int, str, str]:
-    """``aew -C root *argv`` in this process, with no credential in the environment and its output captured."""
+def run_cli(root: Path, argv: list[str], env: dict[str, str] | None = None) -> tuple[int, str, str]:
+    """``aew -C root *argv`` in this process, with no credential in the environment (or exactly ``env``'s) and its
+    output captured."""
     from aew.cli.main import main
 
     saved = {k: os.environ.pop(k) for k in CREDENTIAL_ENV if k in os.environ}
+    os.environ.update(env or {})
     out, err = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -657,6 +663,8 @@ def run_cli(root: Path, argv: list[str]) -> tuple[int, str, str]:
             except SystemExit as exc:  # argparse
                 code = exc.code if isinstance(exc.code, int) else 2
     finally:
+        for k in env or {}:
+            os.environ.pop(k, None)
         os.environ.update(saved)
     return code, out.getvalue(), err.getvalue()
 
@@ -709,8 +717,12 @@ def build_sample(base: Path) -> Sample:
     for _ in range(3):
         before = snapshot(s)
         assert run_cli(root, ["status"])[0] == 0
-        if snapshot(s) == before:
+        after = snapshot(s)
+        if after == before:
             return s
+        other = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k)
+                       and not k.startswith("sample/.aew/state/txn/"))
+        assert not other, f"settling the sample changed more than the spent redo records: {other}"
     raise AssertionError("the sample does not settle: a read keeps changing it")
 
 
@@ -721,12 +733,17 @@ def sample() -> Sample:
 
 
 def snapshot(s: Sample) -> dict[str, str]:
-    """Every file the sample holds, by its path under the sample's directory (PR 215 second review, finding 4)."""
+    """Every file the sample holds, by its path under the sample's directory (PR 215 second review, finding 4), and
+    what git's index holds, which its raw file (a stat cache too) is not compared for: what is staged and what is
+    marked assume-unchanged (third review, finding 2)."""
     out = {}
     for p in sorted(s.base.rglob("*")):
         rel = p.relative_to(s.base).as_posix()
         if p.is_file() and not UNHASHED.fullmatch(rel):
             out[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
+    status = _git(s.root, "status", "--porcelain=v2", "--untracked-files=all").splitlines()
+    out["git status"] = "\n".join(line for line in status if not UNHASHED.fullmatch("sample/" + line.split(" ")[-1]))
+    out["git index"] = _git(s.root, "ls-files", "-s", "-v")
     return out
 
 
@@ -852,11 +869,93 @@ def lead_kept_out(name: str, e: dict[str, Any]) -> str | None:
         return "lead_broker.OPERATOR_ONLY refuses it in a Lead session"
     if "invocation_token" in ds:
         return "it acts only with an invocation credential, which the Lead does not hold"
-    if e.get("home") == "internal" and e.get("launcher"):
-        return f"internal: {e['launcher']}"
+    if e.get("home") == "internal" and not launcher_problem(name, e):
+        return f"internal: started by {e['launcher']['code']}"
     if e.get("lead_kept_out_by"):
         return str(e["lead_kept_out_by"])
     return None
+
+
+def launcher_problem(name: str, e: dict[str, Any]) -> str | None:
+    """Why an internal entry's `launcher` does not name real code that starts it, or ``None``. The launcher is
+    `{code: "module:attribute"}`; the attribute (a function's source, or a constant's value) must name the command's
+    words in order (PR 215 third review, finding 1: prose is not a launcher)."""
+    launcher = e.get("launcher")
+    code = launcher.get("code") if isinstance(launcher, dict) else None
+    if not isinstance(code, str) or ":" not in code:
+        return "its `launcher` is {code: \"module:attribute\"}, the code that starts it"
+    module_name, attr = code.split(":", 1)
+    try:
+        obj = getattr(importlib.import_module(module_name), attr)
+    except (ImportError, AttributeError):
+        return f"its launcher {code!r} does not resolve"
+    try:
+        text = inspect.getsource(obj) if callable(obj) else repr(obj)
+    except (OSError, TypeError):
+        text = repr(obj)
+    words = r"\s*,\s*".join(f"['\"]{re.escape(w)}['\"]" for w in name.split())
+    if not re.search(words, text):
+        return f"its launcher {code!r} does not start `aew {name}`"
+    return None
+
+
+# A Lead session's environment (custody_ops.LEAD_SESSION_VARS): synthetic values, never a real credential.
+LEAD_SESSION_ENV = {"AEW_LEAD_BROKER": "127.0.0.1:9", "AEW_LEAD_BROKER_KEY": "00" * 32,
+                    "AEW_LEAD_TOKEN": "synthetic-lead-credential"}
+
+# The entries whose keep-out claim the test cannot prove by running them, each with its reason in the registry
+# (`keep_out_unproved`). Pinned by its digest; an entry leaves through KEEP_OUT_GRADUATED, nothing is added.
+KEEP_OUT_LIMITED: frozenset[str] = frozenset({"cli:lead mcp"})
+KEEP_OUT_LIMITED_DIGEST = "5cea7c7493a41324eb1a9bef651da49bedb851edc6957fb0ff54521bc872df75"
+KEEP_OUT_GRADUATED: frozenset[str] = frozenset()
+
+
+def claims_lead_kept_out(e: dict[str, Any]) -> bool:
+    return bool(e.get("lead_kept_out_by")) or e.get("lead_disposition") in LEAVES_LEAD_DOORS \
+        or e.get("home") == "internal"
+
+
+def check_keep_out(reg: dict[str, Any]) -> list[str]:
+    """Every claim that the Lead is kept out is proved by behaviour (PR 215 third review, finding 1): run in a Lead
+    session's environment against the sample, the command is refused (PERMISSION_DENIED, or the entry's declared
+    `keep_out_refusal`) and changes nothing."""
+    out = []
+    for kind, e in entries(reg):
+        name = str(e.get("name"))
+        if kind != "cli" or not is_live(kind, name) or not claims_lead_kept_out(e):
+            continue
+        key = baseline_key(kind, name)
+        if key in KEEP_OUT_LIMITED - KEEP_OUT_GRADUATED:
+            if not e.get("keep_out_unproved"):
+                out.append(f"`aew {name}` is on KEEP_OUT_LIMITED: give `keep_out_unproved` with the reason")
+            continue
+        argv = [str(a) for a in e.get("keep_out_probe") or []]
+        if not argv or resolve(argv) != name:
+            out.append(f"`aew {name}` claims the Lead is kept out: give `keep_out_probe`, arguments that run it, so "
+                       "the test can prove the refusal in a Lead session's environment")
+            continue
+        s = sample()
+        before = snapshot(s)
+        code, _, err = run_cli(s.root, fill(argv, s), env=LEAD_SESSION_ENV)
+        after = snapshot(s)
+        try:
+            refusal = json.loads(err)["error"]["code"]
+        except (ValueError, KeyError, TypeError):
+            refusal = None
+        expected = e.get("keep_out_refusal") or "PERMISSION_DENIED"
+        if code == 0 or refusal != expected:
+            out.append(f"`aew {name}` claims the Lead is kept out, but in a Lead session's environment it "
+                       f"{'ran (exit 0)' if code == 0 else f'answered {refusal or code!r}'}, not {expected}")
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        if changed:
+            out.append(f"`aew {name}` in a Lead session's environment changed {changed}")
+    return out
+
+
+def check_keep_out_coverage(reg: dict[str, Any]) -> list[str]:
+    return [f"`aew {e['name']}`: its keep-out claim is not proved by running it ({e.get('keep_out_unproved')})"
+            for kind, e in entries(reg)
+            if baseline_key(kind, str(e.get("name"))) in KEEP_OUT_LIMITED - KEEP_OUT_GRADUATED]
 
 
 def check_shell_reachable_mutation(reg: dict[str, Any]) -> list[str]:
@@ -877,6 +976,7 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "disposition_applied": check_disposition_applied, "lead_shell_lifecycle": check_lead_shell_lifecycle,
     "unevidenced": check_unevidenced, "probe": check_probe, "probe_coverage": check_probe_coverage,
     "probe_flags": check_probe_flags, "shell_reachable_mutation": check_shell_reachable_mutation,
+    "keep_out": check_keep_out, "keep_out_coverage": check_keep_out_coverage,
 }
 
 
@@ -947,6 +1047,10 @@ def test_the_baseline_only_shrinks():
     assert digest == FROZEN_DIGEST, ("the grandfathered list changed: entries may only leave the baseline, through "
                                      "GRADUATED; a new surface must satisfy the `new_surface` check instead")
     assert GRADUATED <= FROZEN and BASELINE <= FROZEN
+    digest = hashlib.sha256("\n".join(sorted(KEEP_OUT_LIMITED)).encode()).hexdigest()
+    assert digest == KEEP_OUT_LIMITED_DIGEST, ("KEEP_OUT_LIMITED changed: an entry may only leave it, through "
+                                               "KEEP_OUT_GRADUATED; a new keep-out claim is proved by running it")
+    assert KEEP_OUT_GRADUATED <= KEEP_OUT_LIMITED
     digest = hashlib.sha256("\n".join(sorted(PROBE_LIMITED)).encode()).hexdigest()
     assert digest == PROBE_LIMITED_DIGEST, ("PROBE_LIMITED changed: a surface may only leave it, through "
                                             "PROBE_GRADUATED; a new probe must run its command's real path")
@@ -1017,7 +1121,11 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("home", lambda r: _entry(r, "init").update(home=DIAGNOSTIC), "`aew init` is homed diagnostic"),
     ("home", lambda r: _entry(r, "work list").update(journeys=["V1"]),
      "`aew work list` is homed diagnostic, yet journeys ['V1'] use it"),
-    ("home", lambda r: _entry(r, "lead mcp").pop("launcher"), "`aew lead mcp` is homed internal: name its"),
+    ("home", lambda r: _entry(r, "lead mcp").pop("launcher"), "`aew lead mcp` is homed internal: its `launcher`"),
+    ("home", lambda r: _entry(r, "integrate custody").update(launcher="the engine"),
+     "`aew integrate custody` is homed internal: its `launcher` is {code"),
+    ("home", lambda r: _entry(r, "integrate custody").update(launcher={"code": "aew.engine.custody_ops:spawn_worker"}),
+     "its launcher 'aew.engine.custody_ops:spawn_worker' does not start `aew integrate custody`"),
     ("home", lambda r: _new(r, "work list"), "new `aew work list` is homed diagnostic: give `diagnostic_just"),
     ("home", lambda r: _new(r, "work list", diagnostic_justification="handy"), "new `aew work list` is homed diag"),
     ("mutates", lambda r: _entry(r, "ticket_start", "tool").update(mutates="no"), "tool `ticket_start`: mutates"),
@@ -1150,6 +1258,49 @@ def test_the_probe_catches_a_mutating_command_labelled_diagnostic(tmp_path, monk
         findings
 
 
+@pytest.mark.parametrize(("git_args", "changed"), [
+    (("rm", "--cached", "--ignore-unmatch", "-q", "README.md"), "git index"),
+    (("update-index", "--assume-unchanged", "README.md"), "git index"),
+])
+def test_the_probe_sees_an_index_only_change(tmp_path, monkeypatch, git_args, changed):
+    """PR 215 third review, finding 2 (repros H and I): a change only git's index holds is seen."""
+    import sys as _sys
+
+    from aew.engine.api import Engine
+
+    module = _sys.modules[__name__]
+    own = build_sample(tmp_path)
+    monkeypatch.setattr(module, "sample", lambda: own)
+    original = Engine.work_list
+
+    def work_list(self: Any, *args: Any, **kwargs: Any) -> Any:
+        _git(Path(self.aew_root).parent, *git_args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Engine, "work_list", work_list)
+    findings = check_probe({"commands": [copy.deepcopy(_entry(load(), "work list"))], "tools": []})
+    assert findings and changed in findings[0], findings
+
+
+def test_a_keep_out_claim_is_proved_by_behaviour(tmp_path, monkeypatch):
+    """PR 215 third review, finding 1 (repro F): `context pack` claiming it refuses in a Lead session is run in one, is
+    not refused, and the claim fails; `integrate custody`'s refusal (custody_ops.refuse_lead_session) is proved."""
+    import sys as _sys
+
+    module = _sys.modules[__name__]
+    own = build_sample(tmp_path)
+    monkeypatch.setattr(module, "sample", lambda: own)
+    reg = copy.deepcopy(load())
+    _entry(reg, "context pack").update(lead_disposition="engine-owned", lead_kept_out_by="refuses in a Lead session",
+                                       keep_out_probe=["context", "pack", "{invocation}"])
+    findings = check_keep_out({"commands": [_entry(reg, "context pack")], "tools": []})
+    assert findings and "in a Lead session's environment it ran (exit 0)" in findings[0], findings
+    assert check_keep_out({"commands": [_entry(reg, "integrate custody")], "tools": []}) == []
+    _entry(reg, "integrate custody").pop("keep_out_probe")
+    assert "give `keep_out_probe`" in check_keep_out({"commands": [_entry(reg, "integrate custody")],
+                                                      "tools": []})[0]
+
+
 def _probe_findings(edit: Callable[[dict[str, Any]], None], name: str, kind: str = "cli",
                     not_baseline: bool = False) -> list[str]:
     reg = copy.deepcopy(load())
@@ -1187,12 +1338,13 @@ PROVED = [str(e["name"]) for _, e in entries(load()) if e.get("mutates_proof")]
 
 
 @pytest.mark.parametrize("name", PROVED)
-def test_a_declared_mutation_is_shown_on_the_sample(name):
+def test_a_declared_mutation_is_shown_on_the_sample(name, tmp_path):
     """A surface whose mutation the sample would not show by itself (a no-op when its output is current) is proved
     `"yes"` by its `mutates_proof`: remove the file it maintains, run it, and it writes that file again (`context pack`,
-    whose own help says it regenerates a pack after `local/` was deleted). The sample ends as it began."""
+    whose own help says it regenerates a pack after `local/` was deleted). It runs on a sample of its own, so a failure
+    never leaves the shared one changed."""
     proof = _entry(load(), name)["mutates_proof"]
-    s = sample()
+    s = build_sample(tmp_path)
     target = s.root / fill([proof["remove"]], s)[0]
     assert target.is_file(), f"{target} is not on the sample: the proof names nothing to remove"
     start = snapshot(s)
@@ -1211,9 +1363,9 @@ def test_a_new_surface_that_honours_its_disposition_passes():
          primitive_reason="the custody worker runs the custodian's own steps, not a typed-surface primitive")
     assert _run("new_surface", reg) == []
     reg = copy.deepcopy(load())
-    _new(reg, "context pack", mutates="yes", lead_disposition="engine-owned", primitive="none",
-         primitive_reason="a pack is rebuilt from durable state", lead_kept_out_by="refuses in a Lead session")
-    assert _run("new_surface", reg) == []
+    _new(reg, "integrate custody", mutates="yes", lead_disposition="forbidden-to-lead", primitive="none",
+         primitive_reason="the custodian's own steps", lead_kept_out_by="custody_ops.refuse_lead_session")
+    assert _run("new_surface", reg) == [] and _run("keep_out", reg) == []
     reg = copy.deepcopy(load())
     _new(reg, "harness wait")
     assert _run("new_surface", reg) == []

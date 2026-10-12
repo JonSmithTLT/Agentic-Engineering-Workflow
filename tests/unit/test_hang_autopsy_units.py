@@ -360,3 +360,41 @@ def test_the_reaper_refuses_to_start_where_it_cannot_record_this_processs_childr
     with pytest.raises(RuntimeError, match="subprocess._fork_exec not found"):
         sd.OwnChildren().install()
     assert os.fork is fork  # nothing was wrapped
+
+
+def _child_can_take_the_lock(own) -> bool:
+    """Fork while another thread holds ``own.lock``; the child reports whether it can take the lock (bounded)."""
+    import threading
+
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with own.lock:
+            held.set()
+            release.wait(30)  # bounded
+
+    holder = threading.Thread(target=hold, daemon=True)
+    holder.start()
+    assert held.wait(30)
+    try:
+        pid = os.fork()
+        if pid == 0:  # the child: one thread, the holder's ownership copied
+            os._exit(0 if own.lock.acquire(timeout=3) else 1)
+        _, status = os.waitpid(pid, 0)
+        return os.waitstatus_to_exitcode(status) == 0
+    finally:
+        release.set()
+        holder.join(30)
+
+
+@LINUX_ONLY
+def test_a_forked_child_never_inherits_the_reapers_lock_held():
+    """Review of #217 at 9dc585a (hardening): a fork while another thread holds the record's lock would leave it held
+    forever in the child, so the child's next creating call would hang. ``os.register_at_fork`` gives the child a
+    fresh lock. Differential, in one test: without the reset the child cannot take the lock."""
+    import session_deadline as sd
+
+    assert _child_can_take_the_lock(sd.OwnChildren())
+    inherited = sd.OwnChildren()
+    inherited.reset_in_child = False
+    assert not _child_can_take_the_lock(inherited)

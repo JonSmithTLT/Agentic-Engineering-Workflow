@@ -53,6 +53,7 @@ import subprocess
 import sys
 import threading
 import time
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +124,18 @@ class OwnChildren:
     def __init__(self) -> None:
         self.ids: set[tuple[int, int]] = set()
         self.lock = threading.RLock()
+        self.reset_in_child = True  # tests only: False shows what a child inherits without the reset
+        # A forked child gets a fresh lock: one another thread held at the fork (the reaper mid-pass, while some
+        # path this cannot wrap forks) would otherwise stay held forever in the child (review of #217 at 9dc585a).
+        mine = weakref.ref(self)
+
+        def reset() -> None:
+            own = mine()
+            if own is not None and own.reset_in_child:
+                own.lock = threading.RLock()
+
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=reset)
 
     def add(self, pid: int) -> None:
         start = proctree.linux_start(pid)

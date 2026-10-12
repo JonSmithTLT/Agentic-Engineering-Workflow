@@ -42,6 +42,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
@@ -110,6 +112,8 @@ jobs:
       AEW_HWALK_STEPS: "250"
       AEW_HWALK_FAULT_RATE: "0.12"
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
@@ -148,6 +152,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
@@ -192,6 +198,8 @@ jobs:
     env:
       AEW_CRASH_ITERATIONS: "2000"
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"
@@ -235,6 +243,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
         run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3360 ))" >> "$GITHUB_ENV"

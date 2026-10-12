@@ -8,6 +8,9 @@ skipped:
       the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
       session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).
       Covered on Linux.
+    tests/unit/test_hang_autopsy_units.py::test_a_forked_child_never_inherits_the_reapers_lock_held: >-
+      os.fork and the reaper's record of the controller's children are Linux's; Windows has no fork and no reaper.
+      Covered on Linux.
     tests/unit/test_hang_autopsy_units.py::test_the_reaper_refuses_to_start_where_it_cannot_record_this_processs_children: >-
       the reaper's record of the controller's own children wraps Linux's process creation (_posixsubprocess, os.fork);
       Windows has no reaper. Covered on Linux.

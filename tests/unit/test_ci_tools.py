@@ -1711,13 +1711,16 @@ def strategy_fast_lane_minutes() -> tuple[float, float]:
 
 
 def _deadline_margins_min() -> float:
-    """The minutes a job's session deadline keeps clear of its timeout (bounds.py: 3 minutes and two margins)."""
+    """The minutes a job's session deadline keeps clear of its timeout: bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S."""
     import bounds
 
     return (bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S) / 60
 
 
 DEADLINE_MARGINS_MIN = _deadline_margins_min()
+# core's and fastbase's timeouts before G3a's session deadline (2026-10-12): each was raised by DEADLINE_MARGINS_MIN,
+# so a margin change in bounds.py must move them too, or these pins fail.
+CORE_BEFORE_G3A_MIN, FASTBASE_BEFORE_G3A_MIN = 20, 15
 
 
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
@@ -1735,8 +1738,9 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
     assert base["runs-on"] == "ubuntu-latest"
     step, setup = strategy_fast_lane_minutes()
-    # at least twice the slowest step plus setup, plus what the session deadline's margins take (G3, 2026-10-12)
-    assert base["timeout-minutes"] == 19 and base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
+    # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
+    assert base["timeout-minutes"] == FASTBASE_BEFORE_G3A_MIN + DEADLINE_MARGINS_MIN
+    assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
@@ -1751,7 +1755,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == 24  # 20, plus the 4 minutes the session deadline's margins take (2026-10-12)
+    assert core["timeout-minutes"] == CORE_BEFORE_G3A_MIN + DEADLINE_MARGINS_MIN
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
@@ -1912,8 +1916,9 @@ def _workflow_lanes():
 def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     """H3 and H5: every pytest invocation in every workflow passes --test-timeout and --session-deadline, with
     inner helper bounds < --test-timeout < --session-deadline (plus its two margins, times a loop's repetitions)
-    < the job's timeout-minutes less 3 minutes. A change to any one value that breaks the order fails here. The
-    helpers declare their bounds when imported: the vertical UAT's are its chat, conversation and gate waits."""
+    < the job's timeout-minutes less bounds.JOB_MARGIN_S. A change to any one value that breaks the order fails
+    here. The helpers declare their bounds when imported: the vertical UAT's are its chat, conversation and gate
+    waits."""
     import bounds
     import vertical.lead  # noqa: F401  (each declares its bounds)
     import vertical.scripted_operator  # noqa: F401
@@ -1953,8 +1958,8 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():
     """H3, review of #217 (M1): a job running several pytest sessions one after another (`core`: fast then serial;
     `race-repeat`: ten serial runs, then one more) must still end them all before its timeout. Its first step sets
-    AEW_JOB_DEADLINE (the job's start plus timeout-minutes, less 3 minutes and the two deadline margins), and every
-    session's deadline is capped by it (session_deadline.Controller)."""
+    AEW_JOB_DEADLINE (the job's start plus timeout-minutes, less bounds.JOB_MARGIN_S and two DEADLINE_MARGIN_S), and
+    every session's deadline is capped by it (session_deadline.Controller)."""
     import bounds
 
     problems = bounds.job_deadline_problems(ROOT / ".github" / "workflows")

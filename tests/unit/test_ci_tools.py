@@ -943,6 +943,8 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     assert ratchet["if"] == "always()" and "continue-on-error" not in ratchet
     assert "lane-reports" in ratchet["run"] and '--event "$EVENT"' in ratchet["run"]
     assert 'GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml' in ratchet["run"]
+    # an accepted residual counts only on a pull request with the operator-merge label, read live (review of #218, M1)
+    assert '--repo "$REPO" --pr "$PR"' in ratchet["run"] and ratchet["env"]["GH_TOKEN"] == "${{ github.token }}"
     assert gate.index(ratchet) < len(gate) - 1  # the jobs-for check stays last
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]

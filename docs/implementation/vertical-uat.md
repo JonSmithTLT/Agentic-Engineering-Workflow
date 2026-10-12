@@ -334,11 +334,11 @@ Code: `tests/helpers/discovery/` (`rules.py`, the capture plugin `capture.py`, `
 | Rule | A violation |
 |---|---|
 | O-IDS | A suggested input asks for an id, decided by position with the live parser: <ul><li>any value of an id-typed argument (a revision, generation, invocation, run, stage intent or authority candidate);</li><li>a concrete id in the engine's formats;</li><li>a placeholder (`N`, `<…>`, `{…}`) in any other slot.</li></ul> These are exempt: a Ticket's slot, a slot whose values the text lists (an argument with choices), and the elision `...` for free text. |
-| O-CMD | A suggested input fails to parse in parse-only mode against the live parser. Placeholders are taken as values, and each alternative of `a`-or-`b` (written with a bar) must parse. A command named in text without its required arguments is a mention, but a structured argument list (`cli`, `cli_fallback`) must parse whole. A typed-tool name not in `contract.TOOLS` is also a violation. Text that echoes the input inside a refusal is excluded. |
+| O-CMD | A suggested input fails to parse in parse-only mode against the live parser. Placeholders are taken as values, and each alternative of `a`-or-`b` (written with a bar) must parse. A command named in prose without its required arguments is a mention, but a command in a structured field (`next`, `next_action(s)`, `remedy`, `hint(s)`, or the argument lists `cli` and `cli_fallback`) is offered to be run as given, so it must parse whole. A typed-tool name not in `contract.TOOLS` is also a violation. Text that echoes the input inside a refusal is excluded. |
 | O-CODE | A refusal whose cause is known is checked against the code registry (§8.4). In DX1 no cause is known: one is known only when an explorer injected it (DX2), or when the refusal states it in the refusal schema (DX3). So O-CODE judges nothing in the existing suite yet, as the specification's H5 requires. |
 | O-WORDS | A refusal without the refusal schema (`cause`, `remedy`, `owner`). Until the product emits it, this is the "unstructured refusal" finding, one per refusal site. |
-| O-SECRET | Any of these: <ul><li>an output that asks for a PIN anywhere other than the operator console;</li><li>one that asks a model (the Lead, or a worker through its pack) for a code;</li><li>one that asks its reader to set, copy or pass an AEW credential, the credential variables of `harness.contract.CREDENTIAL_ENV` and their options;</li><li>a typed tool with a PIN, code or credential argument.</li></ul> |
-| O-ENV | The Lead's system text, with the guide it is given, does not state the check environment. The expected statement is generated from `agentenv`'s allowlist: that checks run in a scrubbed environment, every variable kept, and `provider_env` as the way to give a check a variable. |
+| O-SECRET | Any of these: <ul><li>an output that asks for a PIN anywhere other than the operator console;</li><li>one that asks a model (the Lead, or a worker through its pack) for a code;</li><li>one that asks any reader (the operator, the Lead, or a worker model through its pack) to set, copy or pass an AEW credential, the credential variables of `harness.contract.CREDENTIAL_ENV` and their options. The specification's text named the operator only; widening it to any reader is a spec amendment approved by the operator (operator decision, 2026-10-13);</li><li>a typed tool with a PIN, code or credential argument.</li></ul> |
+| O-ENV | The Lead's system text, with the guide it is given, does not state the check environment. The expected statement is generated from the check path itself, `Validation._check_env`, probed on the platform that runs the scan. It must say that checks run in a scrubbed environment and name every variable that path keeps: the allowlist, `PATH`, `PYTHONUTF8` and, on POSIX, `LC_*`. The path has no way to give a check any other variable, so the statement must also say that no other variable reaches a check. |
 
 ### 8.3 The modes, the allow-list and the ratchet
 
@@ -356,32 +356,47 @@ In `shadow` a finding is reported and never fails a run. Every rule starts in `s
 | O-ENV | `shadow` |
 
 **The allow-list** is `tests/helpers/discovery/allowed.yaml`: every `(rule, site)` key observed when D2 was
-introduced, from the static scan and a capture run of the fast lane. It may only shrink.
+introduced, from the static scan and the introducing pull request's full CI run on both platforms. It may only
+shrink.
 - **On a pull request,** `assurance` runs `discovery_ratchet.py` over the findings that the tier's lane jobs wrote
   beside their lane reports.
   - A key not on the list is **new**. It is reported, and fails the run if its rule is in `enforce`.
-  - A key added to the list relative to the base fails whatever its mode. The exception is an accepted residual: the
-    operator's decision, recorded under `residuals` with its reason.
+  - A key added to the list relative to the base fails whatever its mode. The exception is an accepted residual,
+    which is the operator's: it is recorded under `residuals` with its reason, and it passes only while the pull
+    request carries the `operator-merge` label, read live. That label reserves the merge for the operator
+    (AGENTS.md §5), so the operator's merge is the sign-off. Without it, the residual fails as growth, naming the
+    key.
+  - A capture error fails the run on every event: an output left unjudged is not a pass.
 - **On main's full run and nightly,** the same tool also reports every listed key no longer observed as **stale**. A
   stale key fails the run if its rule is in `enforce`, until a pull request removes it. CI never commits the removal.
-- **Static texts** are checked on every pull request by the `discovery` lane, in its own workflow (`discovery.yml`).
-  The scan is complete, so its new and stale keys are decided on every run.
+- **Static texts** are decided on every pull request by a fast-lane test
+  (`test_the_static_texts_add_no_new_key_of_an_enforced_rule`), so a required job (`core`) carries the decision. The
+  scan is complete, so its new and stale keys are decided on every run. The `discovery` lane, in its own workflow
+  (`discovery.yml`), runs the same scan as a report.
 
 **The `discovery` lane** is its own lane. `tests/helpers/lanes.py` collects `tests/discovery/` only with
 `--lane discovery`, the same split as the vertical lane, and no tier requires it. `tests/unit/test_ci_tools.py`
-proves both.
+proves both. The lane starts with the identity check of the specification's §5 (J2): the `aew` it imports must be
+this checkout's `src` with the version its `pyproject.toml` declares, or the run aborts before anything is judged.
 
 ### 8.4 The code registry
 
-Every refusal code that `aew.errors` defines is listed below, with its meaning, the causes allowed to use it, and the
-owner of the remedy. `tests/unit/test_discovery_registry.py` enumerates `aew.errors` and fails on any code missing
-here, so the registry cannot drift. O-CODE checks an observed refusal's cause against its code's row. The cause ids
+Every refusal code the product defines, and the Lead or the operator can see, is listed below, with its meaning,
+the causes allowed to use it, and the owner of the remedy. `tests/unit/test_discovery_registry.py` enumerates them,
+and fails on any code missing here or listed here and no longer defined, so the registry cannot drift:
+- every error class in `src/aew` that declares a `code` (`aew.errors`, the dashboard's two request errors and the
+  validation runner's two), read from the source;
+- the typed surface's input refusals, `aew.surface.errors.CODES`;
+- `NOT_COMPLETED`, the `cli` escape's answer when the command it ran answered `ok: false`, the one code written as a
+  literal (`aew.surface.run`), which the test finds there.
+
+O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.
 
 | Code | Meaning | Allowed causes | Remedy owner |
 |---|---|---|---|
 | `AEW_ERROR` | An unclassified failure, the base of every error. No refusal should carry it | `unclassified` | engine |
-| `USAGE` | Only malformed input, naming the field and the fault (invalid JSON versus the wrong type, U27) | `input_malformed`, `input_unset` | Lead |
+| `USAGE` | Only malformed input, naming the field and the fault (invalid JSON versus the wrong type, U27). A required input that is missing counts as malformed: that is the Lead's reading of the specification's "only malformed input", not a change to it | `input_malformed`, `input_unset` | Lead |
 | `NOT_FOUND` | A named object does not exist | `object_missing` | Lead |
 | `PROJECT_NOT_FOUND` | No AEW project at the path | `project_missing` | operator |
 | `VALIDATION_FAILED` | Input or a record fails its schema or a validation rule | `input_invalid`, `record_invalid` | Lead |
@@ -437,7 +452,27 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `HARNESS_INCOMPATIBLE` | The harness is unknown, or lacks a capability, model or variant the run needs | `harness_incompatible` | operator |
 | `HARNESS_LAUNCH_FAILED` | The launch was committed, but its supervisor did not take custody | `supervisor_no_custody` | Lead |
 | `CONTAINMENT_UNAVAILABLE` | Policy requires OS containment, and the run's sandbox could not be established | `containment_unavailable` | operator |
+| `VALIDATION_CONTAINMENT_UNAVAILABLE` | Checks mode on a host whose containment cannot keep the candidate immutable while the checks run | `containment_unavailable` | operator |
+| `VALIDATION_RUNNING` | Another validation run of this candidate is executing | `validation_running` | engine |
+| `INVALID_REQUEST` | A dashboard request outside the contract's bounds or vocabulary | `request_invalid` | operator |
+| `INVALID_ARGUMENTS` | A typed-tool call whose arguments are outside the tool's schema | `input_malformed`, `input_unset` | Lead |
+| `UNKNOWN_TOOL` | A typed-tool call naming no tool of the contract | `tool_unknown` | Lead |
+| `TOOL_NOT_BUILT` | A typed-tool call naming a tool that is designed but not built | `tool_not_built` | Lead |
+| `TOOL_NOT_EXPOSED` | A typed-tool call naming a tool the session's profile does not expose | `tool_not_exposed` | Lead |
+| `BROKER_UNREACHABLE` | The Lead broker could not be reached, so nothing ran | `broker_unreachable` | operator |
+| `NOT_COMPLETED` | The `cli` escape's command answered `ok: false`: it did not do what was asked | `command_not_completed` | Lead |
 
-Codes defined outside `aew.errors` are not in this registry yet. They are the typed surface's input refusals
-(`aew.surface.errors`), the validation runner's two codes, the dashboard's request codes, and the `cli` escape's
-`NOT_COMPLETED`. The specification names `aew.errors` as the registry's source.
+The dashboard's `CAPABILITY_UNAVAILABLE` is the same code as `aew.errors`' and shares its row.
+
+### 8.5 Acceptance: the specification's §6 rows for DX1
+
+Each row's witness, found by the static scan over `e993fd7`'s product and guides, or by D2's runtime capture.
+
+| Row | Witness |
+|---|---|
+| U1 | O-IDS: `static:docs/guides/quickstart.md`, the line `aew authority accept C-001 --class decisions --expect-rev N`. The guide has a bare `C-001` in a fenced block, not `<C-001>`. |
+| U10 | No static text names `aew harness runs`: the specification's known gap. |
+| U15 | O-ENV: `static:lead-system+guide`. |
+| U27 (O-IDS) | The specification's witness, an `expect_rev: N` in a static text, never existed: no text at `e993fd7` contains it. The `N` reached the Lead through the runtime hints `--expect-rev N`, which D2 captures: `O-IDS tool:status\|result` and `O-IDS cli:aew status\|result`. Those keys are U27's witness. |
+| U29 | O-SECRET: `cli:aew opencode\|USAGE` and `cli:aew lead session\|USAGE` ("set AEW_LEAD_TOKEN"), captured in every run by a fast-lane test; statically, `--token <credential>` in the quickstart and `opencode.md`. |
+| U31 | O-IDS: `aew harness wait <run>` in `LEAD_SYSTEM`, the guide and `lead-guide.md`. |

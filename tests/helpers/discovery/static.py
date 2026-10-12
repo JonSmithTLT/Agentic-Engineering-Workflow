@@ -11,7 +11,6 @@ reads is named only where it runs: the ``discovery`` lane and the fast lane's te
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
@@ -72,7 +71,7 @@ def texts(guides: Mapping[str, str]) -> Iterator[tuple[str, str, str]]:
         yield f"pack:{role}", MODEL, text
 
 
-def scan(guides: Mapping[str, str], platform: str = sys.platform) -> list[Finding]:
+def scan(guides: Mapping[str, str]) -> list[Finding]:
     """Every static finding. A static key names its source and the suggested input (or the O-SECRET ask), so a new
     violation in a text that already has one is still new."""
     findings: list[Finding] = []
@@ -83,7 +82,7 @@ def scan(guides: Mapping[str, str], platform: str = sys.platform) -> list[Findin
             findings.extend(Finding(rule, f"{STATIC}{source}|{line}", why) for rule, why in rules.judge(s))
         for problem in rules.o_secret(text, plane):
             findings.append(Finding("O-SECRET", f"{STATIC}{source}|{problem}", problem))
-    missing = rules.o_env(lead_system_text(), platform)
+    missing = rules.o_env(lead_system_text())
     if missing:
         findings.append(Finding("O-ENV", f"{STATIC}lead-system+guide", "missing: " + ", ".join(missing)))
     findings.extend(rules.tool_argument_secrets())

@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -54,42 +55,58 @@ def _current_test() -> str:
 
 
 class Recorder:
-    """The findings of one process: ``key -> {rule, site, count, detail, test}``."""
+    """The findings of one process: ``key -> {rule, site, count, detail, test}``. Product threads still running in a
+    test (a steering loop, a broker) may record concurrently, so every change and every snapshot holds the lock.
+    ``judge`` is the rules' ``check``; a test passes its own to inject a defect without touching the session's."""
 
-    def __init__(self) -> None:
+    def __init__(self, judge: Any = None) -> None:
         self.findings: dict[str, dict[str, Any]] = {}
         self.outputs = 0
         self.errors: dict[str, int] = {}
         self._judged: set[str] = set()
+        self._judge = judge
+        self._lock = threading.Lock()
+
+    def error(self, exc: BaseException) -> None:
+        name = f"{type(exc).__name__}: {str(exc)[:200]}"
+        with self._lock:
+            self.errors[name] = self.errors.get(name, 0) + 1
 
     def record(self, output: rules.Output) -> None:
         """Judge one output, at most once per identical (site, content). Never raises: a defect here must not change a
-        test's outcome, so it is counted and reported instead."""
+        test's outcome, so it is counted and reported instead (and a counted error fails D2's ratchet)."""
         try:
             digest = hashlib.sha256(json.dumps([output.site, output.payload, output.text, output.refusal,
                                                 output.echo], default=str, sort_keys=True).encode()).hexdigest()
-            self.outputs += 1
-            if digest in self._judged:
-                return
-            self._judged.add(digest)
-            for f in rules.check(output):
-                entry = self.findings.setdefault(f.key, {"rule": f.rule, "site": f.site, "count": 0,
-                                                         "detail": f.detail[:300], "test": _current_test()})
-                entry["count"] += 1
+            with self._lock:
+                self.outputs += 1
+                if digest in self._judged:
+                    return
+                self._judged.add(digest)
+            found = (self._judge or rules.check)(output)
+            test = _current_test()
+            with self._lock:
+                for f in found:
+                    entry = self.findings.setdefault(f.key, {"rule": f.rule, "site": f.site, "count": 0,
+                                                             "detail": f.detail[:300], "test": test})
+                    entry["count"] += 1
         except Exception as exc:  # noqa: BLE001  (observing only: see the docstring)
-            name = f"{type(exc).__name__}: {str(exc)[:200]}"
-            self.errors[name] = self.errors.get(name, 0) + 1
+            self.error(exc)
 
     def merge(self, other: dict[str, Any]) -> None:
-        self.outputs += int(other.get("outputs") or 0)
-        for key, entry in (other.get("findings") or {}).items():
-            mine = self.findings.setdefault(key, {**entry, "count": 0})
-            mine["count"] += int(entry.get("count") or 0)
-        for name, n in (other.get("errors") or {}).items():
-            self.errors[name] = self.errors.get(name, 0) + int(n)
+        with self._lock:
+            self.outputs += int(other.get("outputs") or 0)
+            for key, entry in (other.get("findings") or {}).items():
+                mine = self.findings.setdefault(key, {**entry, "count": 0})
+                mine["count"] += int(entry.get("count") or 0)
+            for name, n in (other.get("errors") or {}).items():
+                self.errors[name] = self.errors.get(name, 0) + int(n)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"outputs": self.outputs, "findings": self.findings, "errors": self.errors}
+        """A snapshot, copied under the lock."""
+        with self._lock:
+            return {"outputs": self.outputs, "findings": {k: dict(v) for k, v in self.findings.items()},
+                    "errors": dict(self.errors)}
 
 
 # ---------------------------------------------------------------------------------------------- what is captured
@@ -156,11 +173,16 @@ class _Tee(io.TextIOBase):
 
 
 class CapturePlugin:
-    def __init__(self, config: pytest.Config, path: Path | None) -> None:
+    """One process's capture. The output builders are the instance's own (``cli_outputs``, ``tool_output``), so a test
+    can inject a defect into a plugin it installs without touching the session's."""
+
+    def __init__(self, config: pytest.Config, path: Path | None, recorder: Recorder | None = None) -> None:
         self.config = config
         self.path = path
-        self.recorder = Recorder()
+        self.recorder = recorder or Recorder()
         self.started = time.perf_counter()
+        self.cli_outputs = cli_outputs
+        self.tool_output = tool_output
         self._undo: list[tuple[Any, str, Any]] = []
 
     # ------------------------------------------------------------------ hooks into the product and subprocess
@@ -176,22 +198,26 @@ class CapturePlugin:
         recorder = self.recorder
         real_run, real_main, real_tool = subprocess.run, cli_main._main, surface_run.run_tool
 
-        def observe(make: Any, *args: Any) -> None:
-            """Record what ``make(*args)`` builds; a defect in building it is counted, never raised into the test."""
+        def observe(make: Any) -> None:
+            """Record what ``make()`` builds; a defect in building it is counted, never raised into the test."""
             try:
-                built = make(*args)
+                built = make()
                 for output in built if isinstance(built, list) else [built]:
                     recorder.record(output)
             except Exception as exc:  # noqa: BLE001  (observing only: see the module docstring)
-                name = f"{type(exc).__name__}: {str(exc)[:200]}"
-                recorder.errors[name] = recorder.errors.get(name, 0) + 1
+                recorder.error(exc)
 
         @functools.wraps(real_run)
         def run(*args: Any, **kwargs: Any) -> Any:
             result = real_run(*args, **kwargs)
-            argv = _aew_argv(args[0] if args else kwargs.get("args"))
-            if argv is not None:
-                observe(cli_outputs, argv, _text(result.stdout), _text(result.stderr), _text(kwargs.get("input")))
+
+            def outputs() -> list[rules.Output]:
+                argv = _aew_argv(args[0] if args else kwargs.get("args"))
+                if argv is None:
+                    return []
+                return self.cli_outputs(argv, _text(result.stdout), _text(result.stderr), _text(kwargs.get("input")))
+
+            observe(outputs)
             return result
 
         @functools.wraps(real_main)
@@ -203,12 +229,12 @@ class CapturePlugin:
                 return real_main(argv)
             finally:
                 sys.stdout, sys.stderr = saved
-                observe(cli_outputs, list(argv), out.kept.getvalue(), err.kept.getvalue())
+                observe(lambda: self.cli_outputs(list(argv), out.kept.getvalue(), err.kept.getvalue()))
 
         @functools.wraps(real_tool)
         def run_tool(engine: Any, ctx: Any, name: Any, arguments: Any, **kwargs: Any) -> Any:
             result = real_tool(engine, ctx, name, arguments, **kwargs)
-            observe(tool_output, name, arguments, result)
+            observe(lambda: self.tool_output(name, arguments, result))
             return result
 
         self._patch(subprocess, "run", run)
@@ -227,23 +253,31 @@ class CapturePlugin:
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node: Any, error: Any) -> None:
-        theirs = getattr(node, "workeroutput", {}).get(WORKER_KEY)
-        if theirs:
-            self.recorder.merge(theirs)
+        try:
+            theirs = getattr(node, "workeroutput", {}).get(WORKER_KEY)
+            if theirs:
+                self.recorder.merge(theirs)
+        except Exception as exc:  # noqa: BLE001  (observing only)
+            self.recorder.error(exc)
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
-        self.uninstall()
-        if hasattr(self.config, "workerinput"):
-            self.config.workeroutput[WORKER_KEY] = self.recorder.as_dict()  # type: ignore[attr-defined]
-            return
-        if self.path is None:
-            return
-        data = {"schema": SCHEMA, "platform": sys.platform, "lane": self.config.getoption("aew_lane", None),
-                "shard": self.config.getoption("aew_shard", None),
-                "wall_s": round(time.perf_counter() - self.started, 2), **self.recorder.as_dict()}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        """Hand the findings on, or write them. A failure here is reported on stderr and never changes the session's
+        exit status: the tests' outcome is theirs alone (a missing findings file is then the ratchet's to notice)."""
+        try:
+            self.uninstall()
+            if hasattr(self.config, "workerinput"):
+                self.config.workeroutput[WORKER_KEY] = self.recorder.as_dict()  # type: ignore[attr-defined]
+                return
+            if self.path is None:
+                return
+            data = {"schema": SCHEMA, "platform": sys.platform, "lane": self.config.getoption("aew_lane", None),
+                    "shard": self.config.getoption("aew_shard", None),
+                    "wall_s": round(time.perf_counter() - self.started, 2), **self.recorder.as_dict()}
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001  (observing only: see the docstring)
+            sys.stderr.write(f"D2 capture: findings not written ({type(exc).__name__}: {exc})\n")
 
 
 def addoption(parser: pytest.Parser) -> None:

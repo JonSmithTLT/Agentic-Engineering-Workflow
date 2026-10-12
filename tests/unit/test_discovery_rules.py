@@ -132,7 +132,7 @@ def id_typed_options() -> list[tuple[tuple[str, ...], str]]:
     out = []
     for path in command_paths():
         for action in parser_at(path)._actions:
-            if action.dest in rules.ID_DESTS and action.option_strings and action.nargs != 0:
+            if rules.is_id_action(action) and action.option_strings:
                 out.append((path, action.option_strings[-1]))
     return out
 
@@ -167,6 +167,31 @@ def test_o_ids_knows_the_engines_id_formats():
     assert found(prose(f"aew context show {inv}"), "O-IDS")
     assert found(prose(f"aew harness wait {run_id(inv, 2)}"), "O-IDS")
     assert not found(prose("aew work show T-0007"), "O-IDS")
+
+
+def test_o_ids_finds_an_engine_id_in_a_slot_that_is_not_id_typed():
+    """Review of #218, m3: the id-format path alone. `history show` takes a record id, which is not an id-typed
+    argument, so only the engine's id formats can see the invocation id in it (a mutant `_is_id` fails here)."""
+    assert not any(rules.is_id_action(a) for a in rules._path_actions(("history", "show"))["record_id"])
+    assert found(prose("aew history show INV-0101"), "O-IDS")
+    assert not found(prose("aew history show T-0101"), "O-IDS")
+
+
+def test_id_typed_arguments_are_read_from_the_parser_per_command():
+    """Review of #218, m3: an argument is id-typed by its own name, option or metavar, per command: `history log
+    --since REVISION` takes a revision, `history list --since UTC` a time."""
+    assert found(prose("aew history log --since 12"), "O-IDS")
+    assert not found(prose("aew history list --since 2026-10-01T00:00:00Z"), "O-IDS")
+    assert found(prose("aew harness send R-INV-0001-1 --file nudge.md"), "O-IDS")
+    assert not any(rules.is_id_action(a) for a in rules._actions() if a.dest.endswith("token"))
+
+
+def test_a_structured_field_names_a_command_that_must_parse_whole():
+    """Review of #218, m4: `next`, `remedy` and the hints are offered to be run as given (§2.2)."""
+    assert found(Output(site="unit", payload={"next": "aew plan accept T-0001"}), "O-CMD")
+    assert found(Output(site="unit", payload={"remedy": "aew harness launch"}), "O-CMD")
+    assert not found(Output(site="unit", payload={"next": "aew work show T-0001"}), "O-CMD")
+    assert not found(Output(site="unit", text="`aew plan accept`, once the plan is ready"), "O-CMD")  # prose
 
 
 def test_o_ids_reads_structured_suggestions():
@@ -220,6 +245,36 @@ def test_o_secret_flags_every_credential_the_product_names_when_asked_for():
     assert not found(prose("aew manifest adopt"), "O-SECRET")
 
 
+@pytest.mark.parametrize("plane", [OPERATOR, MODEL])
+def test_o_secret_flags_a_credential_asked_of_any_reader(plane):
+    """The operator's decision of 2026-10-13 widens O-SECRET to any reader: the operator, the Lead, or a worker model
+    through its pack. The pack's own line, as the product renders it, is caught on the model plane."""
+    pack = next(text for source, _, text in static.texts(guides()) if source == "pack:implementer")
+    line = next(ln for ln in pack.splitlines() if "AEW_INVOCATION_TOKEN=" in ln)
+    assert found(Output(site="unit", plane=plane, text=line), "O-SECRET") == ["asks to set AEW_INVOCATION_TOKEN"]
+    assert found(Output(site="unit", plane=plane, text="Ask the operator to set AEW_LEAD_TOKEN."), "O-SECRET")
+    assert not found(Output(site="unit", plane=plane, text="This session never holds AEW_LEAD_TOKEN."), "O-SECRET")
+    key = f"O-SECRET {static.STATIC}pack:implementer|asks to set AEW_INVOCATION_TOKEN"
+    assert key in allowed.load()  # listed until the product drops the line; its key stays stable
+
+
+def test_the_identity_check_aborts_on_another_checkouts_aew(tmp_path):
+    """Spec §5, J2 (review of #218, m7): the discovery lane judges only the commit under test."""
+    from pathlib import Path
+
+    from discovery import identity
+
+    import aew
+
+    root = Path(__file__).resolve().parents[2]
+    pyproject = root / "pyproject.toml"
+    assert identity.problems(aew.__file__, aew.__version__, root / "src", pyproject) == []
+    other = tmp_path / "other" / "src" / "aew" / "__init__.py"
+    assert "not from the commit under test" in identity.problems(str(other), aew.__version__, root / "src",
+                                                                 pyproject)[0]
+    assert "declares" in identity.problems(aew.__file__, "0.0.0-other", root / "src", pyproject)[0]
+
+
 def test_o_secret_places_pins_at_the_console_and_codes_at_the_terminal():
     pin = "Enter your PIN to continue."
     code = "Type the one-time code shown on the console."
@@ -241,19 +296,46 @@ def test_o_secret_reads_the_typed_tools_arguments(monkeypatch):
 
 # ---------------------------------------------------------------------------------------------- O-ENV
 
-@pytest.mark.parametrize("platform", ["linux", "win32"])
-def test_o_env_requires_the_statement_generated_from_the_allowlist(platform):
+def test_o_env_is_generated_from_the_check_path_itself():
+    """Review of #218, m5: the statement comes from `Validation._check_env`, the environment every validation check
+    runs in: the allowlist, PATH, PYTHONUTF8 and (on POSIX) the locale family, and no other variable."""
+    import sys
+
     from aew.harness import agentenv
 
-    keep = agentenv.WINDOWS_KEEP if platform == "win32" else agentenv.POSIX_KEEP
-    def statement(names: list[str]) -> str:
-        return (f"{rules.ENV_MARK}: only {', '.join(names)} and PATH are kept. To give a check a variable, name it "
-                "in the harness profile's provider_env.")
+    kept, passes_others = rules.check_environment()
+    keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
+    assert set(keep) | {"PATH", "PYTHONUTF8"} <= set(kept)
+    assert ("LC_*" in kept) == (sys.platform != "win32")
+    assert not passes_others  # the code has no way to give a check another variable
+    parts = rules.env_statement()
+    assert "provider_env" not in parts and rules.NO_OTHER in parts
 
-    assert rules.o_env(statement(sorted(keep)), platform) == []
-    dropped = sorted(keep)[0]
-    assert rules.o_env(statement(sorted(keep - {dropped})), platform) == [dropped]
-    assert "the scrubbed-environment statement" in rules.o_env("nothing about checks", platform)
+
+def test_o_env_requires_the_statement_generated_from_the_check_path():
+    kept, _ = rules.check_environment()
+
+    def statement(names: list[str]) -> str:
+        return (f"{rules.ENV_MARK}: only {', '.join(names)} are kept. {rules.NO_OTHER}: put what a check needs "
+                "in its command.")
+
+    assert rules.o_env(statement(kept)) == []
+    dropped = next(k for k in kept if k != "PATH")
+    assert rules.o_env(statement([k for k in kept if k != dropped])) == [dropped]
+    assert rules.o_env(statement(kept).replace(rules.NO_OTHER, "")) == [f"the statement {rules.NO_OTHER!r}"]
+    assert f"the statement {rules.ENV_MARK!r}" in rules.o_env("nothing about checks")
+
+
+def test_o_env_follows_the_check_path_when_it_changes(monkeypatch):
+    """A mutant check path that also passed every variable through would need no "no other variable" statement, and
+    one that dropped PYTHONUTF8 would not require it: the expectation moves with the code."""
+    import os
+
+    from aew.engine.validation_ops import Validation
+
+    monkeypatch.setattr(Validation, "_check_env", staticmethod(lambda layout: {**os.environ}))
+    kept, passes_others = rules.check_environment()
+    assert passes_others and rules.NO_OTHER not in rules.env_statement()
 
 
 def guides() -> dict[str, str]:
@@ -288,6 +370,12 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     assert [o.site for o in outputs] == ["cli:aew lead session|USAGE"]
     assert {"O-WORDS", "O-SECRET"} <= {f.rule for f in rules.check(outputs[0])}
     assert str(repo) not in outputs[0].site  # a key never carries message text
+    # U29's own site: `aew opencode` without a credential refuses before anything starts. Run through `run_aew`, so
+    # the session's capture sees this site in every run (tests start a live `aew opencode` through Popen, unseen).
+    opened = run_aew("-C", str(repo), "opencode")
+    refusal = capture.cli_outputs(["-C", str(repo), "opencode"], opened.stdout, opened.stderr)
+    assert [o.site for o in refusal] == ["cli:aew opencode|USAGE"]
+    assert "asks to set AEW_LEAD_TOKEN" in [f.detail for f in rules.check(refusal[0]) if f.rule == "O-SECRET"]
     shown = run_aew("-C", str(repo), "lead", "show")
     clean = capture.cli_outputs(["-C", str(repo), "lead", "show"], shown.stdout, shown.stderr)
     assert [o.site for o in clean] == ["cli:aew lead show|result"]
@@ -302,18 +390,19 @@ def test_the_capture_plugin_keys_typed_tool_results_by_tool_and_code():
     assert refused.site == "tool:integration_publish|GATE_UNSATISFIED" and refused.refusal["code"] == "GATE_UNSATISFIED"
 
 
-def test_the_capture_plugin_never_changes_a_test_outcome(monkeypatch):
-    """A defect in judging is counted and reported; it never raises into the test that produced the output."""
-    def boom(*_a, **_k):
-        raise RuntimeError("defect")
+def _boom(*_a, **_k):
+    raise RuntimeError("defect")
 
-    recorder = capture.Recorder()
-    monkeypatch.setattr(rules, "check", boom)
+
+def test_the_capture_plugin_never_changes_a_test_outcome():
+    """A defect in judging is counted and reported; it never raises into the test that produced the output. The
+    defect is injected into this recorder alone, never into the session's own capture (review of #218, m2)."""
+    recorder = capture.Recorder(judge=_boom)
     recorder.record(Output(site="x", text="`aew status`"))
     assert recorder.errors == {"RuntimeError: defect": 1} and not recorder.findings
-    monkeypatch.undo()
-    recorder.record(Output(site="x", text="`aew harness runs`"))
-    assert "O-CMD x" in recorder.findings
+    clean = capture.Recorder()
+    clean.record(Output(site="x", text="`aew harness runs`"))
+    assert "O-CMD x" in clean.findings and not clean.errors
 
 
 def test_a_defect_in_a_hook_never_reaches_the_test_that_called_the_product(monkeypatch, capsys):
@@ -331,11 +420,8 @@ def test_a_defect_in_a_hook_never_reaches_the_test_that_called_the_product(monke
         assert cli_main._main([]) == 2  # no command: the help, exit status 2
         assert surface_run.run_tool(None, None, "status", {}) is answer
         assert not plugin.recorder.errors
-        def boom(*_a, **_k):
-            raise RuntimeError("defect")
-
-        monkeypatch.setattr(capture, "cli_outputs", boom)
-        monkeypatch.setattr(capture, "tool_output", boom)
+        # Injected into this plugin's own builders only: the session's capture of this test stays clean (m2).
+        plugin.cli_outputs = plugin.tool_output = _boom
         assert cli_main._main([]) == 2
         assert surface_run.run_tool(None, None, "status", {}) is answer
         proc = subprocess.run([sys.executable, "-m", "aew", "--version"], capture_output=True, text=True,
@@ -347,6 +433,51 @@ def test_a_defect_in_a_hook_never_reaches_the_test_that_called_the_product(monke
     assert plugin.recorder.errors == {"RuntimeError: defect": 3}
     assert (subprocess.run, cli_main._main, surface_run.run_tool) == originals  # uninstalled as found
     capsys.readouterr()
+
+
+def test_a_failed_findings_write_never_changes_the_sessions_outcome(tmp_path, capsys):
+    """Review of #218, m1: the findings file cannot be written (its directory is a file); the session's exit status
+    is untouched and the failure is reported on stderr."""
+    blocker = tmp_path / "afile"
+    blocker.write_text("", encoding="utf-8")
+
+    class Config:
+        def getoption(self, name, default=None):
+            return default
+
+    plugin = capture.CapturePlugin(Config(), blocker / "sub" / "out.json")  # type: ignore[arg-type]
+    plugin.install()
+    session = type("S", (), {"exitstatus": 0})()
+    plugin.pytest_sessionfinish(session, 0)  # type: ignore[arg-type]
+    assert session.exitstatus == 0
+    assert "D2 capture: findings not written" in capsys.readouterr().err
+
+
+def test_the_recorder_keeps_counting_while_threads_record_and_snapshot():
+    """Review of #218, m1: product threads that outlive a test may record while the session snapshots."""
+    import threading
+
+    found_once = [rules.Finding("O-WORDS", "s", "unstructured refusal")]
+    recorder = capture.Recorder(judge=lambda output: [rules.Finding("O-WORDS", output.site, "x"), *found_once])
+    start = threading.Barrier(5)
+
+    def writer(n: int) -> None:
+        start.wait(timeout=60)
+        for i in range(2000):
+            recorder.record(Output(site=f"s{n}-{i}"))
+
+    threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+    for t in threads:
+        t.start()
+    start.wait(timeout=60)
+    snapshots = 0
+    while any(t.is_alive() for t in threads):
+        json.dumps(recorder.as_dict())  # never "dictionary changed size during iteration"
+        snapshots += 1
+    for t in threads:
+        t.join(timeout=60)
+    assert not recorder.errors and snapshots
+    assert len(recorder.findings) == 4 * 2000 + 1 and recorder.findings["O-WORDS s"]["count"] == 4 * 2000
 
 
 def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
@@ -415,24 +546,78 @@ def _ratchet():
     return module
 
 
-def test_the_allow_list_may_only_shrink_unless_the_operator_accepts_a_residual(tmp_path):
+def _growth(tmp_path, monkeypatch, labels):
+    """The ratchet on a pull request whose allow-list adds ``O-CMD cli:aew x|result`` with a residual entry the pull
+    request wrote itself; ``labels`` are what the live label read returns."""
     discovery_ratchet = _ratchet()
-    base = tmp_path / "base.yaml"
-    head = tmp_path / "head.yaml"
+    monkeypatch.setattr(discovery_ratchet, "live_labels", lambda repo, pr: labels)
+    base, head = tmp_path / "base.yaml", tmp_path / "head.yaml"
     base.write_text(allowed.render({"O-IDS cli:aew status|result"}), encoding="utf-8")
     reports = tmp_path / "reports"
-    reports.mkdir()
-    head.write_text(allowed.render(set()), encoding="utf-8")
-    args = [str(reports), "--event", "pull_request", "--allowlist", str(head), "--base-allowlist", str(base)]
-    assert discovery_ratchet.main(args) == 0  # shrinking is always allowed
-    head.write_text(allowed.render({"O-IDS cli:aew status|result", "O-CMD cli:aew x|result"}), encoding="utf-8")
-    assert discovery_ratchet.main(args) == 1  # growth fails whatever the mode
+    reports.mkdir(exist_ok=True)
     residual = [{"rule": "O-CMD", "site": "cli:aew x|result", "decision": "operator, 2026-10-12", "reason": "r"}]
     head.write_text(allowed.render({"O-IDS cli:aew status|result", "O-CMD cli:aew x|result"}, residual),
                     encoding="utf-8")
-    assert discovery_ratchet.main(args) == 0
+    return discovery_ratchet.main([str(reports), "--event", "pull_request", "--allowlist", str(head),
+                                   "--base-allowlist", str(base), "--repo", "o/r", "--pr", "1"])
+
+
+def test_the_allow_list_may_only_shrink(tmp_path, monkeypatch):
+    discovery_ratchet = _ratchet()
+    monkeypatch.setattr(discovery_ratchet, "live_labels", lambda repo, pr: [])
+    base, head = tmp_path / "base.yaml", tmp_path / "head.yaml"
+    base.write_text(allowed.render({"O-IDS cli:aew status|result"}), encoding="utf-8")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    args = [str(reports), "--event", "pull_request", "--allowlist", str(head), "--base-allowlist", str(base)]
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    assert discovery_ratchet.main(args) == 0  # shrinking is always allowed
+    head.write_text(allowed.render({"O-IDS cli:aew status|result", "O-CMD cli:aew x|result"}), encoding="utf-8")
+    assert discovery_ratchet.main(args) == 1  # growth fails whatever the mode
     no_base = [str(reports), "--event", "pull_request", "--allowlist", str(head)]
     assert discovery_ratchet.main(no_base) == 0  # introducing D2: the base has no list
+
+
+@pytest.mark.parametrize("labels", [[], ["full-ci"], None])
+def test_a_residual_the_pull_request_writes_itself_is_still_growth(tmp_path, monkeypatch, capsys, labels):
+    """Review of #218, M1: an accepted residual is the operator's (spec §5). Without the operator-merge label (or
+    when the labels cannot be read) a residual new against the base fails, naming the key."""
+    assert _growth(tmp_path, monkeypatch, labels) == 1
+    assert "FAIL residual O-CMD cli:aew x|result" in capsys.readouterr().out
+
+
+def test_a_residual_passes_on_a_pull_request_the_operator_merges(tmp_path, monkeypatch, capsys):
+    """The operator-merge label reserves the merge for the operator (AGENTS.md §5): the merge is the sign-off."""
+    assert _growth(tmp_path, monkeypatch, ["operator-merge"]) == 0
+    assert "accepted residual O-CMD cli:aew x|result" in capsys.readouterr().out
+
+
+def test_a_capture_error_fails_the_ratchet(tmp_path):
+    """Review of #218, m2: an output left unjudged is not a pass."""
+    discovery_ratchet = _ratchet()
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    findings = {"schema": discovery_ratchet.FINDINGS_SCHEMA, "outputs": 1, "findings": {}, "errors": {}}
+    (reports / "a.discovery.json").write_text(json.dumps(findings), encoding="utf-8")
+    args = [str(reports), "--event", "push", "--allowlist", str(tmp_path / "none.yaml")]
+    assert discovery_ratchet.main(args) == 0
+    findings["errors"] = {"RuntimeError: x": 1}
+    (reports / "a.discovery.json").write_text(json.dumps(findings), encoding="utf-8")
+    assert discovery_ratchet.main(args) == 1
+
+
+def test_the_static_texts_add_no_new_key_of_an_enforced_rule():
+    """Review of #218, M2: the static decision in a required job. The fast lane runs in every tier's `core`, so a new
+    or stale static key of a rule in `enforce` blocks the merge; the `discovery` workflow only reports."""
+    observed = {f.key for f in static.scan(guides())}
+    listed = {k for k in allowed.load() if allowed.is_static(k)}
+    verdict = allowed.decide(observed, listed, stale_scope="static")
+    assert verdict.ok, "\n".join(allowed.report(verdict))
+    enforced = {r: modes.ENFORCE for r in modes.RULES}
+    assert allowed.decide(observed | {"O-IDS static:guide|aew x --expect-rev N"}, listed, stale_scope="static",
+                          mode_of=enforced).failing == ["O-IDS static:guide|aew x --expect-rev N"]
+    dropped = sorted(listed)[0]
+    assert allowed.decide(observed - {dropped}, listed, stale_scope="static", mode_of=enforced).failing == [dropped]
 
 
 def test_the_committed_allow_list_is_well_formed_and_sorted():

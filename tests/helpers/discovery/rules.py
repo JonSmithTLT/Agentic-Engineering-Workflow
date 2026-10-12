@@ -30,9 +30,9 @@ SUGGESTED_FIELDS = frozenset({"next", "next_action", "next_actions", "remedy", "
 # The refusal schema's fields (§1.5, R-REFUSE; F3). No refusal carries them yet: every refusal is "unstructured".
 REFUSAL_SCHEMA = ("cause", "remedy", "owner")
 # O-IDS's id kinds (§2.2: a revision, generation, invocation, run or stage intent; the setup guide's `<C-001>`, a
-# candidate, is U1's witness). An option or positional whose dest is one of these takes an id, whatever its value.
-ID_DESTS = frozenset({"expect_rev", "expect_map_rev", "revision", "generation", "invocation", "carry", "run", "intent",
-                      "candidate"})
+# candidate, is U1's witness). An argument takes an id when a word of its name or its metavar names one of these
+# kinds (``is_id_action``): read from the parser's own declarations, so a new id argument is covered as it is added.
+ID_KINDS = frozenset({"rev", "revision", "generation", "inv", "invocation", "run", "intent", "candidate"})
 # Ticket ids are exempt (§2.2): a work unit is a product concept the operator names.
 WORK_DESTS = frozenset({"work_id", "parent", "depends_on", "into"})
 
@@ -71,9 +71,9 @@ class Output:
 
 @dataclass(frozen=True)
 class Suggestion:
-    """A suggested input: ``argv`` without the leading ``aew``. ``structured`` is an argument list (``cli``,
-    ``cli_fallback``), which must parse whole; text, in prose or in a field, may name a command without its required
-    arguments (a mention, not an error)."""
+    """A suggested input: ``argv`` without the leading ``aew``. ``structured`` is a structured field's command (an
+    argument list such as ``cli``, or the command a ``next``, ``remedy`` or hint field names), which must parse whole;
+    prose elsewhere may name a command without its required arguments (a mention, not an error)."""
 
     argv: tuple[str, ...]
     text: str
@@ -198,7 +198,18 @@ def _actions() -> tuple[argparse.Action, ...]:
 
 @functools.cache
 def _id_options() -> frozenset[str]:
-    return frozenset(o for a in _actions() if a.dest in ID_DESTS for o in a.option_strings)
+    return frozenset(o for a in _actions() if is_id_action(a) for o in a.option_strings)
+
+
+def is_id_action(action: argparse.Action) -> bool:
+    """Whether an argument takes an id of O-IDS's kinds: a word of its dest, an option string or its metavar names
+    one (``expect_rev``, ``--carry INV``, ``--since REVISION``)."""
+    if action.nargs == 0 or isinstance(action, argparse._SubParsersAction) or action.choices:
+        return False
+    metavar = action.metavar if isinstance(action.metavar, str) else ""
+    names = [action.dest, metavar, *action.option_strings]
+    words = {w for n in names for w in re.split(r"[^a-z]+", n.lower()) if w}
+    return bool(words & ID_KINDS) and "token" not in words  # a credential is O-SECRET's, not an id
 
 
 def command_words(argv: Iterable[str]) -> tuple[str, ...]:
@@ -387,9 +398,10 @@ def suggestions(output: Output) -> list[Suggestion]:
             for v in value:
                 walk(v, suggested)
         elif isinstance(value, str):
-            # A field's text is prose that names a command; only an argument list must parse whole.
+            # A command in a structured field (§2.2: `next`, `remedy`, `cli`, a hint) is offered to be run as given, so
+            # it must parse whole; only prose elsewhere may name a command without its required arguments.
             for cmd in (_field_commands(value) if suggested else prose_commands(value)):
-                add(cmd, False)
+                add(cmd, suggested)
 
     walk(output.payload, False)
     if output.text:
@@ -441,10 +453,15 @@ def o_ids(s: Suggestion) -> list[str]:
     token, or, where the line does not parse, by an id option's value and the engine's id formats."""
     problems: list[str] = []
     argv = _strip(list(s.argv))
+    try:  # the id options of the command this line names (the same option can be an id in one command only)
+        id_options = {o for acts in _path_actions(command_words(argv)).values() for a in acts if is_id_action(a)
+                      for o in a.option_strings}
+    except (KeyError, StopIteration):
+        id_options = set(_id_options())
     for i, token in enumerate(argv):
         if _is_id(token):
             problems.append(f"id {token}")
-        elif i and argv[i - 1] in _id_options():
+        elif i and argv[i - 1] in id_options:
             problems.append(f"{argv[i - 1]} {token}")
     for variant in _variants(argv)[:1]:
         try:
@@ -453,24 +470,37 @@ def o_ids(s: Suggestion) -> list[str]:
             if any(t == "N" or (ANGLE.match(t) and t not in ("<T>", "<S>", "<E>")) for t in variant):
                 problems.append("placeholder in an unparsed line")
             break
-        values = vars(ns)
-        for dest, value in values.items():
+        actions = _path_actions(command_words(variant))
+        for dest, value in vars(ns).items():
             items = value if isinstance(value, list) else [value]
+            mine = actions.get(dest, ())
             for item in items:
                 text = str(item)
                 if item is None or text not in variant:
                     continue
-                if dest in ID_DESTS:
+                if any(is_id_action(a) for a in mine):
                     entry = f"{dest} {text}"
                     if entry not in problems and not any(text in p for p in problems):
                         problems.append(entry)
-                elif is_placeholder(text) and text not in ELISION and dest not in WORK_DESTS and not _choices(dest):
+                elif (is_placeholder(text) and text not in ELISION and dest not in WORK_DESTS
+                      and not any(a.choices for a in mine)):
                     problems.append(f"placeholder {text} for {dest}")
     return sorted(set(problems))
 
 
-def _choices(dest: str) -> bool:
-    return any(a.dest == dest and a.choices for a in _actions())
+def _path_actions(words: tuple[str, ...]) -> dict[str, tuple[argparse.Action, ...]]:
+    """``dest -> actions`` of the parsers ``words`` passes through (the program's own options included): the same
+    dest names different arguments in different commands (``--since REVISION`` and ``--since UTC``)."""
+    current, parsers = _parser(), [_parser()]
+    for word in words:
+        sub = next(a for a in current._actions if isinstance(a, argparse._SubParsersAction))
+        current = sub.choices[word]
+        parsers.append(current)
+    out: dict[str, list[argparse.Action]] = {}
+    for p in parsers:
+        for a in p._actions:
+            out.setdefault(a.dest, []).append(a)
+    return {k: tuple(v) for k, v in out.items()}
 
 
 # "Put" and "give" are left out: the product says what a command "would put" on standard output when it refuses.
@@ -618,26 +648,46 @@ def tool_argument_secrets() -> list[Finding]:
 # ---------------------------------------------------------------------------------------------- O-ENV
 
 ENV_MARK = "Checks run in a scrubbed environment"
+NO_OTHER = "No other variable reaches a check"
+FOREIGN_PROBE = "D2_PROBE_NOT_ALLOWLISTED"
 
 
-def env_statement(platform: str) -> list[str]:
-    """What the Lead's guide and system text must state about the check environment (§2.2, O-ENV; U15), generated
-    from ``agentenv``'s allowlist for ``platform``: the statement, every kept variable, and how to give a check a
-    variable (the harness profile's ``provider_env``)."""
+def check_environment() -> tuple[list[str], bool]:
+    """What the check path actually keeps (review of #218, m5): ``Validation._check_env``, the environment every
+    validation check runs in, probed with every variable the allowlists name, an ``LC_`` variable and one foreign
+    variable. Returns the kept names (``LC_*`` for the locale family) and whether a variable outside them reaches a
+    check (the "how to give a check a variable": the code has no such mechanism when it does not)."""
+    import os
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from aew.engine.validation_ops import Validation
     from aew.harness import agentenv
 
-    keep = agentenv.WINDOWS_KEEP if platform == "win32" else agentenv.POSIX_KEEP
-    return [ENV_MARK, *sorted(keep), "PATH", "provider_env"]
+    candidates = {*agentenv.WINDOWS_KEEP, *agentenv.POSIX_KEEP, "PATH", "LC_ALL"}
+    probe = {name: os.environ.get(name, "d2-probe") for name in candidates}  # existing values are left as they are
+    with mock.patch.dict(os.environ, {**probe, FOREIGN_PROBE: "1"}):
+        env = Validation._check_env(SimpleNamespace(env={}))
+    kept = {("LC_*" if k.upper().startswith("LC_") else k.upper()) for k in env if k.upper() != FOREIGN_PROBE}
+    return sorted(kept), FOREIGN_PROBE in {k.upper() for k in env}
 
 
-def o_env(text: str, platform: str) -> list[str]:
+def env_statement() -> list[str]:
+    """What the Lead's guide and system text must state about the check environment (§2.2, O-ENV; U15), generated
+    from the check path on this platform: the statement, every variable it keeps, and, as the code has no way to give
+    a check another variable, that none does."""
+    kept, passes_others = check_environment()
+    return [ENV_MARK, *kept, *([] if passes_others else [NO_OTHER])]
+
+
+def o_env(text: str) -> list[str]:
     """The parts of the generated check-environment statement ``text`` lacks."""
     lowered = text.lower()
     missing = []
-    for part in env_statement(platform):
-        if part == ENV_MARK:
-            if ENV_MARK.lower() not in lowered:
-                missing.append("the scrubbed-environment statement")
+    for part in env_statement():
+        if part in (ENV_MARK, NO_OTHER):
+            if part.lower() not in lowered:
+                missing.append(f"the statement {part!r}")
         elif not re.search(rf"(?<![A-Za-z0-9_]){re.escape(part)}(?![A-Za-z0-9_])", text):
             missing.append(part)
     return missing

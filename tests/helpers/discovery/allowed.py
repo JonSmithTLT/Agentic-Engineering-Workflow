@@ -5,7 +5,8 @@ the existing violations, which D2 observes and never fixes. It may only shrink:
 
 - **On a pull request**, a key observed but not allow-listed is **new**: reported, and failing the run when its rule
   is in ``enforce``. A key added to the allow-list relative to the base is refused, unless it is an accepted residual
-  (the operator's decision, recorded with its reason).
+  (the operator's decision, recorded with its reason) on a pull request carrying the ``operator-merge`` label, which
+  reserves the merge for the operator (``tools/ci/discovery_ratchet.py`` decides growth).
 - **On main and nightly** (the full selection), an allow-listed key no longer observed is **stale**: reported, and
   failing when its rule is in ``enforce``, until a pull request removes it. CI never commits the removal itself.
 
@@ -84,12 +85,12 @@ class Verdict:
 
 
 def decide(observed: Iterable[str], allowed: set[str], *, stale_scope: str | None,
-           base: set[str] | None = None, residuals: Mapping[str, Any] | None = None,
-           mode_of: Mapping[str, str] = modes.MODES) -> Verdict:
+           base: set[str] | None = None, mode_of: Mapping[str, str] = modes.MODES) -> Verdict:
     """The verdict of one run. ``stale_scope``: which allow-listed keys the run's selection is complete for
     (``"static"``, ``"runtime"``, ``"all"``, or ``None`` on a pull request's runtime selection, where absence proves
     nothing). ``base``: the base branch's allow-list on a pull request (``None`` where there is none, or off a pull
-    request); a key added to it fails whatever its mode, unless it is an accepted residual."""
+    request); a key added to it fails whatever its mode. An accepted residual is not decided here: only the ratchet,
+    which reads the pull request's labels live, can tell the operator's from the author's."""
     seen = set(observed)
     v = Verdict()
     v.new = sorted(seen - allowed)
@@ -97,7 +98,7 @@ def decide(observed: Iterable[str], allowed: set[str], *, stale_scope: str | Non
         in_scope = {k for k in allowed if stale_scope == "all" or (is_static(k) == (stale_scope == "static"))}
         v.stale = sorted(in_scope - seen)
     if base is not None:
-        v.grown = sorted(k for k in allowed - base if k not in (residuals or {}))
+        v.grown = sorted(allowed - base)
     enforce = {r for r, m in mode_of.items() if m == modes.ENFORCE}
     v.failing = sorted({*(k for k in v.new + v.stale if k.split(" ", 1)[0] in enforce), *v.grown})
     return v

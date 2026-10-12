@@ -5,9 +5,13 @@ Merges the findings every lane job wrote beside its lane report (``*.discovery.j
 ``aew/discovery-findings/v1``) and decides them against the allow-list (``tests/helpers/discovery/allowed.yaml``):
 
 - ``--event pull_request``: a key not on the list is new (reported; failing when its rule is in ``enforce``), and a
-  key added to the list relative to ``--base-allowlist`` fails whatever its mode, unless it is an accepted residual.
+  key added to the list relative to ``--base-allowlist`` fails whatever its mode. The one exception is an accepted
+  residual, which is the operator's: it passes only while the pull request carries the ``operator-merge`` label, read
+  live (``--repo``, ``--pr``).
 - any other event (main's push run, nightly): a listed runtime key not observed anywhere in the run is also stale
-  (reported; failing when its rule is in ``enforce``). Static keys are the ``discovery`` lane's to decide.
+  (reported; failing when its rule is in ``enforce``). Static keys are decided by the fast lane's test and the
+  ``discovery`` lane, over the complete scan.
+- Any capture error fails the run: an output left unjudged is not a pass.
 
 ``--write`` regenerates the allow-list from the run instead (introducing D2, or removing stale keys): it refuses to add
 a key that the current list lacks unless ``--introduce`` is given, which only the pull request introducing D2 uses.
@@ -31,6 +35,7 @@ sys.path.insert(0, str(ROOT / "tests" / "helpers"))
 from discovery import allowed, modes  # noqa: E402
 
 FINDINGS_SCHEMA = "aew/discovery-findings/v1"
+OPERATOR_LABEL = "operator-merge"  # AGENTS.md §5: a pull request with it is merged by the operator
 
 
 def load_findings(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, int], list[str]]:
@@ -61,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allowlist", type=Path, default=allowed.PATH)
     ap.add_argument("--base-allowlist", type=Path, default=None,
                     help="the base branch's allow-list on a pull request (absent: the base has none)")
+    ap.add_argument("--repo", default=None, help="OWNER/REPO, to read the pull request's labels live")
+    ap.add_argument("--pr", default=None, help="the pull request's number, to read its labels live")
     ap.add_argument("--summary", type=Path, default=None, help="append a Markdown report (GITHUB_STEP_SUMMARY)")
     ap.add_argument("--write", action="store_true", help="regenerate the allow-list from the run's findings")
     ap.add_argument("--introduce", action="store_true", help="with --write: allow keys the current list lacks")
@@ -101,15 +108,29 @@ def main(argv: list[str] | None = None) -> int:
         base = allowed.parse(base_text)[0] if base_text is not None else None
     # Stale only over a run that captured at all: with no findings file, absence proves nothing.
     verdict = allowed.decide(runtime_observed, runtime_allowed, stale_scope=None if on_pr or not sources else "runtime")
+    signed: list[str] = []
     if base is not None:  # the whole list, static keys included, may only shrink
-        verdict.grown = sorted(k for k in current - base if k not in residuals)
+        grown = sorted(current - base)
+        # An accepted residual is the operator's (spec §5): a residual new against the base counts only when the
+        # pull request carries the operator-merge label, read live, which reserves the merge for the operator
+        # (AGENTS.md §5): the operator's merge is the sign-off. A label that cannot be read signs nothing.
+        labels = live_labels(args.repo, args.pr) if any(k in residuals for k in grown) else []
+        operator_merge = OPERATOR_LABEL in (labels or [])
+        signed = [k for k in grown if k in residuals and operator_merge]
+        verdict.grown = [k for k in grown if k not in signed]
         verdict.failing = sorted({*verdict.failing, *verdict.grown})
     lines = [f"D2 ({'pull request' if on_pr else 'ratchet: ' + args.event}): {len(sources)} findings file(s), "
              f"{len(runtime_observed)} runtime key(s) observed, {len(runtime_allowed)} allow-listed",
              "modes: " + ", ".join(f"{r} {m}" for r, m in modes.MODES.items()),
              *allowed.report(verdict)]
+    for key in verdict.grown:
+        if key in residuals:
+            lines.append(f"  FAIL residual {key}: new against the base, and the pull request lacks the "
+                         f"`{OPERATOR_LABEL}` label (an accepted residual is the operator's)")
+    lines += [f"  accepted residual {k} (the `{OPERATOR_LABEL}` label: the operator merges)" for k in signed]
     if errors:
-        lines.append(f"capture errors (observing only; no test outcome changed): {sum(errors.values())}")
+        # An output that failed to be judged is not a pass: a crash in a rule would hide its findings.
+        lines.append(f"FAIL capture errors (outputs left unjudged): {sum(errors.values())}")
         lines += [f"  {n} x {name}" for name, n in sorted(errors.items())[:20]]
     if not sources:
         lines.append("no findings file: no lane job of this run captured (nothing to decide)")
@@ -117,7 +138,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write("## D2: output and text rules\n\n```\n" + "\n".join(lines) + "\n```\n")
-    return 0 if verdict.ok else 1
+    return 0 if verdict.ok and not errors else 1
+
+
+def live_labels(repo: str | None, pr: str | None) -> list[str] | None:
+    """The pull request's labels now, through the tier tool's own live read (``None`` if they cannot be read)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("tier", ROOT / "tools" / "ci" / "tier.py")
+    tier = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(tier)  # type: ignore[union-attr]
+    return tier.live_labels(repo or "", pr or "")
 
 
 if __name__ == "__main__":

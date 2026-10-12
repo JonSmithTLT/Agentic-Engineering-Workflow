@@ -52,6 +52,25 @@ def policy_files(manifest: dict[str, Any]) -> list[str]:
     return sorted({*named.values(), named.get("execution") or X.REL_PATH})
 
 
+def check_policy_bytes(name: str, raw: bytes, *, source: str) -> Any:
+    """A policy file's bytes, parsed and checked as adoption checks them (``manifest adopt``), under its logical name
+    (the manifest's ``policy`` key, or ``execution`` at its conventional path): the execution policy fully
+    (``aew.policy.execution.parse``: an unquoted ``off`` refused with its cause before the schema, then the schema and
+    the semantics), gates, guardrails and checks against their schemas, the price table as the ledger parses it (a YAML
+    date is the table's ``as_of`` string), any other entry as YAML only. Raises ``VALIDATION_FAILED``; the one owner of
+    "this file is valid", which the configuration projection's document states also read (register F46.1)."""
+    if name == "execution":
+        return X.parse(raw, source=source)
+    data = load_yaml(raw.decode("utf-8"), source=source)
+    if name in ("guardrails", "checks", "gates"):
+        validate(name, data, source=source)
+    if name == "pricing":
+        from aew.engine.usage_ops import Prices
+
+        Prices(raw, source=source)
+    return data
+
+
 def as_v1(state: dict[str, Any]) -> dict[str, Any]:
     """A v1 view of a control state: the schema says v1 and every v2-only key is gone. For fixtures and tools that
     build a v1 project from `aew init`, never for migration (v1 to v2 only). The policy pins go too: a v1 project

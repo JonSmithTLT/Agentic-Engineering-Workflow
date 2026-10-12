@@ -53,7 +53,10 @@ from aew.harness.base import HarnessAdapter
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
     CATALOG_TIMEOUT,
+    CREDENTIAL_PATTERNS,
+    LONG_TOKEN,
     PROVIDER_AUTH_FAILED,
+    REDACTION_FORMS,
     LaunchContract,
 )
 from aew.harness.opencode import capabilities, projection
@@ -104,19 +107,19 @@ REASON_CODES = {AUTH_ERROR: PROVIDER_AUTH_FAILED}
 # message is dropped whatever the type says, so a renamed or different classification fails closed (register V1).
 CREDENTIAL_STATUSES = frozenset({401, 403, 407})
 # Key-shaped text redacted from every provider message that is kept: an `sk-` key (masked or not), a bearer token, a
-# masked run of asterisks with whatever surrounds it, and a long token that mixes upper case, lower case and digits, as
-# a random key does. Model ids, git shas, UUIDs, request ids and paths are one case or carry no digit, and stay: they
-# are what an operator diagnoses a non-credential error from (PR #165 re-review, finding 1).
-KEY_SHAPED = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}|\S*\*{3,}\S*")
-LONG_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,}")
+# masked run of asterisks with whatever surrounds it, any strict provider-key shape, and a long token that mixes upper
+# case, lower case and digits, as a random key does. Model ids, git shas, UUIDs, request ids and paths are one case or
+# carry no digit, and stay: they are what an operator diagnoses a non-credential error from (PR #165 re-review, finding
+# 1). Every form comes from the one home of credential shapes, `aew.harness.contract` (F46.1 proposal §7 rule 8): the
+# broader forms first, each with its own scoped flag, then the strict patterns, so the redaction never narrows.
+KEY_SHAPED = re.compile("|".join([*(f.pattern for f in REDACTION_FORMS.values() if f.applies is None),
+                                  *CREDENTIAL_PATTERNS]))
+_LONG_TOKEN_APPLIES = REDACTION_FORMS["long_token"].applies or (lambda _token: True)
 
 
 def redact_key_shaped(text: str) -> str:
     def mixed(m: re.Match[str]) -> str:
-        t = m.group(0)
-        if any(c.isupper() for c in t) and any(c.islower() for c in t) and any(c.isdigit() for c in t):
-            return "<redacted>"
-        return t
+        return "<redacted>" if _LONG_TOKEN_APPLIES(m.group(0)) else m.group(0)
 
     return LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text))
 

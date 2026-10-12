@@ -1067,6 +1067,15 @@ commands:
     probe: [operator, ping]
     probe_refused: "NOT_FOUND: no operator endpoint runs for the sample (it needs a console)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: settings show
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: renders Engine.configuration from the committed state and the file bytes; takes no lock"
+    probe: [[settings, show], [settings, show, execution]]
+    refusals: [INTEGRITY_ERROR, PROJECT_NOT_FOUND, USAGE]
+    note: "F46.1; the read half of `settings set` (proposed, F46.2). INTEGRITY_ERROR: a damaged control.yaml"
   - name: message thread
     home: diagnostic
     users: [operator, lead]

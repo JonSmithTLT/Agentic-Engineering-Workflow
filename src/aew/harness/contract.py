@@ -4,11 +4,18 @@ A *run* is one harness execution of an invocation. Everything a harness adapter 
 durable AEW state: the invocation's pins (card, execution profile, pack, workspace or observation,
 expected output), plus a continuation section for relaunches. A run never carries authority itself: the
 credential stays with the supervisor, which acts for the agent through the custody bridge.
+
+This module is also the **canonical source of credential-shape patterns** (register F46.1, proposal §7 rule 8; the
+canonical sanitiser that F37 extends, AIR-59): AEW's own credential (``CREDENTIAL_RE``), the strict provider-key shapes
+a projection withholds on (``CREDENTIAL_PATTERNS``), and the broader forms the OpenCode adapter redacts provider
+messages with (``REDACTION_FORMS``). No other module in ``src/`` holds a credential-shape literal
+(``tests/unit/test_credential_patterns.py`` enforces it).
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -99,6 +106,64 @@ def scrub_credentials(env: dict[str, str]) -> dict[str, str]:
 
 def redact(text: str) -> str:
     return CREDENTIAL_RE.sub("aew1.<redacted>", text)
+
+
+# Provider-key shapes (F46.1 proposal §7 rule 8, p1 and Q4): each a regex with its body, matched case-sensitively and
+# only at a token boundary, as secret scanners match. A configuration projection withholds a whole string containing a
+# match (`credential_shaped`). A bare prefix in prose, a profile named like one, a hyphenated name with no digit in its
+# body and a dated model id do not match. No pattern carries a global inline flag.
+CREDENTIAL_PATTERNS: tuple[str, ...] = (
+    r"sk-(?=[A-Za-z_-]*[0-9])(ant-|proj-)?[A-Za-z0-9_-]{20,}",  # OpenAI and Anthropic-style keys; a digit in the body
+    r"gh[pos]_[A-Za-z0-9]{36}",  # GitHub tokens
+    r"github_pat_[A-Za-z0-9_]{22,}",  # GitHub fine-grained tokens
+    r"glpat-[A-Za-z0-9_-]{20}",  # GitLab tokens
+    r"xox[abprs]-[A-Za-z0-9-]{10,}",  # Slack tokens
+    r"AKIA[0-9A-Z]{16}",  # AWS access key ids
+    r"AIza[0-9A-Za-z_-]{35}",  # Google API keys
+)
+# Rule 8's token boundary: the start of the string, or a character outside [A-Za-z0-9_-] (not `\b`, which treats `-`
+# as a boundary and would match inside `fast-sk-...`).
+PATTERN_BOUNDARY = r"(?<![A-Za-z0-9_-])"
+
+
+def at_token_boundary(pattern: str) -> str:
+    """``pattern`` matched only where rule 8's token boundary allows it to start."""
+    return f"{PATTERN_BOUNDARY}(?:{pattern})"
+
+
+CREDENTIAL_SHAPED = re.compile("|".join(at_token_boundary(p) for p in CREDENTIAL_PATTERNS))
+
+
+def credential_shaped(text: str) -> bool:
+    """Whether ``text`` contains a provider-key shape (``CREDENTIAL_PATTERNS``) at a token boundary."""
+    return CREDENTIAL_SHAPED.search(text) is not None
+
+
+def mixes_case_and_digits(token: str) -> bool:
+    """The long-token form's predicate: a random key mixes upper case, lower case and digits; a model id, a git sha, a
+    UUID, a request id or a path does not (PR #165 re-review, finding 1)."""
+    return any(c.isupper() for c in token) and any(c.islower() for c in token) and any(c.isdigit() for c in token)
+
+
+@dataclass(frozen=True)
+class RedactionForm:
+    """One broader form a provider message is redacted with: its pattern, and the predicate a match must also satisfy
+    (``None``: every match is redacted)."""
+
+    pattern: str
+    applies: Callable[[str], bool] | None = None
+
+
+# The broader forms the OpenCode adapter redacts provider messages with (moved from its `KEY_SHAPED` unchanged, F46.1
+# proposal §7 rule 8, q3): each alternative carries its own scoped `(?i:...)`, so joining them with the strict patterns
+# never makes those case-insensitive. `long_token` is redacted only when it mixes case and digits.
+REDACTION_FORMS: dict[str, RedactionForm] = {
+    "bearer": RedactionForm(r"(?i:\bbearer\s+\S+)"),
+    "sk_any_case": RedactionForm(r"(?i:\bsk-[A-Za-z0-9_*.-]{3,})"),
+    "masked": RedactionForm(r"(?i:\S*\*{3,}\S*)"),
+    "long_token": RedactionForm(r"[A-Za-z0-9_-]{32,}", mixes_case_and_digits),
+}
+LONG_TOKEN = re.compile(REDACTION_FORMS["long_token"].pattern)
 
 
 def run_id(inv_id: str, n: int) -> str:

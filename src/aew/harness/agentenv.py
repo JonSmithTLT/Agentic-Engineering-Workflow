@@ -81,20 +81,40 @@ def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tupl
     starts without a variable its policy names: the provider would refuse it and the failure would blame the key
     (M4 user acceptance test). The launch refuses up front instead (``require_launchable``), the harness server's
     environment refuses again (``server_env``), and ``aew doctor`` reports the same text. No value is ever echoed."""
-    from aew.harness.contract import CREDENTIAL_RE
-
     out: list[tuple[str, str]] = []
     for name in names:
-        value = lookup(env, name)
-        if name.upper().startswith("AEW_"):
+        code = provider_env_problem(name, env)
+        if code == AEW_VARIABLE:
             out.append((name, f"{name} is an AEW variable, and AEW variables never reach a harness: remove it from "
                               "provider_env"))
-        elif not value:
+        elif code == UNSET:
             out.append((name, f"{name} is not set in this environment: {env_fix(name)}"))
-        elif CREDENTIAL_RE.search(value):
+        elif code == HOLDS_AEW_CREDENTIAL:
             out.append((name, f"{name} holds an AEW credential, which never reaches a harness: put the provider's "
                               f"key in {name} instead"))
     return out
+
+
+# Why a provider variable could not be given to a harness, as a code (register F46.1, proposal §3.3 m5: the
+# configuration projection reports the code, never the prose with its terminal-specific fix). `provider_env_problems`
+# words the same codes.
+AEW_VARIABLE, UNSET, HOLDS_AEW_CREDENTIAL = "aew_variable", "unset", "holds_aew_credential"
+PROVIDER_ENV_PROBLEMS = (UNSET, AEW_VARIABLE, HOLDS_AEW_CREDENTIAL)
+
+
+def provider_env_problem(name: str, env: Mapping[str, str]) -> str | None:
+    """The code of what keeps the provider variable ``name`` from a harness launched from ``env``, or None when it can
+    be given. Never reads more than the variable's presence and whether it holds an AEW credential."""
+    from aew.harness.contract import CREDENTIAL_RE
+
+    value = lookup(env, name)
+    if name.upper().startswith("AEW_"):
+        return AEW_VARIABLE
+    if not value:
+        return UNSET
+    if CREDENTIAL_RE.search(value):
+        return HOLDS_AEW_CREDENTIAL
+    return None
 
 
 def bypass_proxy_for_loopback(env: dict[str, str]) -> None:

@@ -726,9 +726,9 @@ the same-uid residual of this ADR applies to them as to the run record. See
 
 ## Amendment 2026-10-11 — the Windows containment label (decided, not built; register F48)
 
-The designer's Windows containment decisions (2026-10-11, and 2026-10-12 on isolation between runs) settle the label a
-contained Windows run carries; register F48 builds it, in the vertical path's B5q, B5a and B5 (with B5b if B5 splits).
-Until then Windows runs keep `workdir_separation_only`, as above.
+The designer's Windows containment decisions (2026-10-11, and 2026-10-12 on isolation between runs and on dropping
+`dev` after qualification) settle the label a contained Windows run carries; register F48 builds it, in the vertical
+path's B5q, B5a and B5 (with B5b if B5 splits). Until then Windows runs keep `workdir_separation_only`, as above.
 
 - **The vocabulary.** `filesystem` gains `os_integrity_label`, with `mechanism: mandatory_integrity_control` (Windows
   Mandatory Integrity Control: the run's tree labelled Low, `.aew/` and AEW's own state at Medium).
@@ -737,8 +737,8 @@ Until then Windows runs keep `workdir_separation_only`, as above.
 - **`masked` is an exhaustive read-deny**, not a best-effort list: every withheld or secret path carries NO_READ_UP,
   and the self-test proves the denial for each path. AEW applies the labels, verifies them (in `doctor` and
   preflight) and can restore the original descriptors; a missing label fails closed.
-- **Confirmers** count as capable on Windows only when the withheld set's requirements hold (every withheld path
-  read-denied and verified) and the backend below is in place.
+- **Confirmers** count as capable on Windows when the withheld set's requirements hold (every withheld path read-denied
+  and verified). The vertical path's plan further requires the isolated backend below before a Windows label claims it.
 - **Native and WSL** are both supported, as deployment profiles chosen per installation or project, never per run; the
   label's `host` field records the profile.
 - **The isolated backend.** Isolation between runs and of authority is required for qualification at the governed

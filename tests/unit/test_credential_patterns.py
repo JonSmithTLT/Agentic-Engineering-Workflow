@@ -123,9 +123,23 @@ def surviving_words(redacted: str, original: str) -> set[str]:
     return {w for w in original.split() if w in kept}
 
 
+MARK = "<redacted>"
+RUN = re.compile(r"[A-Za-z0-9]{4,}")
+
+
+def visible_runs(redacted: str) -> set[str]:
+    """Every run of four or more letters and digits a redacted text shows (the marker itself is not one)."""
+    return set(RUN.findall(redacted.replace(MARK, "\0")))
+
+
 def narrowed(text: str) -> set[str]:
-    """Words the current redaction leaves that the frozen one hid: empty when it redacts a superset."""
-    return surviving_words(adapter.redact_key_shaped(text), text) - surviving_words(frozen_redact(text), text)
+    """What the current redaction shows that the frozen one did not: whole words it leaves that the frozen one hid,
+    and, at the level of characters, any run of letters and digits it shows that appears nowhere in the frozen
+    output. Empty when it redacts a superset."""
+    new, old = adapter.redact_key_shaped(text), frozen_redact(text)
+    shown_by_old = old.replace(MARK, "\0")
+    return (surviving_words(new, text) - surviving_words(old, text)) | {
+        run for run in visible_runs(new) if run not in shown_by_old}
 
 
 SOUP = ["sk-", "SK-", "bearer ", "Bearer ", "***", "xoxb-", "AKIA", "ghp_", "glpat-", "github_pat_", "AIza", "-",
@@ -140,7 +154,8 @@ def test_the_adapter_redaction_never_narrows():
     for value in SYNTHETIC.values():
         inputs += [f"error: {prefix_}{value}{joiner}bearer {secret_tail} rejected"
                    for joiner in ("-", "_", "", ".") for prefix_ in ("", "ta", "x.")]
-        inputs.append(f"error {'Ab1' * 9}{value} end")
+        inputs += [f"error {'Ab1' * n}{value} end" for n in range(1, 12)]
+        inputs += [f"error {'Ab1' * n}{value}{'xY7' * n} end" for n in range(1, 12)]
     rng = random.Random(220)
     inputs += ["".join(rng.choice(SOUP) for _ in range(rng.randint(3, 30))) for _ in range(200_000)]
     witnesses = [text for text in inputs if narrowed(text)]

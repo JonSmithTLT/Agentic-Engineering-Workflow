@@ -85,6 +85,8 @@ LOG_DIR = "state/log"
 LOCK_REL = "local/control.lock"
 READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
 _T = TypeVar("_T")
+# What an open reports for a present file in the middle of a replace, besides a sharing violation: only Windows.
+MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
 
 
 def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = ()) -> _T:
@@ -103,12 +105,13 @@ def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] =
 
 
 def read_lock_free(path: Path) -> bytes | None:
-    """A file's bytes without the control lock, or None when it does not exist. No ``is_file()`` pre-check, and a
-    missing file is absent only after the retries: in the middle of a replace on Windows, a stat can fail and an open
-    can even report the file missing, so a present file would look absent (F1a review, R4). A directory reads as
-    absent."""
+    """A file's bytes without the control lock, or None when it does not exist. No ``is_file()`` pre-check. On
+    Windows a missing file is absent only after the retries: in the middle of a replace, a stat can fail and an open can
+    even report the file missing, so a present file would look absent (F1a review, R4). That costs a truly absent file
+    the retries' backoff (about 0.3 s) there. On POSIX ``rename`` replaces a name atomically, so a missing file is
+    absent at once (F1a re-review, R8; as ``aew.dashboard.reader`` gates its own retry). A directory reads as absent."""
     try:
-        return retry_lock_free(path.read_bytes, also=(FileNotFoundError,))
+        return retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE)
     except (FileNotFoundError, IsADirectoryError):
         return None
     except PermissionError:

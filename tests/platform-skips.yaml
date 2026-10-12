@@ -4,6 +4,9 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_store_read_committed.py::test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic: >-
+      POSIX rename is atomic, so a missing file is absent at once there; Windows retries it (F46.1 F1a, re-review R8).
+      Covered on Windows by test_an_absent_file_is_absent_only_after_the_retries_on_windows.
     tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-none]: >-
       the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
       every platform. Covered on Linux.
@@ -239,5 +242,14 @@ skipped:
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
+    tests/unit/test_store_read_committed.py::test_an_absent_file_is_absent_only_after_the_retries_on_windows: >-
+      only Windows reports a present file missing mid-replace, so only Windows retries a missing file (F46.1 F1a,
+      re-review R8). Covered on Linux by test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic.
+    tests/integration/test_configuration_projection.py::test_a_read_racing_a_replace_retries_and_never_misreads[project.yaml-reported_missing]: >-
+      the simulated collision is Windows's (a present file reported missing mid-replace); POSIX rename is atomic.
+      The sharing-violation variants run on every platform. Covered on Windows.
+    tests/integration/test_configuration_projection.py::test_a_read_racing_a_replace_retries_and_never_misreads[policy/execution.yaml-reported_missing]: >-
+      the simulated collision is Windows's (a present file reported missing mid-replace); POSIX rename is atomic.
+      The sharing-violation variants run on every platform. Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

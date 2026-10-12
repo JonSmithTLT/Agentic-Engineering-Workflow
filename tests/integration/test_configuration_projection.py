@@ -312,7 +312,7 @@ def test_document_states(engine, row):
     assert bool(out["document"]["violations"]) is (row in ("no_pins_invalid", "tightened")), row
     # The on-disk bytes are the adopted ones: a real pin equal to the file, or a pinned absence of an absent file.
     assert out["document"]["on_disk_matches_adopted"] is (row in MATCHES_ADOPTED), row
-    others =[d for d in index(e)["documents"] if d["document"] not in ("execution", "project")]
+    others = [d for d in index(e)["documents"] if d["document"] not in ("execution", "project")]
     if row == "manifest_drifted":
         assert index(e)["manifest"]["state"] == C.DRIFTED and doc(e, "project")["state"] == C.DRIFTED
         assert {d["state"] for d in others} == {C.MANIFEST_DRIFTED}
@@ -958,6 +958,8 @@ def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch,
     (a sharing violation, or the file reported missing), and meanwhile a stat of the file fails, so it looks absent.
     Ordered by events: the writer replaces only after the collision, and the read retries only after the replacement.
     The read retries through the store's one owner and reports the true state, never DRIFTED or MANIFEST_DRIFTED."""
+    if collision == "reported_missing" and sys.platform != "win32":
+        pytest.skip("only Windows reports a present file missing mid-replace; POSIX rename is atomic")
     e = configured(engine)
     target = aew(e) / rel
     data = target.read_bytes()

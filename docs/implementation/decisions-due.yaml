@@ -62,6 +62,17 @@ items:
     to the per-session boundary R8 moved away from), and who writes the partial or unavailable record of a segment interrupted
     by takeover or host loss, when the old broker''s credential is stale (F25 v0.2 §5.7)'
 
+- row: F48
+  needs: adoption
+  owner: designer
+  due: M4
+  what: 'Before the isolated Windows backend (B5, or B5b if it splits) is declared qualifying: sign-off on the wording of
+    the ADR-0009 vocabulary amendment that gives that backend (AppContainer workers, or restricting SIDs or write-restricted
+    tokens) its own `filesystem` label value and mechanism, stating only what its self-tests prove, the MIC-only label keeping
+    `runs_isolated_from_each_other: false`; the requirement itself is decided (designer, 2026-10-12) and only the words
+    are owed. With it, confirmation of B5a''s definition of the exhaustive withheld set (the engine-owned versioned set,
+    the policy''s `hide`, an enumerated list of known credential stores and a discovery check)'
+
 - row: E19
   needs: design
   owner: operator and designer

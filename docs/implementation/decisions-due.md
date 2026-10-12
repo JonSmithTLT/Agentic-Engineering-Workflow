@@ -49,6 +49,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### F48
+
+**Due by:** M4 · **Owner:** designer · **Needs:** adoption
+
+**What:** Before the isolated Windows backend (B5, or B5b if it splits) is declared qualifying: sign-off on the wording of the ADR-0009 vocabulary amendment that gives that backend (AppContainer workers, or restricting SIDs or write-restricted tokens) its own `filesystem` label value and mechanism, stating only what its self-tests prove, the MIC-only label keeping `runs_isolated_from_each_other: false`; the requirement itself is decided (designer, 2026-10-12) and only the words are owed. With it, confirmation of B5a's definition of the exhaustive withheld set (the engine-owned versioned set, the policy's `hide`, an enumerated list of known credential stores and a discovery check)
+
+**Blocks:** -
+
 ### E19
 
 **Due by:** Gate: before internal alpha · **Owner:** operator and designer · **Needs:** design

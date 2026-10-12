@@ -14,6 +14,11 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
 - **The finding format:** severity (blocker, major, minor or nit); `file:line`; the guarantee broken; a concrete
   scenario; the fix; reproduced or not (with the command); confidence. No findings about taste in code style, and no
   redesign unless a guarantee cannot be met otherwise. Add a "what looks sound" list.
+- **A repeatable defect class** (designer ruling, 2026-10-12, M1): its finding also states the governing invariant,
+  the affected scope, a reproducible way to enumerate the class where that is feasible, and the known limits of that
+  coverage. A claim that the class is fully fixed needs evidence from a reproducible check at the relevant revision. A
+  semantic class that no mechanism enumerates reliably gets documented reasoning for its coverage instead, and is
+  never claimed to be mechanically complete.
 - **A nit** is a point whose fix changes no behaviour and breaks no guarantee: wording in docs, a comment, a docstring,
   a test name, a stale reference. Changing text that tests or operators rely on, such as an error message or a reason
   code, is behaviour and never a nit. The review's own label decides. The author cannot relabel a point, and an
@@ -22,6 +27,12 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
   back as "optional" for a later round. A later review still raises a real defect an earlier pass missed.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
+- **CI at the exact head** (designer ruling, 2026-10-12, C1; a CLEAR was recorded at heads whose CI was red, and nobody
+  read it). Every review comment, and every author comment that asks for review or lists fixes, gives the CI
+  observation for its exact head commit in its body: which checks and runs, their completion state, and how and when
+  it was observed. The verdict line stays as above. A review CLEAR is not CI qualification. A failing required check
+  is named. A failure also seen on the base may inform its attribution but does not automatically waive the
+  requirement, and an attribution that is not shown stays UNKNOWN.
 - A review of an earlier commit does not cover later commits. After fixes, the reviewer (or a new independent one)
   checks the fixes and posts a new verdict at the new head.
 - **Nits after a CLEAR get one short delta review** (operator, 2026-10-10; the product rule of the Cross-Feature

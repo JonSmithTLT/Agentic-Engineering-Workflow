@@ -18,7 +18,7 @@ async function ready(base, child) {
   throw new Error('Settings server did not start');
 }
 try {
-  browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH ?? 'artifacts/playwright/browsers/chromium-1217/chrome-linux64/chrome' });
   for (const adapter of ['worker', 'http']) {
     const base = `http://127.0.0.1:${ports[adapter]}`, child = server(adapter); await ready(base, child);
     for (const width of [1440, 390, 720]) {

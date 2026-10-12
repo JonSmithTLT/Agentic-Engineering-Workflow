@@ -546,13 +546,32 @@ def test_resolve_stops_before_parsing_a_side_would_lose_its_text(repo, capsys):
     theirs = register_files(changed(DATA, first, last, " Theirs."))
     lines = theirs[REG_YAML].split("\n")
     [at] = [i for i, line in enumerate(lines) if line.rstrip("'").endswith(" Theirs.")]
-    lines[at] += " see #999"
+    lines[at] += " #999"  # a comment, valid YAML after a plain or a quoted cell alike
     theirs[REG_YAML] = "\n".join(lines)
     stopped_merge(repo, register_files(), register_files(changed(DATA, first, last, " Ours.")), theirs)
     before = (repo.path / REG_YAML).read_text(encoding="utf-8")
     assert register.resolve(repo.path) == 2
     err = capsys.readouterr().err
     assert f"{REG_YAML} (theirs):{at + 1}:" in err and "#999" in err and "nothing written" in err, err
+    assert (repo.path / REG_YAML).read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("broken", ["\n  - '[unclosed", "\n\t- a tab as indentation"], ids=["parser", "scanner"])
+def test_a_side_that_is_not_valid_yaml_is_named_and_nothing_is_written(repo, capsys, broken):
+    """Review of #225, X1: a side that is not YAML at all reaches the load's own refusal (exit 2, "not valid YAML",
+    nothing written), never a traceback from the side guard's scan, and never the guard's "text it would lose"."""
+    first, _ = neighbours(DATA, 6)
+    last = section(DATA, 6)["columns"][-1]
+    theirs = register_files(changed(DATA, first, last, " Theirs."))
+    lines = theirs[REG_YAML].split("\n")
+    [at] = [i for i, line in enumerate(lines) if line.rstrip("'").endswith(" Theirs.")]
+    lines[at] += broken
+    theirs[REG_YAML] = "\n".join(lines)
+    stopped_merge(repo, register_files(), register_files(changed(DATA, first, last, " Ours.")), theirs)
+    before = (repo.path / REG_YAML).read_text(encoding="utf-8")
+    assert register.resolve(repo.path) == 2
+    err = capsys.readouterr().err
+    assert "a side is not valid YAML, nothing written" in err, err
     assert (repo.path / REG_YAML).read_text(encoding="utf-8") == before
 
 

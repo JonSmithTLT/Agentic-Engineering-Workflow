@@ -251,7 +251,8 @@ def lost_text(text: str, name: str) -> list[str]:
     It does not see what only the parsed values show: a repeated key, or a cell that YAML types as something other
     than text (``no``, ``~``, ``1.10``, ``012``). ``strict_problems`` covers those, and ``text_problems`` runs both.
     Known limit, covered by neither: a NEL (U+0085) or a carriage return inside a quoted cell loads as a space (YAML
-    folds them as line breaks), so the text changes at load, before any dump."""
+    folds them as line breaks), and the same folding drops a space right before or after a typed line break
+    (``"a \\nb"`` loads as ``"a\\nb"``), so the text changes at load, before any dump."""
     tokens = list(yaml.scan(text))
     spans = sorted((t.start_mark.index, t.end_mark.index) for t in tokens if t.end_mark.index > t.start_mark.index)
     starts = [s for s, _ in spans]
@@ -312,7 +313,8 @@ def strict_problems(text: str, name: str) -> list[str]:
     write double-quoted (a tab, a byte-order mark, a noncharacter, a space beside a line break), which the next
     render's ``lost_text`` would refuse: the validator must pass its generator's output (review of #225, V1).
     Known limit: a NEL or a carriage return inside a quoted cell has already been folded to a space when this sees
-    the value, so it is not caught here (nor by ``lost_text``)."""
+    the value, as has a space right before or after a typed line break (``"a \\nb"`` loads as ``"a\\nb"``), so
+    neither is caught here (nor by ``lost_text``)."""
     try:
         data = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - _StrictLoader is a SafeLoader
     except yaml.MarkedYAMLError as e:
@@ -936,7 +938,13 @@ def resolve(root: Path = ROOT) -> int:
         if path.exists() and not _MARKER_RE.search(path.read_text(encoding="utf-8")):
             print(f"{rel}: already resolved (no conflict markers), kept: `git add` it once it is right")
             continue
-        # Parsing a side would lose what it cannot carry, before anyone sees the conflict (review of #225, U2).
+        try:
+            sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
+        except yaml.YAMLError as e:
+            print(f"{rel}: a side is not valid YAML, nothing written: {e}", file=sys.stderr)
+            return 2
+        # The parsed sides have lost what YAML cannot carry; nothing is written before this guard reads the raw text
+        # (review of #225, U2; a side that is not YAML at all is refused above, X1).
         lossy = [p for side, s in (("base", base), ("ours", ours), ("theirs", theirs)) if s.returncode == 0
                  for p in text_problems(s.stdout, f"{rel} ({side})")]
         if lossy:
@@ -944,11 +952,6 @@ def resolve(root: Path = ROOT) -> int:
                 print("problem:", problem, file=sys.stderr)
             print(f"{rel}: nothing written: a side holds text the merge would lose; quote it on that side's branch "
                   "(or resolve this file by hand), then run `resolve` again", file=sys.stderr)
-            return 2
-        try:
-            sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
-        except yaml.YAMLError as e:
-            print(f"{rel}: a side is not valid YAML, nothing written: {e}", file=sys.stderr)
             return 2
         text, conflicts, views = merge_data(*sides, canonical=canonical)
         if text is None:

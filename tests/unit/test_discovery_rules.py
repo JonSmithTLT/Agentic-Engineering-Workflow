@@ -247,7 +247,7 @@ def test_o_secret_flags_every_credential_the_product_names_when_asked_for():
 
 @pytest.mark.parametrize("plane", [OPERATOR, MODEL])
 def test_o_secret_flags_a_credential_asked_of_any_reader(plane):
-    """The operator's decision of 2026-10-13 widens O-SECRET to any reader: the operator, the Lead, or a worker model
+    """The operator's decision of 2026-10-12 widens O-SECRET to any reader: the operator, the Lead, or a worker model
     through its pack. The pack's own line, as the product renders it, is caught on the model plane."""
     pack = next(text for source, _, text in static.texts(guides()) if source == "pack:implementer")
     line = next(ln for ln in pack.splitlines() if "AEW_INVOCATION_TOKEN=" in ln)
@@ -372,7 +372,12 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     assert str(repo) not in outputs[0].site  # a key never carries message text
     # U29's own site: `aew opencode` without a credential refuses before anything starts. Run through `run_aew`, so
     # the session's capture sees this site in every run (tests start a live `aew opencode` through Popen, unseen).
-    opened = run_aew("-C", str(repo), "opencode")
+    # A stand-in OpenCode that reports a tested version, so the version check passes wherever OpenCode is absent.
+    from aew.harness.opencode import capabilities
+
+    binary = repo.parent / "opencode.py"
+    binary.write_text(f"print({capabilities.TESTED_VERSIONS[0]!r})\n", encoding="utf-8")
+    opened = run_aew("-C", str(repo), "opencode", env={"AEW_OPENCODE_BIN": str(binary)})
     refusal = capture.cli_outputs(["-C", str(repo), "opencode"], opened.stdout, opened.stderr)
     assert [o.site for o in refusal] == ["cli:aew opencode|USAGE"]
     assert "asks to set AEW_LEAD_TOKEN" in [f.detail for f in rules.check(refusal[0]) if f.rule == "O-SECRET"]

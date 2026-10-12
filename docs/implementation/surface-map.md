@@ -20,17 +20,28 @@ finding 2).
   - Be homed `internal` with its `launcher`.
   - Declare a decided `lead_disposition` with `lead_kept_out_by`: the mechanism, in the code, that keeps the Lead out.
 
-  Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. **A keep-out claim is
-  proved, never stated** (PR 215 third review, finding 1). Every entry that claims the Lead is kept out is run
-  against the sample in a Lead session's environment (`custody_ops.LEAD_SESSION_VARS`, synthetic values) with its
-  `keep_out_probe`, and must be refused (`PERMISSION_DENIED`, or its declared `keep_out_refusal`) and change nothing.
-  That covers a `lead_kept_out_by`, an `engine-owned` or `forbidden-to-lead` disposition, and an `internal` home.
-  `integrate custody` passes today (`custody_ops.refuse_lead_session`). A claim the test cannot prove that way is
-  accepted only from the pinned, shrink-only `KEEP_OUT_LIMITED` list, with its reason (`keep_out_unproved`). Today
-  that list holds only `lead mcp`, the typed surface's transport, which the Lead's harness starts in the session by
-  design. An `internal` home's `launcher` is `{code: "module:attribute"}`: real code that the test resolves and that
-  names the command. `shell_reachable_mutation`
+  Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. `shell_reachable_mutation`
   reports the grandfathered commands that have no such mechanism today.
+
+**A keep-out claim is proved, never stated** (PR 215 third and fourth reviews). A keep-out claim is a
+`lead_kept_out_by`, an `engine-owned` or `forbidden-to-lead` disposition, or an `internal` home.
+
+- **The run.** The entry's `keep_out_probe` runs against the sample in a real Lead session's environment. That
+  environment is built from the product's own definition, `lead_broker.ENV_NAMES` (what `run_session` gives the
+  harness; it pops `AEW_LEAD_TOKEN`), with synthetic values.
+- **The result.** The command must be refused with a code that means "not here" (`PERMISSION_DENIED`, or
+  `OPERATOR_AUTHORIZATION_REQUIRED` declared as `keep_out_refusal`), and it must change nothing.
+- **The comparison.** The same probe also runs without that environment, with an empty stdin. It must not end in the
+  same refusal (code and message), so the refusal is the session's, not the probe's arguments'.
+- **Today.** `integrate custody` passes: refused by `custody_ops.refuse_lead_session` in a session, and past it, to
+  the credential read, outside one.
+- **Not a keep-out.** A typed-surface transport (`lead_broker.NOT_RELAYED`: `lead mcp`, `lead tool`) is the Lead's
+  door by design, not a keep-out. `users` and the reachability test cover it.
+- **Unproved claims.** A claim the test cannot prove would need the pinned, shrink-only `KEEP_OUT_LIMITED` list,
+  which is empty.
+- **Launchers.** An `internal` home's `launcher` is `{code: "module:attribute"}`. It must produce an argv: a list of
+  strings, or a callable that returns one when called with synthetic arguments. The words after `aew` must resolve to
+  the command. A table that merely mentions it does not count.
 
 The dispositions:
 
@@ -204,11 +215,17 @@ each check.
 | `probe` | enforce | a surface declared `mutates: "no"` has no `probe`; a probe runs another command; a run changed the sample (named); a probe was refused, or the surface is exempt, outside `PROBE_LIMITED`; a limited surface now runs fully; a new command's probes leave an option unpassed |
 | `probe_coverage` | report | the `PROBE_LIMITED` surfaces, with why each is refused on the sample or not run |
 | `probe_flags` | report | an option of a `mutates: "no"` command that no probe passes |
-| `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home) has no `keep_out_probe`, or, run in a Lead session's environment, is not refused or changes the sample; outside `KEEP_OUT_LIMITED` |
+| `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home other than a `NOT_RELAYED` transport) has no `keep_out_probe`; declares a refusal that does not mean "not here"; in a real Lead session's environment is not refused with it or changes the sample; or is refused the same way outside one; outside `KEEP_OUT_LIMITED` (empty) |
 | `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
+Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the
+live constant or function, and the check must name it. The inputs ablated include the worker bridge's operations,
+`OPERATOR_ONLY`, `LEAD_REACHABLE`, a tool's `expands_to` and `mutates`, the tool catalog, `IDEAL_PATH`, an error
+code, the launcher, a guard keyed on the wrong variable, a refusal that is not the session's, and a command that
+stops writing what its `mutates_proof` shows. The pins and the shrink-only lists are ablated too. So no check can
+pass by reading a copy of what it guards, or by passing whatever happens.
 
 ## Changing the map
 

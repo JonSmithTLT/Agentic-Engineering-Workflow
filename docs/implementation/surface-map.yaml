@@ -1,0 +1,721 @@
+# The surface map (anti-drift guard G1): one entry per `aew` command (each leaf of the live parser) and per typed
+# Lead tool (aew.surface.contract.TOOLS). docs/implementation/surface-map.md states the rule and which checks are
+# enforced; tests/unit/test_surface_map.py checks this file against the live parser and surface.
+#
+# A new command or tool is registered here in the same change that adds it: who uses it, which journey needs it,
+# which door the Lead reaches it by, and the refusal codes it can raise. `unmapped` means no journey uses it yet: a
+# decision is owed (keep it and name its journey, or retire it). Bump `version` when an entry's meaning changes.
+schema: aew/surface-map/v1
+version: 1
+
+vocabulary:
+  users:
+    operator: the human, at their own terminal
+    lead: the Lead, through its session (the typed surface, or its shell)
+    worker: a bounded role inside a harness run, through the run's custody bridge
+    internal: started by AEW or the Lead's harness itself, never typed by anyone
+    diagnostic: used to inspect or repair state, outside a working journey
+  journeys:
+    V1: the fresh path, setup to a published one-line fix (vertical UAT; with its steering-on variant)
+    V2: close and reopen with work active (vertical UAT; with its forced and steering-on variants)
+    V3: preflight catches a misconfiguration before any Ticket (vertical UAT)
+    V4: change a setting, then V1's path (vertical UAT)
+    diagnostic: a read or an inspection; no journey depends on it
+    unmapped: no journey uses it yet; a decision is owed
+  doors:
+    typed: the Lead's lifecycle use of it has a typed home (`via`); `primitive` is the step those tools run
+    shell-only (pending A2/A4): the Lead reaches it only by `aew` from its shell or the recovery `cli` tool;
+      `partly_via` names the tools that cover some of its uses
+
+# Every entry's `refusals` lists the aew.errors codes it is known to raise: the floor its arguments imply (any
+# command: USAGE; a Lead credential: PERMISSION_DENIED and STALE_AUTHORITY; an expected revision: STALE_REVISION;
+# a project: PROJECT_NOT_FOUND) and the codes its own handler raises. The inventory is partial until A2 (the Lead's
+# typed homes and structured refusals) completes it; an entry may override this status with its own
+# `refusal_status`. `owner` (operator, lead or mechanical) is what A1's projection will mark on the operation; it is
+# `pending (A1)` until then.
+refusal_status:
+  inventory: partial
+  structured: pending (A2)
+
+# Commands the vertical UAT's ideal path names that do not exist yet (its PROPOSED rows). When one is built it moves
+# to `commands`, and the test fails until it does.
+proposed:
+  - name: settings set
+    ideal_path: [configure, change_model]
+    note: "one operator action that validates and saves a setting (register F46.2, slice B3)"
+  - name: preflight
+    ideal_path: [preflight]
+    note: "readiness before any Ticket, naming the cause and the fix (register F47.4, slice C2)"
+
+commands:
+  - name: doctor
+    users: [operator, diagnostic]
+    journeys: [V3]
+    refusals: [USAGE]
+    note: "V3's counted fallback while `aew preflight` does not exist"
+  - name: init
+    users: [operator]
+    journeys: [V1, V2, V3, V4]
+    refusals: [USAGE]
+  - name: status
+    users: [operator, lead]
+    journeys: [V1, V2, V3, V4]
+    door: typed
+    via: [status]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "the operator reads a revision from it in today's adopt and takeover fallbacks"
+  - name: resume
+    users: [operator, lead]
+    journeys: [diagnostic]
+    door: typed
+    via: [resume]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: guide
+    users: [lead, operator]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: checkpoint
+    users: [lead]
+    journeys: [unmapped]
+    door: typed
+    via: [checkpoint]
+    primitive: checkpoint
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: migrate
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: lead acquire
+    users: [operator]
+    journeys: [V1, V2, V3, V4]
+    refusals: [PROJECT_NOT_FOUND, STALE_REVISION, USAGE]
+    note: "today's configure fallback (quickstart)"
+  - name: lead handoff offer
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead handoff accept
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PROJECT_NOT_FOUND, STALE_REVISION, USAGE]
+  - name: lead handoff cancel
+    users: [lead, operator]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead takeover
+    users: [operator]
+    journeys: [V2]
+    refusals: [PROJECT_NOT_FOUND, STALE_REVISION, USAGE]
+    note: "V2's counted reopen fallback"
+  - name: lead release
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead session
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "a Lead harness session for any harness; `aew opencode` is the journeys' entry"
+  - name: lead tool
+    users: [lead]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "the typed surface's shell transport (not relayed); the journeys' Lead reaches the surface over MCP"
+  - name: lead mode raise
+    users: [operator]
+    journeys: [V1, V2]
+    refusals: [OPERATOR_AUTHORIZATION_REQUIRED, PROJECT_NOT_FOUND, USAGE]
+    note: "the steering-on variants: the operator's decision"
+  - name: lead mode lower
+    users: [lead]
+    journeys: [unmapped]
+    door: typed
+    via: [steering]
+    primitive: steering
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead mcp
+    users: [internal]
+    journeys: [V1, V2, V3, V4]
+    refusals: [USAGE]
+    note: "spawned by the Lead's harness in every Lead session (not relayed)"
+  - name: opencode
+    users: [operator]
+    journeys: [V1, V2, V3, V4]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: stage continue
+    users: [lead]
+    journeys: [V2]
+    door: typed
+    via: [resolve]
+    primitive: stage.resolve
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "V2's forced variant falls back to it from the shell"
+  - name: stage abandon
+    users: [lead]
+    journeys: [V2]
+    door: typed
+    via: [resolve]
+    primitive: stage.resolve
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "V2's forced variant falls back to it from the shell"
+  - name: authority list
+    users: [operator]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: authority accept
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: authority reject
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: manifest adopt
+    users: [operator]
+    journeys: [V1, V2, V3, V4]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "today's configure and change-a-setting fallback"
+  - name: work create
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_draft]
+    primitive: work.create
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    door: typed
+    via: [work_show]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: work list
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: work ready
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: work assign
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_start]
+    primitive: work.assign
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work roles
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: work staff
+    users: [lead, operator]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work transition
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: "shell-only (pending A2/A4)"
+    partly_via: [ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare]
+    primitive: work.transition
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "the stages run the transitions they own; a free transition (rework, a projection hint) has no typed home"
+  - name: work dispatch
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work redispatch
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "named by V2's redispatch fallback for a non-mutating Ticket; V2's Ticket is mutating"
+  - name: work accept
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work close
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work cancel
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work move
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work promote
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work reclassify
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work depend
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work acknowledge-input
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: work tree
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: work reconcile
+    users: [lead]
+    journeys: [V2]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "V2's RECONCILE decision runs its cli_fallback"
+  - name: work dispose
+    users: [lead]
+    journeys: [unmapped]
+    door: typed
+    via: [resolve]
+    primitive: work.dispose
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: dispatch explain
+    users: [operator, lead]
+    journeys: [diagnostic]
+    door: typed
+    via: [explain]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: role list
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: role show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: role validate
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: plan propose
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_draft]
+    primitive: plan.propose
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: plan lint
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: plan accept
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "the Lead's counted shell fallback after the operator approves the plan; its typed home is a resolve choice"
+  - name: plan adopt
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: plan reconfirm
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: invoke create
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: "shell-only (pending A2/A4)"
+    partly_via: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish]
+    primitive: invoke.create.mutating
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "the request stages create their reviewers and verifiers; a new implementer attempt (V2's redispatch
+          fallback) is shell-only"
+  - name: invoke cancel
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: invoke show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: context pack
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: context show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: check run
+    users: [worker]
+    journeys: [V1, V2, V4]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: submit
+    users: [worker]
+    journeys: [V1, V2, V4]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: whoami
+    users: [worker]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: harness launch
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
+  - name: harness status
+    users: [operator, lead]
+    journeys: [diagnostic]
+    door: typed
+    via: [harness_status]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: harness wait
+    users: [lead]
+    journeys: [diagnostic]
+    door: typed
+    via: [harness_wait]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: harness stop
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+  - name: harness send
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "messaging (F9-A1): A4 keeps a typed home or leaves it reachable, with its reason"
+  - name: harness interrupt
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+  - name: harness config
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: gate show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: gate waive
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: evidence ingest
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: review ingest
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_request_verification]
+    primitive: review.ingest
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: verify ingest
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_prepare]
+    primitive: verify.ingest
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: verify classify
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate prepare
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [ticket_prepare]
+    primitive: integrate.prepare
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate publish
+    users: [lead]
+    journeys: [V1, V2, V4]
+    door: typed
+    via: [integration_publish]
+    primitive: integrate.publish
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate reconcile
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate validate
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate custody
+    users: [internal]
+    journeys: [unmapped]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "started by the engine when it grants a lease, never a Lead's command"
+  - name: integrate breaker status
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: integrate breaker reset
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate defer
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate requeue
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: integrate reorder
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: history show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history list
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history log
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history compact
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history links
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history load
+    users: [lead]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: history audit
+    users: [operator, lead]
+    journeys: [diagnostic]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: history reindex
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: history search
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    conditional: "exists only while the adopted execution policy switches recall search on (register F21)"
+  - name: dashboard serve
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [OPERATOR_AUTHORIZATION_REQUIRED, PROJECT_NOT_FOUND, USAGE]
+  - name: dashboard open
+    users: [operator]
+    journeys: [unmapped]
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PROJECT_NOT_FOUND, USAGE]
+  - name: dashboard status
+    users: [operator]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: map generate
+    users: [lead, operator]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+  - name: map select-architecture
+    users: [lead, operator]
+    journeys: [unmapped]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+  - name: map show
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: map diff
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: operator serve
+    users: [operator]
+    journeys: [V1, V2]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    note: "the steering-on variants: the endpoint the raise goes through"
+  - name: operator ping
+    users: [operator]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: message thread
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
+  - name: message list
+    users: [operator, lead]
+    journeys: [diagnostic]
+    refusals: [PROJECT_NOT_FOUND, USAGE]
+    conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
+  - name: message unseen
+    users: [lead]
+    journeys: [diagnostic]
+    door: "shell-only (pending A2/A4)"
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    conditional: "exists only while messaging is on or a thread exists, and never inside a worker's run (F9-A)"
+
+tools:
+  - name: status
+    users: [lead]
+    journeys: [V1, V2, V3, V4]
+    refusals: []
+  - name: resume
+    users: [lead]
+    journeys: [V1, V2, V3, V4]
+    refusals: []
+  - name: work_show
+    users: [lead]
+    journeys: [diagnostic]
+    refusals: []
+  - name: explain
+    users: [lead]
+    journeys: [V1, V2]
+    refusals: []
+    note: "the Lead's counted fallback when nothing is offered"
+  - name: harness_status
+    users: [lead]
+    journeys: [diagnostic]
+    refusals: []
+  - name: harness_wait
+    users: [lead]
+    journeys: [V1, V2, V4]
+    refusals: []
+  - name: checkpoint
+    users: [lead]
+    journeys: [unmapped]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: steering
+    users: [lead]
+    journeys: [unmapped]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: resolve
+    users: [lead]
+    journeys: [V2]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: cli
+    users: [lead]
+    journeys: [unmapped]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY]
+    note: "the recovery escape; every call is counted (cli_tool_calls)"
+  - name: ticket_draft
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: ticket_start
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: ticket_request_review
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: ticket_request_verification
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: ticket_prepare
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: integration_publish
+    users: [lead]
+    journeys: [V1, V2, V4]
+    owner: pending (A1)
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]

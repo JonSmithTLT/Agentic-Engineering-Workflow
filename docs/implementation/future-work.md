@@ -2090,6 +2090,54 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E76/`, oldest first (`python tools/register.py show E76`).*
 
+### E77
+
+**Work:** Recurring finding classes across review rounds: a future AEW mechanism that detects a finding class recurring across review rounds and prompts method-level rework instead of repeated instance fixes. It uses stable finding identities, scope, invariant or check references, and explicit recurrence relationships where they are available; free-text class labels alone are not enough. Detection stays advisory until it is independently qualified, and no change is rejected automatically on unqualified similarity alone
+
+**Source:** Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope, enumeration and coverage limits), is in AGENTS.md §1
+
+**When:** **Unscheduled.** Future product design; owners: the review protocol, with F42's detectors (Observability and Feedback). Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
+
+**Notes:** Its inputs are facts other owners produce (finding identities, review rounds), which F42.1's process-event model carries; this row owns the detection, not those facts
+
+*Later notes: `notes.d/E77/`, oldest first (`python tools/register.py show E77`).*
+
+### E78
+
+**Work:** Head-bound CI status in the product: the existing engine evidence and projection owners surface the CI status bound to the exact head in hand-backs, verdict records and the Lead projection. A required check that is missing, failing, pending, cancelled or unavailable is never silently treated as passing, and stale CI evidence never qualifies a newer head. A review may complete while CI is pending; integration and publication keep their existing evidence gates
+
+**Source:** Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and verdict carries the CI observation at its exact head), is in AGENTS.md §1
+
+**When:** **Unscheduled.** Owners: the existing engine evidence and projection owners, through planned work, with no new owner. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
+
+**Notes:** CI events are among the process facts F42.1 models and F42.2 ingests from the repository host; this row is their head-bound use in evidence and projections, not their ingestion
+
+*Later notes: `notes.d/E78/`, oldest first (`python tools/register.py show E78`).*
+
+### E79
+
+**Work:** Enumerated-domain guards: a change to an enumerated domain triggers every applicable domain guard. The guards' dependencies are derived and validated from the authoritative domain owners and the actual consumers, using F44's owner registry where appropriate. An existing test enumeration alone is not proof of complete coverage
+
+**Source:** Designer ruling, 2026-10-12, C3 (approved with amendment)
+
+**When:** **Unscheduled.** Owners: the domain owners and their guards, with F44 (the consequential-fact owner registry). Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
+
+**Notes:** F44 records each fact's owner and consumers; this row uses that record to decide which guards a domain change must run, rather than restating the dependencies by hand
+
+*Later notes: `notes.d/E79/`, oldest first (`python tools/register.py show E79`).*
+
+### E80
+
+**Work:** Structured role-context and skill feedback: bounded feedback from each role, under the existing Observability and Feedback design, capturing the role, the task, the pack and skill versions, missing, wrong or noisy information, and rule candidates when applicable. No feedback is a valid answer. Feedback is advisory and never directly alters governed packs, skills or operator rules, and pack and skill versions stay stable within a review round
+
+**Source:** Designer ruling, 2026-10-12, F1 (approved with amendment)
+
+**When:** **Unscheduled.** Owner: F42 (Observability and Feedback), as one of its intakes. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
+
+**Notes:** The same ruling's F2 keeps any threshold for installing a skill after a few uses as pilot practice, not a frozen product acceptance rule; future qualification weighs behavioural outcomes, recurring defects and cost
+
+*Later notes: `notes.d/E80/`, oldest first (`python tools/register.py show E80`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

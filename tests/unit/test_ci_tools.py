@@ -130,11 +130,13 @@ def test_a_failed_reference_shard_fails_the_aggregate():
 
 
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
-    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under a 60 minute
-    timeout, and the aggregate (which `report` waits for) requires both platforms."""
+    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under its timeout
+    (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance), and the aggregate (which `report` waits for) requires
+    both platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     reference = jobs["reference"]
-    assert reference["timeout-minutes"] <= 60, "split the job further instead of raising the timeout (E26)"
+    # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
+    assert reference["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["reference"] + DEADLINE_MARGINS_MIN
     per_os: dict[str, list[tuple[int, int]]] = {}
     for entry in reference["strategy"]["matrix"]["include"]:
         per_os.setdefault(entry["os"], []).append((entry["shard"], entry["of"]))
@@ -184,11 +186,13 @@ def test_an_extra_run_whose_serial_lane_did_not_report_fails():
 
 def test_the_nightly_extra_interpreter_job_is_sharded_and_aggregated():
     """Structure of nightly.yml's `matrix-extra`: per OS, shards 1..N of one N over everything but the serial tests,
-    under xdist and a 60 minute timeout; the serial lane once per OS without xdist; every report uploaded; and an
-    aggregate that `report` waits for, requiring both platforms."""
+    under xdist and its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance); the serial lane once
+    per OS without xdist; every report uploaded; and an aggregate that `report` waits for, requiring both
+    platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
     extra = jobs["matrix-extra"]
-    assert extra["timeout-minutes"] <= 60, "split the job further instead of raising the timeout"
+    # split the job further instead of raising the timeout; G3a's clearance is the one addition
+    assert extra["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["matrix-extra"] + DEADLINE_MARGINS_MIN
     per_os: dict[str, list[tuple[int, int]]] = {}
     pythons: dict[str, set[str]] = {}
     for entry in extra["strategy"]["matrix"]["include"]:
@@ -870,6 +874,88 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert VERTICAL_MODE == "shadow"
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "vertical" not in ci  # not a job of the gate's workflow, nor anything its jobs run
+
+
+DISCOVERY_TEST = "tests/discovery/test_static_texts.py"
+
+
+def test_the_discovery_layer_is_its_own_lane_and_never_a_required_one():
+    """The discovery layer (vertical-uat.md §8): `tests/discovery` maps to its own lane, which no tier requires, and
+    which a unit or other directory never maps to."""
+    import lanes
+
+    assert lanes.lane_of(DISCOVERY_TEST, []) == "discovery"
+    assert lanes.lane_of(DISCOVERY_TEST, ["serial"]) == "discovery"  # ahead of any marker, like the vertical UAT
+    assert lanes.lane_of("tests/unit/test_discovery_rules.py", []) == "fast"
+    assert "discovery" in lanes.LANES
+    assert all("discovery" not in required for required in tier.LANES.values())
+
+
+@pytest.mark.parametrize("lane", [None, "fast", "serial", "integration", "acceptance", "regression", "adversarial",
+                                  "vertical"])
+def test_no_required_lane_collects_the_discovery_lane(lane):
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config(lane)) is True
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config(lane, live=True)) is True
+    assert lanes.ignore_collect(ROOT / "tests" / "unit", _Config(lane)) is None
+
+
+def test_the_discovery_job_collects_it():
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config("discovery")) is None
+
+
+def test_collection_proves_the_discovery_lane_split(tmp_path):
+    """The real collection, walking `tests/` as a lane job does (the large directories left out, for time): a required
+    lane never collects the discovery lane's tests at all (its lane report's `collected`, before any deselection), and
+    the discovery lane selects only them."""
+    import subprocess
+
+    skip = [f"--ignore=tests/{d.name}" for d in (ROOT / "tests").iterdir() if d.is_dir() and d.name != "discovery"]
+
+    def collect(lane: str) -> tuple[set[str], set[str]]:
+        report = tmp_path / f"{lane}.json"
+        out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                              "-p", "no:xdist", "--lane", lane, "--lane-report", str(report), *skip, "tests"],
+                             cwd=ROOT, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL,
+                             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        selected = {line.split("::")[0] for line in out.stdout.splitlines() if "::" in line}
+        return {n.split("::")[0] for n in json.loads(report.read_text(encoding="utf-8"))["collected"]}, selected
+
+    collected, selected = collect("discovery")
+    assert selected == {DISCOVERY_TEST} and DISCOVERY_TEST in collected
+    for lane in ("fast", "serial"):
+        collected, _ = collect(lane)
+        assert collected and DISCOVERY_TEST not in collected
+
+
+def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_nightly():
+    """The discovery workflow runs the lane on every pull request and on main, both OSes; ci.yml's gate decides the
+    runtime findings the lane jobs wrote beside their lane reports (against the base's allow-list on a pull request),
+    and nightly decides them over the whole suite."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "discovery.yml").read_text(encoding="utf-8"))
+    job = wf["jobs"]["discovery"]
+    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]
+    assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
+    run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
+    assert "--lane discovery tests/discovery" in run["run"] and "continue-on-error" not in run
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    gate = ci["jobs"]["assurance"]["steps"]
+    ratchet = next(s for s in gate if "discovery_ratchet.py" in str(s.get("run", "")))
+    assert ratchet["if"] == "always()" and "continue-on-error" not in ratchet
+    assert "lane-reports" in ratchet["run"] and '--event "$EVENT"' in ratchet["run"]
+    assert 'GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml' in ratchet["run"]
+    # an accepted residual counts only on a pull request with the operator-merge label, read live (review of #218, M1)
+    assert '--repo "$REPO" --pr "$PR"' in ratchet["run"] and ratchet["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert gate.index(ratchet) < len(gate) - 1  # the jobs-for check stays last
+    nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
+    nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]
+    assert any("discovery_ratchet.py reference-reports --event schedule" in str(s.get("run", ""))
+               for s in nightly_steps)
+    reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
+    assert "--lane-report" in reference  # the capture writes beside it
 
 
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
@@ -1710,6 +1796,27 @@ def strategy_fast_lane_minutes() -> tuple[float, float]:
     return float(step.group(1)), float(setup.group(1))
 
 
+def _deadline_margins_min() -> float:
+    """The minutes a job's session deadline keeps clear of its timeout: bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S."""
+    import bounds
+
+    return (bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S) / 60
+
+
+DEADLINE_MARGINS_MIN = _deadline_margins_min()
+# Every job's timeout before G3a's session deadline (2026-10-12), the one source for them: each job with a deadline
+# step has exactly this plus DEADLINE_MARGINS_MIN, so no job loses test time to the deadline's clearance (Lead's
+# decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
+# every timeout with it, or the pin fails.
+PRE_G3A_TIMEOUT_MIN = {
+    "ci.yml": {"core": 20, "lanes": 30, "fastbase": 15},
+    "vertical.yml": {"vertical": 45},
+    "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
+    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60},
+    "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
+}
+
+
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     """Plan v7 §5 (V5-1, V6-1): fastbase needs changes, runs on the mode-independent decision, has a timeout of at
     least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
@@ -1725,12 +1832,15 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
     assert base["runs-on"] == "ubuntu-latest"
     step, setup = strategy_fast_lane_minutes()
-    assert base["timeout-minutes"] == 15 and base["timeout-minutes"] >= 2 * step + setup
+    # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
+    assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
+    assert base["timeout-minutes"] >= 2 * step + setup + DEADLINE_MARGINS_MIN
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
     assert lane["run"] == ("python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist "
-                           "--test-timeout 600")
+                           "--test-timeout 600 --session-deadline 900 "  # its own job's deadline and hang dir (G3)
+                           '--hang-dir "${{ runner.temp }}/fastbase/hangs"')
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
     assert lane["working-directory"] == "${{ runner.temp }}/base"
@@ -1739,7 +1849,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert not upload["with"]["name"].startswith("coverage-")  # the ratchet combines coverage-* only
     assert "fastbase" in jobs["assurance"]["needs"]
     core = jobs["core"]
-    assert core["timeout-minutes"] == 20
+    assert core["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["core"] + DEADLINE_MARGINS_MIN
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
 
@@ -1858,3 +1968,119 @@ def test_the_audit_flags_a_subprocess_naming_a_unit_file_and_ignores_the_rest(tm
     assert auditor.classify("subprocess.Popen", ("python", ["python", "-c", "1"], None, None)) is None
     assert auditor.classify("open", (str(tmp_path / "unit" / "notes.txt"), "r", 0)) is None
     assert auditor.classify("import", ("json", None, [], [], [])) is None
+
+
+# ------------------------------------------------- the hang autopsy and the session deadline (G3, the hang-and-flake
+# diagnosis plan, H1, H3 and H5). Appended as separate tests so a merge with other changes to this file stays trivial.
+
+def test_the_assurance_readers_never_read_anything_under_an_autopsy(tmp_path):
+    """L1: a hang's autopsy lives in the uploaded report directory. Its files never end in `.json`, and the readers
+    skip its directory as well: a raw lane-report-shaped file planted there (as if a copy had slipped the rename),
+    and a moved work directory's `.aew/` JSON, are read by neither tool."""
+    reports = tmp_path / "reports"
+    for i, r in enumerate(good_run()):
+        (reports / f"job{i}").mkdir(parents=True)
+        (reports / f"job{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    autopsy = reports / "job0" / "autopsy" / "tests_unit_test_a.py_t1-0123456789"
+    (autopsy / "workdir" / "tmp_path" / ".aew" / "state").mkdir(parents=True)
+    (autopsy / "workdir" / "tmp_path" / ".aew" / "state" / "control.json").write_text('{"revision": 3}',
+                                                                                     encoding="utf-8")
+    bogus = report("linux", "fast", {ALL[0]: "failed"})  # a lane report that would fail the gate if it were read
+    bogus["results"][ALL[0]]["duration"] = 999.0
+    (autopsy / "lane.json").write_text(json.dumps(bogus), encoding="utf-8")
+    (autopsy / "stacks.main-1.txt").write_text("--- thread MainThread\n", encoding="utf-8")
+    (reports / "job0" / "autopsy" / "session-1" / "session-finished.txt").parent.mkdir(parents=True)
+    (reports / "job0" / "autopsy" / "session-1" / "session-finished.txt").write_text("done\n", encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    assert all("autopsy" not in r["_source"] for r in check_assurance.load_reports(reports))
+    assert check_assurance.main([str(reports), "--skips", str(tmp_path / "skips.yaml")]) == 0
+    out = tmp_path / "durations.json"
+    assert update_durations.main([str(reports), "--out", str(out)]) == 0
+    assert 999.0 not in json.loads(out.read_text(encoding="utf-8"))["platforms"]["linux"].values()
+
+
+def _workflow_lanes():
+    import bounds
+
+    lanes = bounds.workflow_lanes(ROOT / ".github" / "workflows")
+    assert len(lanes) >= 12, [x.label for x in lanes]  # every workflow's pytest invocations were found
+    return lanes
+
+
+def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
+    """H3 and H5: every pytest invocation in every workflow passes --test-timeout and --session-deadline, with
+    inner helper bounds < --test-timeout < --session-deadline (plus its two margins, times a loop's repetitions)
+    < the job's timeout-minutes less bounds.JOB_MARGIN_S. A change to any one value that breaks the order fails
+    here. The helpers declare their bounds when imported: the vertical UAT's are its chat, conversation and gate
+    waits."""
+    import bounds
+    import vertical.lead  # noqa: F401  (each declares its bounds)
+    import vertical.scripted_operator  # noqa: F401
+    import vertical.workers  # noqa: F401
+
+    assert {"vertical.chat", "vertical.conversation", "vertical.implementer_gate"} <= set(bounds.BOUNDS)
+    problems = [p for lane in _workflow_lanes() for p in bounds.nesting_problems(lane)]
+    assert bounds.JOB_MARGIN_S >= 180 and problems == [], "\n".join(problems)
+
+
+def test_every_lane_uploads_its_hang_directory_whatever_the_outcome():
+    """H3: the autopsy, the deadline's markers and the watchdog's dumps go to the lane's hang directory (its explicit
+    --hang-dir, else its lane report's directory), which an `if: always()` upload in the same job covers: uploads
+    still run after a failure, a cancellation or the job's timeout."""
+    import re
+
+    problems = []
+    for lane in _workflow_lanes():
+        where = lane.hang_dir or (lane.lane_report.rsplit("/", 1)[0] if lane.lane_report else None)
+        if where is None:
+            problems.append(f"{lane.label}: no --hang-dir and no --lane-report (the default is the runner's temp)")
+            continue
+        covered = [u for u in lane.uploads if str(u.get("if", "")).startswith("always()")
+                   and where.startswith(re.sub(r"\$\{\{[^}]*\}\}", "X", str(u["with"]["path"])).rstrip("/"))]
+        if not covered:
+            problems.append(f"{lane.label}: no `if: always()` upload covers {where}")
+    assert problems == [], "\n".join(problems)
+
+
+def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
+    """H3, P2: under the deadline a worker that exits ends the run (`--max-worker-restart 0`): xdist must not replace
+    it and keep scheduling past the deadline. A crash is evidence, not something to route around."""
+    found = [(x.label, x.max_worker_restart) for x in _workflow_lanes() if x.xdist]
+    assert found and all(v == "0" for _, v in found), found
+
+
+def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():
+    """H3, review of #217 (M1): a job running several pytest sessions one after another (`core`: fast then serial;
+    `race-repeat`: ten serial runs, then one more) must still end them all before its timeout. Its first step sets
+    AEW_JOB_DEADLINE (the job's start plus timeout-minutes, less bounds.JOB_MARGIN_S and two DEADLINE_MARGIN_S), and
+    every session's deadline is capped by it (session_deadline.Controller)."""
+    import bounds
+
+    problems = bounds.job_deadline_problems(ROOT / ".github" / "workflows")
+    assert problems == [], "\n".join(problems)
+
+
+def test_no_job_loses_test_time_to_the_session_deadlines_clearance():
+    """G3a (Lead's decision, 2026-10-12): every job with a session-deadline step has its timeout before G3a plus the
+    deadline's clearance (bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S), from one table. Windows integration shards,
+    18 to 26 minutes on main under 30, met their job deadline at 25 once the clearance came out of their time."""
+    import bounds
+
+    problems = bounds.restored_timeout_problems(ROOT / ".github" / "workflows", PRE_G3A_TIMEOUT_MIN)
+    assert problems == [], "\n".join(problems)
+
+
+def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
+    """G3a: the cost record no longer restates a timeout ("the timeout is 30" went stale when the session deadline's
+    clearance raised the lanes to 34). It reads each job's timeout from ci.yml, so the text and the workflow agree."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z",
+                "2026-10-07T00:30:00Z"),
+            job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z", "2026-10-07T00:30:00Z")]
+    found = {h["job"]: h["detail"] for h in cost_record.build([], jobs, None)["health"] if h["kind"] == "job_time"}
+    assert found["integration 1/5 (ubuntu-latest)"].endswith(
+        f"(its job's timeout is {wf['lanes']['timeout-minutes']:g} minutes, ci.yml)"), found
+    assert found["core (windows-latest)"].endswith(
+        f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
+    source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
+    assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text

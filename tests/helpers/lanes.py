@@ -21,12 +21,15 @@ from typing import Any
 
 import pytest
 
-LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical")
+LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical", "discovery")
 LIVE_DIR = "tests/live/"
 # The vertical UAT (docs/implementation/vertical-uat.md): its own lane and CI job, in shadow. It is expected to fail
 # on today's main, so no required job may collect it (a collected test that did not run fails assurance; one that ran
 # red blocks the merge): it is collected only by `--lane vertical`, or when named on the command line.
 VERTICAL_PATH = "tests/acceptance/test_vertical_path.py"
+# The discovery layer (docs/implementation/vertical-uat.md, section 8): its own lane, excluded from every required
+# lane's collection the same way, collected only by `--lane discovery` or when named on the command line.
+DISCOVERY_DIR = "tests/discovery/"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
@@ -64,6 +67,8 @@ def lane_of(path: str, markers: Iterable[str]) -> str:
         return "live"
     if path == VERTICAL_PATH:  # before its `acceptance` marker: the vertical UAT is never an acceptance-lane test
         return "vertical"
+    if path.startswith(DISCOVERY_DIR):
+        return "discovery"
     marks = set(markers)
     if "serial" in marks:
         return "serial"
@@ -278,6 +283,12 @@ class LanePlugin:
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
+        import watchdog
+
+        outs.append(watchdog.hang_dir(self.config) / harness_diagnostics.AUTOPSY_DIR)  # G3: autopsies, deadline marks
+        from discovery import capture
+
+        outs.append(capture.out_path(self.config))  # D2's findings, beside the lane report
         return [Path(p) for p in outs if p]
 
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
@@ -340,11 +351,14 @@ def process_isolation():
 
 def ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
     """``tests/live`` is collected only with ``--live``: CI never collects it, so assurance is unaffected. The vertical
-    UAT is collected only with ``--lane vertical`` (its shadow job), never by a required lane's job. A path named on
-    the command line is collected either way (pytest asks this hook only of what it finds)."""
+    UAT is collected only with ``--lane vertical`` (its shadow job), never by a required lane's job, and the discovery
+    layer's ``tests/discovery`` only with ``--lane discovery``. A path named on the command line is collected either
+    way (pytest asks this hook only of what it finds)."""
     root = Path(str(config.rootpath))
     if Path(collection_path).resolve() == (root / VERTICAL_PATH).resolve():
         return None if config.getoption("aew_lane") == "vertical" else True
+    if Path(collection_path).resolve() == (root / DISCOVERY_DIR).resolve():
+        return None if config.getoption("aew_lane") == "discovery" else True
     if config.getoption("aew_live"):
         return None
     live = root / LIVE_DIR

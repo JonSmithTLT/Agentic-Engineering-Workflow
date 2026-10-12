@@ -31,19 +31,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import autopsy
+import bounds
 from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_repo, run_aew
 from fake_harness import SCRIPTS_ENV, HarnessLab
 from fake_opencode import TUI_SCRIPT, write_launcher
 
 from aew.harness import runlog
 from aew.util import dump_yaml
+from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
 from vertical import workers
 from vertical.chat import Gone, Mailbox
 from vertical.ledger import CONTAINMENT_MINIMUM, HELD, LEAD, NOT_EXERCISED, NOT_REFUSED, WORKERS, Ledger, at_least
 
-SESSION_START_S = 300.0
-CONVERSATION_S = 1800.0
-EXIT_S = 120.0
+# Declared and nested under the vertical lane's --test-timeout (G3 H5): the operator's waits fail first, by name, and
+# record why the Lead was silent (`lead_silent`).
+SESSION_START_S = bounds.declare("vertical.session_start", 300, within="vertical.conversation", lanes={"vertical"},
+                                 why="the operator's wait for a new Lead session's first words")
+CONVERSATION_S = bounds.declare(
+    "vertical.conversation", 1200, lanes={"vertical"},
+    why="the operator's wait for the Lead's next message. In #213 it was 1800 s, equal to the lane's --test-timeout")
+EXIT_S = bounds.declare("vertical.exit", 120, within="vertical.conversation", lanes={"vertical"},
+                        why="the operator's wait for a session to end after /exit or a kill")
 
 
 @dataclass
@@ -181,6 +190,8 @@ class Operator:
         kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
                                   else {"start_new_session": True})
         env = clean_env({**self.lab.env, **self.shell_env})
+        autopsy.register_workdir(out)  # the session's terminal output is kept if the test fails (G3 H4)
+        autopsy.register_workdir(err)
         with out.open("wb") as o, err.open("wb") as e:
             proc = subprocess.Popen([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
                                     stdin=subprocess.DEVNULL, stdout=o, stderr=e, **kwargs)
@@ -325,6 +336,11 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
     (tmp / "sync").mkdir(parents=True, exist_ok=True)
     workers.write_scripts(scripts, gate=gate)
     launcher = write_launcher(scripts / "fake-opencode", scripts)
+    # G3 H1: the fake OpenCode and the Lead's TUI it becomes install childdiag from here (periodic stacks, a dying
+    # thread's exception, their output teed); the chat, the Lead's events and state are kept if the test fails.
+    autopsy.mark_helper_dir(scripts)
+    autopsy.register_workdir(tmp / "sync")
+    autopsy.register_workdir(scripts)
     env = {"AEW_HARNESS_ADAPTERS": workers.ADAPTER, SCRIPTS_ENV: str(scripts), "AEW_LAUNCH_ACK_S": "120",
            "AEW_OPENCODE_BIN": str(launcher),
            # The product as shipped: a lease's grant starts its custody worker (the suite turns it off by default).

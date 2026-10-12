@@ -39,12 +39,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tier as tiers  # noqa: E402  (tools/ci/tier.py: the tiers and the lanes each requires)
 
 REPORT_SCHEMA = "aew/lane-report/v1"
+# A hang's autopsy (tests/helpers/autopsy.py) lives in the report directory, which CI uploads. Its files never end in
+# `.json`, and the readers skip its directory too: two independent protections against reading one as a report.
+AUTOPSY_DIR = "autopsy"
 SKIPS_SCHEMA = "aew/platform-skips/v1"
 
 
 def load_reports(root: Path) -> list[dict[str, Any]]:
     reports = []
     for path in sorted(root.rglob("*.json")):
+        if AUTOPSY_DIR in path.relative_to(root).parts:
+            continue
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("schema") == REPORT_SCHEMA:
             data["_source"] = str(path.relative_to(root))

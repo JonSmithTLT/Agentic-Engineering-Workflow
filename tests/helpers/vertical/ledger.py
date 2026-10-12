@@ -133,6 +133,8 @@ STATUS = re.compile(r"\b(PASS|WARN|FAIL|INFO|UNAVAILABLE)\b")
 FAILING = frozenset({"FAIL", "WARN"})
 # Faults of the test's own harness (the chat between the scripted actors), recorded apart from AEW's behaviour.
 HARNESS_FAULTS = frozenset({"chat_read_error", "lead.listener_error"})
+# The Lead went silent, ended, or lost a thread (`thread_died`: recorded by childdiag's exception hook, G3 H1).
+LEAD_ENDINGS = ("lead_silent", "lead.lead_error", "lead.thread_died")
 
 
 def _json_objects(text: str) -> tuple[list[dict[str, Any]], str]:
@@ -431,9 +433,8 @@ class Ledger:
             lines.append("unknown owners (asked of the operator): " + "; ".join(
                 f"{o.get('decision')} [owner {o.get('owner')!r}]" for o in unknown))
         faults = [o for o in self.observations if o["kind"] in HARNESS_FAULTS
-                  or (o["kind"] in ("lead_silent", "lead.lead_error") and o.get("fault") == "harness")]
-        ended = [o for o in self.observations if o["kind"] in ("lead_silent", "lead.lead_error")
-                 and o.get("fault") != "harness"]
+                  or (o["kind"] in LEAD_ENDINGS and o.get("fault") == "harness")]
+        ended = [o for o in self.observations if o["kind"] in LEAD_ENDINGS and o.get("fault") != "harness"]
         if ended:  # the Lead went silent or ended, and nothing shows the harness at fault
             lines.append("lead silent or ended: " + "; ".join(
                 f"{o['kind']} ({o.get('fault')}) {o.get('why') or o.get('error') or ''}".strip()

@@ -35,7 +35,8 @@ from check_assurance import load_reports  # noqa: E402  (tools/ci/check_assuranc
 
 SCHEMA = "aew/ci-cost-record/v1"
 JOB_WARN_S = 20 * 60  # CRD-11: a shard over 20 minutes warns ...
-JOB_VIOLATION_S = 25 * 60  # ... over 25 is a CI-health violation; the 30-minute job timeout stays the hard bound
+JOB_VIOLATION_S = 25 * 60  # ... over 25 is a CI-health violation; each job's timeout (ci.yml) stays the hard bound
+CI_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 TEST_SHARE_VIOLATION = 0.25  # E45: one test over a quarter of its lane's test time
 FAST_TEST_VIOLATION_S = 30.0  # E45: a fast-lane test over 30 s (the lane's whole budget is 3 minutes, §8)
 # testing-and-ci-strategy.md §8's budgets, reported as warnings (CCI-01): the first CI signal (Linux `core`) within
@@ -106,6 +107,25 @@ def job_facts(jobs: list[dict[str, Any]], run: dict[str, Any] | None = None) -> 
     }
 
 
+def job_timeouts(workflow: Path = CI_WORKFLOW) -> dict[str, float]:
+    """Each test job's ``timeout-minutes`` as ``ci.yml`` sets it (``core``, ``lanes``): read, never restated, so the
+    record cannot go stale when a timeout moves (G3a raised them by the session deadline's clearance)."""
+    import yaml  # check_assurance needs PyYAML already
+
+    try:
+        jobs = (yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}).get("jobs") or {}
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+    return {name: float(job["timeout-minutes"]) for name, job in jobs.items()
+            if isinstance(job, dict) and job.get("timeout-minutes")}
+
+
+def timeout_note(job_name: str, timeouts: dict[str, float] | None = None) -> str:
+    """The timeout of the ci.yml job a run's job came from: ``core (…)`` is ``core``, a lane shard is ``lanes``."""
+    found = (job_timeouts() if timeouts is None else timeouts).get("core" if job_name.startswith("core ") else "lanes")
+    return f"its job's timeout is {found:g} minutes, ci.yml" if found else "its job's timeout: see ci.yml"
+
+
 def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """CRD-11 over the jobs that ran tests (core and the lane shards), and §8's first-signal budget for Linux core."""
     out = []
@@ -117,7 +137,7 @@ def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "detail": f"the first CI signal is over §8's {CORE_BUDGET_S // 60}-minute budget"})
         if r["run_s"] > JOB_VIOLATION_S:
             out.append({"level": "violation", "kind": "job_time", "job": r["name"], "seconds": round(r["run_s"]),
-                        "detail": f"over {JOB_VIOLATION_S // 60} minutes (the timeout is 30)"})
+                        "detail": f"over {JOB_VIOLATION_S // 60} minutes ({timeout_note(r['name'])})"})
         elif r["run_s"] > JOB_WARN_S:
             out.append({"level": "warning", "kind": "job_time", "job": r["name"], "seconds": round(r["run_s"]),
                         "detail": f"over {JOB_WARN_S // 60} minutes"})

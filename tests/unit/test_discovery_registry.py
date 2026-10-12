@@ -39,16 +39,23 @@ def page() -> str:
 
 
 def code_writes(root: Path = SRC) -> dict[str, str]:
-    """``code -> "module:line"`` for every place the product's source writes a code string (review of #218, m6 and
-    G3), in each form it uses: a class's ``code =`` or ``code: T =``, a dict literal's ``"code": "X"``, a keyword
+    """``code -> "module:line"``, the first place the product's source writes each code (``code_write_sites``)."""
+    return {code: sites[0] for code, sites in code_write_sites(root).items()}
+
+
+def code_write_sites(root: Path = SRC) -> dict[str, list[str]]:
+    """``code -> ["module:line", ...]`` for every place the product's source writes a code string (review of #218, m6
+    and G3), in each form it uses: a class's ``code =`` or ``code: T =``, a dict literal's ``"code": "X"``, a keyword
     ``code="X"``, an ``x.code = "X"`` assignment, and a constructor argument (review of #218, G3b): a class whose
     ``__init__`` stores a parameter in ``self.code``, or a dataclass with a ``code`` field, writes what its call sites
     pass at that position or as ``code=``: a literal, or a module constant's name (G3c)."""
-    out: dict[str, str] = {}
+    out: dict[str, list[str]] = {}
 
     def add(value: object, path: Path, line: int) -> None:
         if isinstance(value, str) and CODE_SHAPE.match(value):
-            out.setdefault(value, f"{path.relative_to(root).as_posix()}:{line}")
+            site = f"{path.relative_to(root).as_posix()}:{line}"
+            if site not in out.setdefault(value, []):
+                out[value].append(site)
 
     trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(root.rglob("*.py"))}
     takers = {name: index for tree in trees.values() for name, index in code_parameters(tree).items()}
@@ -141,14 +148,18 @@ def code_parameters(tree: ast.AST) -> dict[str, int]:
     return out
 
 
-def steering_stop_codes() -> frozenset[str]:
-    """The steering loop's stop vocabulary, an outside namespace (review of #218, G3c), derived from the module that
-    owns it rather than pinned: every upper-case module constant of ``aew.harness.steering_loop`` whose value is a
-    code. A new stop code is in it the moment it is added."""
-    from aew.harness import steering_loop
+STEERING_LOOP = "harness/steering_loop.py"  # the module that owns the stop vocabulary, relative to the source root
 
-    return frozenset(v for k, v in vars(steering_loop).items()
-                     if k.isupper() and isinstance(v, str) and CODE_SHAPE.match(v))
+
+def steering_stop_codes(root: Path = SRC) -> frozenset[str]:
+    """The steering loop's stop vocabulary, an outside namespace (review of #218, G3c), derived from the module that
+    owns it rather than pinned: the module's own top-level assignments (read from its source, so a name it imports is
+    not its own) of an upper-case name to a code. A new stop code is in it the moment it is added."""
+    tree = ast.parse((root / STEERING_LOOP).read_text(encoding="utf-8"))
+    return frozenset(stmt.value.value for stmt in tree.body
+                     if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant)
+                     and isinstance(stmt.value.value, str) and CODE_SHAPE.match(stmt.value.value)
+                     for t in stmt.targets if isinstance(t, ast.Name) and t.id.isupper())
 
 
 def refusal_class_codes() -> frozenset[str]:
@@ -156,13 +167,38 @@ def refusal_class_codes() -> frozenset[str]:
                      if issubclass(cls, errors.AEWError) and cls.__module__ == errors.__name__)
 
 
-def defined_codes() -> dict[str, str]:
-    """Every refusal code the product defines that the Lead or the operator can see, with where it is written. A stop
-    code is outside unless it is also a refusal code `aew.errors` defines (`STALE_AUTHORITY`, `STALE_POLICY`)."""
-    outside = OUTSIDE_REGISTRY | (steering_stop_codes() - refusal_class_codes())
-    codes = {c: where for c, where in code_writes().items() if c not in outside}
+def stops_outside(root: Path = SRC) -> frozenset[str]:
+    """The stop codes that are only stop codes: a stop code written anywhere outside the steering loop (any form the
+    scan reads), or one of the typed surface's codes, is a refusal code too and stays in the registry's scope."""
+    elsewhere = {code for code, sites in code_write_sites(root).items()
+                 if any(not site.startswith(STEERING_LOOP + ":") for site in sites)}
+    return steering_stop_codes(root) - elsewhere - set(surface_errors.CODES)
+
+
+def defined_codes(root: Path = SRC) -> dict[str, str]:
+    """Every refusal code the product defines that the Lead or the operator can see, with where it is written."""
+    outside = OUTSIDE_REGISTRY | stops_outside(root)
+    codes = {c: where for c, where in code_writes(root).items() if c not in outside}
     codes.update({c: "surface/errors.py:CODES" for c in surface_errors.CODES})
     return codes
+
+
+def test_a_stop_code_that_is_also_written_elsewhere_stays_a_refusal_code(tmp_path):
+    """Review of #218 at cb1e496: a steering-loop constant whose value is also written as a refusal elsewhere (here
+    `BRIDGE_ERROR`, by a bridge-like module) stays in the registry's scope; one written only by the loop is outside; a
+    name the loop imports is not its own constant."""
+    loop = tmp_path / STEERING_LOOP
+    loop.parent.mkdir(parents=True)
+    (tmp_path / "harness" / "codes.py").write_text("IMPORTED = 'ONLY_IMPORTED'\n", encoding="utf-8")
+    loop.write_text("from harness.codes import IMPORTED\nfrom dataclasses import dataclass\n"
+                    "ONLY_A_STOP = 'ONLY_A_STOP'\nBRIDGE = 'BRIDGE_ERROR'\nTOOL = 'UNKNOWN_TOOL'\n@dataclass\n"
+                    "class Stop:\n    code: str\nStop(ONLY_A_STOP)\nStop(BRIDGE)\nStop(IMPORTED)\n", encoding="utf-8")
+    (tmp_path / "harness" / "bridge.py").write_text("reply = {'error': {'code': 'BRIDGE_ERROR'}}\n", encoding="utf-8")
+    # not the imported name; UNKNOWN_TOOL is one of the typed surface's codes
+    assert steering_stop_codes(tmp_path) == {"ONLY_A_STOP", "BRIDGE_ERROR", "UNKNOWN_TOOL"}
+    assert stops_outside(tmp_path) == {"ONLY_A_STOP"}
+    kept = defined_codes(tmp_path)
+    assert {"BRIDGE_ERROR", "ONLY_IMPORTED", "UNKNOWN_TOOL"} <= set(kept) and "ONLY_A_STOP" not in kept
 
 
 def test_the_steering_stop_codes_are_named_outside_and_the_scan_reads_them_through_constants():
@@ -174,7 +210,7 @@ def test_the_steering_stop_codes_are_named_outside_and_the_scan_reads_them_throu
     found_in_loop = {c for c, where in code_writes().items() if where.startswith("harness/steering_loop.py")}
     assert {"BLOCKED", "ANOMALY_HIGH", "LOOP_DEADLINE", "MAX_AUTO_ACTIONS"} <= found_in_loop <= stops
     listed = {str(r["code"]) for r in registry.rows(page())}
-    assert stops & listed == stops & refusal_class_codes() == {"STALE_AUTHORITY", "STALE_POLICY"}
+    assert stops - stops_outside() == stops & listed == {"STALE_AUTHORITY", "STALE_POLICY"}
 
 
 def test_the_source_scan_sees_every_class_aew_errors_defines():

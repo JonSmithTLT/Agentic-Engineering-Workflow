@@ -402,10 +402,11 @@ its projections compute, such as `ARCHITECTURE_*`, `MAP_STALE_*`, `RUN_CRASHED`,
 `RECALL_NOT_IN_INVOCATIONS`). These explain a projection's state; they are never a refusal's code, and the registry
 does not list them. The same holds for the steering loop's stop vocabulary (`STEERING_OFF`, `BLOCKED`,
 `LOOP_DEADLINE` and the rest): the reasons the loop stops, which the Lead reads in steering status and notifications.
-The test derives that namespace from `aew.harness.steering_loop`'s own constants, so a new stop code joins it as it is
-added; the scan reads a stop code even when it is passed by a constant's name (`Stop(BLOCKED)`), resolving module
-constants in the calling module or imported from another. `STALE_AUTHORITY` and `STALE_POLICY` are stop codes and
-refusal codes both, and keep their rows.
+The test derives that namespace from `aew.harness.steering_loop`'s own top-level assignments, read from its source (a
+name it imports is not its own), so a new stop code joins it as it is added; the scan reads a stop code even when it
+is passed by a constant's name (`Stop(BLOCKED)`), resolving module constants in the calling module or imported from
+another. A stop code that is also written anywhere outside the steering loop, or is one of the typed surface's codes,
+is a refusal code too and keeps its row: today that is `STALE_AUTHORITY` and `STALE_POLICY`.
 
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.

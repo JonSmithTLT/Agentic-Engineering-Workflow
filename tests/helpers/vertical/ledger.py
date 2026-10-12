@@ -131,6 +131,8 @@ def enforce_blockers(*, lead_label_wired: bool) -> list[str]:
 # on it: the status column comes before the detail, so a PASS line whose detail says "INFO" or "FAIL" is still PASS.
 STATUS = re.compile(r"\b(PASS|WARN|FAIL|INFO|UNAVAILABLE)\b")
 FAILING = frozenset({"FAIL", "WARN"})
+# Faults of the test's own harness (the chat between the scripted actors), recorded apart from AEW's behaviour.
+HARNESS_FAULTS = frozenset({"lead_silent", "chat_read_error", "lead.listener_error"})
 
 
 def _json_objects(text: str) -> tuple[list[dict[str, Any]], str]:
@@ -163,22 +165,38 @@ def failing_entries(text: str) -> list[str]:
     lines after it that carry no status of their own (a wrapped detail, a fix on the next line). A PASS or INFO entry is
     never one, even when it echoes the configured value a cause names (review of #213, F4).
 
-    A refusal in the CLI's JSON shape (``{"ok": false, "error": {code, message, details}}``, or any object with an
-    ``error``) is one failing entry: its message and details (review of #213, F6). A JSON answer with ``ok: true`` never
-    is, whatever it echoes. Other JSON objects are read by the status-word rule, over their text."""
+    In JSON (review of #213, F6 and G1): an answer with ``ok: true`` never counts, whatever it echoes. Otherwise every
+    ``error`` object (the CLI's refusal, ``{"ok": false, "error": {code, message, details}}``) is one failing entry, its
+    code, message and details; and every object with a ``status`` (a report's check, doctor's ``{check, status,
+    detail}``) is one entry with that object's own status, failing only when it is FAIL or WARN. ``ok: false`` with
+    neither adds nothing: it is never an empty error."""
     out: list[str] = []
     objects, table = _json_objects(text)
     for obj in objects:
-        error = obj.get("error")
-        if obj.get("ok") is True:
-            continue
-        if isinstance(error, dict) or obj.get("ok") is False:
-            error = error if isinstance(error, dict) else {}
+        if obj.get("ok") is not True:
+            out += _json_entries(obj)
+    return out + _table_entries(table)
+
+
+def _json_entries(value: Any) -> list[str]:
+    """Each failing entry in a JSON value: its ``error`` objects and its FAIL or WARN ``status`` objects, anywhere."""
+    out: list[str] = []
+    if isinstance(value, dict):
+        error = value.get("error")
+        if isinstance(error, dict):
             out.append("\n".join([str(error.get("code") or ""), str(error.get("message") or ""),
                                   json.dumps(error.get("details") or {}, sort_keys=True)]))
-        else:
-            out += _table_entries(json.dumps(obj))
-    return out + _table_entries(table)
+        status = value.get("status")
+        if isinstance(status, str) and status.upper() in FAILING:
+            # The object's own fields only: a nested check (say, a PASS one echoing the id) is its own entry.
+            out.append(json.dumps({k: v for k, v in value.items() if not isinstance(v, (dict, list))}, sort_keys=True))
+        for k, v in value.items():
+            if k != "error":
+                out += _json_entries(v)
+    elif isinstance(value, list):
+        for v in value:
+            out += _json_entries(v)
+    return out
 
 
 def _table_entries(text: str) -> list[str]:
@@ -412,6 +430,11 @@ class Ledger:
         if unknown:  # a finding: asked of the operator and compared, but the owner is not one the spec names
             lines.append("unknown owners (asked of the operator): " + "; ".join(
                 f"{o.get('decision')} [owner {o.get('owner')!r}]" for o in unknown))
+        faults = [o for o in self.observations if o["kind"] in HARNESS_FAULTS]
+        if faults:  # the test's own harness, never AEW's behaviour (review of #213, G2)
+            lines.append("harness faults: " + "; ".join(
+                f"{o['kind']} {o.get('waiting_for') or o.get('file') or ''} {o.get('error') or ''}".strip()
+                for o in faults[:4])[:200])
         staled = [o for o in self.observations if o["kind"] == "stale_revision"]
         if staled:  # which actor's commit staled each STALE_REVISION the Lead met (the loop's, or another's)
             lines.append("stale revisions, staled by: " + "; ".join(

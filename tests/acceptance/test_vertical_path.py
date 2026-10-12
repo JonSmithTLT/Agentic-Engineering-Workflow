@@ -160,7 +160,10 @@ def console_opened(op: Operator, step: str) -> None:
 def setup_operator(tmp_path: Path, scenario: str, *, steering: bool = False, **world: Any) -> Operator:
     lab = new_world(tmp_path, **world)
     ledger = Ledger(scenario, steering=steering)
-    op = Operator(lab, ledger, tmp_path, Mailbox(tmp_path / "sync" / "chat", "operator"))
+    chat = Mailbox(tmp_path / "sync" / "chat", "operator",
+                   on_error=lambda path, exc: ledger.observe("chat_read_error", file=path.name,
+                                                             error=f"{type(exc).__name__}: {exc}"[:300]))
+    op = Operator(lab, ledger, tmp_path, chat)
     op.allowed_heads.add(git("rev-parse", "main", cwd=lab.root))
     res = op.type("init", ideal_argv("init"))
     assert res.returncode == 0, res.stderr
@@ -184,6 +187,10 @@ def write_out(op: Operator, request: pytest.FixtureRequest) -> Path:
 
 def result_problems(op: Operator) -> list[str]:
     """The operator gets the result: the diff, an evidence summary, and the commit."""
+    silent = [o for o in op.ledger.observations if o["kind"] == "lead_silent"]
+    if not op.reports and silent:  # a harness fault, never reported as AEW's (review of #213, G2)
+        return [f"the scripted Lead went silent waiting for {silent[0].get('waiting_for')} (a harness fault, not a "
+                f"product result; chat errors: {silent[0].get('chat_errors')})"]
     if not op.reports:
         stuck = [m for m in op.said if m.get("type") == "stuck"]
         return [f"no result reached the operator{': ' + stuck[-1]['text'] if stuck else ''}"]

@@ -181,9 +181,17 @@ class Operator:
         try:
             msg = self.chat.receive(SESSION_START_S, gone=session.ended)
         except Gone:
+            if not session.ended():
+                self.lead_silent("first words", SESSION_START_S)
             return None
         self.said.append(msg)
         return msg
+
+    def lead_silent(self, waiting_for: str, bound: float) -> None:
+        """The Lead's session is alive and said nothing within the bound: a harness fault (the scripted Lead stopped
+        hearing or answering), recorded so the verdict never reads it as AEW's behaviour (review of #213, G2)."""
+        self.ledger.observe("lead_silent", waiting_for=waiting_for, bound_s=bound, chat_errors=self.chat.errors[-6:],
+                            note="the Lead session was alive and silent past the bound: a harness fault")
 
     def say(self, step: str, text: str) -> None:
         self.chat.send({"text": text})
@@ -198,6 +206,8 @@ class Operator:
                 msg = self.chat.receive(CONVERSATION_S,
                                         gone=lambda: session.ended() or (stop is not None and stop()))
             except Gone:
+                if not session.ended() and not (stop is not None and stop()):
+                    self.lead_silent("the conversation", CONVERSATION_S)
                 return None
             self.said.append(msg)
             kind = msg.get("type")

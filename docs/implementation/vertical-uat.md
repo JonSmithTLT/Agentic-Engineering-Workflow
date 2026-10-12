@@ -239,6 +239,11 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   an enforced platform: each enforced platform's Lead minimum must be above `none`, and the test must read the Lead's
   label from the product rather than assume none (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py`
   checks whenever the mode is `enforce`). Today both conditions block it.
+- **Harness faults are not product results.** The chat between the scripted actors survives a failed read (retried
+  within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`). A Lead
+  session that stays alive and silent past the bound is recorded as `lead_silent`, and the verdict says the scripted
+  Lead went silent (a harness fault), never "no result reached the operator". The summary lists them as harness
+  faults.
 - **Stale revisions are attributed.** For each `STALE_REVISION` the Lead meets, the ledger records the commit that
   staled it (from the transition log), attributed through the stage intent it belongs to: the steering loop's when
   that intent was auto-run, else the Lead's. Only a commit in no stage falls back to its actor, and then a Lead

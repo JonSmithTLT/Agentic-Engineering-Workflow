@@ -93,7 +93,7 @@ class Lead:
         self.steering = bool(spec.get("steering"))
         self.events_path = Path(spec["events"])
         self.lock = threading.Lock()
-        self.chat = Mailbox(Path(spec["chat"]), "lead")
+        self.chat = Mailbox(Path(spec["chat"]), "lead", on_error=self._read_error)
         self.chat.skip_to_end()  # a reopened session answers only what is said to it from now on
         self.inbox: queue.Queue[dict[str, Any]] = queue.Queue()
         self.rid = 0
@@ -121,14 +121,26 @@ class Lead:
 
     # ------------------------------------------------------------------ the operator
 
+    def _read_error(self, path: Path, exc: BaseException) -> None:
+        """A chat read failed: recorded (the ledger keeps it as ``lead.listener_error``), then retried by the mailbox
+        within its bound. A harness fault is never left to read as AEW's behaviour (review of #213, G2)."""
+        self.event("listener_error", file=path.name, error=f"{type(exc).__name__}: {exc}"[:300])
+
     def _listen(self) -> None:
         """Every operator line arrives here; ``/exit`` ends the TUI at once, whatever the Lead is doing (as
-        OpenCode's own ``/exit`` does)."""
+        OpenCode's own ``/exit`` does). Nothing ends this thread silently: an unexpected error is recorded as
+        ``listener_error`` and the listener goes on, within the chat's bound (review of #213, G2)."""
+        deadline = time.monotonic() + CHAT_TIMEOUT_S
         while True:
             try:
-                msg = self.chat.receive(CHAT_TIMEOUT_S)
+                msg = self.chat.receive(max(deadline - time.monotonic(), 0.0))
             except Gone:
                 msg = {"text": EXIT, "timeout": True}
+            except Exception as exc:  # recorded, never silent; retried within the same bound  # noqa: BLE001
+                self.event("listener_error", error=f"{type(exc).__name__}: {exc}"[:300])
+                time.sleep(POLL_S)
+                continue
+            deadline = time.monotonic() + CHAT_TIMEOUT_S
             if str(msg.get("text", "")).strip() == EXIT:
                 self.event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
                 with self.lock:

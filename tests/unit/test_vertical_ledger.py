@@ -474,3 +474,79 @@ def test_a_json_refusal_is_one_failing_entry_and_an_ok_answer_never_is():
     mixed = "model-refs  PASS  configured: vuat-missing-model\n" + refusal
     assert L.failing_entries(mixed)[0].startswith("PROVIDER_ENV_UNSET")
     assert not L.diagnoses(mixed, r"vuat-missing-model")
+
+
+def _doctor_json(ok: bool, checks: list[tuple[str, str, str]]) -> str:
+    """Doctor's JSON shape (``aew doctor --json``): ``{ok, aew_version, spec_set, checks: [{check, status, detail}],
+    failures}``, pretty-printed as the CLI prints it."""
+    import json
+
+    return json.dumps({"ok": ok, "aew_version": "0", "spec_set": "x",
+                       "checks": [{"check": c, "status": s, "detail": d} for c, s, d in checks],
+                       "failures": sum(1 for _, s, _ in checks if s == "FAIL")}, indent=2) + "\n"
+
+
+def test_a_json_status_report_is_read_per_check_by_its_own_status():
+    """G1: each object with a `status` is one entry with its own status. A FAIL after a PASS is found; a PASS that
+    echoes the id after a FAIL elsewhere does not count; `ok: false` without an `error` drops no check and adds no
+    empty entry."""
+    pass_then_fail = _doctor_json(False, [
+        ("git", "PASS", "2.45"), ("model-refs", "FAIL", "vuat-missing-model is not listed; use vuatprov/vuat-model")])
+    assert L.diagnoses(pass_then_fail, r"vuat-missing-model") and L.diagnoses(pass_then_fail, r"vuatprov/vuat-model\b")
+    fail_then_echo = _doctor_json(False, [("git", "FAIL", "git not found"),
+                                          ("model-refs", "PASS", "configured: vuat-missing-model")])
+    assert not L.diagnoses(fail_then_echo, r"vuat-missing-model") and L.diagnoses(fail_then_echo, r"git not found")
+    entries = L.failing_entries(pass_then_fail)
+    assert len(entries) == 1 and "" not in entries
+    warn_only = _doctor_json(False, [("containment", "WARN", "workdir separation only")])
+    assert len(L.failing_entries(warn_only)) == 1 and '"status": "WARN"' in L.failing_entries(warn_only)[0]
+    assert L.failing_entries('{"ok": false}') == []
+    assert L.failing_entries(_doctor_json(True, [("model-refs", "FAIL", "vuat-missing-model")])) == []
+
+
+def test_a_chat_read_error_is_recorded_retried_and_loses_no_message(tmp_path, monkeypatch):
+    """G2: a failed read (a sharing violation on Windows, say) neither kills the reader nor skips the message: it is
+    reported, retried within the bound, and the message arrives. The scripted Lead's listener records it as
+    `listener_error` and keeps hearing the operator."""
+    import queue
+    import threading
+    from pathlib import Path
+
+    from vertical import chat as C
+    from vertical.lead import Lead
+
+    seen: list[str] = []
+    reader = C.Mailbox(tmp_path, "lead", on_error=lambda path, exc: seen.append(f"{path.name} {exc}"))
+    C.Mailbox(tmp_path, "operator").send({"text": "Where do things stand?"})
+    real = Path.read_text
+    failures = {"left": 2}
+
+    def flaky(self, *args, **kwargs):
+        if self.name.startswith("operator-") and failures["left"]:
+            failures["left"] -= 1
+            raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky)
+    assert reader.receive(5)["text"] == "Where do things stand?"
+    assert len(seen) == 2 and len(reader.errors) == 2 and reader.read == 1
+
+    # The Lead's listener, over the same fault: it survives, records it, and puts the line in the Lead's inbox.
+    failures["left"] = 1
+    lead = Lead.__new__(Lead)
+    events: list[dict] = []
+    lead.event = lambda kind, **facts: events.append({"kind": kind, **facts})
+    lead.chat = C.Mailbox(tmp_path / "second", "lead", on_error=lead._read_error)
+    lead.inbox = queue.Queue()
+    C.Mailbox(tmp_path / "second", "operator").send({"text": "carry on"})
+    threading.Thread(target=lead._listen, daemon=True).start()
+    assert lead.inbox.get(timeout=5)["text"] == "carry on"
+    assert [e["kind"] for e in events] == ["listener_error"] and "PermissionError" in events[0]["error"]
+
+
+def test_a_silent_lead_is_a_harness_fault_never_a_product_result():
+    led = L.Ledger("unit")
+    led.observe("lead_silent", waiting_for="the conversation", bound_s=1800.0, chat_errors=[])
+    led.lead_event({"kind": "listener_error", "file": "operator-0003.json", "error": "PermissionError: busy"})
+    summary = led.summary()
+    assert "harness faults: lead_silent the conversation" in summary and "lead.listener_error" in summary

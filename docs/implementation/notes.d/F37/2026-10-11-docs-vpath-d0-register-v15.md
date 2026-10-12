@@ -9,9 +9,12 @@ D4 — BINDING FUTURE CONDITION: Before enabling any authorized external-publica
 trusted operator publication authorization, including applicable previously authorized publication envelopes.
 ```
 
-Before any authorised external-publication path is enabled (F33's push, or a publication grant that reaches an external
-path), this row's sanitisation is enforced on it, with the operator's publication authorisation. Under D1 the vertical
-gate does not require this row, and nothing schedules it; its target is unchanged.
+Before any authorised external-publication path is enabled (F33's push, for example), this row's sanitisation is
+enforced on it, with the operator's publication authorisation. Reading D4's "previously authorized publication
+envelopes" as pre-granted publish authority, so that a publication grant reaching an external path (E6b's grants, M4-H's
+sealed-manifest `PUBLISH_IF_CLEAN` grant) passes this row's sanitisation too, is the Lead's reading, not a ruling: see
+the notes on F47 and F15.5, which leave it to be confirmed with the designer. Under D1 the vertical gate does not
+require this row, and nothing schedules it; its target is unchanged.
 
 **The canonical outbound sanitiser is now in this row's scope (the designer's decisions of 2026-10-12 on the Lead's
 experience-log batch 3, relayed by the operator).** The proposal was a new engine-owned sanitiser on every publish and

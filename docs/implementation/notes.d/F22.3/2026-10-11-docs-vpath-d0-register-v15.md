@@ -1,7 +1,7 @@
 **#29: the lookup behind the engine-generated "What already exists" section (the designer's decisions of 2026-10-12 on
 the Lead's experience-log batch 3, relayed by the operator).** With the plan stage contract (the note on F41.1), this
 row is the confirmed owner of the lookup behind every plan's "What already exists" section. The section is
-coverage-aware: confirmed relationships, inferred ones and known coverage gaps, marked as such, with the planner still
+coverage-aware: confirmed relationships, inferred ones and known coverage gaps, marked as such, with the Lead still
 investigating the gaps; it does not wait for a mature F22 map. Not a vertical-gate prerequisite: it improves plans
 about AEW, not the operator's or the Lead's path through a Ticket.
 

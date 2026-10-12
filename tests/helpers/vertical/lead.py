@@ -118,7 +118,10 @@ class Lead:
             facts.setdefault("blockers", [{k: b.get(k) for k in ("code", "message", "details")}
                                           for b in self.last_projection.get("blockers") or []][:8])
             facts.setdefault("hints", list(self.last_projection.get("hints") or [])[:8])
-        line = json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n"
+        # Stamped with this session's identity (the operator's per-open id, and the pid): evidence about a silence is
+        # read only from the session it concerns (review of #213, I1).
+        line = json.dumps({"kind": kind, "step": self.step, "subject": self.subject,
+                           "session": self.spec.get("session"), "pid": os.getpid(), **facts}) + "\n"
         with self.lock:
             _retrying(lambda: _append(self.events_path, line))
 
@@ -138,7 +141,8 @@ class Lead:
         path = self.spec.get("state")
         if not path:
             return
-        body = json.dumps({"doing": what, "chat_read": self.chat.read, "step": self.step, **facts})
+        body = json.dumps({"doing": what, "chat_read": self.chat.read, "step": self.step,
+                           "session": self.spec.get("session"), "pid": os.getpid(), **facts})
         try:
             _retrying(lambda: _replace(Path(path), body))
         except OSError:

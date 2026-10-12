@@ -550,18 +550,22 @@ def test_a_silence_is_a_harness_fault_only_with_harness_evidence():
     established and reads as a possible product hang, never as the harness's."""
     from vertical.scripted_operator import silence_fault
 
-    waiting = {"doing": "waiting_to_hear", "chat_read": 3}
-    assert silence_fault(chat_errors=["operator-0003.json: PermissionError"], events=[], state=None, sent=4)[0] == \
-        "harness"
-    assert silence_fault(chat_errors=[], events=[{"kind": "listener_error"}], state=waiting, sent=3)[0] == "harness"
-    fault, why = silence_fault(chat_errors=[], events=[], state=waiting, sent=4)
+    now = "s-now"
+    waiting = {"doing": "waiting_to_hear", "chat_read": 3, "session": now}
+    calling = {"doing": "calling", "tool": "harness_wait", "chat_read": 3, "session": now}
+
+    def fault_of(**kw):
+        return silence_fault(**{"chat_errors": [], "events": [], "state": None, "sent": 4, "session": now, **kw})
+
+    assert fault_of(chat_errors=["operator-0003.json: PermissionError"])[0] == "harness"
+    assert fault_of(events=[{"kind": "listener_error", "session": now}], state=waiting, sent=3)[0] == "harness"
+    fault, why = fault_of(state=waiting)
     assert fault == "harness" and "1 operator message" in why
     # Product-side silences: no evidence of the harness.
-    assert silence_fault(chat_errors=[], events=[], state=waiting, sent=3)[0] == "not established"  # all read
-    fault, why = silence_fault(chat_errors=[], events=[], state={"doing": "calling", "tool": "harness_wait",
-                                                                 "chat_read": 3}, sent=4)
+    assert fault_of(state=waiting, sent=3)[0] == "not established"  # every operator message read
+    fault, why = fault_of(state=calling)
     assert fault == "not established" and "harness_wait" in why
-    fault, why = silence_fault(chat_errors=[], events=[], state=None, sent=1)
+    fault, why = fault_of(sent=1)
     assert fault == "not established" and "no TUI started" in why
 
     led = L.Ledger("unit")
@@ -653,3 +657,48 @@ def test_recording_an_error_never_kills_the_listener(tmp_path, monkeypatch):
     C.Mailbox(tmp_path / "chat", "operator").send({"text": "carry on"})
     threading.Thread(target=lead._listen, daemon=True).start()
     assert lead.inbox.get(timeout=5)["text"] == "carry on"
+
+
+def test_a_silence_is_judged_only_on_its_own_sessions_evidence():
+    """I1: on a reopen whose new Lead never starts, the previous session's state (waiting to hear, two messages read)
+    and the operator's later messages (`/exit`, the reopen) must not read as a chat deadlock; nor may an earlier
+    session's `listener_error`. Both are "not established"."""
+    from vertical.scripted_operator import silence_fault
+
+    before = {"doing": "waiting_to_hear", "chat_read": 2, "session": "s-old"}
+    fault, why = silence_fault(chat_errors=[], events=[], state=before, sent=3, session="s-new")
+    assert fault == "not established" and "no TUI started" in why
+    old_error = [{"kind": "listener_error", "session": "s-old", "pid": 4242, "error": "PermissionError"}]
+    later = silence_fault(chat_errors=[], events=old_error, state=None, sent=3, session="s-new")
+    assert later[0] == "not established"
+    # The same evidence in the session it belongs to is the harness's.
+    assert silence_fault(chat_errors=[], events=old_error, state=None, sent=3, session="s-old")[0] == "harness"
+
+
+def test_each_open_starts_a_fresh_session_with_no_state_left(tmp_path):
+    """I1: every open gets its own id (a reused pid cannot match it), the previous session's state file is removed,
+    and the operator's earlier chat errors are not this session's."""
+    import json
+    from types import SimpleNamespace
+
+    from vertical import scripted_operator as S
+
+    sync = tmp_path / "sync"
+    sync.mkdir()
+    (sync / "lead-state.json").write_text(json.dumps({"doing": "waiting_to_hear", "session": "s-old"}),
+                                          encoding="utf-8")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    op = S.Operator.__new__(S.Operator)
+    op.lab = SimpleNamespace(env={S.SCRIPTS_ENV: str(scripts)})
+    op.chat = SimpleNamespace(errors=["operator-0001.json: PermissionError"])
+    spec = {"state": str(sync / "lead-state.json"), "pidfile": str(sync / "lead-0.pid")}
+    ids = set()
+    for _ in range(2):
+        written = op.new_session(spec)
+        ids.add(op.session_id)
+        assert written["session"] == op.session_id and "session" not in spec
+        assert not (sync / "lead-state.json").exists()
+        assert json.loads((scripts / S.TUI_SCRIPT).read_text(encoding="utf-8"))["session"] == op.session_id
+        (sync / "lead-state.json").write_text("{}", encoding="utf-8")  # the session's own state, removed next open
+    assert len(ids) == 2 and "" not in ids and op.chat_errors_at_open == 1

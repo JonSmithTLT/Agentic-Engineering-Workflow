@@ -245,7 +245,9 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   silent past the bound is recorded as `lead_silent` with whose fault it is, only as far as the evidence goes: the
   harness's only with harness evidence (a chat read error, or the Lead waiting to hear while an operator message it
   has not read exists); otherwise "not established", with what the Lead was doing (a call that never returned, no TUI
-  started), so a product hang reads as one. An exception that ends the scripted Lead is recorded as `lead_error`: the
+  started), so a product hang reads as one. The evidence is the silent session's own: each open gets its own id,
+  which its events and its state carry, the previous session's state is removed, and the operator's chat errors
+  count from the open. An exception that ends the scripted Lead is recorded as `lead_error`: the
   aew-lead MCP server ending is the product's, anything else is not established. Neither is ever reported as "no
   result reached the operator".
 - **Stale revisions are attributed.** For each `STALE_REVISION` the Lead meets, the ledger records the commit that

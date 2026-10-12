@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -80,6 +81,8 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
+    session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
+    chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
     @property
     def root(self) -> Path:
@@ -160,9 +163,19 @@ class Operator:
 
     # ------------------------------------------------------------------ the Lead session
 
+    def new_session(self, lead_spec: dict[str, Any]) -> dict[str, Any]:
+        """Each open is its own session (review of #213, I1): a fresh id its records carry (a reused pid cannot match
+        it), no state file left from the previous session, and the operator's chat errors counted from here, so a
+        silence is judged only on this session's evidence. The spec the TUI reads is written with the id."""
+        lead_spec = {**lead_spec, "session": uuid.uuid4().hex}
+        self.session_id = lead_spec["session"]
+        self.chat_errors_at_open = len(self.chat.errors)
+        Path(lead_spec["state"]).unlink(missing_ok=True)
+        (Path(self.lab.env[SCRIPTS_ENV]) / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
+        return lead_spec
+
     def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any]) -> Session:
-        scripts = Path(self.lab.env[SCRIPTS_ENV])
-        (scripts / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
+        lead_spec = self.new_session(lead_spec)
         n = len(self.lab.sessions)
         out, err = self.tmp / f"session-{n}.out", self.tmp / f"session-{n}.err"
         kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
@@ -192,10 +205,13 @@ class Operator:
         as the evidence goes (review of #213, G2 and H1): see :func:`silence_fault`."""
         state = lead_state(self.lab)
         events = lead_events(self.lab)
-        fault, why = silence_fault(chat_errors=self.chat.errors, events=events, state=state, sent=self.chat.sent)
+        errors = self.chat.errors[self.chat_errors_at_open:]
+        fault, why = silence_fault(chat_errors=errors, events=events, state=state, sent=self.chat.sent,
+                                   session=self.session_id)
+        mine = [e for e in events if e.get("session") == self.session_id]
         self.ledger.observe("lead_silent", waiting_for=waiting_for, bound_s=bound, fault=fault, why=why,
-                            chat_errors=self.chat.errors[-6:], lead_state=state,
-                            last_lead_event=events[-1] if events else None)
+                            session=self.session_id, chat_errors=errors[-6:], lead_state=state,
+                            last_lead_event=mine[-1] if mine else None)
 
     def say(self, step: str, text: str) -> None:
         self.chat.send({"text": text})
@@ -435,12 +451,18 @@ def lead_state(lab: HarnessLab) -> dict[str, Any] | None:
 
 
 def silence_fault(*, chat_errors: list[str], events: list[dict[str, Any]], state: dict[str, Any] | None,
-                  sent: int) -> tuple[str, str]:
+                  sent: int, session: str) -> tuple[str, str]:
     """Whose fault a silent Lead is, from the evidence (review of #213, H1). ``harness`` only with harness evidence:
     a chat read error on either side, or the Lead waiting to hear while an operator message it has not read exists
     (both sides waiting on the chat). Otherwise ``not established``, with what the Lead was doing, so a product hang
-    (a call that never returned, no TUI started) reads as one and never as the harness's."""
-    listener = [e for e in events if e.get("kind") == "listener_error"]
+    (a call that never returned, no TUI started) reads as one and never as the harness's.
+
+    Only ``session``'s evidence counts (review of #213, I1): its events and its state carry its per-open id, and an
+    earlier session's state or ``listener_error`` is ignored. ``chat_errors`` are the operator's since this session
+    opened."""
+    listener = [e for e in events if e.get("kind") == "listener_error" and e.get("session") == session]
+    if state is not None and state.get("session") != session:
+        state = None  # an earlier session's: not this one's evidence
     if chat_errors or listener:
         return "harness", f"chat read errors: operator {len(chat_errors)}, Lead {len(listener)}"
     if state is not None and state.get("doing") == "waiting_to_hear" and sent > int(state.get("chat_read") or 0):

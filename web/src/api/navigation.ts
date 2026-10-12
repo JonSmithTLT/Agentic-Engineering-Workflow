@@ -7,6 +7,7 @@ const evidenceKeys = ['evidence_reference','evidence_source','evidence_artifact'
 const executionKeys = ['execution_case','execution_trace','execution_selected','execution_kind','execution_view','execution_display','execution_lane','execution_filter','execution_cursor','execution_trace_cursor','execution_work','execution_invocation','execution_run','execution_tab','execution_pane','execution_locator','execution_receipt_cursor','execution_control_tab'];
 const presentationKeys = ['selected', 'inspector', 'field', 'view', 'focus', 'work_pane'];
 const mapKeys = ['map_activity', 'map_root', 'map_against', 'map_tab', 'map_section', 'map_cursor', 'map_input_cursor', 'map_source_revision', 'map_a', 'map_b'];
+const settingsKeys = ['settings_activity', 'settings_section', 'settings_case', 'settings_profile', 'settings_digest'];
 const filterKeys = [
   'state',
   'kind',
@@ -28,6 +29,7 @@ export function navigationParams(params: URLSearchParams, full = false) {
     ...(full && import.meta.env.MODE === 'demo' ? comparisonKeys : []),
     ...(full && import.meta.env.MODE === 'demo' ? evidenceKeys : []),
     ...(full && import.meta.env.MODE === 'demo' ? executionKeys : []),
+    ...(full && import.meta.env.MODE === 'demo' ? settingsKeys : []),
     ...(full ? [...filterKeys, ...presentationKeys, ...mapKeys, ...historicalKeys] : []),
   ]) {
     const value = params.get(key);

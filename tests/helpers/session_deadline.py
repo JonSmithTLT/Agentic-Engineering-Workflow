@@ -344,6 +344,11 @@ class Controller:
     def pytest_report_header(self, config: Any) -> str:
         return self.report_header()
 
+    def pytest_terminal_summary(self, terminalreporter: Any) -> None:
+        """The same line at the end, where ``-q`` still shows it: a CI log records how the session's set was made
+        (on Windows, how the session job nested under the runner's job)."""
+        terminalreporter.write_line(self.report_header())
+
     @pytest.hookimpl(tryfirst=True)  # before the lane report is written with the session's exit status
     def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
         if self.passed():

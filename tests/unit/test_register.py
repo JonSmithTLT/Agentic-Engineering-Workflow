@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -243,6 +244,56 @@ def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
     assert register.main(["check"]) == 1
     out = capsys.readouterr().out
     assert "due is one of" in out and "future-work.md differs" not in out, out
+
+
+# A cell's text survives the YAML round trip: in an unquoted cell " #" starts a comment, which render drops for good
+# ("by #224" became "by", review of #225, T1). render refuses and check reports instead (register.lost_text).
+LOST = {
+    "right": ("Source: 'added by #224'\n", []),
+    "wrong": ("Source: added by #224\n", [1]),
+    "missing": ("Source: added by pull request 224\n", []),
+    "a hash inside a word": ("Source: see a#b\n", []),
+    "a block cell": ("Source: >-\n  added by #224\n", []),
+    "a later line": ("Work: 'quoted # stays'\nSource: plain\n  continued # lost\n", [3]),
+}
+
+
+@pytest.mark.parametrize("case", sorted(LOST))
+def test_text_a_render_would_lose_is_named_by_line(case):
+    text, lines = LOST[case]
+    found = register.lost_text(text, "f.yaml")
+    assert [int(p.split(":")[1]) for p in found] == lines, found
+
+
+def test_render_refuses_to_drop_authored_text_and_check_names_it(tmp_path, monkeypatch, capsys):
+    """Planted in a copy of the register: an unquoted " #" leaves every file byte-identical and is named; the same text
+    quoted renders and reaches the page."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
+                                                                 register.DUE_MD)]
+    text = source.read_text(encoding="utf-8")
+    anchor = "    Source: Designer ruling, 2026-10-12, C3 (approved with amendment)\n"
+    assert text.count(anchor) == 1, "the planted cell's anchor (E79's Source) moved"
+    source.write_text(text.replace(anchor, anchor[:-1] + " by #224\n"), encoding="utf-8", newline="\n")
+    before = [p.read_bytes() for p in shared]
+    refused = register.render(tmp_path)
+    assert len(refused) == 1 and "future-work.yaml:" in refused[0] and "#224" in refused[0], refused
+    assert [p.read_bytes() for p in shared] == before
+    planted = register.source_problems(tmp_path)
+    assert planted == refused
+    quoted = "    Source: 'Designer ruling, 2026-10-12, C3 (approved with amendment) by #224'\n"
+    source.write_text(text.replace(anchor, quoted), encoding="utf-8", newline="\n")
+    assert register.render(tmp_path) == []
+    assert "C3 (approved with amendment) by #224" in shared[1].read_text(encoding="utf-8")
+    monkeypatch.setattr(register, "source_problems", lambda root=register.ROOT: planted)  # check reports them
+    capsys.readouterr()
+    assert register.main(["check"]) == 1
+    assert "is a YAML comment, which render drops" in capsys.readouterr().out
+
+
+def test_the_register_holds_no_text_a_render_would_lose():
+    assert register.source_problems() == []
 
 
 # ------------------------------------------------------------------------------------------------------- later notes

@@ -69,6 +69,7 @@ apart (``_paired`` never guesses). The markdown is derived and is never merged b
 from __future__ import annotations
 
 import argparse
+import bisect
 import copy
 import re
 import subprocess
@@ -233,6 +234,27 @@ def render_markdown(data: dict[str, Any]) -> str:
 
 def load() -> dict[str, Any]:
     return yaml.safe_load(YAML.read_text(encoding="utf-8"))
+
+
+def lost_text(text: str, name: str) -> list[str]:
+    """Where authored YAML would lose text in its round trip: every comment. ``render`` rewrites the file from what
+    YAML parsed, so a comment is dropped for good, and in an unquoted cell `` #`` starts one: "by #224" parses as
+    "by" (review of #225, T1). The canonical layout has no comments, so any is authored text about to be lost. A ``#``
+    inside a token (a quoted or block cell, or ``a#b``) is text, and is not reported."""
+    spans = sorted((t.start_mark.index, t.end_mark.index) for t in yaml.scan(text)
+                   if t.end_mark.index > t.start_mark.index)
+    starts = [s for s, _ in spans]
+    out = []
+    for at, char in enumerate(text):
+        if char != "#" or (at and not text[at - 1].isspace()):
+            continue
+        i = bisect.bisect_right(starts, at) - 1
+        if i >= 0 and spans[i][0] <= at < spans[i][1]:
+            continue
+        line = text.count("\n", 0, at) + 1
+        lost = text[at:text.find("\n", at) if "\n" in text[at:] else len(text)]
+        out.append(f"{name}:{line}: {lost!r} is a YAML comment, which render drops; quote the cell to keep it")
+    return out
 
 
 def dump(data: dict[str, Any]) -> str:
@@ -583,9 +605,20 @@ def _paths(root: Path) -> tuple[Path, Path, Path, Path]:
     return tuple(root / p.relative_to(ROOT) for p in (YAML, MD, DUE_YAML, DUE_MD))  # type: ignore[return-value]
 
 
-def render(root: Path = ROOT) -> None:
-    """Normalize both YAML files and write both pages from them."""
+def source_problems(root: Path = ROOT) -> list[str]:
+    """Authored text in either YAML file that a render would lose (``lost_text``)."""
+    yaml_path, _, due_yaml, _ = _paths(root)
+    return [p for path in (yaml_path, due_yaml)
+            for p in lost_text(path.read_text(encoding="utf-8"), path.relative_to(root).as_posix())]
+
+
+def render(root: Path = ROOT) -> list[str]:
+    """Normalize both YAML files and write both pages from them. Refuses, writing nothing, while either YAML holds text
+    a render would lose; returns those problems."""
     yaml_path, md, due_yaml, due_md = _paths(root)
+    refused = source_problems(root)
+    if refused:
+        return refused
     data = normalize(yaml.safe_load(yaml_path.read_text(encoding="utf-8")))
     due = normalize_due(yaml.safe_load(due_yaml.read_text(encoding="utf-8")))
     for path, text in ((due_yaml, dump(due)), (yaml_path, dump(data))):
@@ -595,6 +628,7 @@ def render(root: Path = ROOT) -> None:
     due_md.write_text(render_due(due), encoding="utf-8", newline="\n")
     md.write_text(render_markdown(data), encoding="utf-8", newline="\n")
     print(f"rendered {md.relative_to(root)}")
+    return []
 
 
 # ------------------------------------------------------------------------------------------------------- resolve
@@ -840,7 +874,10 @@ def resolve(root: Path = ROOT) -> int:
     if left:
         print("fix the marked conflicts in the YAML, then run `python tools/register.py render`")
         return 1
-    render(root)
+    refused = render(root)
+    if refused:
+        print("merged, but not rendered:", "; ".join(refused))
+        return 1
     print("resolved: `git add` the register's YAML and pages, then commit the merge")
     return 0
 
@@ -867,8 +904,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"imported {sum(len(s['rows']) for s in data['sections'])} rows into {YAML.relative_to(ROOT)}")
         return 0
     if args.command == "render":
-        render()
-        return 0
+        refused = render()
+        for problem in refused:
+            print("problem:", problem)
+        if refused:
+            print("nothing written: quote each cell named above, then render again")
+        return 1 if refused else 0
     if args.command == "resolve":
         return resolve()
     data = normalize(load())
@@ -902,7 +943,7 @@ def main(argv: list[str] | None = None) -> int:
     ok = md_ok = render_markdown(data) == MD.read_text(encoding="utf-8")
     if not md_ok:  # each line names what is out of step, never the register for a decisions-due problem (PR #104, A)
         print(f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders")
-    for problem in due_problems(data, due) + note_problems(data, files):  # a malformed item is named, not a crash
+    for problem in source_problems() + due_problems(data, due) + note_problems(data, files):  # named, not a crash
         ok = False
         print("problem:", problem)
     if render_due(due) != DUE_MD.read_text(encoding="utf-8"):

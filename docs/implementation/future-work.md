@@ -2106,7 +2106,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Recurring finding classes across review rounds: a future AEW mechanism that detects a finding class recurring across review rounds and prompts method-level rework instead of repeated instance fixes. It uses stable finding identities, scope, invariant or check references, and explicit recurrence relationships where they are available; free-text class labels alone are not enough. Detection stays advisory until it is independently qualified, and nothing is rejected automatically on unqualified similarity alone
 
-**Source:** Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope, enumeration and coverage limits), is added to AGENTS.md §1 by
+**Source:** Designer ruling, 2026-10-12, M2 (approved with amendment) and M3 (register M2 for future product design, outside the vertical recovery gate). Its practice counterpart, M1 (a repeatable-class finding states its invariant, scope, enumeration and coverage limits), is added to AGENTS.md §1 by #224
 
 **When:** **Unscheduled.** Future product design; owners: the review protocol, with F42's detectors (Observability and Feedback). Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
 
@@ -2118,7 +2118,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Head-bound CI status in the product: the existing engine evidence and projection owners surface the CI status bound to the exact head in hand-backs, verdict records and the Lead projection. A required check that is missing, failing, pending, cancelled or unavailable is never silently treated as passing, and stale CI evidence never qualifies a newer head. A review may complete while CI is pending; integration and publication keep their existing evidence gates
 
-**Source:** Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and verdict carries the CI observation at its exact head), is added to AGENTS.md §1 by
+**Source:** Designer ruling, 2026-10-12, C2 (approved with amendment). Its practice counterpart, C1 (every hand-back and verdict carries the CI observation at its exact head), is added to AGENTS.md §1 by #224
 
 **When:** **Unscheduled.** Owners: the existing engine evidence and projection owners, through planned work, with no new owner. Under the ruling's S1, it is not an A1 vertical-recovery gate dependency
 

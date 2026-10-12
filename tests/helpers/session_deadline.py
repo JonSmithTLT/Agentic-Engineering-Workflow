@@ -64,8 +64,9 @@ import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
-DEADLINE_EXIT = 70
-JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # distinct from pytest's own exit codes (0-5)
+DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
+JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
+SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 WORKER_KEY = "aew_session_deadline"
 DIR_KEY = "aew_session_dir"
 STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "session-finished", "abnormal-exit"
@@ -289,6 +290,9 @@ class Controller:
                 if plugin is not None:
                     where = plugin.collect_current(f"the session deadline ({self.seconds:g}s) passed")
                     notes.append(f"the running test's autopsy: {where}")
+            slow = float(os.environ.get(SLOW_COLLECT_ENV) or 0)
+            if slow > 0:  # a test of the sentinel path only: a controller whose collect outlasts its margins
+                time.sleep(min(slow, 600.0))  # bounded
             try:
                 set_now = self.members()
                 _write(self.dir, "controller-processes", proctree.describe(
@@ -306,7 +310,8 @@ class Controller:
                                                   f"  {n}\n" for n in notes)))
             end = self.job.end if self.job is not None else proctree.end  # Windows: on one handle, in the job
             ended = [p.pid for p in proctree.children_first(set_now) if end(p.identity)]
-            _write(self.dir, "controller-ended", _stamp(f"ended {len(ended)} of {len(set_now)} members: {ended}"))
+            _write(self.dir, "controller-ended", _stamp(f"ended {len(ended)} of {len(set_now)} members: {ended}; "
+                                                        f"{self.since_deadline()}"))
             self.exit_status = DEADLINE_EXIT
             if from_thread:
                 self.finish()
@@ -319,7 +324,16 @@ class Controller:
         self._finished.set()
         if self.reaper is not None:
             self.reaper.stop.set()
-        _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status})"))
+        _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
+
+    def since_deadline(self) -> str:
+        """Where this moment sits against the deadline and the sentinel's: margin pressure shows before it bites."""
+        now = time.monotonic()
+        sentinel_at = self.mono + 2 * self.margin
+        if now < self.mono:
+            return f"{self.mono - now:.1f}s before the deadline"
+        return (f"{now - self.mono:.1f}s after the deadline, {sentinel_at - now:.1f}s before the sentinel would act"
+                if now < sentinel_at else f"{now - self.mono:.1f}s after the deadline, past the sentinel's time")
 
     # ------------------------------------------------------------------ the pytest hooks
 

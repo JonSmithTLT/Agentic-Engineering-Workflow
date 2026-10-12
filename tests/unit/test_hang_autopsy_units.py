@@ -164,7 +164,9 @@ def test_a_childs_stack_file_alternates_two_generations_without_a_rename(tmp_pat
                            "import childdiag; childdiag.install(cap=200); exec(" + repr(code) + ")"],
                           env=env, capture_output=True, text=True, timeout=120, **kwargs)
     out = "".join(p.read_text(encoding="utf-8") for p in tmp_path.glob("out-*.log"))
-    assert proc.returncode == 0, proc.stderr + out
+    import autopsy  # a native crash names itself (review of #217, m5: the Windows CPython 3.13 faulthandler residual)
+
+    assert proc.returncode == 0, proc.stderr + out + autopsy.native_crashes(tmp_path)
     assert "rotations 3" in out, out
     gens = sorted(tmp_path.glob("stacks-*.txt"))
     assert [g.name.split(".")[-2] for g in gens] == ["a", "b"]
@@ -286,3 +288,16 @@ def test_a_job_that_runs_pytest_without_its_absolute_deadline_is_named(tmp_path)
 """, encoding="utf-8")
     found = bounds.job_deadline_problems(tmp_path)
     assert [p.split(":")[0] for p in found] == ["w.yml none", "w.yml late", "w.yml wrong"], found
+
+
+def test_a_helper_childs_native_crash_names_itself(tmp_path):
+    """Review of #217, m5: a child's fatal-error dump (childdiag's ``fatal-<pid>.txt``) is named in the failure, so the
+    known faulthandler residual reads as itself, never as an unexplained failure."""
+    import autopsy
+
+    assert autopsy.native_crashes(tmp_path) == ""
+    (tmp_path / "fatal-41.txt").write_text("", encoding="utf-8")  # armed, nothing happened
+    (tmp_path / "fatal-42.txt").write_text("Windows fatal exception: access violation\n\nThread 0x1 ...\n",
+                                           encoding="utf-8")
+    assert autopsy.native_crashes(tmp_path) == ("fatal-42.txt: Windows fatal exception: access violation "
+                                                "(see the file for every thread's stack)")

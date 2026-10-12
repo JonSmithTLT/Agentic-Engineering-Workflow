@@ -478,3 +478,55 @@ def test_the_reaper_never_takes_the_status_of_a_child_the_controller_started(tmp
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert (out / "rc").read_text(encoding="utf-8") == "3"
     sentinel_ends(session_dir(hangs))
+
+
+LEAKS = '''import os, subprocess, sys
+from pathlib import Path
+
+NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+
+
+def test_leaves_a_process(tmp_path):
+    script = tmp_path / "sleeper.py"
+    script.write_text("import time\\ntime.sleep(120)\\n", encoding="utf-8")
+    child = subprocess.Popen([sys.executable, str(script)], cwd=tmp_path, **NO_WINDOW)  # never ended: the leak
+    (Path(os.environ["G3_OUT"]) / "leaked.pid").write_text(str(child.pid), encoding="utf-8")
+'''
+
+
+def test_a_process_a_test_leaves_running_is_reported_by_its_test_directory(tmp_path, monkeypatch):
+    """Review of #217, (a), report-only: a process still running after its test, whose command line or working
+    directory is in the session's base temporary directory, is listed at its module's end with the test directory
+    it is in (pytest's numbered name). Nothing fails for it yet (G3b enforces)."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setenv("G3_OUT", str(out))
+    proc = inner(project(tmp_path, LEAKS), hangs, "-p", "no:xdist", "--basetemp", str(tmp_path / "base"))
+    try:
+        assert proc.returncode == 0, proc.stdout + proc.stderr  # report-only: the run stays green
+        pid = int((out / "leaked.pid").read_text(encoding="utf-8"))
+        report = texts(hangs / "autopsy", "leaked-processes.*")
+        assert re.search(rf"test_leaves_a_process\d*: pid {pid} .*sleeper\.py", report), report
+    finally:
+        ident = proctree.identity(int((out / "leaked.pid").read_text(encoding="utf-8")))
+        if ident is not None:
+            proctree.end(ident)
+
+
+def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_so(tmp_path, monkeypatch):
+    """Review of #217, (b): the suspected cause of the one unexplained session-set failure, made deterministic. The
+    controller's collect outlasts both margins, so the sentinel acts: it writes ``session-deadline`` itself (saying
+    so), records the set it ended, and the controller never writes ``session-finished``."""
+    hangs = tmp_path / "hangs"
+    monkeypatch.setenv("G3_TEST_SLOW_COLLECT_S", "60")
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "1",
+                 "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    names = {p.name for p in session.iterdir()}
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (DEADLINE_EXIT, -9, 137), why  # ended by the sentinel: its job code, or SIGKILL
+    assert "session-finished.txt" not in names and "abnormal-exit.txt" not in names, why
+    assert "written by the sentinel" in (session / "session-deadline.txt").read_text(encoding="utf-8"), why
+    assert any(n.startswith("sentinel-processes-deadline") for n in names), why
+    assert "(deadline)" in (session / "sentinel-log.txt").read_text(encoding="utf-8"), why

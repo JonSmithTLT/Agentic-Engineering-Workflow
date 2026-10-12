@@ -252,6 +252,37 @@ class AutopsyPlugin:
         dest = self.collected.get(item.nodeid)
         if dest is not None and (rep.failed or rep.when == "call"):
             rep.sections.append(("aew autopsy", f"the autopsy is kept in {dest}"))
+        if rep.failed:
+            crashed = native_crashes(self.child_root / hd.safe_dir(item.nodeid))
+            if crashed:  # a helper child that died natively names itself (review of #217, m5)
+                rep.sections.append(("aew helper child crash", crashed))
+
+    def pytest_runtest_teardown(self, item: pytest.Item, nextitem: pytest.Item | None) -> None:
+        if nextitem is None or nextitem.module is not item.module:  # each module's end
+            self.scan_leaks(f"after {item.module.__name__ if item.module else item.nodeid}")
+
+    def pytest_sessionfinish(self, session: pytest.Session) -> None:
+        self.scan_leaks("at session end")
+
+    def scan_leaks(self, when: str) -> None:
+        """Report-only (review of #217, (a); enforced later, G3b): processes still running whose command line or
+        working directory lies in this process's base temporary directory, each named by the test directory it is in.
+        Never fails anything; written to ``leaked-processes.<worker>.txt``."""
+        try:
+            found = leaked_processes(self.basetemp())
+            if found:
+                hd.write_text(self.root, f"leaked-processes.{self.worker}", f"{time.strftime('%H:%M:%S')} {when}:\n"
+                              + "".join(f"  {test}: pid {p.pid} {p.cmdline or p.exe}\n" for test, p in found),
+                              append=True)
+        except Exception:  # report-only: a scan's own failure is not the test's  # noqa: BLE001, S110
+            pass
+
+    def basetemp(self) -> Path | None:
+        factory = getattr(self.config, "_tmp_path_factory", None)
+        try:
+            return Path(factory.getbasetemp()) if factory is not None else None
+        except OSError:
+            return None
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_handlecrashitem(self, crashitem: str, report: pytest.TestReport, sched: Any) -> None:
@@ -270,6 +301,48 @@ class AutopsyPlugin:
 
 
 # ---------------------------------------------------------------------------------------------- for helpers and tests
+
+def native_crashes(children: Path) -> str:
+    """What the helper children's fatal-error dumps say (``fatal-<pid>.txt``, childdiag): a native crash, such as the
+    known faulthandler residual on Windows CPython 3.13, names itself in the failure instead of reading as a mystery.
+    On Windows an entry can also be an exception a library handled itself: a crash also ends its process."""
+    lines = []
+    for path in sorted(children.glob("fatal-*.txt")) if children.is_dir() else []:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            continue
+        if text:
+            lines.append(f"{path.name}: {text.splitlines()[0]} (see the file for every thread's stack)")
+    return "\n".join(lines)
+
+
+def leaked_processes(basetemp: Path | None) -> list[tuple[str, proctree.Proc]]:
+    """(test directory, process) for every process, not this one, whose command line or working directory (Linux)
+    lies under ``basetemp``. pytest's numbered directory is the test's name, so no marker is needed, under xdist
+    too (each worker scans its own base temporary directory)."""
+    if basetemp is None:
+        return []
+    base = str(basetemp.resolve())
+    found = []
+    for p in proctree.table():
+        if p.pid == os.getpid():
+            continue
+        where = ""
+        if base in (p.cmdline or ""):
+            where = p.cmdline.split(base, 1)[1]
+        elif sys.platform.startswith("linux"):
+            try:
+                cwd = os.readlink(f"/proc/{p.pid}/cwd")
+            except OSError:
+                cwd = ""
+            if cwd.startswith(base):
+                where = cwd[len(base):]
+        if where:
+            test = where.replace("\\", "/").strip("/").split("/")[0].strip('"') or "?"
+            found.append((test, p))
+    return found
+
 
 def current() -> AutopsyPlugin | None:
     return _plugin

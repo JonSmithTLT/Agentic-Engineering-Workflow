@@ -145,6 +145,8 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 | [`vertical-uat.md`](implementation/vertical-uat.md) | The vertical UAT (in shadow): a fresh project to a published fix, its burden ledger and the thresholds the test pins |
+| [`surface-map.md`](implementation/surface-map.md) | Anti-drift guard G1: every `aew` command and typed Lead tool registered with one home, its users, journeys, `mutates`, the Lead's door and disposition, and its refusal codes; the standing rule for new surfaces; which checks are enforced and which only report until A1, A2 and A4 |
+| [`surface-map.yaml`](implementation/surface-map.yaml) | The surface map's registry, checked against the live parser and typed surface by `tests/unit/test_surface_map.py` |
 
 **ADRs** (one entry per ADR with a blank line between, so a change to one entry and an ADR added after it merge; an entry says what the ADR decides and when it was accepted or amended, and build progress goes in [`implementation-status.md`](implementation/implementation-status.md) or a [register note](implementation/notes.d/README.md)):
 

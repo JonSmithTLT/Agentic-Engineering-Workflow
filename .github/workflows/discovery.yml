@@ -32,11 +32,26 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # 15 minutes of test time, plus the session deadline's clearance (G3, tests/helpers/bounds.py)
+    timeout-minutes: 19
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 900 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
       - name: pytest --lane discovery (D2 over the static texts)
-        run: python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600
+        run: >-
+          python -m pytest -q -s -p no:cacheprovider -p no:xdist --lane discovery tests/discovery --test-timeout 600
+          --session-deadline 900 --hang-dir "${{ runner.temp }}/discovery/hangs"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: discovery-hangs-${{ runner.os }}
+          path: ${{ runner.temp }}/discovery/
+          if-no-files-found: ignore
+          retention-days: 30

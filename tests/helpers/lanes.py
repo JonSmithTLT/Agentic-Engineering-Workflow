@@ -283,6 +283,9 @@ class LanePlugin:
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
+        import watchdog
+
+        outs.append(watchdog.hang_dir(self.config) / harness_diagnostics.AUTOPSY_DIR)  # G3: autopsies, deadline marks
         from discovery import capture
 
         outs.append(capture.out_path(self.config))  # D2's findings, beside the lane report

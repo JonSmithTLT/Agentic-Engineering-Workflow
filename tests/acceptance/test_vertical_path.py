@@ -42,7 +42,10 @@ from vertical.scripted_operator import (
 
 from aew.harness import runlog
 
-pytestmark = pytest.mark.acceptance("VUAT")
+# G3 H1/H4: a failed scenario keeps an autopsy: the stacks, the processes, the Lead's TUI's own diagnostics (childdiag),
+# and the parts of its world the helpers register (the chat, the Lead's events and state, the sessions' output), not
+# its whole tmp_path (a project with its workspaces).
+pytestmark = [pytest.mark.acceptance("VUAT"), pytest.mark.autopsy(tmp_path=False)]
 
 OUT_ENV = "AEW_VERTICAL_OUT"  # where the ledgers go (CI uploads them); default: the test's own tmp_path
 EXISTS, PROPOSED = "exists", "PROPOSED"
@@ -844,3 +847,66 @@ def raise_steering(op: Operator) -> None:
     except Exception as exc:  # recorded, never hidden: the run goes on in the mode it has  # noqa: BLE001
         answer = f"refused: {exc}"
     op.ledger.decision("raise the Lead's steering mode to run?", answer, label="steering_mode", asked_by="operator")
+
+
+# ---------------------------------------------------------------------------------------------- G3: #213, rebuilt
+
+
+def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_path, world, request, monkeypatch):
+    """The hang-and-flake diagnosis plan's own test (G3, "the real case"). In #213 the vertical lane hung for 30
+    minutes once: the Lead's chat listener, in the fake TUI **subprocess**, died with no trace, under a chat bound
+    (1800 s) equal to the lane's --test-timeout, and the evidence was deleted with tmp_path.
+
+    Rebuilt here: the listener dies of an exception no ``except Exception`` catches, on the operator's first request.
+    From the autopsy's kept files alone: the listener died and why (the TUI's childdiag events, and ``thread_died`` in
+    the Lead's events), where the test was waiting (the operator's chat wait ran out, in the flight recorder) and where
+    the Lead was (its periodic stacks: waiting to hear), and that the old bounds broke the nesting rule, which the pin
+    (``test_ci_tools``) now fails first."""
+    import sys
+
+    import autopsy
+    import bounds
+    from fake_harness import SCRIPTS_ENV
+    from vertical import scripted_operator
+
+    op = setup_operator(tmp_path, "G3-213")
+    world.append(op)
+    configure(op)
+    op.in_setup = False
+    autopsy.mark_helper_dir(Path(op.lab.env[SCRIPTS_ENV]), interval=2)  # a dump every 2 s, for this test only
+    module = sys.modules[__name__]
+    injected = module.lead_spec
+    monkeypatch.setattr(module, "lead_spec", lambda lab, steering=False: {**injected(lab, steering=steering),
+                                                                         "inject": "listener_dies"})
+    monkeypatch.setattr(scripted_operator, "CONVERSATION_S", 20.0)  # the operator's wait, short for this test
+    session, _ = open_session(op, "open")
+    op.say("ask", workers.REQUEST)
+    assert op.converse(session) is None  # the operator's wait ran out: the Lead is silent
+    plugin = autopsy.current()
+    assert plugin is not None
+    kept = plugin.collect(request.node.nodeid, "G3: the #213 reconstruction", item=request.node)
+    op.end_session(session, "kill")
+
+    def read(pattern: str) -> str:
+        return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(kept.rglob(pattern))
+                         if p.is_file())
+
+    events = read("events-*")  # the TUI's own record of the death (childdiag)
+    assert "thread_exception" in events and "vertical-chat" in events and "InjectedDeath" in events, events
+    assert "the listener died on its first operator message" in events and "_listen" in events, events
+    assert "thread_died" in read("lead-events.jsonl*")  # and in the Lead's events, which the ledger reads
+    lead_stacks = read("stacks-*")
+    assert "in hear" in lead_stacks, lead_stacks[-3000:]  # the Lead waits to hear what its dead listener never passes
+    recorder = read("recorder.*")
+    assert '"name": "chat.operator.receive"' in recorder and '"ended": "timeout"' in recorder, recorder[-3000:]
+    in_force = read("bounds*")
+    assert "vertical.chat: 1500s" in in_force and "vertical.conversation: 1200s" in in_force, in_force
+
+    # The bounds #213 ran under break the nesting rule: the pin fails on them before any run could hang.
+    lane = next(x for x in bounds.workflow_lanes(Path(__file__).resolve().parents[2] / ".github" / "workflows")
+                if x.lane == "vertical")
+    old = [bounds.Bound("vertical.chat", 1800, None, frozenset({"vertical"})),
+           bounds.Bound("vertical.conversation", 1800, None, frozenset({"vertical"}))]
+    found = bounds.nesting_problems(lane, old)
+    assert any("bound vertical.chat (1800s) is not below --test-timeout 1800s" in p for p in found), found
+    assert bounds.nesting_problems(lane, [b for b in bounds.BOUNDS.values() if b.name.startswith("vertical.")]) == []

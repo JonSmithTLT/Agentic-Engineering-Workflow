@@ -89,8 +89,14 @@ jobs:
           - os: windows-latest
             python: "3.13"   # developer workstation
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 24
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1200 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the spec-pin test verifies the frozen tag
@@ -107,12 +113,13 @@ jobs:
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600
+          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600 --session-deadline 1200
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
+          --session-deadline 1200
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -161,8 +168,14 @@ jobs:
           - {os: windows-latest, python: "3.13", lane: adversarial, shard: 1, of: 2}
           - {os: windows-latest, python: "3.13", lane: adversarial, shard: 2, of: 2}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 34
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -178,7 +191,7 @@ jobs:
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          --test-timeout 600
+          --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -206,10 +219,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
     runs-on: ubuntu-latest
-    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes); core's own
-    # 20-minute timeout is unchanged.
-    timeout-minutes: 15
+    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes), and
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 19
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 900 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the base tip, and the spec-pin test verifies the frozen tag
@@ -226,7 +244,9 @@ jobs:
         env:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
-        run: python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+        run: >-
+          python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+          --session-deadline 900 --hang-dir "${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

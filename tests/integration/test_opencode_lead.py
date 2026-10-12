@@ -136,3 +136,7 @@ def test_the_lead_commands_are_what_the_tui_is_given():
     commands = projection.lead_config()["commands"]
     assert sorted(commands) == ["aew-handoff", "aew-next", "aew-resume", "aew-status", "aew-ticket"]
     assert all(c["agent"] == projection.LEAD_AGENT for c in commands.values())
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

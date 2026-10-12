@@ -649,6 +649,9 @@ def test_the_ratchet_and_the_plugin_share_their_schemas():
                            "errors": {}}}, None, False),
     ({}, None, True),  # down without handing its findings on
     ({capture.WORKER_KEY: {"outputs": 1, "findings": {}, "errors": {}}}, "worker crashed", True),
+    # G3a's session deadline: a worker ends with os._exit(70) before its sessionfinish, so it hands nothing on and
+    # xdist reports it down with an error; that is one capture error for that worker, never silence and never two
+    ({}, "worker 'gw3' crashed while running ... (exit 70)", True),
 ])
 def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output, error, lost):
     """Review of #218, G1: `pytest_testnodedown` merges what a worker handed on, and counts a worker that died, or
@@ -657,7 +660,7 @@ def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output,
     node = type("Node", (), {"workeroutput": output, "gateway": type("G", (), {"id": "gw3"})()})()
     plugin.pytest_testnodedown(node, error)
     snapshot = plugin.recorder.as_dict()
-    assert bool(snapshot["errors"]) is lost
+    assert sum(snapshot["errors"].values()) == (1 if lost else 0)  # counted, and once per worker
     assert all("gw3 went down without its findings" in name for name in snapshot["errors"])
     if not lost:
         assert snapshot["findings"]["O-CMD x"]["count"] == 1 and snapshot["outputs"] == 2

@@ -938,3 +938,7 @@ def test_legality_modules_never_import_coordination():
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",
                                                                                  "aew.coordination.layout"}, leaf_only
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

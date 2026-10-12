@@ -74,16 +74,25 @@ import time
 from pathlib import Path
 from typing import Any
 
+import bounds
+import childdiag
+
 from vertical.chat import Gone, Mailbox
 from vertical.ledger import OPERATOR_OWNER, SELF_OWNERS
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
-LOOP_WAIT_S = 120.0  # the bound on waiting for the steering loop's event
+# Every bound is declared (tests/helpers/bounds.py) and nests under the vertical lane's --test-timeout, so the
+# innermost wait fails first and names itself (the hang-and-flake diagnosis plan, G3 H5).
+LOOP_WAIT_S = bounds.declare("vertical.loop_wait", 120, within="vertical.conversation", lanes={"vertical"},
+                             why="the Lead's wait for the steering loop's event, inside the operator's wait for it")
 POLL_S = 0.25
 TERMINAL = frozenset({"DONE", "CANCELLED"})
 AVAILABLE = "AVAILABLE"
 EXIT = "/exit"
-CHAT_TIMEOUT_S = 1800.0
+CHAT_TIMEOUT_S = bounds.declare(
+    "vertical.chat", 1500, lanes={"vertical"},
+    why="the Lead's wait to hear the operator (its listener and hear). In #213 it was 1800 s, equal to the lane's "
+        "--test-timeout, so no inner bound fired first; it outlasts the operator's own wait, which names a silence")
 WRITE_TRIES = 20  # a record write retried this many times on an OSError (a sharing violation on Windows), then raised
 MCP_ENDED = "the aew-lead MCP server ended"
 PROGRESS = ("REVIEW", "VERIFY", "COMMIT_READY", "RUNNING", "READY", "DONE")
@@ -170,6 +179,9 @@ class Lead:
                 time.sleep(POLL_S)
                 continue
             deadline = time.monotonic() + CHAT_TIMEOUT_S
+            # #213 rebuilt: a death that no `except Exception` catches
+            if getattr(self, "spec", {}).get("inject") == "listener_dies":
+                raise InjectedDeath("the listener died on its first operator message (injected: the #213 case)")
             if str(msg.get("text", "")).strip() == EXIT:
                 self.best_effort_event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
                 with self.lock:
@@ -733,14 +745,40 @@ def classify(exc: BaseException) -> str:
     return "product" if isinstance(exc, RuntimeError) and str(exc) == MCP_ENDED else "not established"
 
 
+class InjectedDeath(BaseException):
+    """The fault the #213 reconstruction injects (``"inject": "listener_dies"`` in the spec): a BaseException, so the
+    listener's own ``except Exception`` does not catch it and the thread dies, as #213's listener did."""
+
+
+def recorded(lead: Lead) -> childdiag.DeathHook:
+    """How a death reaches the Lead's own events (the ledger's input): ``childdiag.died`` is the one place a death is
+    recorded (its events file, the flight recorder); this hook only adds it to the Lead's events. A thread that dies
+    is ``thread_died``; the session's own fatal error is ``lead_error``, with the step and whose fault it is."""
+
+    def hook(kind: str, thread: str, exc: BaseException, facts: dict[str, Any]) -> None:
+        error = f"{type(exc).__name__}: {exc}"[:400]
+        if kind == "lead_error":
+            lead.best_effort_event("lead_error", error=error, fault=facts.get("fault"))
+        else:  # a thread of this script died: the harness's fault, unless the product ended under it
+            fault = "product" if classify(exc) == "product" else "harness"
+            lead.best_effort_event("thread_died", thread=thread, error=error, fault=fault,
+                                   stack=str(facts.get("stack"))[-2000:])
+
+    return hook
+
+
 def main(spec_path: Path) -> int:
     """The scripted Lead's session. Nothing ends it without a record (review of #213, H2): an exception in its main
-    thread is recorded as ``lead_error`` with the step it was on and whose fault it is, then the session ends."""
+    thread is recorded as ``lead_error`` with the step it was on and whose fault it is, then the session ends; a
+    thread that dies (the uncaught-exception hook) is recorded as ``thread_died``. Both through ``childdiag.died``."""
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     lead = Lead(spec)
+    forget = childdiag.on_death(recorded(lead))
     try:
         lead.run()
     except Exception as exc:  # recorded, never silent  # noqa: BLE001
-        lead.best_effort_event("lead_error", error=f"{type(exc).__name__}: {exc}"[:400], fault=classify(exc))
+        childdiag.died("lead_error", "MainThread", exc, fault=classify(exc))
         return 1
+    finally:
+        forget()
     return 0

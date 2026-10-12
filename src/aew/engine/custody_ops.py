@@ -67,6 +67,7 @@ LOG_DIR = "local/custody"
 # Variables a Lead session sets (the broker's, and the Lead credential): the worker refuses to run with any of them
 # present (S3), and its spawn never passes one (its environment is an allow-list).
 LEAD_SESSION_VARS = ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY", "AEW_LEAD_TOKEN")
+LEAD_SESSION = "lead_session"  # the refusal's reason code (details["reason"]): refused because a Lead session is here
 POLL_S = 5.0  # the worker re-reads state at least this often; a commit's wake file wakes it sooner
 ENDED, ACTED, WAITING = "ended", "acted", "waiting"
 RUN_LOST = "run lost"  # the integration verifier's run that no supervisor holds any more (routed, §2.3)
@@ -143,7 +144,7 @@ def refuse_lead_session(environ: dict[str, str] | None = None) -> None:
     if present:
         raise PermissionDenied("`aew integrate custody` is the integration custodian's own process, started by the "
                                "engine when it grants a lease; it never runs in a Lead session "
-                               f"({', '.join(present)} present)", variables=present)
+                               f"({', '.join(present)} present)", variables=present, reason=LEAD_SESSION)
 
 
 # ---------------------------------------------------------------------------------------------- the worker

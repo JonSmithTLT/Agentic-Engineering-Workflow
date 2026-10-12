@@ -50,6 +50,7 @@ PROJECTED = (EXECUTION,)  # the documents projected field by field in this slice
 # Document states (§4.2), highest precedence first.
 MANIFEST_DRIFTED, DRIFTED, INVALID, ADOPTED, UNPINNED, ABSENT = (
     "MANIFEST_DRIFTED", "DRIFTED", "INVALID", "ADOPTED", "UNPINNED", "ABSENT")
+STATES = (MANIFEST_DRIFTED, DRIFTED, INVALID, ADOPTED, UNPINNED, ABSENT)  # every state, in precedence order
 # The digest's `adopted` and `on_disk` inputs besides a hash (§4.1, §4.2): each case is encoded distinctly.
 NO_PINS, PINNED_ABSENT, NOT_IN_PINS, ON_DISK_ABSENT = "no_pins", "pinned_absent", "not_in_pins", "absent"
 DRIFTED_INPUT = "manifest_drifted"  # `rel`, `adopted` and `on_disk` while the manifest is drifted (N2)
@@ -93,6 +94,8 @@ FIELD_WITHHELD = "field_withheld"
 # A string over Appendix A's bound ("strings are at most 512 bytes unless stated") is withheld, never clipped: a clipped
 # value would show content that is not the file's (the operator's decision on the F1a review, R5). An open code.
 MAX_STRING_BYTES, TOO_LONG = 512, "too_long"
+# Every reason a FieldValue is withheld (§3.1, §7): the one list the contract change note's open enum is pinned to.
+WITHHELD_REASONS = (NOT_A_MODEL_ID, NOT_A_NAME, NOT_A_HARNESS_NAME, CREDENTIAL_SHAPED, TOO_LONG)
 
 
 def _schema_keys(node: Any) -> set[str]:
@@ -122,6 +125,13 @@ def too_long(value: Any) -> bool:
 
 # Edit scope (§3.3): in F46.2's first scope, a later slice, or never.
 F46_2, LATER, NEVER = "F46.2", "later", "never"
+EDIT_SCOPES = (F46_2, LATER, NEVER)
+# Where a supplied effective value comes from (§3.1): the profile, the policy's top level, or a default.
+FROM_PROFILE, FROM_POLICY, FROM_DEFAULT = "profile", "policy", "default"
+EFFECTIVE_SOURCES = (FROM_PROFILE, FROM_POLICY, FROM_DEFAULT)
+# How a profile's identity was derived (§3.3, §5): its builtin adapter's rule, or C1's inherited rule (no import).
+BY_ADAPTER, INHERITED = "adapter", "inherited"
+IDENTITY_RULES = (BY_ADAPTER, INHERITED)
 
 
 def capability(state: str, *codes: str) -> dict[str, Any]:
@@ -512,18 +522,18 @@ class _Projector:
         """The profile's identity (C1's ``ModelIdentity``), its rule, or why there is none (§3.3, §5, §7 rules 7-8).
         Never derived from a withheld value; a non-builtin harness gets C1's inherited rule, with no import."""
         harness = X.profile_harness(self.document, profile)
-        rule = "adapter" if harness in registry.BUILTIN else "inherited"
+        rule = BY_ADAPTER if harness in registry.BUILTIN else INHERITED
         none = {"identity": None, "identity_rule": rule, "identity_error": None, "harness": None, "provider": None}
         harness_why = _harness(harness)
         if harness_why:
             at = ("profiles", key, "harness") if "harness" in profile else ("harness",)
-            return none | {"identity_rule": "inherited", "identity_error": self.withheld_error(harness_why, at)}
+            return none | {"identity_rule": INHERITED, "identity_error": self.withheld_error(harness_why, at)}
         for field in ("model", "provider"):
             if fields[field].get("withheld"):
                 return none | {"identity_error": self.withheld_error(fields[field]["withheld"],
                                                                      ("profiles", key, field))}
         try:
-            pair = X.model_pair(self.document, key, registry.model_identity if rule == "adapter" else None)
+            pair = X.model_pair(self.document, key, registry.model_identity if rule == BY_ADAPTER else None)
         except ModelIdRefused as exc:
             suggestion = next((s for s in exc.details.get("suggestions") or [] if _model_id(s) is None), None)
             return none | {"identity_error": {
@@ -560,8 +570,8 @@ class _Projector:
             fields = {
                 "harness": self.fv(("profiles", key, "harness"), _harness, F46_2,
                                    effective=X.profile_harness(self.document, profile),
-                                   effective_source=("profile" if "harness" in profile else
-                                                     "policy" if "harness" in self.document else "default")),
+                                   effective_source=(FROM_PROFILE if "harness" in profile else
+                                                     FROM_POLICY if "harness" in self.document else FROM_DEFAULT)),
                 "provider": self.fv(("profiles", key, "provider"), _model_id, F46_2),
                 "model": self.fv(("profiles", key, "model"), _model_id, F46_2),
                 "effort": self.fv(("profiles", key, "effort"), _text, F46_2),
@@ -626,7 +636,7 @@ class _Projector:
 
     def controls(self) -> dict[str, Any]:
         envelope = {k: self.fv(("steering", "envelope", k), _text, LATER, effective=v if not _lookup(
-            self.document, ("steering", "envelope", k))[0] else None, effective_source="default")
+            self.document, ("steering", "envelope", k))[0] else None, effective_source=FROM_DEFAULT)
             for k, v in S.ENVELOPE_DEFAULTS.items()}
         effective = S.effective(self.c.state)
         containment = self.document.get("containment")
@@ -686,7 +696,7 @@ def execution_projection(k: Kernel, *, observed_in: str = CLI_ENVIRONMENT,
                      "violations_truncated": len(found) > MAX_VIOLATIONS, "yaml_error": yaml_err},
         "configured": proj.fv(("configured",), _text, F46_2),
         "harness": proj.fv(("harness",), _harness, F46_2, effective=document.get("harness") or X.DEFAULT_HARNESS,
-                           effective_source="policy" if "harness" in document else "default"),
+                           effective_source=FROM_POLICY if "harness" in document else FROM_DEFAULT),
         "description": proj.fv(("description",), _text, F46_2),
         "profiles": profiles[:MAX_PROFILES],
         "profiles_truncated": len(profiles) > MAX_PROFILES,

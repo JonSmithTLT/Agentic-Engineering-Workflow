@@ -297,3 +297,7 @@ def test_still_running_reflects_a_commit_the_record_lane_returned_before(lab, tm
     monkeypatch.undo()
     release[RB].write_text("go", encoding="utf-8")
     lab.wait(RB)
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

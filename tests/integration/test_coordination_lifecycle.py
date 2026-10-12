@@ -1112,3 +1112,7 @@ def test_resolving_a_stage_ends_no_invocation_and_needs_no_seal(w):
     assert state(w)["invocations"][inv]["status"] == "active" and pointer(w, wid, inv) is None
     assert fallback_events(w) == []
     assert_control_invariants(w)
+
+
+# G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
+pytestmark = pytest.mark.autopsy

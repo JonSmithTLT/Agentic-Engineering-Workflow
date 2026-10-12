@@ -48,11 +48,11 @@ def pytest_configure(config):
 '''
 
 
-def project(tmp_path: Path, tests: str, files: dict[str, str] | None = None) -> Path:
+def project(tmp_path: Path, tests: str, files: dict[str, str] | None = None, conftest_extra: str = "") -> Path:
     root = tmp_path / "proj"
     (root / "tests" / "integration").mkdir(parents=True)
     (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
-    (root / "tests" / "conftest.py").write_text(CONFTEST, encoding="utf-8")
+    (root / "tests" / "conftest.py").write_text(CONFTEST + conftest_extra, encoding="utf-8")
     (root / "tests" / "integration" / "test_x.py").write_text(tests, encoding="utf-8")
     for name, text in (files or {}).items():
         (root / name).write_text(text, encoding="utf-8")
@@ -430,19 +430,51 @@ def test_an_orphan_that_exits_is_seen_gone():
 '''
 
 
-@pytest.mark.parametrize(("mode", "hold"), [(("-p", "no:xdist"), "0.5"), (("-n", "1"), "0.5"), (("-n", "1"), "0")],
-                         ids=["one_process", "xdist", "xdist-orphaned-at-once"])
+@pytest.mark.parametrize(("mode", "hold"), [(("-p", "no:xdist"), "0.5"), (("-n", "1"), "0.5")],
+                         ids=["one_process", "xdist"])
 def test_an_orphan_that_exits_under_the_session_is_seen_gone_by_every_process(tmp_path, monkeypatch, mode, hold):
     """Linux: the controller is a subreaper, so a detached process whose launcher already ended is re-parented to it.
     When that orphan exits, the controller must reap it, or it stays a zombie that ``procs.pid_alive`` in any other
     process (a worker, an ``aew`` command) reports as alive. Liveness is judged from a separate process.
 
-    Without xdist the controller reaps only a zombie it saw with another parent first, so the launcher lives 0.5 s
-    (longer than the reaper's poll). An orphan adopted within one poll is the stated gap there; under xdist the
-    controller's own children are known (its workers, the sentinel), so even one orphaned at once is reaped. The same
-    test holds on Windows, where nothing is re-parented."""
+    The controller reaps only a zombie it saw with another parent first, so the launcher lives 0.5 s (longer than
+    the reaper's poll); an orphan adopted within one poll is the stated gap. The same test holds on Windows, where
+    nothing is re-parented."""
     hangs = tmp_path / "hangs"
     monkeypatch.setenv("G3_HOLD", hold)
     proc = inner(project(tmp_path, ORPHAN), hangs, "--session-deadline", "120", *mode)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    sentinel_ends(session_dir(hangs))
+
+
+OWN_CHILD = '''
+
+import os, subprocess, sys
+
+
+def pytest_sessionstart(session):
+    if not hasattr(session.config, "workerinput"):  # the controller's own child, which it waits for later
+        session.config.g3_child = subprocess.Popen([sys.executable, "-c", "raise SystemExit(3)"])
+
+
+def pytest_sessionfinish(session):
+    if not hasattr(session.config, "workerinput"):
+        rc = session.config.g3_child.wait(timeout=60)
+        with open(os.path.join(os.environ["G3_OUT"], "rc"), "w", encoding="utf-8") as fh:
+            fh.write(str(rc))
+'''
+
+
+@pytest.mark.parametrize("mode", [("-p", "no:xdist"), ("-n", "1")], ids=["one_process", "xdist"])
+def test_the_reaper_never_takes_the_status_of_a_child_the_controller_started(tmp_path, monkeypatch, mode):
+    """Review of #217, m1: a child the controller started itself, and waits for after it exited, keeps its exit
+    status: the reaper takes only orphans it saw adopted, never the controller's own children (before the fix, under
+    xdist, ``wait()`` returned 0 for a child that exited 3)."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setenv("G3_OUT", str(out))
+    tests = "import time\n\n\ndef test_lets_the_reaper_poll():\n    time.sleep(1)  # several reaper polls\n"
+    proc = inner(project(tmp_path, tests, conftest_extra=OWN_CHILD), hangs, "--session-deadline", "120", *mode)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (out / "rc").read_text(encoding="utf-8") == "3"
     sentinel_ends(session_dir(hangs))

@@ -265,7 +265,7 @@ if IS_WINDOWS:  # pragma: windows-only
         out = ctypes.create_unicode_buffer(n.value)
         return out.value if _k32.QueryFullProcessImageNameW(h, 0, out, ctypes.byref(n)) else ""
 
-    def _windows_table(*, details: bool = True) -> list[Proc]:
+    def _toolhelp_rows() -> list[tuple[int, int, str]]:
         snap = _k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         if not snap or snap == INVALID_HANDLE_VALUE:
             raise ctypes.WinError(ctypes.get_last_error())
@@ -279,8 +279,11 @@ if IS_WINDOWS:  # pragma: windows-only
                 ok = _k32.Process32NextW(snap, ctypes.byref(entry))
         finally:
             _k32.CloseHandle(snap)
+        return rows
+
+    def _windows_table(*, details: bool = True) -> list[Proc]:
         out = []
-        for pid, ppid, exe in rows:
+        for pid, ppid, exe in _toolhelp_rows():
             start, cmd = 0, ""
             h = _open(pid) if pid else None
             if h:
@@ -360,9 +363,38 @@ if IS_WINDOWS:  # pragma: windows-only
                     raise ctypes.WinError(ctypes.get_last_error())
                 n *= 4
 
+        def _holds(self, h: int) -> bool:
+            inside = wintypes.BOOL()
+            return bool(_k32.IsProcessInJob(h, self.handle, ctypes.byref(inside))) and bool(inside.value)
+
         def members(self) -> list[Proc]:
-            listed = set(self.pids())
-            return [p for p in _windows_table() if p.pid in listed]
+            """The job's members, each read on one handle that is checked to be in the job: a member that exited after
+            the pid list was taken, and whose pid was reused, is never described (or later ended) as one."""
+            parents = {pid: ppid for pid, ppid, _ in _toolhelp_rows()}
+            out = []
+            for pid in self.pids():
+                h = _open(pid)
+                if not h:
+                    continue
+                try:
+                    if self._holds(h) and _alive_handle(h):
+                        out.append(Proc(pid, parents.get(pid, 0), _creation(h), _image(h), _cmdline(h)))
+                finally:
+                    _k32.CloseHandle(h)
+            return out
+
+        def end(self, ident: tuple[int, int]) -> bool:
+            """End one member, on one handle: still in this job, the same creation time, still alive. A pid reused by
+            a process outside the job is never ended."""
+            pid, start = ident
+            h = _open(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE)
+            if not h:
+                return False
+            try:
+                return (self._holds(h) and _creation(h) == start and _alive_handle(h)
+                        and bool(_k32.TerminateProcess(h, 1)))
+            finally:
+                _k32.CloseHandle(h)
 
         def terminate(self, code: int) -> bool:
             return bool(_k32.TerminateJobObject(self.handle, code))

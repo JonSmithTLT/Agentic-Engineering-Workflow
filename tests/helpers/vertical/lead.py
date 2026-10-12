@@ -759,8 +759,10 @@ def recorded(lead: Lead) -> childdiag.DeathHook:
         error = f"{type(exc).__name__}: {exc}"[:400]
         if kind == "lead_error":
             lead.best_effort_event("lead_error", error=error, fault=facts.get("fault"))
-        else:
-            lead.best_effort_event("thread_died", thread=thread, error=error, stack=str(facts.get("stack"))[-2000:])
+        else:  # a thread of this script died: the harness's fault, unless the product ended under it
+            fault = "product" if classify(exc) == "product" else "harness"
+            lead.best_effort_event("thread_died", thread=thread, error=error, fault=fault,
+                                   stack=str(facts.get("stack"))[-2000:])
 
     return hook
 

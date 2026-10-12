@@ -3,7 +3,7 @@ plan, G3 H5).
 
 In #213 the chat bound (1800 s) equalled the vertical lane's ``--test-timeout 1800``, so no inner bound fired first
 and nothing named the part that stalled. The rule, pinned for every lane in every workflow
-(``tests/unit/test_hang_autopsy_pins.py``):
+(``tests/unit/test_ci_tools.py``):
 
     inner helper bound < enclosing scenario bound < --test-timeout < --session-deadline (+ its margins)
         < the job's timeout-minutes (less JOB_MARGIN_S)
@@ -198,4 +198,40 @@ def nesting_problems(lane: Lane, bounds: Iterable[Bound] | None = None) -> list[
         if lane.test_timeout_s is not None and not b.seconds < lane.test_timeout_s:
             problems.append(f"{lane.label}: bound {b.name} ({b.seconds:g}s) is not below --test-timeout "
                             f"{lane.test_timeout_s:g}s, so the test's own limit fires before the wait can name itself")
+    return problems
+
+
+JOB_DEADLINE_RE = re.compile(r'echo "AEW_JOB_DEADLINE=\$\(\( \$\(date \+%s\) \+ (\d+) \)\)" >> "\$GITHUB_ENV"')
+
+
+def job_deadline_problems(workflows: Path) -> list[str]:
+    """Every job that runs pytest sets its sessions' absolute deadline first (``AEW_JOB_DEADLINE``, which
+    ``session_deadline`` takes as a cap): the job's start plus its timeout, less :data:`JOB_MARGIN_S` and the two
+    deadline margins. Sessions run one after another in a job (``core``'s fast and serial lanes, a loop of serial runs)
+    then all end in time, whatever each one's own ``--session-deadline`` says (review of #217, M1)."""
+    import yaml
+
+    problems = []
+    for path in sorted(workflows.glob("*.yml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for name, job in (doc.get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            pytest_at = [i for i, st in enumerate(steps) if _commands(str(st.get("run") or ""))]
+            if not pytest_at:
+                continue
+            found = [(i, JOB_DEADLINE_RE.search(str(st.get("run") or ""))) for i, st in enumerate(steps)]
+            setting = [(i, m) for i, m in found if m]
+            label = f"{path.name} {name}"
+            if not setting:
+                problems.append(f"{label}: runs pytest but never sets AEW_JOB_DEADLINE")
+                continue
+            i, m = setting[0]
+            want = float(job.get("timeout-minutes") or 0) * 60 - JOB_MARGIN_S - 2 * DEADLINE_MARGIN_S
+            if i > min(pytest_at):
+                problems.append(f"{label}: AEW_JOB_DEADLINE is set after a pytest step")
+            if steps[i].get("shell") != "bash":
+                problems.append(f"{label}: the AEW_JOB_DEADLINE step must run in bash")
+            if float(m.group(1)) != want:
+                problems.append(f"{label}: AEW_JOB_DEADLINE is start + {m.group(1)}s, not start + {want:g}s "
+                                f"(timeout-minutes less {JOB_MARGIN_S:g}s and two {DEADLINE_MARGIN_S:g}s margins)")
     return problems

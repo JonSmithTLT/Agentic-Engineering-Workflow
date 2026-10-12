@@ -50,6 +50,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2160 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -82,6 +85,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2160 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:

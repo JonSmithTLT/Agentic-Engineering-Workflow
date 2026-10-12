@@ -64,7 +64,8 @@ import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
 
 PLUGIN_NAME = "aew-session-deadline"
-DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
+DEADLINE_EXIT = 70
+JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # distinct from pytest's own exit codes (0-5)
 WORKER_KEY = "aew_session_deadline"
 DIR_KEY = "aew_session_dir"
 STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "session-finished", "abnormal-exit"
@@ -104,11 +105,10 @@ class Reaper:
     process sees it alive: ``procs.pid_alive`` from a worker or an ``aew`` process reports a zombie that is not its own
     child as alive. It never takes the exit status of a child the controller started itself:
 
-    - **under xdist** the controller's own children are its workers and the sentinel: any other zombie child is an
-      adopted orphan;
-    - **without xdist** the controller runs the tests, and they start children of their own: a zombie child is reaped
-      only if it was first seen with another parent (adopted). A process born, orphaned and adopted within one poll
-      (:data:`REAP_POLL_S`) counts as the controller's own and stays a zombie after it ends: the stated gap.
+    a zombie child is reaped only if it was first seen with another parent (adopted), and is not one of the
+    controller's known children (its workers, the sentinel). Its own children, whose status a ``Popen`` may still be
+    waiting for, are never reaped. A process born, orphaned and adopted within one poll (:data:`REAP_POLL_S`) counts as
+    the controller's own and stays a zombie after it ends: the stated gap.
     """
 
     def __init__(self, own: Any, distributed: bool) -> None:
@@ -131,9 +131,11 @@ class Reaper:
             if ppid == self.me and state == "Z":
                 zombies.append(ident)
         self.first_parent = seen  # only what is in the process table now: bounded by it
-        own = self.own() if self.distributed else set()
+        own = self.own()
         for pid, start in zombies:
-            adopted = pid not in own if self.distributed else seen[(pid, start)] != self.me
+            # Adopted: first seen with another parent. A child the controller started itself (a worker, the sentinel,
+            # or any Popen of its own, whose status its owner may still wait for) never is (review of #217, m1).
+            adopted = seen[(pid, start)] != self.me and pid not in own
             if adopted:
                 try:
                     if os.waitpid(pid, os.WNOHANG)[0] == pid:
@@ -169,8 +171,11 @@ class Controller:
         self.config = config
         self.seconds = seconds
         self.margin = margin
-        self.wall = time.time() + seconds
-        self.mono = time.monotonic() + seconds
+        # The job's own absolute deadline (``AEW_JOB_DEADLINE``, set by the job's first step) caps the session's:
+        # sessions that run one after another in one job then all end before the job's timeout (review of #217, M1).
+        self.wall = min(time.time() + seconds, job_deadline() or float("inf"))
+        self.seconds = round(self.wall - time.time(), 1)
+        self.mono = time.monotonic() + (self.wall - time.time())
         self.dir = watchdog.hang_dir(config) / "autopsy" / f"session-{os.getpid()}"
         self.distributed = _xdist_requested(config)
         self.me = proctree.identity(os.getpid())
@@ -299,7 +304,8 @@ class Controller:
             _write(self.dir, DEADLINE, _stamp(f"the session deadline ({self.seconds:g}s) passed; the controller "
                                               "collected and ends the other members\n" + "".join(
                                                   f"  {n}\n" for n in notes)))
-            ended = [p.pid for p in proctree.children_first(set_now) if proctree.end(p.identity)]
+            end = self.job.end if self.job is not None else proctree.end  # Windows: on one handle, in the job
+            ended = [p.pid for p in proctree.children_first(set_now) if end(p.identity)]
             _write(self.dir, "controller-ended", _stamp(f"ended {len(ended)} of {len(set_now)} members: {ended}"))
             self.exit_status = DEADLINE_EXIT
             if from_thread:
@@ -391,6 +397,15 @@ class Worker:
 
     def pytest_unconfigure(self, config: Any) -> None:
         self._done.set()
+
+
+def job_deadline() -> float | None:
+    """The CI job's absolute deadline for its sessions (epoch seconds, ``AEW_JOB_DEADLINE``), when the job set one."""
+    raw = os.environ.get(JOB_DEADLINE_ENV, "").strip()
+    try:
+        return float(raw) if raw else None
+    except ValueError:
+        return None
 
 
 def _xdist_requested(config: Any) -> bool:

@@ -1937,3 +1937,14 @@ def test_every_xdist_lane_with_a_deadline_replaces_no_crashed_worker():
     it and keep scheduling past the deadline. A crash is evidence, not something to route around."""
     found = [(x.label, x.max_worker_restart) for x in _workflow_lanes() if x.xdist]
     assert found and all(v == "0" for _, v in found), found
+
+
+def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():
+    """H3, review of #217 (M1): a job running several pytest sessions one after another (`core`: fast then serial;
+    `race-repeat`: ten serial runs, then one more) must still end them all before its timeout. Its first step sets
+    AEW_JOB_DEADLINE (the job's start plus timeout-minutes, less 3 minutes and the two deadline margins), and every
+    session's deadline is capped by it (session_deadline.Controller)."""
+    import bounds
+
+    problems = bounds.job_deadline_problems(ROOT / ".github" / "workflows")
+    assert problems == [], "\n".join(problems)

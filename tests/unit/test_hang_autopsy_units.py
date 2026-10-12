@@ -254,3 +254,35 @@ def test_a_session_job_lists_exactly_its_members_and_refuses_breakaway():
     line = next(x for x in out.stdout.splitlines() if x.startswith("members"))
     mine = line.split("mine")[1].split()
     assert all(m in line.split("mine")[0] for m in mine), line
+
+
+def test_a_job_that_runs_pytest_without_its_absolute_deadline_is_named(tmp_path):
+    """Review of #217, M1: the pin names a job whose sessions have no AEW_JOB_DEADLINE, one that sets it after its
+    first pytest step, and one whose value does not match its timeout."""
+    good = 'echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"'
+    (tmp_path / "w.yml").write_text(f"""jobs:
+  none:
+    timeout-minutes: 20
+    steps:
+      - run: python -m pytest -q
+  late:
+    timeout-minutes: 20
+    steps:
+      - run: python -m pytest -q
+      - shell: bash
+        run: '{good}'
+  wrong:
+    timeout-minutes: 30
+    steps:
+      - shell: bash
+        run: '{good}'
+      - run: python -m pytest -q
+  right:
+    timeout-minutes: 20
+    steps:
+      - shell: bash
+        run: '{good}'
+      - run: python -m pytest -q
+""", encoding="utf-8")
+    found = bounds.job_deadline_problems(tmp_path)
+    assert [p.split(":")[0] for p in found] == ["w.yml none", "w.yml late", "w.yml wrong"], found

@@ -8,11 +8,20 @@ Lead broker), and its shell commands run in the TUI's own environment.
 **Its whole policy** (docs/implementation/vertical-uat.md, "The Lead"):
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
-2. If ``decisions_required`` is non-empty, ask the operator and wait for the reply.
+2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
+   stated (every one today), ask the operator and wait for the reply. One whose owner is exactly ``lead`` or
+   ``mechanical``, the Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned
+   decisions only). Any other stated owner is asked too, and recorded as ``unknown_owner``.
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator.
+
+**Judgment inputs** (spec v2): where an action, or a decision the projection gives to the Lead or the mechanism,
+names ``judgment_inputs``, the Lead supplies them, its own judgment, with nothing asked (never on the operator's
+decisions, whose choice is the operator's): a value the projection offers (or the first of its ``options``) goes
+into the call's arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1)
+does.
 
 **Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
 call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
@@ -66,6 +75,7 @@ from pathlib import Path
 from typing import Any
 
 from vertical.chat import Gone, Mailbox
+from vertical.ledger import OPERATOR_OWNER, SELF_OWNERS
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 LOOP_WAIT_S = 120.0  # the bound on waiting for the steering loop's event
@@ -74,6 +84,8 @@ TERMINAL = frozenset({"DONE", "CANCELLED"})
 AVAILABLE = "AVAILABLE"
 EXIT = "/exit"
 CHAT_TIMEOUT_S = 1800.0
+WRITE_TRIES = 20  # a record write retried this many times on an OSError (a sharing violation on Windows), then raised
+MCP_ENDED = "the aew-lead MCP server ended"
 PROGRESS = ("REVIEW", "VERIFY", "COMMIT_READY", "RUNNING", "READY", "DONE")
 
 
@@ -83,7 +95,7 @@ class Lead:
         self.steering = bool(spec.get("steering"))
         self.events_path = Path(spec["events"])
         self.lock = threading.Lock()
-        self.chat = Mailbox(Path(spec["chat"]), "lead")
+        self.chat = Mailbox(Path(spec["chat"]), "lead", on_error=self._read_error)
         self.chat.skip_to_end()  # a reopened session answers only what is said to it from now on
         self.inbox: queue.Queue[dict[str, Any]] = queue.Queue()
         self.rid = 0
@@ -106,21 +118,60 @@ class Lead:
             facts.setdefault("blockers", [{k: b.get(k) for k in ("code", "message", "details")}
                                           for b in self.last_projection.get("blockers") or []][:8])
             facts.setdefault("hints", list(self.last_projection.get("hints") or [])[:8])
-        with self.lock, self.events_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"kind": kind, "step": self.step, "subject": self.subject, **facts}) + "\n")
+        # Stamped with this session's identity (the operator's per-open id, and the pid): evidence about a silence is
+        # read only from the session it concerns (review of #213, I1).
+        line = json.dumps({"kind": kind, "step": self.step, "subject": self.subject,
+                           "session": self.spec.get("session"), "pid": os.getpid(), **facts}) + "\n"
+        with self.lock:
+            _retrying(lambda: _append(self.events_path, line))
+
+    def best_effort_event(self, kind: str, **facts: Any) -> None:
+        """An event from a path that must not die of recording it (the listener, an exit): ``event`` with its bounded
+        retry, and, if the write still fails, the event goes to stderr instead of ending the thread (review of #213,
+        H2). It records only the harness's own faults and the exit: no counted call ever goes through here."""
+        try:
+            self.event(kind, **facts)
+        except OSError as exc:
+            print(f"vertical lead: could not record {kind}: {exc}: {facts}", file=sys.stderr, flush=True)
+
+    def doing(self, what: str, **facts: Any) -> None:
+        """What the Lead is doing now (``lead-state.json``, overwritten): read by the operator when the Lead is silent
+        past a bound, to tell a harness fault (both sides waiting on the chat) from a product hang (a call that never
+        returned). Best-effort: it is evidence, never a count."""
+        path = self.spec.get("state")
+        if not path:
+            return
+        body = json.dumps({"doing": what, "chat_read": self.chat.read, "step": self.step,
+                           "session": self.spec.get("session"), "pid": os.getpid(), **facts})
+        try:
+            _retrying(lambda: _replace(Path(path), body))
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ the operator
 
+    def _read_error(self, path: Path, exc: BaseException) -> None:
+        """A chat read failed: recorded (the ledger keeps it as ``lead.listener_error``), then retried by the mailbox
+        within its bound. A harness fault is never left to read as AEW's behaviour (review of #213, G2)."""
+        self.best_effort_event("listener_error", file=path.name, error=f"{type(exc).__name__}: {exc}"[:300])
+
     def _listen(self) -> None:
         """Every operator line arrives here; ``/exit`` ends the TUI at once, whatever the Lead is doing (as
-        OpenCode's own ``/exit`` does)."""
+        OpenCode's own ``/exit`` does). Nothing ends this thread silently: an unexpected error is recorded as
+        ``listener_error`` and the listener goes on, within the chat's bound (review of #213, G2)."""
+        deadline = time.monotonic() + CHAT_TIMEOUT_S
         while True:
             try:
-                msg = self.chat.receive(CHAT_TIMEOUT_S)
+                msg = self.chat.receive(max(deadline - time.monotonic(), 0.0))
             except Gone:
                 msg = {"text": EXIT, "timeout": True}
+            except Exception as exc:  # recorded, never silent; retried within the same bound  # noqa: BLE001
+                self.best_effort_event("listener_error", error=f"{type(exc).__name__}: {exc}"[:300])
+                time.sleep(POLL_S)
+                continue
+            deadline = time.monotonic() + CHAT_TIMEOUT_S
             if str(msg.get("text", "")).strip() == EXIT:
-                self.event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
+                self.best_effort_event("exit", by="operator" if not msg.get("timeout") else "chat timeout")
                 with self.lock:
                     if self.server is not None and self.server.stdin is not None:
                         self.server.stdin.close()
@@ -131,7 +182,10 @@ class Lead:
         self.chat.send({"type": kind, **body})
 
     def hear(self) -> dict[str, Any]:
-        return self.inbox.get(timeout=CHAT_TIMEOUT_S)
+        self.doing("waiting_to_hear")
+        msg = self.inbox.get(timeout=CHAT_TIMEOUT_S)
+        self.doing("working")
+        return msg
 
     def ask(self, question: str, *, label: str, detail: Any = None) -> str:
         self.say("ask", text=question, label=label, detail=detail)
@@ -162,11 +216,12 @@ class Lead:
         assert self.server is not None and self.server.stdout is not None
         self.rid += 1
         rid = self.rid
+        self.doing("calling", method=method, tool=params.get("name"))
         self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
         while True:
             line = self.server.stdout.readline()
             if not line:
-                raise RuntimeError("the aew-lead MCP server ended")
+                raise RuntimeError(MCP_ENDED)
             reply = json.loads(line)
             if reply.get("id") == rid:
                 return reply
@@ -280,6 +335,9 @@ class Lead:
             self.report(out)
             return False
         decisions = proj.get("decisions_required") or []
+        for d in decisions:  # a decision the projection gives to the Lead or the mechanism is never asked (spec v2)
+            if d.get("owner") in SELF_OWNERS:
+                return self.own_decision(d)
         if decisions:
             return self.decide(decisions[0], proj)
         offered = [a for a in proj.get("actions") or [] if a.get("availability") == AVAILABLE and a.get("callable")]
@@ -290,7 +348,7 @@ class Lead:
             if self.steering and a.get("auto_runnable") and self.loop_acts(proj):
                 return True  # the loop did it: nothing for the Lead to push
             mechanical = a.get("kind") == "wait" or bool(a.get("auto_runnable"))
-            self.call(a["action"], a["arguments"], offered=True, mechanical=mechanical)
+            self.call(a["action"], self.judged(a, a["arguments"]), offered=True, mechanical=mechanical)
             return True
         return self.gap(out, proj)
 
@@ -320,6 +378,8 @@ class Lead:
             return self.decision_refused(d, proj)
         self.seen[asked] = 1
         label = "publish" if d["decision"] == "PUBLISH" else d["decision"].lower()
+        if d.get("owner") not in (None, OPERATOR_OWNER):  # neither the operator's nor one the Lead takes: asked
+            self.event("unknown_owner", decision=d["decision"], owner=d.get("owner"))  # and recorded as a finding
         question = (f"{d['decision'].replace('_', ' ').lower()} for {d.get('subject')}"
                     + (f" (evidence {', '.join(d.get('evidence') or [])})" if d.get("evidence") else "") + "?")
         answer = self.ask(question, label=label, detail={"decision": d["decision"], "tool": d.get("tool"),
@@ -329,6 +389,8 @@ class Lead:
             self.hear()
             return True
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
+            # The operator's decision: its arguments as the projection supplied them, never a choice the Lead filled
+            # (judgment inputs are the Lead's, for actions and its own decisions only; review of #213, F3).
             self.call(d["tool"], d["arguments"], offered=True)
             return True
         cli = list(d.get("cli_fallback") or [])
@@ -344,6 +406,39 @@ class Lead:
         self.event("gap", gap="decision_without_tool", decision=d["decision"])
         self.shell(cli, why=f"decision {d['decision']} has no typed tool")
         return True
+
+    def judged(self, item: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
+        """The call's arguments with the Lead's own judgments supplied where the projection names ``judgment_inputs``
+        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first);
+        it fills only what the projection's arguments leave out. A list names the judgments the complete arguments
+        carry. Either way the names are recorded as the Lead's, never asked of the operator."""
+        inputs = item.get("judgment_inputs")
+        if not inputs:
+            return arguments
+        out = dict(arguments)
+        if isinstance(inputs, dict):
+            for name, offer in inputs.items():
+                if isinstance(offer, dict) and offer.get("options"):
+                    offer = offer["options"][0]
+                elif isinstance(offer, dict) and "value" in offer:
+                    offer = offer["value"]
+                out.setdefault(str(name), offer)
+        self.event("judgment", tool=item.get("action") or item.get("tool"),
+                   inputs=sorted(map(str, inputs)) if isinstance(inputs, (dict, list)) else inputs)
+        return out
+
+    def own_decision(self, d: dict[str, Any]) -> bool:
+        """A decision the projection gives to the Lead (or the mechanism): the Lead takes it itself, with its
+        judgment inputs supplied, and never asks the operator. Recorded apart from the operator's decisions."""
+        asked = ("own", d.get("decision"), tuple(d.get("evidence") or []))
+        if self.seen.get(asked):
+            return self.decision_refused(d, self.last_projection or {})
+        self.seen[asked] = 1
+        self.event("own_decision", decision=d.get("decision"), owner=d.get("owner"), tool=d.get("tool"))
+        if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
+            self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
+            return True
+        return self.stuck(f"decision {d.get('decision')} is the {d.get('owner')}'s and offers no typed call")
 
     def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         """A decision still required after its answer was acted on (its call refused): one ``explain``, then its
@@ -609,7 +704,43 @@ def _words(result: Any) -> str | None:
     return None
 
 
+def _append(path: Path, line: str) -> None:
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def _replace(path: Path, text: str) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _retrying(write: Any) -> None:
+    """A record write, retried on an OSError within a bound (WRITE_TRIES polls), then raised."""
+    for attempt in range(WRITE_TRIES):
+        try:
+            write()
+            return
+        except OSError:
+            if attempt == WRITE_TRIES - 1:
+                raise
+            time.sleep(POLL_S)
+
+
+def classify(exc: BaseException) -> str:
+    """Whose fault ended the Lead: the aew-lead MCP server ending is the product's (AEW's broker or its MCP server);
+    anything else is not established here (a bug in this script, or AEW answering what it did not expect)."""
+    return "product" if isinstance(exc, RuntimeError) and str(exc) == MCP_ENDED else "not established"
+
+
 def main(spec_path: Path) -> int:
+    """The scripted Lead's session. Nothing ends it without a record (review of #213, H2): an exception in its main
+    thread is recorded as ``lead_error`` with the step it was on and whose fault it is, then the session ends."""
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    Lead(spec).run()
+    lead = Lead(spec)
+    try:
+        lead.run()
+    except Exception as exc:  # recorded, never silent  # noqa: BLE001
+        lead.best_effort_event("lead_error", error=f"{type(exc).__name__}: {exc}"[:400], fault=classify(exc))
+        return 1
     return 0

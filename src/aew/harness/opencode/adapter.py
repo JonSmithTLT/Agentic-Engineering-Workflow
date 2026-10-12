@@ -53,7 +53,6 @@ from aew.harness.base import HarnessAdapter
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
     CATALOG_TIMEOUT,
-    CREDENTIAL_RE,
     PROVIDER_AUTH_FAILED,
     LaunchContract,
 )
@@ -137,8 +136,8 @@ def binary_command() -> list[str]:
     configured = os.environ.get(BIN_ENV)
     path = Path(configured) if configured else default_binary()
     if path is None or not path.exists():
-        raise HarnessIncompatible(f"no OpenCode binary: set {BIN_ENV} to the OpenCode CLI "
-                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)})",
+        raise HarnessIncompatible(f"no OpenCode binary: {BIN_ENV} names the OpenCode CLI "
+                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)}); {agentenv.env_fix(BIN_ENV)}",
                                   looked_for=str(path) if path else None)
     return [sys.executable, str(path)] if path.suffix == ".py" else [str(path)]
 
@@ -146,15 +145,22 @@ def binary_command() -> list[str]:
 def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str], config: dict[str, Any],
                password: str) -> dict[str, str]:
     """The server's environment: operating-system basics, the provider variables the execution policy names,
-    and private OpenCode state. Nothing else from the Lead's environment reaches OpenCode."""
+    and private OpenCode state. Nothing else from the Lead's environment reaches OpenCode.
+
+    A provider variable that cannot be passed (unset, an AEW variable, or one holding an AEW credential) refuses the
+    start, naming it: it is never dropped silently, which started a run with no key and blamed the provider
+    (``agentenv.provider_env_problems``; the launch refuses the same before anything is committed)."""
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     # SHELL: OpenCode picks the agent's shell from it (else PowerShell on Windows), as for the operator's own use.
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper() in ("PATH", "SHELL")
            or (sys.platform != "win32" and k.startswith("LC_"))}
+    problems = agentenv.provider_env_problems(provider_env, base)
+    if problems:
+        raise HarnessIncompatible("the execution policy's provider_env cannot be passed to the harness server: "
+                                  + "; ".join(why for _, why in problems), reason="provider_env",
+                                  variables=[name for name, _ in problems])
     for name in provider_env:
-        value = base.get(name)
-        if value and not name.upper().startswith("AEW_") and not CREDENTIAL_RE.search(value):
-            env[name] = value
+        env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
     agentenv.bypass_proxy_for_loopback(env)
     for kind in ("config", "data", "state", "cache"):
         directory = state_dir / f"xdg-{kind}"

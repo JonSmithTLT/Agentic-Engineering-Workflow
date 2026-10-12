@@ -64,7 +64,9 @@ def rules_hold(loaded: list[dict[str, Any]], want: list[dict[str, Any]]) -> str 
 
 
 def model_ref(profile: dict[str, Any]) -> dict[str, str]:
-    """The session's ``model`` (``Model.Ref``): provider, model and the effort as OpenCode's variant."""
+    """The session's ``model`` (``Model.Ref``): provider, model and the effort as OpenCode's variant. The pin already
+    holds the provider and the model apart, as the adapter's model identity mapped them at dispatch
+    (``HarnessAdapter.model_identity``), so they are passed as they are, never split or joined here."""
     ref = {"providerID": str(profile["provider"]), "id": str(profile["model"])}
     if profile.get("effort"):
         ref["variant"] = str(profile["effort"])

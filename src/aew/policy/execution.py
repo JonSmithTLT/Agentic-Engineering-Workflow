@@ -9,10 +9,15 @@ an invocation; scripted roles, which never launch a harness, are unaffected.
 Resolution, most specific first: role card, then risk class, then archetype, then the default route.
 The Lead may override one dispatch (``--profile``, or ``--model PROVIDER/MODEL`` and ``--effort``);
 the pin then records ``selected_by: lead``.
+
+A profile's model is written exactly as the harness lists it (``provider/model``), with or without a separate
+``provider``. The pin always holds the provider and the model apart, as the harness adapter's model identity maps them
+(``HarnessAdapter.model_identity``, ADR-0010 amendment 2026-10-11): this module never splits a model id itself.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +41,15 @@ TEMPLATE = """\
 #
 # Routing, most specific first: cards (role card id), classes (risk class "0".."4"), archetypes
 # (implementer, reviewer, verifier, investigator, researcher, planner), then default. `effort` is the
-# harness's reasoning-effort variant. Use provider and model ids exactly as the harness lists them.
+# harness's reasoning-effort variant. Write `model` exactly as the harness lists it (`provider/model`); `provider` may
+# then be left out. A model id whose prefix names another provider than `provider` is refused, naming what to write.
+# `aew doctor` shows each profile's model as the harness will be given it.
 #
 # Example (illustrative ids):
 #   configured: true
 #   harness: opencode
 #   profiles:
-#     standard: {provider: anthropic, model: claude-sonnet-5, effort: high}
+#     standard: {model: anthropic/claude-sonnet-5, effort: high}
 #     light: {provider: anthropic, model: claude-haiku-4-5, effort: low}
 #   routing:
 #     default: standard
@@ -178,10 +185,36 @@ def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_c
     return routing["default"], "default"
 
 
-def _pin(policy: dict[str, Any], name: str, *, selected_by: str, rule: str, sha: str | None) -> dict[str, Any]:
+# The harness adapter's model identity: ``(harness, provider or None, model as typed, field)`` to an object with
+# ``provider`` and ``model`` (``aew.harness.models.ModelIdentity``), refusing an id that maps to no pair. The engine
+# passes the adapter's own (``aew.harness.registry.model_identity``); without one, the rule every adapter inherits.
+ModelIdentityFn = Callable[[str, "str | None", str, str], Any]
+
+
+def _shared_identity(harness: str, provider: str | None, model: str, field: str) -> Any:
+    from aew.harness.models import from_profile  # a leaf module: the rule every adapter inherits
+
+    return from_profile(provider, model, field=field)
+
+
+def profile_harness(policy: dict[str, Any] | None, profile: dict[str, Any]) -> str:
+    return str(profile.get("harness") or (policy or {}).get("harness") or DEFAULT_HARNESS)
+
+
+def model_pair(policy: dict[str, Any], name: str, identity: ModelIdentityFn | None = None) -> Any:
+    """Profile ``name``'s model identity (the provider and the model apart, as its harness's adapter maps them).
+    Raises ``VALIDATION_FAILED`` naming ``profiles.<name>.model``, the value and the fix when it maps to no pair."""
     profile = policy["profiles"][name]
-    return {"profile": name, "harness": profile.get("harness") or policy.get("harness") or DEFAULT_HARNESS,
-            "provider": profile["provider"], "model": profile["model"], "effort": profile.get("effort"),
+    return (identity or _shared_identity)(profile_harness(policy, profile), profile.get("provider"),
+                                          str(profile["model"]), f"profiles.{name}.model")
+
+
+def _pin(policy: dict[str, Any], name: str, *, selected_by: str, rule: str, sha: str | None,
+         identity: ModelIdentityFn | None) -> dict[str, Any]:
+    profile = policy["profiles"][name]
+    pair = model_pair(policy, name, identity)
+    return {"profile": name, "harness": profile_harness(policy, profile),
+            "provider": pair.provider, "model": pair.model, "effort": profile.get("effort"),
             "max_steps": profile.get("max_steps"), "deadline_s": profile.get("deadline_s"),
             "selected_by": selected_by, "rule": rule, "policy_sha256": sha}
 
@@ -192,8 +225,10 @@ def _check_effort(effort: str) -> None:
 
 
 def resolve(policy: dict[str, Any] | None, sha: str | None, *, archetype: str, card_id: str | None,
-            risk_class: int | None, request: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """The execution pin for a new invocation, or None when nothing selects one (unconfigured policy)."""
+            risk_class: int | None, request: dict[str, Any] | None = None,
+            identity: ModelIdentityFn | None = None) -> dict[str, Any] | None:
+    """The execution pin for a new invocation, or None when nothing selects one (unconfigured policy). ``identity``
+    is the harness adapter's model identity (:data:`ModelIdentityFn`)."""
     request = {k: v for k, v in (request or {}).items() if v is not None}
     unknown = set(request) - {"profile", "model", "effort"}
     if unknown:
@@ -203,18 +238,21 @@ def resolve(policy: dict[str, Any] | None, sha: str | None, *, archetype: str, c
     if "effort" in request:
         _check_effort(request["effort"])
     if "model" in request:
-        provider, _, model = str(request["model"]).partition("/")
-        if not provider or not model or any(c.isspace() for c in request["model"]):
-            raise UsageError("--model is PROVIDER/MODEL, exactly as the harness lists it")
-        return {"profile": None, "harness": (policy or {}).get("harness") or DEFAULT_HARNESS, "provider": provider,
-                "model": model, "effort": request.get("effort"), "max_steps": None, "deadline_s": None,
+        harness = str((policy or {}).get("harness") or DEFAULT_HARNESS)
+        try:
+            pair = (identity or _shared_identity)(harness, None, str(request["model"]), "--model")
+        except ValidationFailed as exc:
+            raise UsageError(f"--model is PROVIDER/MODEL, exactly as the harness lists it ({exc.message})",
+                             **exc.details) from None
+        return {"profile": None, "harness": harness, "provider": pair.provider,
+                "model": pair.model, "effort": request.get("effort"), "max_steps": None, "deadline_s": None,
                 "selected_by": "lead", "rule": "lead:model", "policy_sha256": sha}
     if "profile" in request:
         name = request["profile"]
         if policy is None or name not in policy["profiles"]:
             raise UsageError(f"no execution profile {name!r} in {REL_PATH}",
                              profiles=sorted((policy or {}).get("profiles") or {}))
-        pin = _pin(policy, name, selected_by="lead", rule="lead:profile", sha=sha)
+        pin = _pin(policy, name, selected_by="lead", rule="lead:profile", sha=sha, identity=identity)
     else:
         if policy is None or not policy["configured"]:
             if "effort" in request:
@@ -222,7 +260,7 @@ def resolve(policy: dict[str, Any] | None, sha: str | None, *, archetype: str, c
                                  "also pass --profile or --model")
             return None
         name, rule = route(policy, archetype=archetype, card_id=card_id, risk_class=risk_class)
-        pin = _pin(policy, name, selected_by="policy", rule=rule, sha=sha)
+        pin = _pin(policy, name, selected_by="policy", rule=rule, sha=sha, identity=identity)
     if "effort" in request and request["effort"] != pin["effort"]:
         pin.update(effort=request["effort"], selected_by="lead", rule=f"{pin['rule']}+lead:effort")
     return pin

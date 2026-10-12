@@ -409,7 +409,10 @@ class Supervisor:
             names = ", ".join(((self.record.get("contract") or {}).get("extra") or {}).get("provider_env") or [])
             return self._finish(K.CRASHED, f"{K.PROVIDER_AUTH_FAILED}: the model provider rejected the credential, so "
                                 "the harness exited without recording its expected output; check the key in "
-                                f"{names or 'the variables'} (the execution policy's provider_env), then relaunch")
+                                f"{names or 'the variables'} (the execution policy's provider_env), then relaunch. A "
+                                "relaunch reads the key from the process that launches it: from inside a Lead session "
+                                "(`aew opencode`, `aew lead session`) that is the session's own, so restart it from a "
+                                "terminal with the new key first")
         return self._finish(K.CRASHED, f"harness exited with {code} without recording its expected output")
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:

@@ -48,6 +48,25 @@ def test_non_string_keys_are_always_indexed():
     assert P.resolve(document, "/@0") == (1,) and P.resolve(document, "/1") == ("1",)
 
 
+def test_resolve_accepts_only_canonical_indices():
+    """R6, §3.1a: one location has one accepted spelling. An index (and the digits after `@`) is RFC 6901's
+    `0|[1-9][0-9]*` in ASCII; a leading zero, a non-ASCII digit or a superscript is not a path: `KeyError`, never an
+    alias and never another exception."""
+    document = {"provider_env": ["A", "B"], "profiles": {"a": 1, "b": 2}}
+    assert P.resolve(document, "/provider_env/1") == ("provider_env", 1)
+    assert P.resolve(document, "/profiles/@1") == ("profiles", "b")
+    for path in ("/provider_env/01", "/provider_env/١", "/provider_env/²", "/provider_env/+1",
+                 "/provider_env/ 1", "/provider_env/2", "/profiles/@01", "/profiles/@١", "/profiles/@¹",
+                 "/profiles/@", "/profiles/@2", "no-leading-slash"):
+        try:
+            P.resolve(document, path)
+        except KeyError:
+            continue
+        raise AssertionError(f"{path!r} resolved")
+    for path in ("/provider_env/0", "/provider_env/1"):  # an accepted `@`-free path re-encodes to itself
+        assert P.encode(P.resolve(document, path), document) == path
+
+
 def test_an_absent_field_is_encoded_by_its_schema_name():
     assert P.encode(("steering", "envelope", "repetition_n"), {}) == "/steering/envelope/repetition_n"
 

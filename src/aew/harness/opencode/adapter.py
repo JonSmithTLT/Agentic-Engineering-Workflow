@@ -110,10 +110,11 @@ CREDENTIAL_STATUSES = frozenset({401, 403, 407})
 # masked run of asterisks with whatever surrounds it, any strict provider-key shape, and a long token that mixes upper
 # case, lower case and digits, as a random key does. Model ids, git shas, UUIDs, request ids and paths are one case or
 # carry no digit, and stay: they are what an operator diagnoses a non-credential error from (PR #165 re-review, finding
-# 1). Every form comes from the one home of credential shapes, `aew.harness.contract` (F46.1 proposal §7 rule 8): the
-# broader forms first, each with its own scoped flag, then the strict patterns, so the redaction never narrows.
-KEY_SHAPED = re.compile("|".join([*(f.pattern for f in REDACTION_FORMS.values() if f.applies is None),
-                                  *CREDENTIAL_PATTERNS]))
+# 1). Every form comes from the one home of credential shapes, `aew.harness.contract` (F46.1 proposal §7 rule 8). The
+# prior pipeline runs unchanged (the broader forms, each with its own scoped flag, then the long-token form); the strict
+# patterns are applied after it, to its output. A later pass only replaces more text, so the redaction never narrows.
+KEY_SHAPED = re.compile("|".join(f.pattern for f in REDACTION_FORMS.values() if f.applies is None))
+STRICT_SHAPED = re.compile("|".join(CREDENTIAL_PATTERNS))
 _LONG_TOKEN_APPLIES = REDACTION_FORMS["long_token"].applies or (lambda _token: True)
 
 
@@ -121,7 +122,7 @@ def redact_key_shaped(text: str) -> str:
     def mixed(m: re.Match[str]) -> str:
         return "<redacted>" if _LONG_TOKEN_APPLIES(m.group(0)) else m.group(0)
 
-    return LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text))
+    return STRICT_SHAPED.sub("<redacted>", LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text)))
 
 
 def default_binary() -> Path | None:

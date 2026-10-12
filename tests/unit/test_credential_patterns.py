@@ -9,6 +9,7 @@ run time from obviously synthetic parts, and checked against the pattern it clai
 from __future__ import annotations
 
 import ast
+import random
 import re
 from pathlib import Path
 
@@ -91,14 +92,61 @@ def test_single_credential_pattern_home():
 
 
 def test_the_adapter_takes_its_forms_from_the_home():
-    """`KEY_SHAPED` is the alternation of the home's scoped forms and its strict patterns; `LONG_TOKEN` and its
-    predicate are the home's. The adapter's existing redaction test is the "no narrowing" check
-    (tests/integration/test_opencode_adapter.py)."""
+    """`KEY_SHAPED` is the alternation of the home's scoped broader forms, `STRICT_SHAPED` that of its strict
+    patterns; `LONG_TOKEN` and its predicate are the home's."""
     assert adapter.LONG_TOKEN is K.LONG_TOKEN
-    alternatives = [f.pattern for f in K.REDACTION_FORMS.values() if f.applies is None] + list(K.CREDENTIAL_PATTERNS)
-    assert adapter.KEY_SHAPED.pattern == "|".join(alternatives)
+    assert adapter.KEY_SHAPED.pattern == "|".join(f.pattern for f in K.REDACTION_FORMS.values() if f.applies is None)
+    assert adapter.STRICT_SHAPED.pattern == "|".join(K.CREDENTIAL_PATTERNS)
     for value in SYNTHETIC.values():  # every strict shape is redacted from a kept message too
         assert value not in adapter.redact_key_shaped(f"upstream said {value} bad")
+
+
+# The adapter's redaction before F46.1 (base commit e69313b, src/aew/harness/opencode/adapter.py), frozen here as the
+# oracle of "the redaction never narrows" (F46.1 proposal §7 rule 8). Never update it to follow the adapter.
+FROZEN_KEY_SHAPED = re.compile(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}|\S*\*{3,}\S*")
+FROZEN_LONG_TOKEN = re.compile(r"[A-Za-z0-9_-]{32,}")
+
+
+def frozen_redact(text: str) -> str:
+    def mixed(m: re.Match[str]) -> str:
+        t = m.group(0)
+        if any(c.isupper() for c in t) and any(c.islower() for c in t) and any(c.isdigit() for c in t):
+            return "<redacted>"
+        return t
+
+    return FROZEN_LONG_TOKEN.sub(mixed, FROZEN_KEY_SHAPED.sub("<redacted>", text))
+
+
+def surviving_words(redacted: str, original: str) -> set[str]:
+    """The original's whitespace-separated words that survive whole in a redacted text."""
+    kept = set(redacted.split())
+    return {w for w in original.split() if w in kept}
+
+
+def narrowed(text: str) -> set[str]:
+    """Words the current redaction leaves that the frozen one hid: empty when it redacts a superset."""
+    return surviving_words(adapter.redact_key_shaped(text), text) - surviving_words(frozen_redact(text), text)
+
+
+SOUP = ["sk-", "SK-", "bearer ", "Bearer ", "***", "xoxb-", "AKIA", "ghp_", "glpat-", "github_pat_", "AIza", "-",
+        "_", ".", " ", "0", "1", "a", "B", "z", "Q9", "tok" + "en", "/"]
+
+
+def test_the_adapter_redaction_never_narrows():
+    """§7 rule 8: on every input, targeted and 200,000 seeded token soups, the adapter redacts at least what the frozen
+    prior pipeline redacted."""
+    secret_tail = "tok" + "en0synthetic"
+    inputs = []
+    for value in SYNTHETIC.values():
+        inputs += [f"error: {prefix_}{value}{joiner}bearer {secret_tail} rejected"
+                   for joiner in ("-", "_", "", ".") for prefix_ in ("", "ta", "x.")]
+        inputs.append(f"error {'Ab1' * 9}{value} end")
+    rng = random.Random(220)
+    inputs += ["".join(rng.choice(SOUP) for _ in range(rng.randint(3, 30))) for _ in range(200_000)]
+    witnesses = [text for text in inputs if narrowed(text)]
+    assert witnesses == [], witnesses[:5]
+    for value in SYNTHETIC.values():  # and the strict shapes themselves are hidden
+        assert value not in adapter.redact_key_shaped(f"error {'Ab1' * 9}{value} end")
 
 
 def test_redaction_forms_scoped_flags():

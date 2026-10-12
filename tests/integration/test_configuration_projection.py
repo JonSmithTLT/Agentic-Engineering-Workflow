@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -285,6 +287,9 @@ ROWS: dict[str, tuple[Any, str, bool]] = {
 }
 
 
+MATCHES_ADOPTED = {"pinned_absent_absent", "adopted", "tightened"}  # the truth column of on_disk_matches_adopted
+
+
 def row_engine(engine: Engine, row: str) -> Engine:
     write_policy(engine, POLICY)
     set_control(engine, **{POLICY_PINS: ...})
@@ -305,7 +310,9 @@ def test_document_states(engine, row):
     shows_values = row in ("no_pins_valid", "adopted", "pinned_absent_created", "edited", "not_in_pins")
     assert bool(out["profiles"]) is shows_values, row
     assert bool(out["document"]["violations"]) is (row in ("no_pins_invalid", "tightened")), row
-    others = [d for d in index(e)["documents"] if d["document"] not in ("execution", "project")]
+    # The on-disk bytes are the adopted ones: a real pin equal to the file, or a pinned absence of an absent file.
+    assert out["document"]["on_disk_matches_adopted"] is (row in MATCHES_ADOPTED), row
+    others =[d for d in index(e)["documents"] if d["document"] not in ("execution", "project")]
     if row == "manifest_drifted":
         assert index(e)["manifest"]["state"] == C.DRIFTED and doc(e, "project")["state"] == C.DRIFTED
         assert {d["state"] for d in others} == {C.MANIFEST_DRIFTED}
@@ -412,6 +419,25 @@ def test_inventory_keys_sharing_a_file(engine):
     assert doc(e, "gates")["state"] == doc(e, "extra")["state"] == C.DRIFTED
     names = [d["document"] for d in index(e)["documents"]]
     assert names[0] == "project" and names[-1] == "extra" and "execution" in names  # U1: the manifest's key order
+
+
+@pytest.mark.parametrize("profiles", [
+    {"standard": {"model": "vendor/m", "max_steps": "many"}},  # schema-invalid under `execution`, valid YAML
+    {"standard": {"effort": "high"}},  # a profile without `model`
+    ["standard"],  # profiles as a list
+], ids=["schema_invalid", "profile_without_model", "profiles_as_list"])
+def test_a_file_shared_by_two_keys_is_valid_only_under_every_name(engine, profiles):
+    """R1: the execution file, also named by a later manifest key, is valid only if it validates as the execution
+    policy too: pinned execution-invalid content is INVALID on both entries, never in force, its values not shown,
+    and the read never raises."""
+    _with_manifest_policy(engine, zz_alias=X.REL_PATH)  # a later key naming the execution policy's file
+    e = configured(engine, only_profiles({"standard": {"model": "vendor/m"}}) | {"profiles": profiles})
+    for name in ("execution", "zz_alias"):
+        assert (doc(e, name)["state"], doc(e, name)["in_force"]) == (C.INVALID, False), name
+    out = execution(e)
+    assert out["document"]["state"] == C.INVALID and out["document"]["violations"] and out["profiles"] == []
+    res = run_aew("-C", str(e.repo_root), "settings", "show", "execution", "--json")
+    assert res.returncode == 0 and res.json["document"]["violations"], res.stderr
 
 
 # ------------------------------------------------------------------------------------------------- secrets (§7)
@@ -633,13 +659,35 @@ def test_field_metadata(engine):
     model = by_name(out)["standard"]["fields"]["model"]
     assert model["path"] == "/profiles/standard/model" and "allowed" not in model
     assert model["class"] == root["$defs"]["profile"]["properties"]["model"]["x-aew-class"]
-    assert model["description"] == C._clip(root["$defs"]["profile"]["description"])
     envelope = steering["envelope"]["max_auto_actions"]
-    assert envelope["description"] == C._clip(props["steering"]["properties"]["envelope"]["description"])
     assert envelope["state"] == "SET" and envelope["value"] == 20 and "effective" not in envelope
+    # R7: a description is the field's own, never an enclosing object's. The execution schema describes its blocks,
+    # not its fields, so no projected field carries one today (a register note asks for per-field descriptions).
+    assert "description" in root["$defs"]["profile"] and "description" in props["steering"]["properties"]["envelope"]
     for fv in field_values(out):
-        assert len(fv.get("description", "").encode("utf-8")) <= C.MAX_DESCRIPTION_BYTES
+        assert fv.get("description") == own_description(fv["path"]), fv["path"]
         assert fv["editable"] is False  # write is UNSUPPORTED in F1
+    assert C.field_metadata(("probe",)) == {"class": None}  # a field the schema lacks: nothing invented
+    # a node that has its own description gets it (clipped to the bound), so the rule is "own", not "none"
+    envelope_text = props["steering"]["properties"]["envelope"]["description"]
+    assert C.field_metadata(("steering", "envelope"))["description"] == C._clip(envelope_text)
+    assert len(C._clip(envelope_text).encode("utf-8")) <= C.MAX_DESCRIPTION_BYTES
+
+
+def own_description(path: str) -> str | None:
+    """The schema's own description of the field at ``path`` (an independent walk: properties, then the map's values,
+    then a list's items; a `$ref` followed), clipped as the projection clips it; None when it has none."""
+    root = schema("execution")
+    node: dict[str, Any] = root
+    for token in P.tokens(path):
+        while "$ref" in node:
+            node = root["$defs"][node["$ref"].rsplit("/", 1)[-1]]
+        props = node.get("properties") or {}
+        node = props.get(P.unescape(token)) or node.get("additionalProperties") or node.get("items") or {}
+    text = node.get("description")
+    if text is None and "$ref" in node:
+        text = root["$defs"][node["$ref"].rsplit("/", 1)[-1]].get("description")
+    return None if text is None else C._clip(text)
 
 
 def test_every_enum_fits_and_the_complete_lists_hold_their_invariants():
@@ -699,8 +747,46 @@ def test_bounds_and_truncation(engine):
     pin_now(engine)
     many = index(engine)
     assert many["documents_truncated"] and len(many["documents"]) == C.MAX_DOCUMENTS
-    for projection in (out, invalid, many, execution(configured(engine))):
+    oversized = execution(configured(engine, oversized_policy()))
+    for projection in (out, invalid, many, oversized, execution(configured(engine))):
         assert unclassified_lists(projection) == []
+        assert long_strings(projection) == []  # Appendix A: 512 bytes a string, 256 a path (R5)
+
+
+def long_strings(node: Any, where: str = "", out: list[str] | None = None) -> list[str]:
+    """Every emitted string over Appendix A's bound: 256 bytes for a path, 512 for any other string."""
+    out = [] if out is None else out
+    if isinstance(node, dict):
+        for k, v in node.items():
+            long_strings(v, f"{where}/{k}", out)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            long_strings(v, f"{where}/{i}", out)
+    elif isinstance(node, str):
+        limit = 256 if where.endswith("/path") or where.endswith("field_path") else 512
+        if len(node.encode("utf-8")) > limit:
+            out.append(f"{where} ({len(node.encode('utf-8'))} B > {limit})")
+    return out
+
+
+def oversized_policy() -> dict[str, Any]:
+    return only_profiles({"standard": {"model": "vendor/m", "effort": "e" * 3000, "description": "p" * 5000}}) | {
+        "description": "d" * 5000, "harness": "opencode", "provider_env": ["V" * 3000, "VENDOR_API_KEY"]}
+
+
+def test_over_bound_strings_are_withheld_never_clipped(engine):
+    """R5: a string over its bound has no value and `withheld: too_long`; nothing is clipped, so no shown value is
+    content that is not the file's. A name over the bound is null. One byte under the bound is shown whole."""
+    out = execution(configured(engine, oversized_policy()))
+    standard = by_name(out)["standard"]["fields"]
+    for fv in (out["description"], standard["effort"], standard["description"]):
+        assert fv["state"] == "SET" and fv["withheld"] == C.TOO_LONG and "value" not in fv, fv["path"]
+    assert out["provider_env"]["entries"][0] == {"index": 0, "name": None, "valid_name": True}
+    assert out["observed"]["provider_env"][0]["name"] is None
+    assert out["provider_env"]["entries"][1]["name"] == "VENDOR_API_KEY"
+    exact = "x" * C.MAX_STRING_BYTES
+    shown = execution(configured(engine, only_profiles({"standard": {"model": "vendor/m"}}) | {"description": exact}))
+    assert shown["description"]["value"] == exact
 
 
 def test_every_list_classified():
@@ -857,6 +943,55 @@ def test_read_only_and_lock_free(engine, monkeypatch):
     fresh.configuration("execution")
     after = {p: p.read_bytes() for p in aew(e).rglob("*") if p.is_file()}
     assert after == before
+
+
+COLLISIONS = {  # what an open in the middle of a replace raises on Windows (both observed under a real replace loop)
+    "sharing_violation": lambda: PermissionError(13, "the process cannot access the file (simulated)"),
+    "reported_missing": lambda: FileNotFoundError(2, "the file is missing mid-replace (simulated)"),
+}
+
+
+@pytest.mark.parametrize("collision", sorted(COLLISIONS))
+@pytest.mark.parametrize("rel", ["project.yaml", X.REL_PATH])
+def test_a_read_racing_a_replace_retries_and_never_misreads(engine, monkeypatch, rel, collision):
+    """R4: a writer replaces a file (with identical bytes) while the lock-free read opens it. The read collides once
+    (a sharing violation, or the file reported missing), and meanwhile a stat of the file fails, so it looks absent.
+    Ordered by events: the writer replaces only after the collision, and the read retries only after the replacement.
+    The read retries through the store's one owner and reports the true state, never DRIFTED or MANIFEST_DRIFTED."""
+    e = configured(engine)
+    target = aew(e) / rel
+    data = target.read_bytes()
+    collided, replaced = threading.Event(), threading.Event()
+    real_read_bytes, real_is_file = Path.read_bytes, Path.is_file
+
+    def read_bytes(self: Path) -> bytes:
+        if self == target and not collided.is_set():
+            collided.set()
+            assert replaced.wait(30), "the writer never replaced the file"
+            raise COLLISIONS[collision]()
+        return real_read_bytes(self)
+
+    def is_file(self: Path) -> bool:  # a stat in the middle of the replace fails
+        return False if self == target else real_is_file(self)
+
+    def writer() -> None:
+        assert collided.wait(30), "the read never opened the file"
+        tmp = target.with_name(target.name + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, target)
+        replaced.set()
+
+    fresh = Engine.discover(e.repo_root)
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(Path, "is_file", is_file)
+    thread = threading.Thread(target=writer, daemon=True)
+    thread.start()
+    out = fresh.configuration("execution")
+    thread.join(30)
+    assert collided.is_set() and replaced.is_set() and not thread.is_alive()
+    assert (out["document"]["state"], out["document"]["in_force"]) == (C.ADOPTED, True)
+    assert target.read_bytes() == data
 
 
 # --------------------------------------------------------------------------------------------------------- the CLI

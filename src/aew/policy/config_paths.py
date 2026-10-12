@@ -33,6 +33,7 @@ from aew.harness.contract import credential_shaped
 SHOWN_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 SHOWN_KEY_MAX_BYTES = 128
 MASK = "@"
+INDEX = re.compile(r"0|[1-9][0-9]*", re.ASCII)  # RFC 6901's array index; also the digits of an `@i` segment
 
 Location = tuple[Any, ...]
 
@@ -110,24 +111,28 @@ def encode(location: Sequence[Any], document: Any) -> str:
 def resolve(document: Any, path: str) -> Location:
     """The location ``path`` names in ``document``. An ``@i`` segment is the ``i``-th key of that mapping, for display
     only (it is valid only under the digest the path was rendered with). Raises ``KeyError`` when the path does not
-    resolve."""
+    resolve, including for an index spelled other than RFC 6901's ``0`` or ``[1-9][0-9]*`` in ASCII (``01``, a
+    non-ASCII digit), after ``@`` too: one location has exactly one accepted spelling."""
     out: list[Any] = []
     node: Any = document
-    for token in tokens(path):
+    try:
+        parts = tokens(path)
+    except ValueError:
+        raise KeyError(path) from None
+    for token in parts:
         if isinstance(node, dict):
-            if token.startswith(MASK) and token[1:].isdigit():
+            if token.startswith(MASK):
                 keys = list(node)
-                i = int(token[1:])
-                if i >= len(keys):
+                if not INDEX.fullmatch(token[1:]) or int(token[1:]) >= len(keys):
                     raise KeyError(path)
-                key = keys[i]
+                key = keys[int(token[1:])]
             else:
                 key = unescape(token)
                 if key not in node:
                     raise KeyError(path)
             out.append(key)
             node = node[key]
-        elif isinstance(node, list) and token.isdigit() and int(token) < len(node):
+        elif isinstance(node, list) and INDEX.fullmatch(token) and int(token) < len(node):
             out.append(int(token))
             node = node[int(token)]
         else:

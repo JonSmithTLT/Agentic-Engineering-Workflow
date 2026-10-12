@@ -29,6 +29,7 @@ from typing import Any
 
 from aew.engine import steering as S
 from aew.engine.base import POLICY_PINS, Kernel, check_policy_bytes
+from aew.engine.store import read_lock_free
 from aew.errors import UsageError, ValidationFailed
 from aew.harness import agentenv, registry
 from aew.harness.contract import credential_shaped
@@ -87,6 +88,16 @@ HARNESS_NAME_MAX_BYTES = 64
 NOT_A_MODEL_ID, NOT_A_NAME, NOT_A_HARNESS_NAME, CREDENTIAL_SHAPED = (
     "not_a_model_id", "not_a_name", "not_a_harness_name", "credential_shaped")
 FIELD_WITHHELD = "field_withheld"
+# A string over Appendix A's bound ("strings are at most 512 bytes unless stated") is withheld, never clipped: a clipped
+# value would show content that is not the file's (the operator's decision on the F1a review, R5). An open code.
+MAX_STRING_BYTES, TOO_LONG = 512, "too_long"
+# A violation code for a document the structured walk cannot process (F1a review, R3): one, at the root, no message.
+UNPROCESSABLE = "UNPROCESSABLE"
+UNPROCESSABLE_VIOLATION = {"path": "", "code": UNPROCESSABLE, "expected": None, "extra_key": None}
+
+
+def too_long(value: Any) -> bool:
+    return isinstance(value, str) and len(value.encode("utf-8")) > MAX_STRING_BYTES
 # Edit scope (§3.3): in F46.2's first scope, a later slice, or never.
 F46_2, LATER, NEVER = "F46.2", "later", "never"
 
@@ -156,8 +167,7 @@ def read_committed(k: Kernel) -> Committed:
     """The committed state and the manifest's bytes, without the control lock (``read_committed``) and without
     ``Kernel.manifest`` (which may take the lock to recover)."""
     state = k.store.read_committed()
-    path = k.aew_root / MANIFEST
-    raw = path.read_bytes() if path.is_file() else None
+    raw = read_lock_free(k.aew_root / MANIFEST)
     manifest = None
     if raw is not None:
         try:
@@ -228,16 +238,19 @@ def documents(k: Kernel, c: Committed) -> list[Document]:
                                 digest, None))
         return out
     pins = c.state.get(POLICY_PINS)
-    # The name each file is checked under is the one adoption uses (the last key naming it; `_read_policy_pins`).
-    checked_as = {rel: name for name, rel in keys.items()}
+    rels = {name: str(keys[name]) if name in keys else X.REL_PATH for name in names}
+    # A file is valid only if it validates under every logical name naming it (T1): two keys naming one file share
+    # one state, so the execution policy's file always gets the execution check, whichever key comes last.
+    named_as: dict[str, list[str]] = {}
+    for name, rel in rels.items():
+        named_as.setdefault(rel, []).append(str(name))
     first: dict[str, int] = {}
     read: dict[str, tuple[bytes | None, bool | None]] = {}
     for i, name in enumerate(names, start=1):
-        rel = str(keys[name]) if name in keys else X.REL_PATH
+        rel = rels[name]
         if rel not in read:
-            path = k.aew_root / rel
-            raw = path.read_bytes() if path.is_file() else None
-            read[rel] = (raw, None if raw is None else _valid(str(checked_as.get(rel, EXECUTION)), raw, rel))
+            raw = read_lock_free(k.aew_root / rel)
+            read[rel] = (raw, None if raw is None else all(_valid(n, raw, rel) for n in named_as[rel]))
         raw, valid = read[rel]
         state, adopted = _policy_state(pins, rel, raw, valid)
         out.append(Document(name, i, rel, adopted, _hash(raw), raw, valid, state, IN_FORCE.get(state, False),
@@ -315,14 +328,21 @@ def violations(data: Any) -> list[dict[str, Any]]:
 
 def parse_structured(raw: bytes) -> tuple[Any, list[dict[str, Any]], dict[str, Any] | None]:
     """``(document, violations, yaml_error)`` for an execution policy's bytes: the parsed document (None when it does
-    not parse) and what is wrong with it, as structure."""
+    not parse) and what is wrong with it, as structure. A document the walk cannot process (a nesting deep enough to
+    exhaust the recursion limit, or any other failure) is one structured violation at the root, ``UNPROCESSABLE``,
+    never an exception or its text."""
     try:
         data = load_yaml(raw.decode("utf-8"), source=X.REL_PATH)
     except UnicodeDecodeError:
         return None, [], yaml_error(None)
     except ValidationFailed as exc:
         return None, [], yaml_error(exc)
-    return data, violations(data), None
+    except Exception:  # RecursionError and the like: fail closed, as structure
+        return None, [UNPROCESSABLE_VIOLATION], None
+    try:
+        return data, violations(data), None
+    except Exception:  # the validator's own walk (and its message formatting) can exhaust the recursion limit
+        return None, [UNPROCESSABLE_VIOLATION], None
 
 
 # ------------------------------------------------------------------------------------- field values (§3.1, §7)
@@ -402,13 +422,16 @@ def _clip(text: str) -> str:
 
 def field_metadata(location: tuple[Any, ...]) -> dict[str, Any]:
     """A field's ``class`` (the nearest ``x-aew-class``), ``allowed`` (its own schema ``enum``; absent otherwise, no
-    invented enum) and ``description`` (its own, else the nearest enclosing object's below the document)."""
+    invented enum) and ``description`` (its own only, never an enclosing object's: absent when the schema gives the
+    field none, F1a review R7)."""
     nodes = _schema_nodes(location)
     out: dict[str, Any] = {"class": next((n["x-aew-class"] for n in reversed(nodes) if "x-aew-class" in n), None)}
-    own = nodes[-1] if len(nodes) > 1 else {}
-    if isinstance(own.get("enum"), list) and all(isinstance(v, str) for v in own["enum"]):
-        out["allowed"] = list(own["enum"])
-    description = next((n["description"] for n in reversed(nodes[1:]) if isinstance(n.get("description"), str)), None)
+    reached = len(nodes) == 1 + 2 * len(location)  # the walk reached the field itself (two nodes per step)
+    own = nodes[-2:] if reached and location else []  # the field's node as written, and dereferenced
+    enum = next((n["enum"] for n in own if isinstance(n.get("enum"), list)), None)
+    if enum is not None and all(isinstance(v, str) for v in enum):
+        out["allowed"] = list(enum)
+    description = next((n["description"] for n in own if isinstance(n.get("description"), str)), None)
     if description is not None and not credential_shaped(description):
         out["description"] = _clip(description)
     return out
@@ -436,13 +459,14 @@ class _Projector:
             out.update(state="NULL", value=None)
         else:
             shown = value_of(value) if value_of else value
-            withheld = None if value_of else rule(value)
+            withheld = None if value_of else rule(value) or (TOO_LONG if too_long(value) else None)
             out["state"] = "SET"
             if withheld:
                 out["withheld"] = withheld
             else:
                 out["value"] = shown
-        if effective is not None and rule(effective) is None and not (withheld and effective == value):
+        if (effective is not None and rule(effective) is None and not too_long(effective)
+                and not (withheld and effective == value)):
             out.update(effective=effective, effective_source=effective_source)
         meta = field_metadata(location)
         out.update(meta)
@@ -560,7 +584,8 @@ class _Projector:
         entries = []
         for i, name in enumerate(names):
             valid = isinstance(name, str) and shape.search(name) is not None
-            entries.append({"index": i, "name": name if valid and not credential_shaped(name) else None,
+            shown = valid and not credential_shaped(name) and not too_long(name)
+            entries.append({"index": i, "name": name if shown else None,
                             "valid_name": valid})
         listed = entries[:MAX_PROVIDER_ENV]
         configured = {"state": self.fv(("provider_env",), _text, F46_2, value_of=len), "entries": listed,
@@ -622,13 +647,17 @@ def execution_projection(k: Kernel, *, observed_in: str = CLI_ENVIRONMENT,
     found, yaml_err, document = [], None, {}
     if d.raw is not None:
         parsed, found, yaml_err = parse_structured(d.raw)
-        if d.valid and isinstance(parsed, dict):
+        # Values only for bytes with no structured violation: the projector never sees a document the execution
+        # schema rejects, whatever the state says (F1a review R1).
+        if d.valid and not found and yaml_err is None and isinstance(parsed, dict):
             document = parsed
     write = capability(UNSUPPORTED, "AWAITS_F46_2")
     proj = _Projector(k, c, document, write["state"])
     profiles, _by_key, connections = proj.project_profiles()
     provider_env, observed = proj.provider_env(os.environ if env is None else env, observed_in)
-    matches = (d.adopted == d.on_disk != ON_DISK_ABSENT) or (d.adopted == PINNED_ABSENT and d.on_disk == ON_DISK_ABSENT)
+    # Only real inputs compare: while the manifest is drifted both are the same constant and nothing was read (R2).
+    matches = c.manifest_ok and ((d.adopted == d.on_disk != ON_DISK_ABSENT)
+                                 or (d.adopted == PINNED_ABSENT and d.on_disk == ON_DISK_ABSENT))
     return {
         "document": {"state": d.state, "in_force": d.in_force, "digest": d.digest, "on_disk_matches_adopted": matches,
                      "write": write, "violations": found[:MAX_VIOLATIONS],

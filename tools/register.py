@@ -249,7 +249,9 @@ def lost_text(text: str, name: str) -> list[str]:
       quotes are always available.
 
     It does not see what only the parsed values show: a repeated key, or a cell that YAML types as something other
-    than text (``no``, ``~``, ``1.10``, ``012``). ``strict_problems`` covers those, and ``text_problems`` runs both."""
+    than text (``no``, ``~``, ``1.10``, ``012``). ``strict_problems`` covers those, and ``text_problems`` runs both.
+    Known limit, covered by neither: a NEL (U+0085) or a carriage return inside a quoted cell loads as a space (YAML
+    folds them as line breaks), so the text changes at load, before any dump."""
     tokens = list(yaml.scan(text))
     spans = sorted((t.start_mark.index, t.end_mark.index) for t in tokens if t.end_mark.index > t.start_mark.index)
     starts = [s for s, _ in spans]
@@ -308,7 +310,9 @@ def strict_problems(text: str, name: str) -> list[str]:
     loads as something other than text, such as ``no`` (false), ``~`` (null), ``1.10`` (1.1) or ``012`` (10) (every
     cell of both files is text; the one exception is a section's ``number``); and a cell that ``dump`` itself would
     write double-quoted (a tab, a byte-order mark, a noncharacter, a space beside a line break), which the next
-    render's ``lost_text`` would refuse: the validator must pass its generator's output (review of #225, V1)."""
+    render's ``lost_text`` would refuse: the validator must pass its generator's output (review of #225, V1).
+    Known limit: a NEL or a carriage return inside a quoted cell has already been folded to a space when this sees
+    the value, so it is not caught here (nor by ``lost_text``)."""
     try:
         data = yaml.load(text, Loader=_StrictLoader)  # noqa: S506 - _StrictLoader is a SafeLoader
     except yaml.MarkedYAMLError as e:

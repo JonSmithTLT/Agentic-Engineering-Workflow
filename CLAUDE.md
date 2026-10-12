@@ -104,6 +104,9 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   (keep it out of `lead_broker.LEAD_REACHABLE`). `engine-owned` means the engine does it, and it is absent from
   `LEAD_REACHABLE` and the typed surface. `forbidden-to-lead` means it is reachable through neither Lead door.
   `tests/unit/test_surface_map.py` (`new_surface`) enforces this. Its grandfathered baseline only shrinks.
+  A surface declared `mutates: "no"` also gives a `probe`, the arguments that run it against the test's sample
+  project, which must leave the project unchanged; or `probe_exempt` with the reason. A new `diagnostic` home also
+  gives a one-line `diagnostic_justification`.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

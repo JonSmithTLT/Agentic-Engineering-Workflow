@@ -390,8 +390,9 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
         if credential and m not in ("yes", "with") and not e.get("mutates_exempt"):
             out.append(f"`aew {name}` takes a credential ({sorted(credential)[0]}): its mutates must be yes or with, "
                        "or give `mutates_exempt` with the reason")
-        if operator_only(name) and m not in ("yes", "with") and not (m == "no" and e.get("home") == DIAGNOSTIC):
-            out.append(f"`aew {name}` is operator-only: it mutates, unless it is a pure read homed diagnostic")
+        if operator_only(name) and m not in ("yes", "with") and not e.get("mutates_exempt"):
+            out.append(f"`aew {name}` is operator-only: its mutates must be yes or with, or give `mutates_exempt` "
+                       "with the reason")
         p = e.get("primitive")
         if p and m == "no":
             out.append(f"`aew {name}` runs primitive {p!r} but is declared `mutates: no`")
@@ -865,6 +866,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "`aew map select-architecture` takes --expect-map-rev"),
     ("mutates", lambda r: _entry(r, "harness stop").update(mutates="no"), "`aew harness stop` takes a credential"),
     ("mutates", lambda r: _entry(r, "whoami").pop("mutates_exempt"), "`aew whoami` takes a credential"),
+    ("mutates", lambda r: _entry(r, "operator ping").pop("mutates_exempt"), "`aew operator ping` is operator-only"),
     ("mutates", lambda r: _entry(r, "dashboard open").update(mutates="no"), "`aew dashboard open` is operator-only"),
     ("door", lambda r: _entry(r, "plan accept").pop("door"), "`aew plan accept` is Lead-reachable: name its door"),
     ("door", lambda r: _entry(r, "work create").update(via=["ticket_start"]),

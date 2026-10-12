@@ -1046,6 +1046,7 @@ commands:
     journeys: []
     mutates: "no"
     mutates_basis: "a read: whether the operator endpoint answers"
+    mutates_exempt: "operator-only because it reaches the operator endpoint, but it only asks whether it answers"
     probe: [operator, ping]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: message thread

@@ -63,6 +63,41 @@ def test_o_cmd_takes_placeholders_as_values_and_checks_every_alternative():
     assert found(prose("aew work transition <T> --tto RUNNING"), "O-CMD")  # an option the command lacks
 
 
+def test_alternatives_between_options_split_whole_option_groups():
+    """The product's own plan hint offers `--assurance none` or `--review <card>` or `--verify <card>` across spaces:
+    each group is one alternative, and each must parse. A group naming an option the command lacks is caught."""
+    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> --expect-rev N"
+    assert not found(prose(hint), "O-CMD")
+    assert found(prose(hint.replace("--verify <card>", "--verfy <card>")), "O-CMD")
+    assert not found(prose("aew harness config opencode <INV>|--lead"), "O-CMD")
+
+
+def test_the_hint_the_engine_writes_for_a_plan_parses():
+    """Read from the product: the resume hint that names the plan's assurance alternatives."""
+    from pathlib import Path
+
+    source = (Path(rules.__file__).resolve().parents[3] / "src" / "aew" / "engine" / "resume_ops.py").read_text(
+        encoding="utf-8")
+    assert "--assurance none|--review <card>|--verify <card>" in source
+    assert not found(prose("aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> "
+                           "--expect-rev N"), "O-CMD")
+
+
+def test_a_refusal_saying_what_a_command_would_put_on_stdout_asks_for_nothing():
+    from aew.harness import lead_broker
+
+    assert "would put a Lead credential" in _source_of(lead_broker.__file__)
+    told = "`aew dashboard open` would put a Lead credential, offer secret or dashboard session URL on stdout"
+    assert not found(Output(site="unit", text=told), "O-SECRET")
+    assert found(Output(site="unit", text="copy the credential into AEW_LEAD_TOKEN"), "O-SECRET")
+
+
+def _source_of(path: str) -> str:
+    from pathlib import Path
+
+    return Path(path).read_text(encoding="utf-8")
+
+
 def test_a_structured_field_must_parse_whole_while_prose_may_name_a_command():
     mention = prose("aew work show")
     field = Output(site="unit", payload={"cli": ["work", "show"]})

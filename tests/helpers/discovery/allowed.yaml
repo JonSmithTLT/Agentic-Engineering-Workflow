@@ -5,8 +5,26 @@
 schema: aew/discovery-allowed/v1
 allowed:
   O-IDS:
+  - cli:aew checkpoint|MIGRATION_REQUIRED
+  - cli:aew context show|result
+  - cli:aew guide|result
+  - cli:aew harness config|result
+  - cli:aew harness launch|RUN_LIVE
+  - cli:aew harness wait|result
   - cli:aew init|result
+  - cli:aew invoke create|INPUT_STALE
+  - cli:aew lead tool|result
+  - cli:aew opencode|result
+  - cli:aew resume|result
+  - cli:aew stage abandon|result
+  - cli:aew stage continue|result
   - cli:aew status|result
+  - cli:aew work assign|INPUT_STALE
+  - cli:aew work close|GATE_UNSATISFIED
+  - cli:aew work create|MIGRATION_REQUIRED
+  - cli:aew work dispatch|INPUT_STALE
+  - cli:aew work dispose|result
+  - cli:aew work transition|ILLEGAL_TRANSITION
   - static:docs/guides/lead-guide.md|aew evidence ingest <T> --evidence <id> --expect-rev N
   - static:docs/guides/lead-guide.md|aew harness launch <INV> --expect-rev N
   - static:docs/guides/lead-guide.md|aew harness wait <run>
@@ -136,26 +154,281 @@ allowed:
   - tool:checkpoint|STALE_AUTHORITY
   - tool:checkpoint|STALE_REVISION
   - tool:checkpoint|result
+  - tool:cli|NOT_COMPLETED
+  - tool:cli|PERMISSION_DENIED
+  - tool:cli|TURN_END_NEEDS_MESSAGING
+  - tool:cli|USAGE
+  - tool:cli|result
   - tool:explain|result
   - tool:harness_status|result
+  - tool:harness_wait|STALE_AUTHORITY
+  - tool:harness_wait|result
+  - tool:integration_publish|ILLEGAL_TRANSITION
+  - tool:integration_publish|STALE_CANDIDATE
+  - tool:integration_publish|result
+  - tool:probe_judged|STALE_REVISION
+  - tool:probe_named|USAGE
+  - tool:probe_notes|ILLEGAL_TRANSITION
+  - tool:probe_notes|INTEGRITY_ERROR
+  - tool:probe_notes|STALE_AUTHORITY
+  - tool:probe_notes|STALE_POLICY
+  - tool:probe_notes|STALE_REVISION
+  - tool:probe_notes|USAGE
+  - tool:probe_notes|result
+  - tool:probe_start|HARNESS_LAUNCH_FAILED
+  - tool:probe_start|ILLEGAL_TRANSITION
+  - tool:probe_start|NOT_FOUND
+  - tool:probe_start|STALE_REVISION
+  - tool:probe_start|result
+  - tool:resolve|CONCURRENCY_LIMIT
+  - tool:resolve|HARNESS_LAUNCH_FAILED
+  - tool:resolve|ILLEGAL_TRANSITION
+  - tool:resolve|NOT_FOUND
+  - tool:resolve|STALE_POLICY
+  - tool:resolve|result
   - tool:resume|result
+  - tool:status|STALE_AUTHORITY
   - tool:status|result
   - tool:steering|ILLEGAL_TRANSITION
   - tool:steering|result
+  - tool:ticket_draft|NOT_FOUND
+  - tool:ticket_draft|STALE_REVISION
+  - tool:ticket_draft|result
+  - tool:ticket_prepare|result
+  - tool:ticket_request_review|GATE_UNSATISFIED
+  - tool:ticket_request_review|result
+  - tool:ticket_request_verification|DISPOSITION_REQUIRED
+  - tool:ticket_request_verification|GATE_UNSATISFIED
+  - tool:ticket_request_verification|ILLEGAL_TRANSITION
+  - tool:ticket_request_verification|result
+  - tool:ticket_start|CONCURRENCY_LIMIT
+  - tool:ticket_start|HARNESS_LAUNCH_FAILED
+  - tool:ticket_start|ILLEGAL_TRANSITION
+  - tool:ticket_start|INTEGRITY_ERROR
+  - tool:ticket_start|STALE_REVISION
+  - tool:ticket_start|result
   - tool:work_show|NOT_FOUND
   - tool:work_show|result
+  O-CMD:
+  - cli:aew resume|result
+  - cli:aew status|result
+  - tool:explain|result
+  - tool:probe_named|USAGE
+  - tool:probe_start|ILLEGAL_TRANSITION
+  - tool:resolve|ILLEGAL_TRANSITION
+  - tool:status|result
+  - tool:ticket_draft|NOT_FOUND
+  - tool:ticket_draft|result
+  - tool:ticket_start|ILLEGAL_TRANSITION
   O-WORDS:
+  - cli:aew authority accept|INTEGRITY_ERROR
+  - cli:aew authority accept|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew authority reject|PERMISSION_DENIED
+  - cli:aew check run|GATE_UNSATISFIED
+  - cli:aew check run|PERMISSION_DENIED
+  - cli:aew check run|STALE_AUTHORITY
+  - cli:aew checkpoint|INTEGRITY_ERROR
+  - cli:aew checkpoint|MIGRATION_REQUIRED
+  - cli:aew checkpoint|PERMISSION_DENIED
   - cli:aew checkpoint|PROJECT_NOT_FOUND
+  - cli:aew checkpoint|STALE_AUTHORITY
+  - cli:aew checkpoint|STALE_REVISION
+  - cli:aew context pack|INTEGRITY_ERROR
+  - cli:aew dashboard open|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew dashboard open|USAGE
+  - cli:aew dashboard serve|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew dashboard serve|USAGE
+  - cli:aew dispatch explain|INTEGRITY_ERROR
+  - cli:aew evidence ingest|GATE_UNSATISFIED
+  - cli:aew evidence ingest|ILLEGAL_TRANSITION
+  - cli:aew evidence ingest|OBSERVATION_MUTATED
+  - cli:aew gate waive|GATE_UNSATISFIED
+  - cli:aew harness launch|HARNESS_INCOMPATIBLE
+  - cli:aew harness launch|ILLEGAL_TRANSITION
+  - cli:aew harness launch|RUN_LIVE
+  - cli:aew harness send|ILLEGAL_TRANSITION
+  - cli:aew harness send|MESSAGING_SNAPSHOT_MISMATCH
+  - cli:aew harness send|TURN_END_NEEDS_MESSAGING
+  - cli:aew harness send|USAGE
+  - cli:aew harness wait|USAGE
+  - cli:aew history audit|INTEGRITY_ERROR
+  - cli:aew history audit|PERMISSION_DENIED
+  - cli:aew history audit|STALE_REVISION
+  - cli:aew history audit|USAGE
+  - cli:aew history links|USAGE
+  - cli:aew history list|USAGE
+  - cli:aew history load|ILLEGAL_TRANSITION
+  - cli:aew history load|NOT_FOUND
+  - cli:aew history load|USAGE
+  - cli:aew history log|INTEGRITY_ERROR
+  - cli:aew history log|USAGE
+  - cli:aew history reindex|LOCK_TIMEOUT
+  - cli:aew history search|CAPABILITY_UNAVAILABLE
+  - cli:aew history search|USAGE
+  - cli:aew history show|NOT_FOUND
+  - cli:aew history show|USAGE
+  - cli:aew integrate breaker reset|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew integrate custody|PERMISSION_DENIED
+  - cli:aew integrate defer|ILLEGAL_TRANSITION
+  - cli:aew integrate prepare|GATE_UNSATISFIED
+  - cli:aew integrate prepare|ILLEGAL_TRANSITION
+  - cli:aew integrate prepare|INTEGRITY_ERROR
+  - cli:aew integrate prepare|LEASE_HELD
+  - cli:aew integrate prepare|QUEUE_ORDER
+  - cli:aew integrate publish|GATE_UNSATISFIED
+  - cli:aew integrate publish|GIT_ERROR
+  - cli:aew integrate publish|ILLEGAL_TRANSITION
+  - cli:aew integrate publish|INTEGRITY_ERROR
+  - cli:aew integrate publish|LEASE_NOT_HELD
+  - cli:aew integrate publish|LEASE_RECONCILE_REQUIRED
+  - cli:aew integrate publish|STALE_AUTHORITY
+  - cli:aew integrate publish|STALE_CANDIDATE
+  - cli:aew integrate reconcile|GATE_UNSATISFIED
+  - cli:aew integrate reconcile|INTEGRITY_ERROR
+  - cli:aew integrate reconcile|STALE_REVISION
+  - cli:aew integrate reorder|ILLEGAL_TRANSITION
+  - cli:aew integrate requeue|ILLEGAL_TRANSITION
+  - cli:aew integrate validate|VALIDATION_CONTAINMENT_UNAVAILABLE
+  - cli:aew invoke create|DEPENDENCY_UNSATISFIED
+  - cli:aew invoke create|DISPATCH_REFUSED
+  - cli:aew invoke create|ILLEGAL_TRANSITION
+  - cli:aew invoke create|INPUT_STALE
+  - cli:aew invoke create|LEASE_RECONCILE_REQUIRED
+  - cli:aew invoke create|PERMISSION_DENIED
+  - cli:aew invoke create|WORKSPACE_MUTATED
+  - cli:aew lead acquire|PERMISSION_DENIED
+  - cli:aew lead acquire|USAGE
+  - cli:aew lead mcp|PERMISSION_DENIED
+  - cli:aew lead mcp|STALE_AUTHORITY
   - cli:aew lead mode lower|ILLEGAL_TRANSITION
   - cli:aew lead mode raise|USAGE
   - cli:aew lead session|USAGE
+  - cli:aew lead takeover|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew lead tool|TOOL_NOT_EXPOSED
+  - cli:aew manifest adopt|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew map diff|USAGE
+  - cli:aew map generate|MAP_ARTIFACT_NONDETERMINISTIC
+  - cli:aew map generate|PERMISSION_DENIED
+  - cli:aew map generate|STALE_REVISION
+  - cli:aew map generate|USAGE
+  - cli:aew map select-architecture|NOT_FOUND
+  - cli:aew map select-architecture|PERMISSION_DENIED
+  - cli:aew map select-architecture|STALE_REVISION
+  - cli:aew map select-architecture|VALIDATION_FAILED
+  - cli:aew map show|MAP_ARTIFACT_CORRUPT
+  - cli:aew migrate|ILLEGAL_TRANSITION
+  - cli:aew migrate|INTEGRITY_ERROR
+  - cli:aew opencode|HARNESS_INCOMPATIBLE
+  - cli:aew opencode|USAGE
+  - cli:aew plan accept|ILLEGAL_TRANSITION
+  - cli:aew plan accept|PERMISSION_DENIED
+  - cli:aew plan propose|NOT_FOUND
+  - cli:aew plan propose|PERMISSION_DENIED
+  - cli:aew plan propose|USAGE
+  - cli:aew plan reconfirm|USAGE
+  - cli:aew review ingest|DISPOSITION_REQUIRED
+  - cli:aew review ingest|GATE_UNSATISFIED
+  - cli:aew review ingest|ILLEGAL_TRANSITION
+  - cli:aew review ingest|OBSERVATION_MUTATED
+  - cli:aew stage abandon|INVALID_ARGUMENTS
+  - cli:aew status|WORKSPACE_NOT_AUTHORITY
+  - cli:aew submit|OBSERVATION_MUTATED
+  - cli:aew submit|PERMISSION_DENIED
+  - cli:aew submit|STALE_AUTHORITY
+  - cli:aew submit|USAGE
+  - cli:aew submit|VALIDATION_FAILED
+  - cli:aew submit|WORKSPACE_MUTATED
+  - cli:aew verify ingest|GATE_UNSATISFIED
+  - cli:aew whoami|STALE_AUTHORITY
+  - cli:aew whoami|USAGE
+  - cli:aew work accept|GATE_UNSATISFIED
+  - cli:aew work assign|CONCURRENCY_LIMIT
+  - cli:aew work assign|DEPENDENCY_UNSATISFIED
+  - cli:aew work assign|DISPATCH_REFUSED
+  - cli:aew work assign|HARNESS_INCOMPATIBLE
+  - cli:aew work assign|HARNESS_LAUNCH_FAILED
+  - cli:aew work assign|ILLEGAL_TRANSITION
+  - cli:aew work assign|INPUT_STALE
+  - cli:aew work assign|INTEGRITY_ERROR
+  - cli:aew work assign|USAGE
+  - cli:aew work assign|VALIDATION_FAILED
+  - cli:aew work cancel|ILLEGAL_TRANSITION
+  - cli:aew work close|DEPENDENCY_UNSATISFIED
+  - cli:aew work close|GATE_UNSATISFIED
+  - cli:aew work create|ILLEGAL_TRANSITION
+  - cli:aew work create|MIGRATION_REQUIRED
+  - cli:aew work create|USAGE
+  - cli:aew work depend|ILLEGAL_TRANSITION
+  - cli:aew work depend|USAGE
+  - cli:aew work dispatch|CONCURRENCY_LIMIT
+  - cli:aew work dispatch|ILLEGAL_TRANSITION
+  - cli:aew work dispatch|INPUT_STALE
+  - cli:aew work dispatch|PERMISSION_DENIED
+  - cli:aew work move|ILLEGAL_TRANSITION
+  - cli:aew work promote|ILLEGAL_TRANSITION
+  - cli:aew work reclassify|USAGE
+  - cli:aew work reconcile|GATE_UNSATISFIED
+  - cli:aew work reconcile|ILLEGAL_TRANSITION
+  - cli:aew work redispatch|CONCURRENCY_LIMIT
+  - cli:aew work redispatch|GATE_UNSATISFIED
+  - cli:aew work staff|OPERATOR_AUTHORIZATION_REQUIRED
+  - cli:aew work staff|PERMISSION_DENIED
+  - cli:aew work staff|USAGE
+  - cli:aew work transition|GATE_UNSATISFIED
+  - cli:aew work transition|ILLEGAL_TRANSITION
+  - cli:aew work transition|PERMISSION_DENIED
+  - cli:aew work transition|STALE_AUTHORITY
+  - cli:aew work transition|USAGE
   - tool:checkpoint|PERMISSION_DENIED
   - tool:checkpoint|STALE_AUTHORITY
   - tool:checkpoint|STALE_REVISION
+  - tool:cli|NOT_COMPLETED
+  - tool:cli|PERMISSION_DENIED
+  - tool:cli|TURN_END_NEEDS_MESSAGING
+  - tool:cli|USAGE
+  - tool:harness_wait|STALE_AUTHORITY
+  - tool:integration_publish|ILLEGAL_TRANSITION
+  - tool:integration_publish|STALE_CANDIDATE
+  - tool:probe_judged|STALE_REVISION
+  - tool:probe_named|USAGE
+  - tool:probe_notes|ILLEGAL_TRANSITION
+  - tool:probe_notes|INTEGRITY_ERROR
+  - tool:probe_notes|STALE_AUTHORITY
+  - tool:probe_notes|STALE_POLICY
+  - tool:probe_notes|STALE_REVISION
+  - tool:probe_notes|USAGE
+  - tool:probe_start|HARNESS_LAUNCH_FAILED
+  - tool:probe_start|ILLEGAL_TRANSITION
+  - tool:probe_start|NOT_FOUND
+  - tool:probe_start|STALE_REVISION
+  - tool:resolve|CONCURRENCY_LIMIT
+  - tool:resolve|HARNESS_LAUNCH_FAILED
+  - tool:resolve|ILLEGAL_TRANSITION
+  - tool:resolve|NOT_FOUND
+  - tool:resolve|STALE_POLICY
+  - tool:status|STALE_AUTHORITY
   - tool:steering|ILLEGAL_TRANSITION
+  - tool:ticket_draft|NOT_FOUND
+  - tool:ticket_draft|STALE_REVISION
+  - tool:ticket_request_review|GATE_UNSATISFIED
+  - tool:ticket_request_verification|DISPOSITION_REQUIRED
+  - tool:ticket_request_verification|GATE_UNSATISFIED
+  - tool:ticket_request_verification|ILLEGAL_TRANSITION
+  - tool:ticket_start|CONCURRENCY_LIMIT
+  - tool:ticket_start|HARNESS_LAUNCH_FAILED
+  - tool:ticket_start|ILLEGAL_TRANSITION
+  - tool:ticket_start|INTEGRITY_ERROR
+  - tool:ticket_start|STALE_REVISION
   - tool:work_show|NOT_FOUND
   O-SECRET:
+  - cli:aew context show|result
+  - cli:aew dashboard open|USAGE
+  - cli:aew dashboard serve|USAGE
+  - cli:aew history audit|USAGE
   - cli:aew lead session|USAGE
+  - cli:aew map generate|USAGE
+  - cli:aew whoami|USAGE
+  - cli:aew|result
   - static:docs/guides/opencode.md|aew manifest adopt --reason ... --token <credential> --expect-rev N
   - static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --token <credential> --expect-rev 1
   - static:pack:implementer|asks to set AEW_INVOCATION_TOKEN
@@ -164,6 +437,7 @@ allowed:
   - static:pack:researcher|asks to set AEW_INVOCATION_TOKEN
   - static:pack:reviewer|asks to set AEW_INVOCATION_TOKEN
   - static:pack:verifier|asks to set AEW_INVOCATION_TOKEN
+  - tool:cli|PERMISSION_DENIED
   O-ENV:
   - static:lead-system+guide
 residuals: []

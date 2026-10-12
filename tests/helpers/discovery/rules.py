@@ -251,8 +251,32 @@ def _takes_value(option: str) -> bool:
     return action is not None and action.nargs != 0
 
 
+def _option_alternatives(argv: list[str]) -> list[list[str]] | None:
+    """Alternatives between options, written across spaces (``--assurance none|--review <card>|--verify <card>``):
+    the bar splits whole option groups, not single words. ``None`` when ``argv`` has none."""
+    def splits_options(token: str) -> bool:
+        return "|" in token and not ANGLE.match(token) and any(p.startswith("-") for p in token.split("|")[1:])
+
+    first = next((i for i, t in enumerate(argv) if splits_options(t)), None)
+    if first is None:
+        return None
+    last = first
+    while last + 1 < len(argv) and splits_options(argv[last + 1]):
+        last += 1
+    start = first - 1 if first > 0 and argv[first - 1].startswith("-") else first
+    end = last  # the value after the last alternative's option belongs to it
+    if argv[last].split("|")[-1].startswith("-") and _takes_value(argv[last].split("|")[-1]) and last + 1 < len(argv):
+        end = last + 1
+    segment = " ".join(argv[start:end + 1])
+    head, tail = argv[:start], argv[end + 1:]
+    return [[*head, *alt.split(), *tail] for alt in re.split(r"\|(?=-)", segment)]
+
+
 def _variants(argv: list[str], limit: int = 16) -> list[list[str]]:
     """``a|b|c`` (or ``<a|b|c>``) is a choice the text offers: each alternative must parse."""
+    grouped = _option_alternatives(argv)
+    if grouped is not None:
+        return [v for alt in grouped for v in _variants(alt, limit)][:limit]
     variants: list[list[str]] = [[]]
     for token in argv:
         inner = token[1:-1] if token[:1] in "<{" and ANGLE.match(token) else token
@@ -449,7 +473,8 @@ def _choices(dest: str) -> bool:
     return any(a.dest == dest and a.choices for a in _actions())
 
 
-SECRET_ASK = re.compile(r"\b(set|export|copy|paste|pass|put|enter|type|supply|give)\b(?P<between>[^.;\n]{0,80}?)"
+# "Put" and "give" are left out: the product says what a command "would put" on standard output when it refuses.
+SECRET_ASK = re.compile(r"\b(set|export|copy|paste|pass|enter|type|supply)\b(?P<between>[^.;\n]{0,80}?)"
                         r"(?P<what>{names})", re.IGNORECASE)
 NEGATION = re.compile(r"\b(never|not|no|without)\b", re.IGNORECASE)
 PIN_ASK = re.compile(r"\b(enter|type|provide|give|paste)\b[^.;\n]{0,40}?\bPIN\b", re.IGNORECASE)

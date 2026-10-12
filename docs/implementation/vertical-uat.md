@@ -400,7 +400,12 @@ this registry lists, fails it.
 **Outside the registry by namespace:** the dashboard's reason vocabulary (`dashboard/reasons.py`, and the reason codes
 its projections compute, such as `ARCHITECTURE_*`, `MAP_STALE_*`, `RUN_CRASHED`, `RUN_LOST` and
 `RECALL_NOT_IN_INVOCATIONS`). These explain a projection's state; they are never a refusal's code, and the registry
-does not list them.
+does not list them. The same holds for the steering loop's stop vocabulary (`STEERING_OFF`, `BLOCKED`,
+`LOOP_DEADLINE` and the rest): the reasons the loop stops, which the Lead reads in steering status and notifications.
+The test derives that namespace from `aew.harness.steering_loop`'s own constants, so a new stop code joins it as it is
+added; the scan reads a stop code even when it is passed by a constant's name (`Stop(BLOCKED)`), resolving module
+constants in the calling module or imported from another. `STALE_AUTHORITY` and `STALE_POLICY` are stop codes and
+refusal codes both, and keep their rows.
 
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.

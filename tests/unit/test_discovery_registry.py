@@ -42,8 +42,8 @@ def code_writes(root: Path = SRC) -> dict[str, str]:
     """``code -> "module:line"`` for every place the product's source writes a code string (review of #218, m6 and
     G3), in each form it uses: a class's ``code =`` or ``code: T =``, a dict literal's ``"code": "X"``, a keyword
     ``code="X"``, an ``x.code = "X"`` assignment, and a constructor argument (review of #218, G3b): a class whose
-    ``__init__`` stores a parameter in ``self.code``, or a dataclass with a ``code`` field, writes the literal its
-    call sites pass at that position."""
+    ``__init__`` stores a parameter in ``self.code``, or a dataclass with a ``code`` field, writes what its call sites
+    pass at that position or as ``code=``: a literal, or a module constant's name (G3c)."""
     out: dict[str, str] = {}
 
     def add(value: object, path: Path, line: int) -> None:
@@ -52,13 +52,21 @@ def code_writes(root: Path = SRC) -> dict[str, str]:
 
     trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(root.rglob("*.py"))}
     takers = {name: index for tree in trees.values() for name, index in code_parameters(tree).items()}
+    constants = module_constants(trees, root)
     for path, tree in trees.items():
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
                 index = takers.get(name) if isinstance(name, str) else None
-                if index is not None and len(node.args) > index and isinstance(node.args[index], ast.Constant):
-                    add(node.args[index].value, path, node.lineno)
+                if index is None:
+                    continue
+                given = [node.args[index]] if len(node.args) > index else []
+                given += [k.value for k in node.keywords if k.arg == "code"]
+                for arg in given:  # a literal, or a module constant's name (review of #218, G3c)
+                    if isinstance(arg, ast.Constant):
+                        add(arg.value, path, node.lineno)
+                    elif isinstance(arg, ast.Name) and arg.id in constants[path]:
+                        add(constants[path][arg.id], path, node.lineno)
     for path, tree in trees.items():
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
@@ -76,6 +84,37 @@ def code_writes(root: Path = SRC) -> dict[str, str]:
             elif (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
                   and any(isinstance(t, ast.Attribute) and t.attr == "code" for t in node.targets)):
                 add(node.value.value, path, node.lineno)
+    return out
+
+
+def module_constants(trees: dict[Path, ast.Module], root: Path) -> dict[Path, dict[str, str]]:
+    """``path -> {name: value}``: the string constants each module binds at its top level (``NAME = "X"``), and those
+    it imports by name from another scanned module (``from pkg.mod import NAME as ALIAS``, relative imports too)."""
+    def dotted(path: Path) -> str:
+        return ".".join(path.relative_to(root).with_suffix("").parts)
+
+    own: dict[str, dict[str, str]] = {}
+    for path, tree in trees.items():
+        own[dotted(path)] = {t.id: stmt.value.value for stmt in tree.body if isinstance(stmt, ast.Assign)
+                             and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)
+                             for t in stmt.targets if isinstance(t, ast.Name)}
+
+    def find(module: str) -> dict[str, str]:  # "aew.harness.x" or "harness.x": the scanned module it names
+        return next((c for key, c in own.items() if module == key or module.endswith("." + key)), {})
+
+    out: dict[Path, dict[str, str]] = {}
+    for path, tree in trees.items():
+        names = dict(own[dotted(path)])
+        for stmt in tree.body:
+            if isinstance(stmt, ast.ImportFrom):
+                package = dotted(path).split(".")[:-1]
+                base = ".".join(package[:len(package) - stmt.level + 1] if stmt.level else [])
+                module = ".".join(p for p in (base, stmt.module or "") if p)
+                source = find(module)
+                for alias in stmt.names:
+                    if alias.name in source:
+                        names[alias.asname or alias.name] = source[alias.name]
+        out[path] = names
     return out
 
 
@@ -102,11 +141,40 @@ def code_parameters(tree: ast.AST) -> dict[str, int]:
     return out
 
 
+def steering_stop_codes() -> frozenset[str]:
+    """The steering loop's stop vocabulary, an outside namespace (review of #218, G3c), derived from the module that
+    owns it rather than pinned: every upper-case module constant of ``aew.harness.steering_loop`` whose value is a
+    code. A new stop code is in it the moment it is added."""
+    from aew.harness import steering_loop
+
+    return frozenset(v for k, v in vars(steering_loop).items()
+                     if k.isupper() and isinstance(v, str) and CODE_SHAPE.match(v))
+
+
+def refusal_class_codes() -> frozenset[str]:
+    return frozenset(cls.code for _, cls in inspect.getmembers(errors, inspect.isclass)
+                     if issubclass(cls, errors.AEWError) and cls.__module__ == errors.__name__)
+
+
 def defined_codes() -> dict[str, str]:
-    """Every refusal code the product defines that the Lead or the operator can see, with where it is written."""
-    codes = {c: where for c, where in code_writes().items() if c not in OUTSIDE_REGISTRY}
+    """Every refusal code the product defines that the Lead or the operator can see, with where it is written. A stop
+    code is outside unless it is also a refusal code `aew.errors` defines (`STALE_AUTHORITY`, `STALE_POLICY`)."""
+    outside = OUTSIDE_REGISTRY | (steering_stop_codes() - refusal_class_codes())
+    codes = {c: where for c, where in code_writes().items() if c not in outside}
     codes.update({c: "surface/errors.py:CODES" for c in surface_errors.CODES})
     return codes
+
+
+def test_the_steering_stop_codes_are_named_outside_and_the_scan_reads_them_through_constants():
+    """Review of #218, G3c: `Stop` is called with the module's constants by name (`Stop(BLOCKED)`); the scan resolves
+    them, and every stop code it finds is in the derived namespace, none of them in the registry unless it is also a
+    refusal code."""
+    stops = steering_stop_codes()
+    assert {"BLOCKED", "NOTHING_TO_DO", "STEERING_OFF", "ACTION_STOPPED", "LOOP_DEADLINE"} <= stops
+    found_in_loop = {c for c, where in code_writes().items() if where.startswith("harness/steering_loop.py")}
+    assert {"BLOCKED", "ANOMALY_HIGH", "LOOP_DEADLINE", "MAX_AUTO_ACTIONS"} <= found_in_loop <= stops
+    listed = {str(r["code"]) for r in registry.rows(page())}
+    assert stops & listed == stops & refusal_class_codes() == {"STALE_AUTHORITY", "STALE_POLICY"}
 
 
 def test_the_source_scan_sees_every_class_aew_errors_defines():
@@ -131,12 +199,26 @@ def test_the_source_scan_sees_every_class_aew_errors_defines():
     "import dataclasses\n@dataclasses.dataclass\nclass B:\n    subject: str\n    code: str\n"
     "B('s', 'BRAND_NEW')\n",
     "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass B:\n    code: str\nB('BRAND_NEW')\n",
+    "from dataclasses import dataclass\nNEW = 'BRAND_NEW'\n@dataclass\nclass B:\n    code: str\nB(NEW)\n",
+    "from dataclasses import dataclass\nNEW = 'BRAND_NEW'\n@dataclass\nclass B:\n    code: str\nB(code=NEW)\n",
 ])
 def test_a_new_code_written_in_any_form_is_caught(tmp_path, source):
     (tmp_path / "m.py").write_text(source, encoding="utf-8")
     assert set(code_writes(tmp_path)) == {"BRAND_NEW"}
     (tmp_path / "m.py").write_text("x = {'kind': 'BRAND_NEW'}\ncode_word = 'BRAND_NEW'\n", encoding="utf-8")
     assert code_writes(tmp_path) == {}  # a string that is not written as a code
+
+
+@pytest.mark.parametrize("importer", ["from pkg.codes import NEW as N\n", "from .codes import NEW as N\n"])
+def test_a_code_constant_imported_from_another_module_is_resolved(tmp_path, importer):
+    """Review of #218, G3c: the constant may be bound in another module and imported by name (absolute or
+    relative); a name that is not a scanned constant is not read."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "codes.py").write_text("NEW = 'BRAND_NEW'\nlower = 'not a code'\n", encoding="utf-8")
+    (pkg / "use.py").write_text(importer + "from dataclasses import dataclass\n@dataclass\nclass S:\n    code: str\n"
+                                "S(N)\nS(undefined_name)\n", encoding="utf-8")
+    assert code_writes(tmp_path) == {"BRAND_NEW": "pkg/use.py:6"}
 
 
 def test_the_codes_outside_the_registry_are_named_and_still_written():

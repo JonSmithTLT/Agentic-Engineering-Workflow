@@ -281,6 +281,39 @@ def test_the_capture_plugin_never_changes_a_test_outcome(monkeypatch):
     assert "O-CMD x" in recorder.findings
 
 
+def test_a_defect_in_a_hook_never_reaches_the_test_that_called_the_product(monkeypatch, capsys):
+    """Every hook the plugin installs (the CLI entry, the typed surface, subprocess) answers what the product answered
+    when building the output to judge fails: the defect is counted instead."""
+    import aew.cli.main as cli_main
+    import aew.surface.run as surface_run
+
+    answer = {"ok": True, "stopped": None}
+    monkeypatch.setattr(surface_run, "run_tool", lambda *a, **k: answer)
+    originals = (subprocess.run, cli_main._main, surface_run.run_tool)
+    plugin = capture.CapturePlugin(None, None)  # type: ignore[arg-type]
+    plugin.install()
+    try:
+        assert cli_main._main([]) == 2  # no command: the help, exit status 2
+        assert surface_run.run_tool(None, None, "status", {}) is answer
+        assert not plugin.recorder.errors
+        def boom(*_a, **_k):
+            raise RuntimeError("defect")
+
+        monkeypatch.setattr(capture, "cli_outputs", boom)
+        monkeypatch.setattr(capture, "tool_output", boom)
+        assert cli_main._main([]) == 2
+        assert surface_run.run_tool(None, None, "status", {}) is answer
+        proc = subprocess.run([sys.executable, "-m", "aew", "--version"], capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL,
+                              creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        assert proc.returncode == 0 and proc.stdout.startswith("aew ")
+    finally:
+        plugin.uninstall()
+    assert plugin.recorder.errors == {"RuntimeError: defect": 3}
+    assert (subprocess.run, cli_main._main, surface_run.run_tool) == originals  # uninstalled as found
+    capsys.readouterr()
+
+
 def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
     """The plugin end to end, in a pytest session of its own (the suite's conftest loaded as a plugin): a test that
     runs `aew` produces a findings file beside its lane report, keyed by command words, and still passes."""

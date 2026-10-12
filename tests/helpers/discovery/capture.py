@@ -176,17 +176,22 @@ class CapturePlugin:
         recorder = self.recorder
         real_run, real_main, real_tool = subprocess.run, cli_main._main, surface_run.run_tool
 
+        def observe(make: Any, *args: Any) -> None:
+            """Record what ``make(*args)`` builds; a defect in building it is counted, never raised into the test."""
+            try:
+                built = make(*args)
+                for output in built if isinstance(built, list) else [built]:
+                    recorder.record(output)
+            except Exception as exc:  # noqa: BLE001  (observing only: see the module docstring)
+                name = f"{type(exc).__name__}: {str(exc)[:200]}"
+                recorder.errors[name] = recorder.errors.get(name, 0) + 1
+
         @functools.wraps(real_run)
         def run(*args: Any, **kwargs: Any) -> Any:
             result = real_run(*args, **kwargs)
             argv = _aew_argv(args[0] if args else kwargs.get("args"))
             if argv is not None:
-                try:
-                    for output in cli_outputs(argv, _text(result.stdout), _text(result.stderr),
-                                              _text(kwargs.get("input"))):
-                        recorder.record(output)
-                except Exception as exc:  # noqa: BLE001  (observing only)
-                    recorder.errors[type(exc).__name__] = recorder.errors.get(type(exc).__name__, 0) + 1
+                observe(cli_outputs, argv, _text(result.stdout), _text(result.stderr), _text(kwargs.get("input")))
             return result
 
         @functools.wraps(real_main)
@@ -198,13 +203,12 @@ class CapturePlugin:
                 return real_main(argv)
             finally:
                 sys.stdout, sys.stderr = saved
-                for output in cli_outputs(list(argv), out.kept.getvalue(), err.kept.getvalue()):
-                    recorder.record(output)
+                observe(cli_outputs, list(argv), out.kept.getvalue(), err.kept.getvalue())
 
         @functools.wraps(real_tool)
         def run_tool(engine: Any, ctx: Any, name: Any, arguments: Any, **kwargs: Any) -> Any:
             result = real_tool(engine, ctx, name, arguments, **kwargs)
-            recorder.record(tool_output(name, arguments, result))
+            observe(tool_output, name, arguments, result)
             return result
 
         self._patch(subprocess, "run", run)

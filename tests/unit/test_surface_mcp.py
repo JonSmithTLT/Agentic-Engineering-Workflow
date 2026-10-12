@@ -41,6 +41,17 @@ class Spy:
         return self.reply
 
 
+# The context budget's one measure (plan v3 §2.6): a `tools/list` result, or one entry of it, as compact JSON. The cap
+# below and A1-0's measurement spike both call it, so the spike's figures are the cap's own (the A1 slice plan, reviewed
+# CLEAR, §3.4 and §7 `test_a1_rows_measured`).
+NORMAL_BYTES_PIN = 11_694  # decision 7's whole-surface pin (E6a); unchanged in A1 until the designer answers G3
+RESOLVE_BYTES_PIN = 771
+
+
+def advertised_bytes(listing: dict[str, Any]) -> int:
+    return len(json.dumps(listing, separators=(",", ":")))
+
+
 def rpc(server, method, params=None, rid=1):
     return server.handle({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}})
 
@@ -73,7 +84,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
                      "ticket_request_verification", "ticket_prepare", "integration_publish"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
     assert recovery == [*names[:9], "cli", *names[9:]]  # catalog order: the escape before the stages
-    size = len(json.dumps(normal, separators=(",", ":")))
+    size = advertised_bytes(normal)
     assert size < 12_000 and len(names) <= 16, f"the normal advertised surface is {size} bytes"
     by_name = {t["name"]: t for t in normal["tools"]}
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
@@ -84,8 +95,8 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     # 771 bytes the plan measured for it (5,135 bytes at E3c; 7,996 at E5a; 9,991 at E5b, its two stages' rows exactly
     # as catalogued since F15.1, so the projection with every tool built is unchanged; 11,694 at E6a, the two
     # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line).
-    assert size <= 11_694, f"the normal advertised surface grew past E6a's {size} bytes"
-    assert len(json.dumps(by_name["resolve"], separators=(",", ":"))) <= 771
+    assert size <= NORMAL_BYTES_PIN, f"the normal advertised surface grew past E6a's {size} bytes"
+    assert advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised
 
@@ -341,3 +352,109 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
     assert {r["id"]: r.get("error", {}).get("code") for r in flat} == {1: mcp.INVALID_PARAMS, 2: mcp.INVALID_PARAMS,
                                                                       3: mcp.INVALID_PARAMS, 4: None}
 
+
+
+# ---------------------------------------------------------------------------------------------- A1-0: the G3 spike
+# The A1 slice plan (reviewed CLEAR) §3.4 and §7 `test_a1_rows_measured`: every advertised row A1 changes, built as a
+# catalog entry with no behaviour (none of these is in `contract.TOOLS`, and none has a runner), swapped into the
+# catalog and measured by the cap's own measure, `advertised_bytes(mcp.tools_list("normal"))`. Its figures fill §8's
+# G3 question. The candidate texts are this measure's input, not a design: the slice that builds a row re-measures what
+# it really registers (A1a-2 re-sets `resolve`'s pin to its registered length, D2), and the whole-surface pin stays
+# unchanged until the designer answers (D3).
+
+def _a1_rows() -> dict[str, dict[str, Any]]:
+    """Each A1 change to the advertised surface, by the sub-slice that makes it, as edits of today's catalog rows."""
+    t = contract.TOOLS
+    status, resolve, resume, review = t["status"], t["resolve"], t["resume"], t["ticket_request_review"]
+    runs = {"type": "string", "pattern": "^(all|INV-[0-9]+)$",
+            "description": "'all', or an invocation id: its runs in detail"}
+    rework_props = {**review.input_schema["properties"], "rationale": contract.TEXT}
+    rework = review._replace(
+        name="ticket_rework", base_class=contract.JUDGMENT_BEARING,
+        description="Rework a REVIEW_FAILED Ticket: move it back to RUNNING and launch a new implementer attempt.",
+        input_schema=contract._obj(rework_props, (*review.input_schema["required"], "rationale")),
+        required_judgments=("rework",))
+    props = resolve.input_schema["properties"]
+    resolve_props = {
+        **props,
+        "subject": {**props["subject"], "description": "SI-n, <evidence>#<id>, ANM-n, PLAN:<T>@<n> or UNIT:<T>"},
+        "choice": {"enum": [*contract.RESOLVE_CHOICES, "accept_plan", "reconcile"]},
+        "operator_answer": {**contract.TEXT, "description": "accept_plan: the operator's answer, quoted"},
+        "to": {"type": "string", "minLength": 1, "description": "reconcile: one of the offered phases"}}
+    return {
+        # A1a-1: `harness_status` folded into `status`, which gains `runs` (§3.4's fold).
+        "A1a-1 fold": {"drop": ("harness_status",)},
+        "A1a-1 status.runs": {"replace": (status._replace(input_schema=contract._obj(
+            {**status.input_schema["properties"], "runs": runs})),)},
+        # A1a-1 once G3 is answered: the mutating rework stage, shaped like `ticket_request_review` (§3.4, F1).
+        "ticket_rework": {"add_after": {review.name: rework}},
+        # A1a-2: `accept_plan` and `reconcile`, the subject prefixes, the per-choice arguments and the reworded
+        # description (§3.3, D1).
+        "A1a-2": {"replace": (resolve._replace(
+            description="Settle what resume or a stop lists: continue or abandon a stage; dispose of a finding or "
+                        "anomaly; record a plan the operator accepted; reconcile an interrupted unit.",
+            input_schema=contract._obj(resolve_props, tuple(resolve.input_schema["required"])),
+            expands_to=(*resolve.expands_to, "plan.accept", "work.reconcile")),)},
+        # A1b: the typed `resume` arms an acknowledgment, so it mutates and its readOnlyHint turns false (§3.2).
+        "A1b resume readOnlyHint": {"replace": (resume._replace(mutates=True),)},
+    }
+
+
+def _apply(tools: dict[str, contract.Tool], change: dict[str, Any]) -> dict[str, contract.Tool]:
+    replaced = {r.name: r for r in change.get("replace", ())}
+    out: dict[str, contract.Tool] = {}
+    for name, row in tools.items():
+        if name not in change.get("drop", ()):
+            out[name] = replaced.get(name, row)
+        added = change.get("add_after", {}).get(name)
+        if added is not None:
+            out[added.name] = added
+    return out
+
+
+def _measured(tools: dict[str, contract.Tool]) -> tuple[int, int]:
+    """The normal surface's bytes and tool count with ``tools`` as the catalog, by the cap's own measure."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(contract, "TOOLS", contract._catalog(*tools.values()))  # validated as a real catalog is
+        listing = mcp.tools_list("normal")
+    return advertised_bytes(listing), len(listing["tools"])
+
+
+def _entry_bytes(row: contract.Tool) -> int:
+    return advertised_bytes(mcp.tool_entry(row))
+
+
+# The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
+# catalog moves them here first.
+A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 923, "A1a-2": 284,
+            "A1b resume readOnlyHint": 1}
+
+
+def test_a1_rows_measured():
+    today = dict(contract.TOOLS)
+    base, count = _measured(today)
+    # The swap is what is measured: with today's catalog swapped in, the measure is the cap test's, on the live list.
+    assert (base, count) == (advertised_bytes(mcp.tools_list("normal")), len(mcp.tools_list("normal")["tools"]))
+    assert base == NORMAL_BYTES_PIN  # today's surface is exactly the pin (G3)
+    deltas, composed = {}, today
+    for name, change in _a1_rows().items():
+        one = _apply(today, change)
+        deltas[name] = _measured(one)[0] - base
+        # Differential: the delta is exactly the changed rows' own entries (a dropped or added row takes its
+        # separating comma with it), so the measure saw the swapped catalog and nothing else moved.
+        expected = sum(_entry_bytes(one[n]) - _entry_bytes(r) for n, r in today.items() if n in one and one[n] != r)
+        expected += sum(_entry_bytes(r) + 1 for n, r in one.items() if n not in today)
+        expected -= sum(_entry_bytes(r) + 1 for n, r in today.items() if n not in one)
+        assert deltas[name] == expected != 0, (name, deltas[name], expected)
+        composed = _apply(composed, change)
+    # Every row A1 changes is attributed to exactly one change above: the rows that differ between today's catalog
+    # and A1's composed one are exactly the rows the changes name.
+    named = [r if isinstance(r, str) else r.name for c in _a1_rows().values()
+             for r in (*c.get("drop", ()), *c.get("replace", ()), *c.get("add_after", {}).values())]
+    differ = {n for n in set(today) | set(composed) if today.get(n) != composed.get(n)}
+    assert sorted(named) == sorted(differ) and len(named) == len(set(named))
+    total, tools = _measured(composed)
+    assert total == base + sum(deltas.values()) and tools == count  # the fold and `ticket_rework` net to 15 tools
+    print(f"A1-0 spike: today {base} B (pin {NORMAL_BYTES_PIN} B); {deltas}; A1 composed {total} B "
+          f"({total - NORMAL_BYTES_PIN:+d} B against the pin), {tools} tools")
+    assert deltas == A1_SPIKE

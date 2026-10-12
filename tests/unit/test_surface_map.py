@@ -179,7 +179,11 @@ def ideal_path() -> dict[str, dict[str, str]]:
     spec = importlib.util.spec_from_file_location("g1_vertical_path", VERTICAL)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    path = list(sys.path)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = path  # its imports may extend sys.path; nothing here outlives the read
     return {step: dict(row) for step, row in module.IDEAL_PATH.items()}
 
 
@@ -1158,6 +1162,73 @@ def report(check: str, findings: list[str]) -> None:
 # ---------------------------------------------------------------------------------------------- the tests
 
 
+def shared_state() -> dict[str, Any]:
+    """Everything an ablation or a probe in this module may touch that other tests share in the process, content and
+    order (PR 215 CI: a deleted-then-restored `contract.TOOLS` key came back at the end and broke test_surface_mcp)."""
+    from aew.engine import custody_ops
+    from aew.engine.api import Engine
+
+    return {
+        "contract.TOOLS": list(contract.TOOLS.items()),
+        "lead_broker.LEAD_REACHABLE": (id(lead_broker.LEAD_REACHABLE), sorted(map(sorted, lead_broker.LEAD_REACHABLE))),
+        "lead_broker.NOT_RELAYED": (id(lead_broker.NOT_RELAYED), list(lead_broker.NOT_RELAYED)),
+        "lead_broker.OPERATOR_ONLY": (id(lead_broker.OPERATOR_ONLY), list(lead_broker.OPERATOR_ONLY)),
+        "bridge.OPERATIONS": (id(bridge.OPERATIONS), list(bridge.OPERATIONS.items())),
+        "CHECKS": list(CHECKS.items()),
+        "the parser's commands": list(live_commands()),
+        "errors.NotFound.code": errors.NotFound.code,
+        "custody_ops.worker_argv": custody_ops.worker_argv,
+        "Engine.work_list": Engine.work_list, "Engine.context_pack": Engine.context_pack,
+        "subprocess.Popen._execute_child": subprocess.Popen._execute_child,  # pyright: ignore[reportAttributeAccessIssue]
+        "sys.path": list(sys.path), "cwd": os.getcwd(),
+        "sys.modules (test-made)": sorted(m for m in sys.modules if m.startswith("g1_")),
+        "os.environ (AEW_*)": sorted((k, v) for k, v in os.environ.items() if k.startswith("AEW_")),
+    }
+
+
+@pytest.fixture(autouse=True)
+def _no_shared_state_leaks():
+    """After every test here, what other tests share is exactly as it was, content and order: a leak fails here, in
+    the test that made it, never later in another module."""
+    before = shared_state()
+    yield
+    after = shared_state()
+    changed = [k for k in before if before[k] != after[k]]
+    assert not changed, f"this test left shared state changed: {changed}"
+
+
+class Ablator:
+    """What an ablation changes, restored exactly at the end, order included (a dict's re-inserted key would otherwise
+    move to its end). Attributes go through monkeypatch, which restores the original object; dict entries are
+    snapshotted and the dict is rebuilt in its original order."""
+
+    def __init__(self, mp: Any) -> None:
+        self.mp = mp
+        self.dicts: list[tuple[dict[Any, Any], list[tuple[Any, Any]]]] = []
+
+    def setattr(self, *args: Any) -> None:
+        self.mp.setattr(*args)
+
+    def _keep(self, d: dict[Any, Any]) -> None:
+        if not any(kept is d for kept, _ in self.dicts):
+            self.dicts.append((d, list(d.items())))
+
+    def setitem(self, d: dict[Any, Any], key: Any, value: Any) -> None:
+        self._keep(d)
+        d[key] = value
+
+    def delitem(self, d: dict[Any, Any], key: Any) -> None:
+        self._keep(d)
+        del d[key]
+
+    def restore(self) -> None:
+        for d, items in reversed(self.dicts):
+            d.clear()
+            d.update(items)
+        self.dicts.clear()
+        self.mp.undo()
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _sample_base(tmp_path_factory):
     SAMPLE_BASE[:] = [tmp_path_factory.mktemp("g1-probe")]
@@ -1622,36 +1693,36 @@ def mutation_proof_problems(name: str, s: Sample) -> list[str]:
     return out
 
 
-def _with(dct: dict[str, Any], key: str, **changes: Any) -> Callable[[Any], None]:
-    return lambda mp: mp.setitem(dct, key, dct[key]._replace(**changes))
+def _with(dct: dict[str, Any], key: str, **changes: Any) -> Callable[[Ablator], None]:
+    return lambda ab: ab.setitem(dct, key, dct[key]._replace(**changes))
 
 
-ABLATIONS: list[tuple[str, Callable[[Any], None], str]] = [
+ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
     # (check, a change to the CODE the check reads, the finding that names it)
-    ("users", lambda mp: mp.setattr(bridge, "OPERATIONS", {**bridge.OPERATIONS, "status": {}}),
+    ("users", lambda ab: ab.setattr(bridge, "OPERATIONS", {**bridge.OPERATIONS, "status": {}}),
      "`aew status`: `worker` must be named"),
-    ("users", lambda mp: mp.setattr(lead_broker, "OPERATOR_ONLY",
+    ("users", lambda ab: ab.setattr(lead_broker, "OPERATOR_ONLY",
                                     (*lead_broker.OPERATOR_ONLY, frozenset({"work", "list"}))),
      "`aew work list` is operator-only"),
-    ("users", lambda mp: mp.setattr(lead_broker, "NOT_RELAYED",
+    ("users", lambda ab: ab.setattr(lead_broker, "NOT_RELAYED",
                                     (*lead_broker.NOT_RELAYED, frozenset({"context", "pack"}))),
      "lead_broker.NOT_RELAYED holds `aew context pack`"),
-    ("disposition", lambda mp: mp.setattr(lead_broker, "LEAD_REACHABLE",
+    ("disposition", lambda ab: ab.setattr(lead_broker, "LEAD_REACHABLE",
                                           lead_broker.LEAD_REACHABLE | {frozenset({"work", "list"})}),
      "`aew work list` is Lead-reachable: name its lead_disposition"),
-    ("door", lambda mp: mp.setattr(lead_broker, "LEAD_REACHABLE",
+    ("door", lambda ab: ab.setattr(lead_broker, "LEAD_REACHABLE",
                                    lead_broker.LEAD_REACHABLE | {frozenset({"work", "list"})}),
      "`aew work list` is Lead-reachable: name its door"),
     ("door", _with(contract.TOOLS, "ticket_draft", expands_to=("plan.propose",)),
      "tool 'ticket_draft' does not run 'work.create'"),
     ("mutates", _with(contract.TOOLS, "status", mutates=True), "tool `status`: mutates"),
     ("refusal_floor", _with(contract.TOOLS, "status", mutates=True), "tool `status`: its arguments imply"),
-    ("registered", lambda mp: mp.setitem(contract.TOOLS, "ticket_fly", contract.TOOLS["status"]._replace(
+    ("registered", lambda ab: ab.setitem(contract.TOOLS, "ticket_fly", contract.TOOLS["status"]._replace(
         name="ticket_fly")), "tool `ticket_fly` exists but is not registered"),
-    ("live", lambda mp: mp.delitem(contract.TOOLS, "steering"), "tool `steering` is registered but no longer exists"),
-    ("codes", lambda mp: mp.setattr(errors.NotFound, "code", "NOT_FOUND_RENAMED"),
+    ("live", lambda ab: ab.delitem(contract.TOOLS, "steering"), "tool `steering` is registered but no longer exists"),
+    ("codes", lambda ab: ab.setattr(errors.NotFound, "code", "NOT_FOUND_RENAMED"),
      "NOT_FOUND is not a code in aew.errors"),
-    ("home", lambda mp: mp.setattr(custody_ops_module(), "worker_argv", lambda repo_root, custodian: ["aew", "status"]),
+    ("home", lambda ab: ab.setattr(custody_ops_module(), "worker_argv", lambda repo_root, custodian: ["aew", "status"]),
      "starts `aew status`, not `aew integrate custody`"),
 ]
 
@@ -1674,8 +1745,12 @@ def test_an_enforced_check_fails_when_its_code_input_loses_the_property(check, a
     """The checks read the code, not a copy of it, and each is differential: when the code input loses the property
     the check proves, the check names it (the fourth review's class sweep)."""
     assert not any(named in f for f in CHECK_FUNCTIONS[check](load()))
-    ablate(monkeypatch)
-    findings = CHECK_FUNCTIONS[check](load())
+    ab = Ablator(monkeypatch)
+    try:
+        ablate(ab)
+        findings = CHECK_FUNCTIONS[check](load())
+    finally:
+        ab.restore()
     assert any(named in f for f in findings), findings
 
 
@@ -1731,10 +1806,25 @@ def test_an_aliased_popen_launcher_is_captured_and_never_runs(tmp_path, monkeypa
               f"    return Popen([sys.executable, '-c', {child!r}, 'aew', 'status'])", ""]
     (tmp_path / "g1_p2_launcher.py").write_text(chr(10).join(source), encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))
-    argv = launcher_argv("g1_p2_launcher:launch")
+    try:
+        argv = launcher_argv("g1_p2_launcher:launch")
+    finally:
+        sys.modules.pop("g1_p2_launcher", None)
     assert isinstance(argv, list) and argv[-2:] == ["aew", "status"], argv
     assert launched_command(argv) == "status"
     assert not marker.exists(), "the aliased Popen's child ran"
+
+
+def test_an_ablation_restores_a_registry_in_its_order(monkeypatch):
+    """The CI failure's class (PR 215): deleting a `contract.TOOLS` key and letting monkeypatch put it back moves it
+    to the end. The Ablator puts every key back where it was."""
+    order = list(contract.TOOLS)
+    ab = Ablator(monkeypatch)
+    ab.delitem(contract.TOOLS, "steering")
+    ab.setitem(contract.TOOLS, "ticket_fly", contract.TOOLS["status"])
+    ab.setitem(contract.TOOLS, "status", contract.TOOLS["status"]._replace(mutates=True))
+    ab.restore()
+    assert list(contract.TOOLS) == order and not contract.TOOLS["status"].mutates
 
 
 def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):

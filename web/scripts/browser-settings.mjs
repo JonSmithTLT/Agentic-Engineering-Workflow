@@ -59,6 +59,8 @@ try {
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'settings-tab-project');
         await page.keyboard.press('Home'); await page.getByRole('heading', { name: 'Controls', exact: true }).waitFor();
         await page.getByRole('tab', { name: 'Profiles', exact: true }).click();
+        await page.getByRole('heading', { name: 'Profiles', exact: true }).waitFor();
+        assert.equal(await page.getByRole('tab', { name: 'Profiles', exact: true }).getAttribute('aria-selected'), 'true');
         await page.getByRole('combobox', { name: 'Settings scenario', exact: true }).selectOption('withheld');
         await page.getByRole('button', { name: 'Profile 1 (name withheld)', exact: true }).click();
         await page.getByText('field withheld', { exact: true }).waitFor();

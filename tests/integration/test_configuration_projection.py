@@ -593,6 +593,8 @@ def test_identity_null_when_model_withheld(engine):
     assert K.credential_shaped(model) and len(model.split("sk-proj-")[1]) == 24
     out = execution(configured(engine, only_profiles({"standard": {"model": model}})))
     row = by_name(out)["standard"]
+    assert row["fields"]["model"]["withheld"] == C.CREDENTIAL_SHAPED and "value" not in row["fields"]["model"]
+    assert model not in all_text(out)
     assert row["identity"] is None and row["connection_id"] is None
     assert row["identity_error"]["code"] == C.FIELD_WITHHELD
     assert row["identity_error"]["withheld_reason"] == C.CREDENTIAL_SHAPED

@@ -66,13 +66,16 @@ LITERAL = re.compile("|".join(K.at_token_boundary(prefix(p)) for p in K.CREDENTI
 
 
 def literal_hits(text: str) -> list[str]:
-    return [m.group(0) for m in LITERAL.finditer(text)]
+    """The prefixes found at rule 8's boundary. A regex source's own word-boundary escape counts as a boundary, so a
+    pattern written as a string (`r"\\bsk-..."`) is found too."""
+    return [m.group(0) for m in LITERAL.finditer(text.replace("\\b", " "))]
 
 
 def test_the_literal_check_matches_at_rule_8s_boundary():
     assert literal_hits("risk-class") == []  # engine/gates.py's "risk-class" is not an `sk-` literal
     assert literal_hits("x sk-abc") == ["sk-"]
     assert literal_hits("AKIA") == ["AKIA"] and literal_hits("pre_AKIA") == []
+    assert literal_hits(r"(?i)\bbearer\s+\S+|\bsk-[A-Za-z0-9_*.-]{3,}") == ["sk-"]  # a pattern in a string
 
 
 def test_single_credential_pattern_home():

@@ -112,6 +112,36 @@ def linux_states() -> list[tuple[int, int, int, str]]:
     return out
 
 
+def linux_start(pid: int) -> int | None:
+    """A process's start time from ``/proc``, a zombie's included (a child not yet reaped keeps its pid)."""
+    st = _stat(pid)
+    return st[1] if st else None
+
+
+def linux_state(pid: int) -> tuple[str, int] | None:
+    """(state, start time) of one process, from ``/proc/<pid>/stat``."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            rest = f.read().decode("latin-1").rsplit(")", 1)[1].split()
+        return rest[0], int(rest[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def linux_children() -> list[int]:
+    """This process's children, from ``/proc/self/task/*/children`` (every thread's), else from the whole table."""
+    pids: set[int] = set()
+    try:
+        tasks = os.listdir("/proc/self/task")
+        for tid in tasks:
+            with open(f"/proc/self/task/{tid}/children", encoding="ascii") as f:
+                pids.update(int(p) for p in f.read().split())
+        return sorted(pids)
+    except (OSError, ValueError):
+        me = os.getpid()
+        return [pid for pid, ppid, _, _ in linux_states() if ppid == me]
+
+
 def _linux_table() -> list[Proc]:
     out = []
     for d in os.listdir("/proc"):

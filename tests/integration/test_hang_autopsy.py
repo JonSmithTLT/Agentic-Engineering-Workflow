@@ -63,10 +63,11 @@ def env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_"))}
 
 
-def inner(proj: Path, hangs: Path, *args: str, timeout: float = 240) -> subprocess.CompletedProcess[str]:
+def inner(proj: Path, hangs: Path, *args: str, timeout: float = 240,
+          extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--hang-dir", str(hangs),
-                           *args, "tests"], cwd=proj, env=env(), capture_output=True, text=True, timeout=timeout,
-                          **NO_WINDOW)
+                           *args, "tests"], cwd=proj, env={**env(), **(extra_env or {})}, capture_output=True,
+                          text=True, timeout=timeout, **NO_WINDOW)
 
 
 def start_inner(proj: Path, hangs: Path, *args: str) -> subprocess.Popen[str]:
@@ -248,6 +249,25 @@ def test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_co
     kept = autopsy_of(hangs, "test_outlives_the_session")
     assert "the session deadline (5s) passed" in texts(kept, "reason*")
     assert "test_outlives_the_session" in texts(kept, "stacks.*")
+    # pytest prints no summary after the deadline's exit: the session says why itself (review of #217)
+    said = proc.stdout + proc.stderr
+    assert "aew session deadline: the session reached its --session-deadline (5s)" in said, said
+    assert "before pytest could print its summary" in said, said
+
+
+def test_the_ci_jobs_deadline_caps_the_session_and_the_exit_names_it(tmp_path):
+    """Review of #217 (the `core` job's serial step ended with exit 70 and no summary): ``AEW_JOB_DEADLINE``, the job's
+    own deadline, caps a session whose ``--session-deadline`` is later, and the exit names that cause on stderr."""
+    import time
+
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "600", "--session-deadline-margin", "3",
+                 "-p", "no:xdist", extra_env={"AEW_JOB_DEADLINE": str(int(time.time()) + 6)})
+    assert proc.returncode == DEADLINE_EXIT, proc.stdout + proc.stderr
+    assert "the session reached the CI job's deadline (AEW_JOB_DEADLINE" in proc.stdout + proc.stderr, proc.stdout
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    assert "capped by the CI job's deadline" in texts(session, "session-started*")
 
 
 SESSION_SET = '''import os, subprocess, sys, threading
@@ -405,11 +425,15 @@ def test_without_a_session_deadline_nothing_is_created(tmp_path):
 
 
 ORPHAN = '''import os, subprocess, sys, time
+from pathlib import Path
 
 NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
-HOLD = float(os.environ["G3_HOLD"])  # how long the orphan's launcher lives after starting it
-CODE = ("import subprocess, sys, time; p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(1)'], "
-        f"start_new_session=True); print(p.pid, flush=True); time.sleep({HOLD})")
+OUT = Path(os.environ["G3_OUT"])
+# The orphan waits for its exit file (bounded); its launcher ends at once, so it is adopted before anyone sees it.
+ORPHAN = ("import pathlib, sys, time; p = pathlib.Path(sys.argv[1]); d = time.monotonic() + 60\\n"
+          "while not p.exists() and time.monotonic() < d:\\n    time.sleep(0.02)\\n")
+LAUNCH = ("import subprocess, sys; d = subprocess.DEVNULL; p = subprocess.Popen([sys.executable, '-c', sys.argv[1], "
+          "sys.argv[2]], start_new_session=True, stdin=d, stdout=d, stderr=d); print(p.pid, flush=True)")
 ALIVE = "import sys; from aew.harness.procs import pid_alive; print(pid_alive(int(sys.argv[1])))"
 
 
@@ -420,9 +444,14 @@ def alive_elsewhere(pid):
     return out.stdout.strip() == "True"
 
 
-def test_an_orphan_that_exits_is_seen_gone():
-    pid = int(subprocess.run([sys.executable, "-c", CODE], capture_output=True, text=True, check=True, timeout=60,
-                             **NO_WINDOW).stdout)
+def test_an_orphan_adopted_at_once_that_exits_is_seen_gone():
+    exit_file = OUT / "orphan-exit"
+    pid = int(subprocess.run([sys.executable, "-c", LAUNCH, ORPHAN, str(exit_file)], capture_output=True, text=True,
+                             check=True, timeout=60, **NO_WINDOW).stdout)  # the launcher has ended: adopted already
+    gate = os.environ.get("G3_TEST_REAP_GATE")
+    if gate:
+        Path(gate).write_text("1", encoding="utf-8")  # only now does the reaper look: it never saw another parent
+    exit_file.write_text("1", encoding="utf-8")  # by event: the orphan ends now
     deadline = time.monotonic() + 30
     while alive_elsewhere(pid) and time.monotonic() < deadline:
         time.sleep(0.2)  # bounded: the deadline above
@@ -430,18 +459,21 @@ def test_an_orphan_that_exits_is_seen_gone():
 '''
 
 
-@pytest.mark.parametrize(("mode", "hold"), [(("-p", "no:xdist"), "0.5"), (("-n", "1"), "0.5")],
-                         ids=["one_process", "xdist"])
-def test_an_orphan_that_exits_under_the_session_is_seen_gone_by_every_process(tmp_path, monkeypatch, mode, hold):
+@pytest.mark.parametrize("mode", [("-p", "no:xdist"), ("-n", "1")], ids=["one_process", "xdist"])
+def test_an_orphan_adopted_at_once_and_ended_is_seen_gone_by_every_process(tmp_path, monkeypatch, mode):
     """Linux: the controller is a subreaper, so a detached process whose launcher already ended is re-parented to it.
     When that orphan exits, the controller must reap it, or it stays a zombie that ``procs.pid_alive`` in any other
     process (a worker, an ``aew`` command) reports as alive. Liveness is judged from a separate process.
 
-    The controller reaps only a zombie it saw with another parent first, so the launcher lives 0.5 s (longer than
-    the reaper's poll); an orphan adopted within one poll is the stated gap. The same test holds on Windows, where
-    nothing is re-parented."""
-    hangs = tmp_path / "hangs"
-    monkeypatch.setenv("G3_HOLD", hold)
+    The case CI met (review of #217: a launcher that crashed at once): the orphan is adopted before the reaper ever
+    sees it, which the test makes certain by events (the reaper's start waits for a gate the test opens after the
+    launcher ended). The earlier rule, which reaped only a zombie it had seen with another parent, fails this test;
+    the controller now knows every child it created (``OwnChildren``) and reaps any other. The same test holds on
+    Windows, where nothing is re-parented."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setenv("G3_OUT", str(out))
+    monkeypatch.setenv("G3_TEST_REAP_GATE", str(out / "reap-gate"))
     proc = inner(project(tmp_path, ORPHAN), hangs, "--session-deadline", "120", *mode)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     sentinel_ends(session_dir(hangs))
@@ -552,3 +584,39 @@ def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_
     assert "written by the sentinel" in (session / "session-deadline.txt").read_text(encoding="utf-8"), why
     assert any(n.startswith("sentinel-processes-deadline") for n in names), why
     assert "(deadline)" in (session / "sentinel-log.txt").read_text(encoding="utf-8"), why
+
+
+TREE = '''import os, subprocess, sys
+from pathlib import Path
+
+from aew.harness.procs import ProcessTree
+
+GRANDCHILD = ("import subprocess, sys; d = subprocess.DEVNULL; subprocess.Popen([sys.executable, '-c', "
+              "'import time; time.sleep(60)'], stdin=d, stdout=d, stderr=d, "
+              "creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))")
+
+
+def test_a_process_tree_whose_member_was_orphaned_closes_completely():
+    tree = ProcessTree()
+    tree.spawn([sys.executable, "-c", GRANDCHILD]).wait(60)  # it has ended: its child is an orphan, adopted
+    gate = os.environ.get("G3_TEST_REAP_GATE")
+    if gate:
+        Path(gate).write_text("1", encoding="utf-8")  # only now does the reaper look
+    tree.close()  # ends the orphan, and waits (at most 10 s) until its process group is gone
+    if sys.platform != "win32":  # Windows re-parents nothing, and a closed tree's job is gone
+        assert tree.active() == 0  # a zombie still in the group would read as a live member
+'''
+
+
+@pytest.mark.parametrize("mode", [("-p", "no:xdist"), ("-n", "1")], ids=["one_process", "xdist"])
+def test_a_process_tree_whose_member_was_orphaned_closes_under_the_session(tmp_path, monkeypatch, mode):
+    """The second shape the CI met (review of #217): ``ProcessTree.close`` waits until its process group is gone, and
+    a killed member that the subreaper adopted stayed a zombie in that group, so every close ran out its 10 s (the
+    fast lane's eval-scoring tests, about 3 minutes in all). The controller now reaps every child it did not create;
+    the earlier first-seen rule fails this test."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setenv("G3_TEST_REAP_GATE", str(out / "reap-gate"))
+    proc = inner(project(tmp_path, TREE), hangs, "--session-deadline", "120", *mode)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    sentinel_ends(session_dir(hangs))

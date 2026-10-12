@@ -77,6 +77,7 @@ SNAPSHOT_EVERY_S = 2.0
 SENTINEL_READY_S = 20.0  # the bound on the sentinel opening the job before the controller joins it
 HOLDER_FILES = 200
 REAP_POLL_S = 0.1
+REAP_GATE_ENV = "G3_TEST_REAP_GATE"  # tests only: the reaper starts polling once this file exists
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
@@ -100,52 +101,91 @@ def _holders_text(directory: Path, extra: list[str]) -> str:
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
 
 
+class OwnChildren:
+    """Linux: every child this process creates, by (pid, start time), recorded as it is created. The controller's
+    own children are exactly these: ``subprocess`` (``_fork_exec``, ``os.posix_spawn``), ``multiprocessing``
+    (``_posixsubprocess.fork_exec``, ``os.fork``), ``pty.fork`` (``os.forkpty``) and direct ``os.fork`` calls all go
+    through the functions wrapped here. Any other child of the controller is an orphan it adopted as a subreaper.
+    A child is recorded before its creator returns, so before it can have been reaped: its pid cannot have been reused
+    yet, and the start time read then is its own."""
+
+    def __init__(self) -> None:
+        self.ids: set[tuple[int, int]] = set()
+        self._lock = threading.Lock()
+
+    def add(self, pid: int) -> None:
+        start = proctree.linux_start(pid)
+        if start is not None:
+            with self._lock:
+                self.ids.add((pid, start))
+
+    def __contains__(self, ident: object) -> bool:
+        with self._lock:
+            return ident in self.ids
+
+    def _wrap(self, owner: Any, name: str, pid_of: Any) -> None:
+        original = getattr(owner, name, None)
+        if original is None or getattr(original, "_aew_own_children", False):
+            return
+
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            out = original(*args, **kwargs)
+            pid = pid_of(out)
+            if pid:  # 0 in a forked child: nothing to record there
+                self.add(pid)
+            return out
+
+        wrapper._aew_own_children = True  # type: ignore[attr-defined]
+        setattr(owner, name, wrapper)
+
+    def install(self) -> None:
+        import _posixsubprocess  # type: ignore[import-not-found]
+
+        def first(out: Any) -> int:
+            return out[0] if isinstance(out, tuple) else out
+
+        self._wrap(subprocess, "_fork_exec", first)
+        self._wrap(_posixsubprocess, "fork_exec", first)
+        for name in ("fork", "forkpty", "posix_spawn", "posix_spawnp"):
+            self._wrap(os, name, first)
+
+
 class Reaper:
     """Linux: a subreaper must reap what it adopts, as ``procs.py``'s session reaper does. Otherwise an orphan that
     exits (a supervisor whose launching CLI has already ended) stays a zombie of the controller, and every other
     process sees it alive: ``procs.pid_alive`` from a worker or an ``aew`` process reports a zombie that is not its own
-    child as alive. It never takes the exit status of a child the controller started itself:
+    child as alive.
 
-    a zombie child is reaped only if it was first seen with another parent (adopted), and is not one of the
-    controller's known children (its workers, the sentinel). Its own children, whose status a ``Popen`` may still be
-    waiting for, are never reaped. A process born, orphaned and adopted within one poll (:data:`REAP_POLL_S`) counts as
-    the controller's own and stays a zombie after it ends: the stated gap.
-    """
+    A zombie child of the controller is reaped exactly when the controller did not create it (:class:`OwnChildren`):
+    an adopted orphan, however soon after its birth its parent ended (review of #217: a launcher that crashed at once
+    left its supervisor a zombie under the earlier first-seen rule). A child the controller created keeps its exit
+    status for whoever waits for it. Each poll reads only the controller's children (``/proc/self/task/*/children``)."""
 
-    def __init__(self, own: Any, distributed: bool) -> None:
-        self.own = own  # () -> the pids of the controller's own children (workers, the sentinel)
-        self.distributed = distributed
-        self.me = os.getpid()
+    def __init__(self, own: OwnChildren) -> None:
+        self.own = own
         self.stop = threading.Event()
-        self.first_parent: dict[tuple[int, int], int] = {}
         self.reaped = 0
 
     def start(self) -> None:
         threading.Thread(target=self._run, name="aew-session-reaper", daemon=True).start()
 
     def poll(self) -> None:
-        seen: dict[tuple[int, int], int] = {}
-        zombies = []
-        for pid, ppid, start, state in proctree.linux_states():
-            ident = (pid, start)
-            seen[ident] = self.first_parent.get(ident, ppid)
-            if ppid == self.me and state == "Z":
-                zombies.append(ident)
-        self.first_parent = seen  # only what is in the process table now: bounded by it
-        own = self.own()
-        for pid, start in zombies:
-            # Adopted: first seen with another parent. A child the controller started itself (a worker, the sentinel,
-            # or any Popen of its own, whose status its owner may still wait for) never is (review of #217, m1).
-            adopted = seen[(pid, start)] != self.me and pid not in own
-            if adopted:
-                try:
-                    if os.waitpid(pid, os.WNOHANG)[0] == pid:
-                        self.reaped += 1
-                        flight_recorder.record("reaped", child=pid)
-                except ChildProcessError:
-                    pass
+        for pid in proctree.linux_children():
+            state = proctree.linux_state(pid)
+            if state is None or state[0] != "Z" or (pid, state[1]) in self.own:
+                continue
+            try:
+                if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                    self.reaped += 1
+                    flight_recorder.record("reaped", child=pid)
+            except ChildProcessError:
+                pass
 
     def _run(self) -> None:
+        gate = os.environ.get(REAP_GATE_ENV)  # a test of the reaper only: it starts when this file exists
+        if gate:
+            bounds.bounded_wait("session.reap_gate", lambda: Path(gate).exists(), seconds=600, poll_s=0.05,
+                                gone=self.stop.is_set)
         while not self.stop.wait(REAP_POLL_S):  # bounded: it stops with the session (finish); a daemon thread
             try:
                 self.poll()
@@ -174,7 +214,10 @@ class Controller:
         self.margin = margin
         # The job's own absolute deadline (``AEW_JOB_DEADLINE``, set by the job's first step) caps the session's:
         # sessions that run one after another in one job then all end before the job's timeout (review of #217, M1).
-        self.wall = min(time.time() + seconds, job_deadline() or float("inf"))
+        own_wall, job_wall = time.time() + seconds, job_deadline()
+        self.wall = min(own_wall, job_wall or float("inf"))
+        self.cause = (f"the CI job's deadline ({JOB_DEADLINE_ENV}, {seconds:g}s of --session-deadline not reached)"
+                      if job_wall is not None and job_wall < own_wall else f"its --session-deadline ({seconds:g}s)")
         self.seconds = round(self.wall - time.time(), 1)
         self.mono = time.monotonic() + (self.wall - time.time())
         self.dir = watchdog.hang_dir(config) / "autopsy" / f"session-{os.getpid()}"
@@ -190,16 +233,6 @@ class Controller:
         self.exit_status: int | None = None
         self.reaper: Reaper | None = None
 
-    def _own_children(self) -> set[int]:
-        """The controller's own children under xdist: the sentinel and the workers (each records its pid)."""
-        pids = {self.sentinel.pid} if self.sentinel is not None else set()
-        for path in self.dir.glob("worker-*-pid.txt"):
-            try:
-                pids.add(int(path.read_text(encoding="utf-8").split()[-1]))
-            except (OSError, ValueError, IndexError):
-                continue
-        return pids
-
     # ------------------------------------------------------------------ start (pytest_configure, tryfirst)
 
     def start(self) -> None:
@@ -213,9 +246,12 @@ class Controller:
             self.job = proctree.Job(job_name)
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
+            if self.job_note == "subreaper set":  # before any child: the sentinel and every worker are recorded
+                own = OwnChildren()
+                own.install()
+                self.reaper = Reaper(own)
         self.sentinel = self._spawn_sentinel(job_name)
-        if not proctree.IS_WINDOWS and self.job_note == "subreaper set":
-            self.reaper = Reaper(self._own_children, self.distributed)
+        if self.reaper is not None:
             self.reaper.start()
         if self.job is not None:  # pragma: windows-only
             ready = marker(self.dir, READY)
@@ -232,9 +268,9 @@ class Controller:
                 self.job = None
                 # the sentinel's job is empty: it falls back to the controller's descendants by start time
                 _write(self.dir, JOB_UNAVAILABLE, _stamp(self.job_note))
-        _write(self.dir, STARTED, _stamp(f"session deadline {self.seconds:g}s (at {self.wall:.3f}), margin "
+        _write(self.dir, STARTED, _stamp(f"{self.report_header()}; at {self.wall:.3f}, margin "
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
-                                         f"{self.job_note}; sentinel pid "
+                                         f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -254,7 +290,8 @@ class Controller:
         return proc
 
     def report_header(self) -> str:
-        return f"aew session deadline: {self.seconds:g}s; {self.job_note}"
+        capped = "; capped by the CI job's deadline" if JOB_DEADLINE_ENV in self.cause else ""
+        return f"aew session deadline: {self.seconds:g}s{capped}; {self.job_note}"
 
     # ------------------------------------------------------------------ the deadline
 
@@ -315,6 +352,9 @@ class Controller:
             self.exit_status = DEADLINE_EXIT
             if from_thread:
                 self.finish()
+                say(self.config, f"aew session deadline: the session reached {self.cause} and ended with exit "
+                    f"{DEADLINE_EXIT}, before pytest could print its summary; the running test's autopsy and the "
+                    f"markers are in {self.dir}")
                 os._exit(DEADLINE_EXIT)
 
     def finish(self) -> None:
@@ -374,6 +414,8 @@ class Controller:
         if self.passed():
             self.expire(from_thread=False)
             session.exitstatus = DEADLINE_EXIT
+            say(self.config, f"aew session deadline: the session reached {self.cause}: exit {DEADLINE_EXIT}; "
+                f"the markers are in {self.dir}")
 
     def pytest_unconfigure(self, config: Any) -> None:
         self.finish()
@@ -411,6 +453,28 @@ class Worker:
 
     def pytest_unconfigure(self, config: Any) -> None:
         self._done.set()
+
+
+def say(config: Any, line: str) -> None:
+    """One line where the run's output goes, written and flushed at once: it reaches the CI log even from a thread about
+    to ``os._exit``. pytest's own terminal writer, since its capture holds the process's descriptors 1 and 2 while a
+    test runs (a direct write to them would land in the capture and vanish); else the descriptor of stderr."""
+    tr = config.pluginmanager.get_plugin("terminalreporter") if config is not None else None
+    try:
+        if tr is not None:
+            capman = config.pluginmanager.get_plugin("capturemanager")
+            if capman is not None:  # a test is running: its capture holds descriptors 1 and 2
+                capman.suspend_global_capture(in_=False)
+            tr.ensure_newline()
+            tr.write_line(line)
+            tr._tw.flush()
+            return
+    except Exception:  # noqa: BLE001, S110  (fall back to the descriptor)
+        pass
+    try:
+        os.write(2, (line + "\n").encode("utf-8", "replace"))
+    except OSError:
+        pass
 
 
 def job_deadline() -> float | None:

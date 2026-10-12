@@ -81,6 +81,11 @@ CHECKS: dict[str, str] = {
     "shell_reachable_mutation": REPORT,  # grandfathered mutating commands nothing keeps from the Lead's shell
     "keep_out": ENFORCE,  # a claim that the Lead is kept out is proved by running it in a Lead session's environment
     "keep_out_coverage": REPORT,  # the pinned KEEP_OUT_LIMITED claims the test cannot prove by running them
+    # The A1 slice plan's dispositions (reviewed CLEAR, §2.1): the planned rows and the proposed homes.
+    "home_built": ENFORCE,  # every planned home built and running the row's primitive: the row is decided, typed
+    "out_of_door": ENFORCE,  # a command that has left LEAD_REACHABLE is not `undecided`
+    "planned_sweep": REPORT,  # a planned row's home that does not run (or plan to run) its primitive: the A2 debts
+    "planned_by_slice": REPORT,  # the planned rows, by the slice they land in
 }
 OWNERS = ("operator", "lead", "mechanical")
 REPORT_PREFIX = "SurfaceMapReport: surface map, check"
@@ -92,6 +97,8 @@ DIAGNOSTIC = "diagnostic"
 PRIMITIVE_ALIASES: dict[str, frozenset[str]] = {
     "stage.resolve": frozenset({"stage continue", "stage abandon"}),
     "steering": frozenset({"lead mode lower"}),
+    # F9-A's typed send homes both (the A1 slice plan, reviewed CLEAR, §2.5).
+    "message.send": frozenset({"harness send", "harness interrupt"}),
 }
 
 # The grandfathered surfaces (operator, 2026-10-12): every entry registered when the standing rule was adopted. Their
@@ -124,6 +131,29 @@ tool:ticket_start|tool:work_show
 FROZEN_DIGEST = "1b32b35999eb5a75aeda9ec3723275afa2d6f439de42469d864ab19914ce5d81"
 GRADUATED: frozenset[str] = frozenset()  # entries that left the baseline (their disposition decided and honoured)
 BASELINE = FROZEN - GRADUATED
+
+# The A1 slice plan's dispositions (reviewed CLEAR, §2.1 item 1): the rows that carry `planned`, and the proposed tools
+# and `resolve` choices, as the registry stated them when A1-0 added them. Each only shrinks: pinned by its digest, and
+# what leaves the registry leaves through its graduated list, in the change that builds the home or decides the row.
+PLANNED_FROZEN: frozenset[str] = frozenset("""
+cli:evidence ingest|cli:gate waive|cli:harness interrupt|cli:harness launch|cli:harness send|cli:harness stop
+cli:history audit|cli:history load|cli:integrate defer|cli:integrate reconcile|cli:integrate reorder
+cli:integrate requeue|cli:integrate validate|cli:invoke cancel|cli:invoke create|cli:lead handoff cancel
+cli:map generate|cli:map select-architecture|cli:message unseen|cli:plan accept|cli:plan adopt|cli:plan reconfirm
+cli:verify classify|cli:work accept|cli:work acknowledge-input|cli:work cancel|cli:work close|cli:work depend
+cli:work dispatch|cli:work move|cli:work promote|cli:work reclassify|cli:work reconcile|cli:work redispatch
+cli:work staff|cli:work transition
+""".replace("\n", "|").strip("|").split("|"))
+PLANNED_DIGEST = "3fbe5e854364b78381f9001ecadd53003846a244dc52e48d9f417891aa8c1e77"
+PLANNED_GRADUATED: frozenset[str] = frozenset()
+PROPOSED_TOOLS: frozenset[str] = frozenset({"ticket_rework", "work_amend", "message_send"})
+PROPOSED_TOOLS_DIGEST = "80bf701d68e4277fdd2ce9420d8ce0e1a85444cfc1931cc5941f92980e0b1b9e"
+PROPOSED_TOOLS_GRADUATED: frozenset[str] = frozenset()
+PROPOSED_CHOICES: frozenset[str] = frozenset({
+    "accept_plan", "reconcile", "adopt_proposal", "reconfirm", "classify", "cancel", "close", "relaunch",
+    "acknowledge_input", "waive", "accept_record", "defer", "requeue"})
+PROPOSED_CHOICES_DIGEST = "5379c4f8d592a296f81affb178ce19db6fa855dd1db81c9043cabfc83663e0ce"
+PROPOSED_CHOICES_GRADUATED: frozenset[str] = frozenset()
 
 
 # ---------------------------------------------------------------------------------------------- the live surface
@@ -285,6 +315,26 @@ def proved_typed(name: str, e: dict[str, Any]) -> list[str]:
             out.append(f"{tool_name!r} is not a built tool on the normal profile")
         elif p not in t.expands_to:
             out.append(f"tool {tool_name!r} does not run {p!r}")
+    return out + resolve_home_problems(e)
+
+
+def resolve_home_problems(e: dict[str, Any]) -> list[str]:
+    """G1's pair check (the A1 slice plan, reviewed CLEAR, §2.1 item 4 and §2.5): `resolve` homes a command only
+    through the choices the entry names (`via_choices`), and every (choice, subject kind) pair of each in
+    contract.RESOLVE_CHOICE_PRIMITIVE runs the entry's primitive. So `resolve` is never accepted as the home of an
+    arbitrary primitive by its `expands_to` alone."""
+    choices, p = e.get("via_choices"), e.get("primitive")
+    if "resolve" not in (e.get("via") or []):
+        return ["only a command `resolve` homes names `via_choices`"] if choices else []
+    if not choices:
+        return ["`resolve` homes it only through the choices it names: give `via_choices`"]
+    out = []
+    for choice in choices:
+        runs = {q for (c, _), q in contract.RESOLVE_CHOICE_PRIMITIVE.items() if c == choice}
+        if not runs:
+            out.append(f"`resolve` has no choice {choice!r} (contract.RESOLVE_CHOICE_PRIMITIVE)")
+        elif runs != {p}:
+            out.append(f"`resolve`'s choice {choice!r} runs {sorted(runs)}, not {p!r}")
     return out
 
 
@@ -337,7 +387,7 @@ def check_fields(reg: dict[str, Any]) -> list[str]:
             out.append(f"{name}: `mutates_basis` says how its `mutates` was determined")
         if not isinstance(e.get("refusals"), list):
             out.append(f"{name}: `refusals` is a list of aew.errors codes")
-    return out
+    return out + planned_problems(reg)
 
 
 def check_users(reg: dict[str, Any]) -> list[str]:
@@ -459,6 +509,7 @@ def check_door(reg: dict[str, Any]) -> list[str]:
                 out.append(f"{label(kind, name)}: tool {tool_name!r} does not run {e['primitive']!r}")
         if e.get("primitive") and not primitive_names(name, e["primitive"]):
             out.append(f"{label(kind, name)}: primitive {e['primitive']!r} is not this command's step")
+        out += [f"{label(kind, name)}: {why}" for why in resolve_home_problems(e)]
     return sorted(set(out), key=out.index)
 
 
@@ -624,6 +675,134 @@ def check_lead_shell_lifecycle(reg: dict[str, Any]) -> list[str]:
 def check_unevidenced(reg: dict[str, Any]) -> list[str]:
     return [f"{label(kind, e['name'])} is homed {e['home']} but no vertical journey exercises it"
             for kind, e in entries(reg) if e.get("home") not in (DIAGNOSTIC, "internal") and not e.get("journeys")]
+
+
+# ---------------------------------------------------------------------------------------------- the planned rows
+# The A1 slice plan (reviewed CLEAR) §2.1: every still-undecided command carries `planned: {disposition, homes,
+# primitive, lands, reason}`, its homes being typed tools (built, or under `proposed_tools`) or `R(<choice>)`, a
+# `resolve` choice (built in contract.RESOLVE_CHOICE_PRIMITIVE, or under `proposed_choices`). What a home runs is read
+# from the code when it is built and from its proposal when it is not.
+
+PLANNED_KEYS = ("disposition", "homes", "primitive", "lands", "reason")
+HOME_CHOICE = re.compile(r"R\(([a-z_]+)\)")
+BUILT, PROPOSED = "built", "proposed"
+
+
+def planned_rows(reg: dict[str, Any]) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+    return [(str(e.get("name")), e, e["planned"]) for kind, e in entries(reg)
+            if kind == "cli" and isinstance(e.get("planned"), dict)]
+
+
+def proposals(reg: dict[str, Any], section: str) -> dict[str, dict[str, Any]]:
+    return {str(p.get("name")): p for p in reg.get(section) or []}
+
+
+def home_runs(reg: dict[str, Any], home: str) -> tuple[str, set[str]] | None:
+    """Whether ``home`` is built or proposed, and the primitives it runs (or will), or ``None`` when it is neither."""
+    choice = HOME_CHOICE.fullmatch(home)
+    if choice:
+        built = {p for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items() if c == choice.group(1)}
+        if built:
+            return BUILT, built
+        proposal = proposals(reg, "proposed_choices").get(choice.group(1))
+        return (PROPOSED, set((proposal.get("pairs") or {}).values())) if proposal else None
+    t = contract.TOOLS.get(home)
+    if t is not None and t.built and NORMAL in t.profiles:
+        return BUILT, set(t.expands_to)
+    proposal = proposals(reg, "proposed_tools").get(home)
+    return (PROPOSED, set(proposal.get("expands_to") or [])) if proposal else None
+
+
+def planned_problems(reg: dict[str, Any]) -> list[str]:
+    """The planned rows' and the proposals' shape (part of `fields`): a planned row is exactly an undecided command,
+    with a planned disposition, homes that resolve, a primitive that names it, a landing slice and a reason; a typed
+    plan names its primitive and other plans home nothing; every proposal is some planned row's home."""
+    lands = set((reg.get("vocabulary") or {}).get("lands") or {})
+    out = [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
+           if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
+    homed: set[str] = set()
+    for name, e, plan in planned_rows(reg):
+        it = f"`aew {name}`'s plan"
+        if e.get("lead_disposition") != UNDECIDED:
+            out.append(f"`aew {name}` is decided ({e.get('lead_disposition')}): drop its `planned`")
+        if tuple(plan) != PLANNED_KEYS:
+            out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, not {list(plan)}")
+        d, homes, p = plan.get("disposition"), plan.get("homes"), plan.get("primitive")
+        if d not in (TYPED, *LEAVES_LEAD_DOORS):
+            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, *LEAVES_LEAD_DOORS]}")
+        if plan.get("lands") not in lands:
+            out.append(f"{it}: lands {plan.get('lands')!r} is not in the vocabulary's `lands`")
+        if not plan.get("reason"):
+            out.append(f"{it} gives no reason")
+        if not isinstance(homes, list):
+            out.append(f"{it}: `homes` is a list")
+            continue
+        homed |= set(homes)
+        out += [f"{it}: unknown home {h!r}, neither a typed tool nor a `resolve` choice, built or proposed"
+                for h in homes if home_runs(reg, str(h)) is None]
+        if d == TYPED and p in (None, "none"):
+            out.append(f"{it}: a typed plan names the primitive its homes run")
+        elif d != TYPED and homes:
+            out.append(f"{it}: only a typed plan has homes ({d} is reached through neither Lead door)")
+        if p not in (None, "none") and not primitive_names(name, str(p)):
+            out.append(f"{it}: primitive {p!r} is not this command's step")
+    for section, home in (("proposed_tools", "{}"), ("proposed_choices", "R({})")):
+        for name, proposal in proposals(reg, section).items():
+            if proposal.get("lands") not in lands:
+                out.append(f"{section} `{name}`: lands {proposal.get('lands')!r} is not in the vocabulary's `lands`")
+            if home.format(name) not in homed:
+                out.append(f"{section} `{name}` homes no planned row: drop it, or name it in a row's `homes`")
+    return out
+
+
+def check_home_built(reg: dict[str, Any]) -> list[str]:
+    """"Home built => row decided" (the A1 slice plan §2.1 item 2): a proposal that is built leaves its section, and a
+    row whose homes are all built and all run its primitive is decided `typed` in the same change (door typed, `via`,
+    `primitive`). A built home that does not run the primitive yet is an A2 debt (`planned_sweep`), not a built home."""
+    out = [f"proposed tool `{n}` is built now (contract.TOOLS): remove its proposal and decide the rows it homes"
+           for n in proposals(reg, "proposed_tools") if n in contract.TOOLS]
+    out += [f"proposed choice `{n}` is built now (contract.RESOLVE_CHOICE_PRIMITIVE): remove its proposal and decide "
+            "the rows it homes" for n in proposals(reg, "proposed_choices")
+            if any(c == n for c, _ in contract.RESOLVE_CHOICE_PRIMITIVE)]
+    for name, _, plan in planned_rows(reg):
+        homes, p = plan.get("homes") or [], plan.get("primitive")
+        runs = [home_runs(reg, str(h)) for h in homes]
+        if homes and all(r is not None and r[0] == BUILT and p in r[1] for r in runs):
+            out.append(f"every home of `aew {name}` ({homes}) is built and runs {p!r}: set its lead_disposition typed, "
+                       "door typed, `via` and `primitive` in this change, and drop its `planned`")
+    return out
+
+
+def check_out_of_door(reg: dict[str, Any]) -> list[str]:
+    """"Out of the door => row decided" (the A1 slice plan §2.1 item 2): a command that has left LEAD_REACHABLE is
+    decided; `keep_out` then proves an `engine-owned` or `forbidden-to-lead` one."""
+    return [f"`aew {e['name']}` has left the Lead's shell door (lead_broker.LEAD_REACHABLE) but is undecided: decide "
+            "it in the same change" for kind, e in entries(reg)
+            if kind == "cli" and is_live(kind, str(e.get("name"))) and e.get("lead_disposition") == UNDECIDED
+            and not lead_reachable(str(e["name"]))]
+
+
+def check_planned_sweep(reg: dict[str, Any]) -> list[str]:
+    """The sweep's planned half (the A1 slice plan §2.1 item 3, §2.5): a planned typed row's home that does not run
+    its primitive, built or as proposed. The built half is `door`'s: a typed row's `via` tools and `via_choices` run
+    its primitive."""
+    out = []
+    for name, _, plan in planned_rows(reg):
+        p = plan.get("primitive")
+        for h in plan.get("homes") or [] if plan.get("disposition") == TYPED else []:
+            runs = home_runs(reg, str(h))
+            if runs is not None and p not in runs[1]:
+                out.append(f"`aew {name}`: its {runs[0]} home {h} does not run {p!r} yet (a debt of {plan['lands']})")
+    return out
+
+
+def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
+    """The planned rows by the slice they land in (the A1 slice plan §2.1 item 5), in the vocabulary's order."""
+    order = list((reg.get("vocabulary") or {}).get("lands") or {})
+    rows = sorted(planned_rows(reg), key=lambda r: (order.index(r[2]["lands"]) if r[2].get("lands") in order
+                                                    else len(order), r[0]))
+    return [f"{plan.get('lands')}: `aew {name}` -> {plan.get('disposition')}"
+            + (f" via {', '.join(map(str, plan['homes']))}" if plan.get("homes") else "") for name, _, plan in rows]
 
 
 # ---------------------------------------------------------------------------------------------- the behavioural probe
@@ -1136,6 +1315,8 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "unevidenced": check_unevidenced, "probe": check_probe, "probe_coverage": check_probe_coverage,
     "probe_flags": check_probe_flags, "shell_reachable_mutation": check_shell_reachable_mutation,
     "keep_out": check_keep_out, "keep_out_coverage": check_keep_out_coverage,
+    "home_built": check_home_built, "out_of_door": check_out_of_door, "planned_sweep": check_planned_sweep,
+    "planned_by_slice": check_planned_by_slice,
 }
 
 
@@ -1170,6 +1351,7 @@ def shared_state() -> dict[str, Any]:
 
     return {
         "contract.TOOLS": list(contract.TOOLS.items()),
+        "contract.RESOLVE_CHOICE_PRIMITIVE": list(contract.RESOLVE_CHOICE_PRIMITIVE.items()),
         "lead_broker.LEAD_REACHABLE": (id(lead_broker.LEAD_REACHABLE), sorted(map(sorted, lead_broker.LEAD_REACHABLE))),
         "lead_broker.NOT_RELAYED": (id(lead_broker.NOT_RELAYED), list(lead_broker.NOT_RELAYED)),
         "lead_broker.OPERATOR_ONLY": (id(lead_broker.OPERATOR_ONLY), list(lead_broker.OPERATOR_ONLY)),
@@ -1302,7 +1484,13 @@ def shrink_only_problems() -> list[str]:
             ("PROBE_LIMITED", PROBE_LIMITED, PROBE_LIMITED_DIGEST, PROBE_GRADUATED,
              "a new probe must run its command's real path"),
             ("TRANSPORTS", TRANSPORTS, TRANSPORTS_DIGEST, TRANSPORTS_GRADUATED,
-             "a command in NOT_RELAYED is not kept from the Lead's shell")):
+             "a command in NOT_RELAYED is not kept from the Lead's shell"),
+            ("PLANNED_FROZEN", PLANNED_FROZEN, PLANNED_DIGEST, PLANNED_GRADUATED,
+             "a row is planned only while undecided, and a new Lead-reachable command is decided when added"),
+            ("PROPOSED_TOOLS", PROPOSED_TOOLS, PROPOSED_TOOLS_DIGEST, PROPOSED_TOOLS_GRADUATED,
+             "a home not in the A1 slice plan is a plan change, reviewed as one"),
+            ("PROPOSED_CHOICES", PROPOSED_CHOICES, PROPOSED_CHOICES_DIGEST, PROPOSED_CHOICES_GRADUATED,
+             "a home not in the A1 slice plan is a plan change, reviewed as one")):
         if hashlib.sha256("\n".join(sorted(frozen)).encode()).hexdigest() != digest:
             out.append(f"{name} changed: an entry may only leave it, through its graduated list; {how}")
         if not graduated <= frozen:
@@ -1310,10 +1498,28 @@ def shrink_only_problems() -> list[str]:
     return out
 
 
+def proposal_pin_problems(reg: dict[str, Any]) -> list[str]:
+    """The registry's planned rows and proposals are exactly the pinned lists less what graduated (the A1 slice plan
+    §2.1 item 1): one may leave the registry only by graduating, and nothing is added."""
+    out = []
+    for section, have, pinned in (
+            ("planned rows", {baseline_key("cli", n) for n, _, _ in planned_rows(reg)},
+             PLANNED_FROZEN - PLANNED_GRADUATED),
+            ("proposed_tools", set(proposals(reg, "proposed_tools")), PROPOSED_TOOLS - PROPOSED_TOOLS_GRADUATED),
+            ("proposed_choices", set(proposals(reg, "proposed_choices")),
+             PROPOSED_CHOICES - PROPOSED_CHOICES_GRADUATED)):
+        if have != pinned:
+            out.append(f"the registry's {section} differ from the pinned list less what graduated: added "
+                       f"{sorted(have - pinned)}, removed without graduating {sorted(pinned - have)}")
+    return out
+
+
 def test_the_baseline_only_shrinks():
     """FROZEN is the registry when the standing rule was adopted; nothing is ever added to it (its digest is pinned),
-    and BASELINE is FROZEN minus what graduated. The same for KEEP_OUT_LIMITED and PROBE_LIMITED."""
+    and BASELINE is FROZEN minus what graduated. The same for KEEP_OUT_LIMITED and PROBE_LIMITED, and for the planned
+    rows and the proposed homes, which the registry holds exactly as pinned less what graduated."""
     assert shrink_only_problems() == [] and BASELINE <= FROZEN
+    assert proposal_pin_problems(load()) == []
 
 
 def test_the_registry_is_versioned_and_states_its_vocabulary():
@@ -1454,6 +1660,46 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("refusal_floor", lambda r: _entry(r, "map select-architecture")["refusals"].remove("STALE_REVISION"),
      "`aew map select-architecture`: its arguments imply refusals ['STALE_REVISION']"),
     ("refusal_floor", lambda r: _entry(r, "ticket_start", "tool").update(refusals=[]), "tool `ticket_start`: its"),
+    # The A1 slice plan (reviewed CLEAR) §2.1: the planned rows' shape (part of `fields`) and the two enforced checks.
+    ("fields", lambda r: _entry(r, "work staff").pop("planned"), "`aew work staff` is undecided: give its `planned`"),
+    ("fields", lambda r: _entry(r, "work staff").update(lead_disposition="engine-owned"),
+     "`aew work staff` is decided (engine-owned): drop its `planned`"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(homes=["ticket_fly"]),
+     "`aew work staff`'s plan: unknown home 'ticket_fly'"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(homes=["R(teleport)"]),
+     "`aew work staff`'s plan: unknown home 'R(teleport)'"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(primitive="plan.propose"),
+     "`aew work staff`'s plan: primitive 'plan.propose' is not this command's step"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(primitive="none"),
+     "`aew work staff`'s plan: a typed plan names the primitive its homes run"),
+    ("fields", lambda r: _entry(r, "evidence ingest")["planned"].update(homes=["ticket_draft"]),
+     "`aew evidence ingest`'s plan: only a typed plan has homes"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].update(lands="someday"),
+     "`aew work staff`'s plan: lands 'someday' is not in the vocabulary"),
+    ("fields", lambda r: _entry(r, "work staff")["planned"].pop("reason"), "`aew work staff`'s plan gives no reason"),
+    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "A2"}),
+     "proposed_tools `ticket_fly` homes no planned row"),
+    ("fields", lambda r: r["proposed_choices"].append({"name": "teleport", "pairs": {}, "lands": "A9"}),
+     "proposed_choices `teleport`: lands 'A9' is not in the vocabulary"),
+    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "A2"}),
+     "proposed choice `continue` is built now"),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "A2"}),
+     "proposed tool `ticket_start` is built now"),
+    # Today's request stages all run `invoke.create.mutating`: without the unbuilt `ticket_rework`, the row is homed.
+    ("home_built", lambda r: _entry(r, "invoke create")["planned"].update(homes=[
+        h for h in _entry(r, "invoke create")["planned"]["homes"] if h != "ticket_rework"]),
+     "every home of `aew invoke create`"),
+    ("out_of_door", lambda r: _entry(r, "work list").update(lead_disposition=UNDECIDED),
+     "`aew work list` has left the Lead's shell door"),
+    # G1's pair check (§2.1 item 4): `resolve` homes a command only through choices that run its primitive.
+    ("door", lambda r: _entry(r, "stage continue").pop("via_choices"),
+     "`aew stage continue`: `resolve` homes it only through the choices it names"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["accept_risk"]),
+     "`aew stage continue`: `resolve`'s choice 'accept_risk' runs ['work.dispose'], not 'stage.resolve'"),
+    ("door", lambda r: _entry(r, "stage continue").update(via_choices=["teleport"]),
+     "`aew stage continue`: `resolve` has no choice 'teleport'"),
+    ("door", lambda r: _entry(r, "status").update(via_choices=["continue"]),
+     "`aew status`: only a command `resolve` homes names `via_choices`"),
 ]
 
 
@@ -1724,6 +1970,21 @@ ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
      "NOT_FOUND is not a code in aew.errors"),
     ("home", lambda ab: ab.setattr(custody_ops_module(), "worker_argv", lambda repo_root, custodian: ["aew", "status"]),
      "starts `aew status`, not `aew integrate custody`"),
+    # The A1 slice plan (reviewed CLEAR) §2.1: building a home in the code decides its rows; leaving the shell door
+    # decides the command; a `resolve` pair that stops running a typed row's primitive breaks its door.
+    ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
+        "ticket_request_review"]._replace(name="ticket_rework")), "every home of `aew work transition`"),
+    ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
+        "ticket_request_review"]._replace(name="ticket_rework")), "proposed tool `ticket_rework` is built now"),
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
+     "every home of `aew plan accept`"),
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
+     "proposed choice `accept_plan` is built now"),
+    ("out_of_door", lambda ab: ab.setattr(lead_broker, "LEAD_REACHABLE",
+                                          lead_broker.LEAD_REACHABLE - {frozenset({"work", "staff"})}),
+     "`aew work staff` has left the Lead's shell door"),
+    ("door", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("continue", "stage_intent"), "work.dispose"),
+     "`aew stage continue`: `resolve`'s choice 'continue' runs ['work.dispose'], not 'stage.resolve'"),
 ]
 
 
@@ -1839,6 +2100,23 @@ def test_the_pins_and_the_shrink_only_lists_fail_when_ablated(monkeypatch):
     monkeypatch.undo()
     monkeypatch.setattr(_sys_module(), "TRANSPORTS", TRANSPORTS | {"context pack"})
     assert any("TRANSPORTS changed" in p for p in shrink_only_problems())
+    monkeypatch.undo()
+    for name, pinned in (("PLANNED_FROZEN", PLANNED_FROZEN), ("PROPOSED_TOOLS", PROPOSED_TOOLS),
+                         ("PROPOSED_CHOICES", PROPOSED_CHOICES)):
+        monkeypatch.setattr(_sys_module(), name, pinned | {"teleport"})
+        assert any(f"{name} changed" in p for p in shrink_only_problems())
+        monkeypatch.undo()
+    # The registry against the pins: a proposal added, or one removed without graduating, is named.
+    reg = copy.deepcopy(load())
+    reg["proposed_tools"].append({"name": "ticket_fly"})
+    reg["proposed_choices"] = [p for p in reg["proposed_choices"] if p["name"] != "cancel"]
+    _entry(reg, "work staff").pop("planned")
+    problems = proposal_pin_problems(reg)
+    assert any("proposed_tools differ" in p and "added ['ticket_fly']" in p for p in problems), problems
+    assert any("proposed_choices differ" in p and "without graduating ['cancel']" in p for p in problems), problems
+    assert any("planned rows differ" in p and "without graduating ['cli:work staff']" in p for p in problems)
+    monkeypatch.setattr(_sys_module(), "PROPOSED_CHOICES_GRADUATED", frozenset({"cancel"}))
+    assert not any("proposed_choices" in p for p in proposal_pin_problems(reg))
 
 
 def test_the_mutation_proof_fails_when_the_command_no_longer_writes(tmp_path, monkeypatch):
@@ -1873,7 +2151,8 @@ def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():
     reg = copy.deepcopy(load())
     # A tripwire: when one of these is empty on main, its slice has landed: flip that check to enforce in CHECKS and
     # in surface-map.md's table.
-    for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle"):
+    for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle", "planned_sweep",
+                  "planned_by_slice"):
         assert CHECK_FUNCTIONS[check](reg), f"`{check}` reports nothing now: flip it to enforce (CHECKS and the doc)"
     reg["refusal_status"] = {"inventory": "complete", "structured": "yes"}
     for _, e in entries(reg):
@@ -1881,13 +2160,14 @@ def test_a_report_check_sees_its_pending_field_and_clears_when_it_lands():
             e["owner"] = "lead"
         if e.get("lead_disposition") == UNDECIDED:
             e["lead_disposition"] = "engine-owned"
+            e.pop("planned")
         if e.get("door") not in (None, TYPED):
             e.pop("door")
             e.pop("partly_via", None)
         if not e.get("journeys") and e.get("home") not in (DIAGNOSTIC, "internal"):
             e["journeys"] = ["V1"]
     for check in ("owner", "structured_refusals", "undecided", "lead_shell_lifecycle",
-                  "unevidenced"):
+                  "unevidenced", "planned_sweep", "planned_by_slice"):
         assert CHECK_FUNCTIONS[check](reg) == [], check
     assert check_disposition_applied(reg)  # engine-owned, yet still Lead-reachable: A4 has not closed the door
 

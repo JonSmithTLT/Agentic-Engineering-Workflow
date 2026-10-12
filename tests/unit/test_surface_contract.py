@@ -389,3 +389,66 @@ def test_every_staged_primitive_is_declared():
             assert spec.guard_id in ENTRYPOINTS or spec.guard_id == p, (t.name, p, spec.guard_id)
             assert set(spec.side_effect_class.split("+")) <= effects, (t.name, p, spec.side_effect_class)
             assert p in stage.STEP_RUNNERS, (t.name, p, "no step runner")
+
+
+# The engine methods the `resolve` runner calls first, by the primitive it runs (aew.surface.stage.resolve_stage).
+_FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve"}
+
+
+class _Called(Exception):
+    pass
+
+
+def _runner_primitive(choice: str) -> str:
+    """The primitive the live `resolve` runner runs for ``choice``: the engine method it calls first, recorded and
+    stopped there (no project, nothing commits)."""
+    class Engine:
+        def __getattr__(self, name: str) -> Any:
+            def record(*args: Any, **kwargs: Any) -> Any:
+                raise _Called(name)
+            return record
+
+    args = {"expect_rev": 1, "subject": "X-0001", "choice": choice, "rationale": "r"}
+    with pytest.raises(_Called) as called:
+        run.RUNNERS["resolve"](run.Call(Engine(), SurfaceContext(lead_session=None, generation=None), args, "t"))
+    return _FIRST_CALL[str(called.value)]
+
+
+def resolve_pair_problems(mapping: dict[tuple[str, str], str]) -> list[str]:
+    from aew.engine.primitives import SPECS
+
+    schema = json.loads((SRC / "schemas" / "disposition.schema.json").read_text(encoding="utf-8"))
+    kinds = tuple(schema["properties"]["subject"]["properties"]["kind"]["enum"])
+    out = []
+    if contract.DISPOSITION_SUBJECTS != kinds:
+        out.append(f"the disposition subject kinds are {kinds} (disposition.schema.json), not "
+                   f"{contract.DISPOSITION_SUBJECTS}")
+    if tuple(dict.fromkeys(c for c, _ in mapping)) != contract.RESOLVE_CHOICES:
+        out.append("RESOLVE_CHOICES is not the mapping's choices, in its order")
+    if set(contract.TOOLS["resolve"].expands_to) != set(mapping.values()):
+        out.append(f"resolve.expands_to {contract.TOOLS['resolve'].expands_to} is not the mapping's image")
+    for (choice, kind), primitive in mapping.items():
+        spec = SPECS.get(primitive)
+        if spec is None or spec.side_effect_class in ("", "none"):
+            out.append(f"({choice}, {kind}) runs {primitive!r}, which has no declared side effect")
+        if _runner_primitive(choice) != primitive:
+            out.append(f"({choice}, {kind}) maps to {primitive!r}, but the resolve runner runs "
+                       f"{_runner_primitive(choice)!r} for {choice!r}")
+    return out
+
+
+def test_resolve_choice_primitive_pairs():
+    """The A1 slice plan (reviewed CLEAR) §2.1 item 4 and §7: RESOLVE_CHOICE_PRIMITIVE lands with today's pairs, each
+    (choice, subject kind) mapped to the one primitive the live runner runs for it, every pair's primitive declared,
+    the choices and `resolve.expands_to` derived from it, and the subject kinds the disposition record's own. A1a-2 and
+    A2 extend it, pair by pair."""
+    mapping = contract.RESOLVE_CHOICE_PRIMITIVE
+    assert resolve_pair_problems(mapping) == []
+    assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {
+        "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"]}
+    # Differential: a pair that disagrees with the runner, or a choice the mapping loses, is named.
+    swapped = {**mapping, ("accept_risk", "finding"): "stage.resolve"}
+    assert any("(accept_risk, finding) maps to 'stage.resolve', but the resolve runner runs 'work.dispose'" in p
+               for p in resolve_pair_problems(swapped))
+    lost = {k: v for k, v in mapping.items() if k[0] != "abandon"}
+    assert "RESOLVE_CHOICES is not the mapping's choices, in its order" in resolve_pair_problems(lost)

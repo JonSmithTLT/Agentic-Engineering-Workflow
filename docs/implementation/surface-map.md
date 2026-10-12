@@ -177,6 +177,38 @@ the checks by being labelled diagnostic? No, by construction):
 The registry also lists, under `proposed`, the commands the vertical UAT's ideal path (`IDEAL_PATH`) names that do not
 exist yet. When one is built, it moves to `commands`.
 
+**A `resolve` home is proved by its pair** (the A1 slice plan, reviewed CLEAR, §2.1 item 4). `resolve` runs one
+primitive per call, chosen by its `choice`, so its `expands_to` alone would accept it as the home of any of them. A
+command `resolve` homes names the choices that home it (`via_choices`), and every (choice, subject kind) pair of each
+in `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE` must run the command's primitive. That mapping owns the choices,
+their order and `resolve`'s `expands_to`.
+
+## The planned dispositions (A1-0)
+
+The A1 slice plan (reviewed CLEAR, §2) decides where each still-`undecided` command goes. Until its homes exist, the
+registry records the plan, not the decision:
+
+- **`planned`**, on every `undecided` command and only there: `{disposition, homes, primitive, lands, reason}`.
+  - `disposition`: `typed`, `engine-owned` or `forbidden-to-lead`.
+  - `homes`: for a typed plan, the typed tools (built, or under `proposed_tools`) and `resolve` choices, written
+    `R(<choice>)` (built in `RESOLVE_CHOICE_PRIMITIVE`, or under `proposed_choices`), that will reach it. An empty list
+    means no home is designed yet (`work dispatch` and `work redispatch`, an A2 design item). Other plans have none.
+  - `primitive`: the step the homes run, named like a typed door's (or `none`).
+  - `lands`: the slice that builds the homes and decides the row, from the vocabulary's `lands`.
+- **`proposed_tools`** (with the `expands_to` each will have) and **`proposed_choices`** (with their
+  `(subject kind: primitive)` pairs): the homes not built yet.
+- **Shrink-only.** The planned rows and both proposal lists are pinned in the test by their digests. The registry
+  holds exactly the pinned entries less those that graduated, so one leaves only through its graduated list, and none
+  is added.
+- **Home built ⇒ row decided** (`home_built`). When every home of a planned row is built and runs its primitive, the
+  same change sets the row `typed` (door typed, `via`, `primitive`) and drops `planned`; a built proposal leaves its
+  section. A built home that does not run the primitive yet is an A2 debt, which `planned_sweep` reports.
+- **Out of the door ⇒ row decided** (`out_of_door`). A command that has left `LEAD_REACHABLE` is not `undecided`;
+  `keep_out` then proves an `engine-owned` or `forbidden-to-lead` one.
+- **What the checks cannot see.** They read the homes a plan names. A tool that starts to run a planned row's
+  primitive without being named in its `homes` is not seen by `home_built`; `new_surface` and `door` still hold it to
+  the standing rule once the row is decided.
+
 ## The end-state metric
 
 The end state is not "48 typed equivalents". It is **every Lead lifecycle need covered by typed or engine-owned
@@ -208,11 +240,11 @@ each check.
 |---|---|---|
 | `registered` | enforce | a live command or tool has no entry |
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
-| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary |
+| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing slice or reason is missing or invalid (below); a proposal homes no planned row |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
 | `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
-| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's |
+| `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's; a command `resolve` homes without `via_choices`, or with a choice whose pairs do not all run its primitive; `via_choices` on any other command |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
 | `new_surface` | enforce | an entry outside the baseline breaks the standing rule: Lead-reachable and undecided; mutating with no credential and no mechanism keeping the Lead out (`lead_kept_out_by` with a decided disposition, `OPERATOR_ONLY`, or `internal` with its `launcher`); `typed` without a proved typed door, or still in `LEAD_REACHABLE`; `engine-owned` or `forbidden-to-lead` without its `primitive` (or `none` with a reason), still in `LEAD_REACHABLE`, or run by a typed tool |
 | `ideal_path` | enforce | an existing ideal-path command is not registered; a PROPOSED one is not under `proposed`; a proposed command exists now |
@@ -230,6 +262,10 @@ each check.
 | `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home other than a `NOT_RELAYED` transport) has no `keep_out_probe`; declares a refusal that does not mean "not here"; in a real Lead session's environment is not refused with it or changes the sample; or is refused the same way outside one; outside `KEEP_OUT_LIMITED` (empty) |
 | `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
+| `home_built` | enforce | a proposed tool or `resolve` choice is built now and still proposed; every home of a planned row is built and runs its primitive, yet the row is undecided |
+| `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
+| `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
+| `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the

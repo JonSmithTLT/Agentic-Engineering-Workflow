@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from jsonschema import Draft202012Validator
 
 from aew.harness import contract as K
@@ -362,15 +363,24 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
 # it really registers (A1a-2 re-sets `resolve`'s pin to its registered length, D2), and the whole-surface pin stays
 # unchanged until the designer answers (D3).
 
+def _proposed(section: str, lands: str) -> list[dict[str, Any]]:
+    """The surface map's proposed homes landing in ``lands`` (A1-0's `proposed_tools` and `proposed_choices`): the
+    names, steps and pairs the candidates take, never restated here."""
+    reg = yaml.safe_load((ROOT / "docs" / "implementation" / "surface-map.yaml").read_text(encoding="utf-8"))
+    return [p for p in reg[section] if p["lands"] == lands]
+
+
 def _a1_rows() -> dict[str, dict[str, Any]]:
     """Each A1 change to the advertised surface, by the sub-slice that makes it, as edits of today's catalog rows."""
     t = contract.TOOLS
+    [rework_home] = _proposed("proposed_tools", "A1a-1")
+    choices = _proposed("proposed_choices", "A1a-2")
     status, resolve, resume, review = t["status"], t["resolve"], t["resume"], t["ticket_request_review"]
     runs = {"type": "string", "pattern": "^(all|INV-[0-9]+)$",
             "description": "'all', or an invocation id: its runs in detail"}
     rework_props = {**review.input_schema["properties"], "rationale": contract.TEXT}
     rework = review._replace(
-        name="ticket_rework", base_class=contract.JUDGMENT_BEARING,
+        name=rework_home["name"], base_class=contract.JUDGMENT_BEARING, expands_to=tuple(rework_home["expands_to"]),
         description="Rework a REVIEW_FAILED Ticket: move it back to RUNNING and launch a new implementer attempt.",
         input_schema=contract._obj(rework_props, (*review.input_schema["required"], "rationale")),
         required_judgments=("rework",))
@@ -378,7 +388,7 @@ def _a1_rows() -> dict[str, dict[str, Any]]:
     resolve_props = {
         **props,
         "subject": {**props["subject"], "description": "SI-n, <evidence>#<id>, ANM-n, PLAN:<T>@<n> or UNIT:<T>"},
-        "choice": {"enum": [*contract.RESOLVE_CHOICES, "accept_plan", "reconcile"]},
+        "choice": {"enum": [*contract.RESOLVE_CHOICES, *(c["name"] for c in choices)]},
         "operator_answer": {**contract.TEXT, "description": "accept_plan: the operator's answer, quoted"},
         "to": {"type": "string", "minLength": 1, "description": "reconcile: one of the offered phases"}}
     return {
@@ -394,7 +404,7 @@ def _a1_rows() -> dict[str, dict[str, Any]]:
             description="Settle what resume or a stop lists: continue or abandon a stage; dispose of a finding or "
                         "anomaly; record a plan the operator accepted; reconcile an interrupted unit.",
             input_schema=contract._obj(resolve_props, tuple(resolve.input_schema["required"])),
-            expands_to=(*resolve.expands_to, "plan.accept", "work.reconcile")),)},
+            expands_to=(*resolve.expands_to, *(p for c in choices for p in c["pairs"].values()))),)},
         # A1b: the typed `resume` arms an acknowledgment, so it mutates and its readOnlyHint turns false (§3.2).
         "A1b resume readOnlyHint": {"replace": (resume._replace(mutates=True),)},
     }

@@ -93,6 +93,8 @@ FIELD_WITHHELD = "field_withheld"
 # A string over Appendix A's bound ("strings are at most 512 bytes unless stated") is withheld, never clipped: a clipped
 # value would show content that is not the file's (the operator's decision on the F1a review, R5). An open code.
 MAX_STRING_BYTES, TOO_LONG = 512, "too_long"
+
+
 def _schema_keys(node: Any) -> set[str]:
     """Every key used anywhere in a schema document (properties' names included; the validator's keywords filter)."""
     if isinstance(node, dict):

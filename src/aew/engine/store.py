@@ -119,6 +119,7 @@ def read_lock_free(path: Path) -> bytes | None:
             return None
         raise
 
+
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
 AfterApply = Callable[[dict[str, Any]], None]
 # Seals the coordination threads of the invocations a session ends (F9-A plan D-16): the kernel's
@@ -242,7 +243,6 @@ class Session:
         self.committed_revision = self._store._commit(self._committed_state, after, self._writes, transition,
                                                       self._prewritten, working=self.state)
         return self.committed_revision
-
 
     # ------------------------------------------------------------------ the seal check (F9-A plan D-16, R3)
 

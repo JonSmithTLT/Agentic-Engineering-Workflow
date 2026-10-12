@@ -76,6 +76,8 @@ def as_v1(state: dict[str, Any]) -> dict[str, Any]:
     build a v1 project from `aew init`, never for migration (v1 to v2 only). The policy pins go too: a v1 project
     predates them (a v1 project may gain them later, through `aew manifest adopt`)."""
     return {k: v for k, v in state.items() if k not in (*V2_ONLY_KEYS, POLICY_PINS)} | {"schema": V1}
+
+
 # What a Lead may still do on a v1 project (ADR-0011; implementation plan §3): change the seat, end work in flight (a
 # live run blocks the migration), and adopt a changed manifest (the migration checks the pin). Everything else waits
 # for `aew migrate`, so a v1 project is never refused before the command that clears the refusal exists.

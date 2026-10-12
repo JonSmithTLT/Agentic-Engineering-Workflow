@@ -612,7 +612,6 @@ def _notice(budget: int, cuts: list[Truncation], mandatory_size: int) -> list[st
     return lines
 
 
-
 def _truncation(section: Section, kept: int) -> Truncation:
     omitted = tuple((section.labels or [])[kept:])
     return Truncation(section.name, TIER_NAMES[section.tier], kept, len(section.units), section.unit_name, omitted)

@@ -504,7 +504,6 @@ def test_an_attempt_is_bound_to_the_dependencies_it_was_dispatched_with(tmp_path
     assert "added" not in legacy and legacy["unsatisfied_at_dispatch_commit"][0]["id"] == unfinished
 
 
-
 def test_edge_edits_wait_for_unstarted_work_and_closeout_waits_for_dependencies(tmp_path):
     """M2 review major 1: ADR-0007 allows an edge edit only while every affected Ticket is BLOCKED, READY or
     REPLAN_REQUIRED; a finished child completed without the new edge, so the edit is refused (a cancelled

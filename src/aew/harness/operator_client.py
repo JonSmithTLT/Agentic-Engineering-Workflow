@@ -35,6 +35,7 @@ RESIDUALS = (
     "write control state or .aew/ files directly (the protected set is not owned by another principal until F18.6)",
 )
 
+
 def locator_path(aew_root: Path) -> Path:
     return Path(aew_root) / LOCATOR_REL
 

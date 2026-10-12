@@ -531,7 +531,6 @@ def test_terminate_still_closes_the_server_after_a_failed_final_write(rig, monke
     assert rig.server is not None and rig.server.closed and adapter.meter_errors >= 1
 
 
-
 def test_no_live_sample_is_written_after_terminate_returns(rig, monkeypatch):
     """``terminate``'s final write fails, so the meter has not ended; a poll whose requests were all done before the
     cancel then reaches its commit on the meter's daemon thread. It writes nothing: once polls are cancelled no poll

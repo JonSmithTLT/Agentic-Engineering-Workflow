@@ -411,7 +411,6 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
     return weaker
 
 
-
 # ---------------------------------------------------------------------------------------------- stale attribution
 
 

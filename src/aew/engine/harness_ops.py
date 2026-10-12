@@ -732,7 +732,6 @@ class Harness:
         return f"{wid} cannot move on yet: {'; '.join(reasons)}. `aew gate show {wid}` shows what blocks it"
 
 
-
 def _launcher_code() -> dict[str, str]:
     """``HarnessLaunchFailed``'s code when no supervisor acknowledged custody: none is known, so ``unknown``."""
     return {"reason_code": K.launch_failure_code(K.LAUNCHER), "reason_code_source": "launcher"}

@@ -660,7 +660,6 @@ def test_a_project_without_steering_records_nothing(project):
     assert not event_spool.file_of(project.root / ".aew", event_spool.BROKER).exists()
 
 
-
 # ---------------------------------------------------------------------------------------------- review of PR #199
 
 

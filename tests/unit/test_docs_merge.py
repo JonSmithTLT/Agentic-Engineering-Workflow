@@ -51,6 +51,8 @@ LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)  # the same data as safe_
 
 def load(text: str) -> Any:
     return yaml.load(text, Loader=LOADER)  # noqa: S506  (a safe loader: CSafeLoader or SafeLoader)
+
+
 REG_YAML, REG_MD = "docs/implementation/future-work.yaml", "docs/implementation/future-work.md"
 DUE_YAML, DUE_MD = "docs/implementation/decisions-due.yaml", "docs/implementation/decisions-due.md"
 NOTES = "docs/implementation/notes.d"

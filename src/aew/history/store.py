@@ -31,6 +31,7 @@ from aew.util import create_exclusive, load_yaml, sha256_bytes, sha256_file, sha
 if TYPE_CHECKING:
     from aew.engine.store import Session
 
+
 class EntryMismatch(IntegrityError):
     """An entry offered as one of the history's (by the derived index) is not the entry the root pins at its
     position."""

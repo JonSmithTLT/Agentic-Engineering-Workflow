@@ -329,7 +329,6 @@ def test_recording_args_see_every_key_a_query_reads():
     assert args.inputs_read() == {"reason", "to", "card"}
 
 
-
 @pytest.mark.parametrize("mode", ["checks", "verifier"])
 def test_ticket_prepare_plans_the_integration_verifier_in_verifier_mode_only(mode):
     """Plan v3 §2.3: in checks mode the custodian validates, outside the stage, so steps 4 and 5 are not planned; in

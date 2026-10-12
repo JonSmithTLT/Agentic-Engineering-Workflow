@@ -501,7 +501,6 @@ class Gates:
         return out
 
 
-
 class EvidenceCommands:
     """Bounded-role checks and submissions, Lead ingest of reviews and verifications, classification and waivers.
     Dispatch, ingest and classification are routed through the ``KindRegistry``: a mutating Ticket's are handled

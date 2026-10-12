@@ -985,7 +985,6 @@ def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
             assert fires == expected, (event, results, condition)
 
 
-
 # ---------------------------------------------------------------------------------------- the cost record (E43, E45)
 
 def timed(platform: str, lane: str, seconds: dict[str, float], shard: str | None = None, **kw) -> dict:

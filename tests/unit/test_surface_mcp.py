@@ -44,7 +44,8 @@ class Spy:
 
 # The context budget's one measure (plan v3 §2.6): a `tools/list` result, or one entry of it, as compact JSON. The cap
 # below and A1-0's measurement spike both call it, so the spike's figures are the cap's own (the A1 slice plan, reviewed
-# CLEAR, §3.4 and §7 `test_a1_rows_measured`).
+# CLEAR, §3.4 and §7 `test_a1_rows_measured`). The plan's §7 calls the cap `test_surface_cap`; it is
+# `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
 NORMAL_BYTES_PIN = 11_694  # decision 7's whole-surface pin (E6a); unchanged in A1 until the designer answers G3
 RESOLVE_BYTES_PIN = 771
 

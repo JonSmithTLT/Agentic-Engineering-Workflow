@@ -2,10 +2,18 @@
 A1-0 row; data and tests only, no behaviour change). [`surface-map.yaml`](../../surface-map.yaml) now records, on
 each of the 36 still-`undecided` Lead-reachable commands, its `planned` disposition, homes, primitive, landing slice
 and reason, and lists the homes not built yet under `proposed_tools` (`ticket_rework`, `work_amend`, F9-A's
-`message_send`) and `proposed_choices` (13 `resolve` choices). The planned rows and both lists are digest-pinned and
-only shrink. Two new enforced checks hold the rule: `home_built` ("home built ⇒ row decided") and `out_of_door`
-("out of the door ⇒ row decided"); two report checks list the A2 debts (`planned_sweep`: `work.staff` and
-`history.load`) and the planned rows by slice (`planned_by_slice`). `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE`
+`message_send`) and `proposed_choices` (15 `resolve` choices, with `escalate` and `return_escalated` from the A1-0
+review's F1). The planned rows and both lists are digest-pinned and only shrink.
+
+Three new enforced checks hold the rule:
+- `planned_coverage`: every use of a typed plan's command (its transition edges, dispatch entrypoints and options,
+  derived from the code) is covered by a typed home, or listed in the plan's `uncovered`, which is the scans' output
+  (the A1-0 review's F1 and F2). Today 52 uses are uncovered, across eight rows, all landing in A2.
+- `home_built` ("home built ⇒ row decided"): it fires only once built homes also cover every use.
+- `out_of_door` ("out of the door ⇒ row decided").
+
+Two report checks list the A2 debts (`planned_sweep`: `work.staff` and `history.load`) and the planned rows by slice
+(`planned_by_slice`). `aew.surface.contract.RESOLVE_CHOICE_PRIMITIVE`
 lands with today's pairs and owns `resolve`'s choices and `expands_to`; the door proof checks a `resolve` home by its
 pair (`via_choices`).
 

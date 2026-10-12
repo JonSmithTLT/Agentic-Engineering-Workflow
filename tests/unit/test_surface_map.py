@@ -43,9 +43,9 @@ import yaml
 
 from aew import errors
 from aew.cli.main import build_parser
-from aew.engine import primitives
+from aew.engine import dispatch, primitives, transitions
 from aew.harness import bridge, lead_broker
-from aew.surface import contract
+from aew.surface import availability, contract
 from aew.surface.context import NORMAL
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +86,7 @@ CHECKS: dict[str, str] = {
     "out_of_door": ENFORCE,  # a command that has left LEAD_REACHABLE is not `undecided`
     "planned_sweep": REPORT,  # a planned row's home that does not run (or plan to run) its primitive: the A2 debts
     "planned_by_slice": REPORT,  # the planned rows, by the slice they land in
+    "planned_coverage": ENFORCE,  # a typed plan's uses (edges, entrypoints, options) covered, or its derived gaps
 }
 OWNERS = ("operator", "lead", "mechanical")
 REPORT_PREFIX = "SurfaceMapReport: surface map, check"
@@ -151,8 +152,9 @@ PROPOSED_TOOLS_DIGEST = "80bf701d68e4277fdd2ce9420d8ce0e1a85444cfc1931cc5941f929
 PROPOSED_TOOLS_GRADUATED: frozenset[str] = frozenset()
 PROPOSED_CHOICES: frozenset[str] = frozenset({
     "accept_plan", "reconcile", "adopt_proposal", "reconfirm", "classify", "cancel", "close", "relaunch",
-    "acknowledge_input", "waive", "accept_record", "defer", "requeue"})
-PROPOSED_CHOICES_DIGEST = "5379c4f8d592a296f81affb178ce19db6fa855dd1db81c9043cabfc83663e0ce"
+    "acknowledge_input", "waive", "accept_record", "defer", "requeue",
+    "escalate", "return_escalated"})  # added by the A1-0 review's F1 (the plan's §2.7), before the pin was merged
+PROPOSED_CHOICES_DIGEST = "276fb77f6b0b57df2da4b901bfd973e7081718df16f8710529158769c60a39ba"
 PROPOSED_CHOICES_GRADUATED: frozenset[str] = frozenset()
 
 
@@ -686,6 +688,7 @@ def check_unevidenced(reg: dict[str, Any]) -> list[str]:
 # from the code when it is built and from its proposal when it is not.
 
 PLANNED_KEYS = ("disposition", "homes", "primitive", "lands", "reason")
+PLANNED_OPTIONAL = ("options", "uncovered")  # a typed plan's option classification, and its derived gaps (F1)
 HOME_CHOICE = re.compile(r"R\(([a-z_]+)\)")
 BUILT, PROPOSED = "built", "proposed"
 
@@ -727,8 +730,10 @@ def planned_problems(reg: dict[str, Any]) -> list[str]:
         it = f"`aew {name}`'s plan"
         if e.get("lead_disposition") != UNDECIDED:
             out.append(f"`aew {name}` is decided ({e.get('lead_disposition')}): drop its `planned`")
-        if tuple(plan) != PLANNED_KEYS:
-            out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, not {list(plan)}")
+        if tuple(k for k in plan if k not in PLANNED_OPTIONAL) != PLANNED_KEYS or not set(plan) <= {
+                *PLANNED_KEYS, *PLANNED_OPTIONAL}:
+            out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, and may add {list(PLANNED_OPTIONAL)}; "
+                       f"not {list(plan)}")
         d, homes, p = plan.get("disposition"), plan.get("homes"), plan.get("primitive")
         if d not in (TYPED, *LEAVES_LEAD_DOORS):
             out.append(f"{it}: disposition {d!r} is not one of {[TYPED, *LEAVES_LEAD_DOORS]}")
@@ -769,9 +774,13 @@ def check_home_built(reg: dict[str, Any]) -> list[str]:
     for name, _, plan in planned_rows(reg):
         homes, p = plan.get("homes") or [], plan.get("primitive")
         runs = [home_runs(reg, str(h)) for h in homes]
-        if homes and all(r is not None and r[0] == BUILT and p in r[1] for r in runs):
-            out.append(f"every home of `aew {name}` ({homes}) is built and runs {p!r}: set its lead_disposition typed, "
-                       "door typed, `via` and `primitive` in this change, and drop its `planned`")
+        # The A1-0 review's F1: built homes decide the row only when they also cover every use of the command (its
+        # transition edges, dispatch entrypoints and options), counted against BUILT homes alone.
+        if homes and all(r is not None and r[0] == BUILT and p in r[1] for r in runs) \
+                and not row_uncovered(reg, name, plan, built_only=True):
+            out.append(f"every home of `aew {name}` ({homes}) is built, runs {p!r} and covers every use of the "
+                       "command: set its lead_disposition typed, door typed, `via` and `primitive` in this change, "
+                       "and drop its `planned`")
     return out
 
 
@@ -804,7 +813,172 @@ def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
     rows = sorted(planned_rows(reg), key=lambda r: (order.index(r[2]["lands"]) if r[2].get("lands") in order
                                                     else len(order), r[0]))
     return [f"{plan.get('lands')}: `aew {name}` -> {plan.get('disposition')}"
-            + (f" via {', '.join(map(str, plan['homes']))}" if plan.get("homes") else "") for name, _, plan in rows]
+            + (f" via {', '.join(map(str, plan['homes']))}" if plan.get("homes") else "")
+            + (f"; {len(plan['uncovered']['uses'])} use(s) uncovered until {plan['uncovered'].get('lands')}"
+               if isinstance(plan.get("uncovered"), dict) else "") for name, _, plan in rows]
+
+
+# ---------------------------------------------------------------------------------------------- coverage (F1)
+# The A1-0 review's F1: a typed plan's homes must cover every use of its command before `home_built` may decide it.
+# The USES are derived from the code, by three scans, for every planned row:
+# - **transition edges:** every `transitions.RULES` edge whose operation (`via`, or one of its `also`) the command runs,
+#   by `transitions._COMMANDS` (the engine's own via -> command table), else `work <via>` when that command is live
+#   (`reconcile`: `work_ops.work_reconcile` checks via "reconcile");
+# - **dispatch entrypoints:** every `dispatch.ENTRYPOINTS` entry whose `cli` is the command;
+# - **options:** every option and positional of the live parser's command, less those this module derives as generic
+#   (the Lead credential, the expected revisions, PRINT_ONLY).
+# What a home COVERS is read from the code when it is built and from its proposal when it is not:
+# - a built stage's `work.transition` step covers the edges into its fixed target (`availability.STAGES`) from the
+#   state its producing step leaves (`produced_by`: `availability._product` for `work.assign`, else the targets of the
+#   producer's own edges), or from every source when no earlier step produces the state;
+# - a proposal covers the edges its `transitions` name (`*` for any state), which a proposal running
+#   `work.transition` must declare; a built `resolve` choice running `work.transition` covers no edge until its edges
+#   have a code owner (none does today);
+# - any other edge is covered by a home running a primitive that names the edge's command (`primitive_names`);
+# - an entrypoint, by a home running it; an option, by the plan's `options` classification.
+# What the scans cannot see: whether a home's argument implements an option's meaning (the classification is a
+# judgment; its completeness is derived); a stage running from more states than its producer leaves; routes of two or
+# more steps; a command's uses that are neither an edge, an entrypoint nor an option.
+COVERED_BY_ALL_HOMES, UNCOVERED_USE, RETIRED_USE = "homes", "uncovered", "retired"
+ANY_STATE = "*"
+
+
+def via_command(via: str) -> str | None:
+    """The command that runs edges of operation ``via``: the words of its `_COMMANDS` template before the first
+    argument, else `work <via>`; ``None`` when no live command is named (the engine's own operations)."""
+    template = transitions._COMMANDS.get(via)
+    words = []
+    for w in (template.split()[1:] if template else ["work", via]):
+        if w.startswith(("{", "-", "<", ".")):
+            break
+        words.append(w)
+    name = " ".join(words)
+    return name if name in live_commands() else None
+
+
+def command_edges(name: str) -> list[tuple[str, str, str]]:
+    return [(s, d, via) for (s, d), r in sorted(transitions.RULES.items()) for via in (r.via, *r.also)
+            if via_command(via) == name]
+
+
+def command_entrypoints(name: str) -> list[str]:
+    return sorted(n for n, ep in dispatch.ENTRYPOINTS.items() if ep.cli and " ".join(ep.cli) == name)
+
+
+def command_options(name: str) -> list[str]:
+    generic = {"token", *PRINT_ONLY, *revision_dests(name)}
+    return [a.option_strings[-1] if a.option_strings else a.dest for a in live_commands()[name]._actions
+            if a.dest not in generic]
+
+
+def stage_edges(name: str) -> set[tuple[str, str]]:
+    """The edges a built stage's `work.transition` steps take (above)."""
+    t, out = contract.TOOLS[name], set()
+    for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES.get(name, ()), strict=False)):
+        if primitive != "work.transition":
+            continue
+        to = (build({"work_id": "T-0001"}) or {}).get("to")
+        producers = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
+        if producers:
+            p = t.expands_to[producers[0] - 1]
+            fixed = availability._product(contract.STATE, p, {})
+            sources = {fixed} if fixed else {d for (_, d), r in transitions.RULES.items() if p in (r.via, *r.also)}
+        else:
+            sources = {s for (s, d), r in transitions.RULES.items() if d == to and r.via == "transition"}
+        out |= {(s, to) for s in sources if (s, to) in transitions.RULES}
+    return out
+
+
+def typed_homes(reg: dict[str, Any], built_only: bool) -> list[tuple[str, set[str], set[tuple[str, str]]]]:
+    """Every typed home in the system, built (and, unless ``built_only``, proposed): its name, the primitives it runs
+    and the transition edges it covers (patterns, for a proposal)."""
+    out = [(t.name, set(t.expands_to), stage_edges(t.name)) for t in contract.TOOLS.values()
+           if t.built and NORMAL in t.profiles]
+    choices: dict[str, set[str]] = {}
+    for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items():
+        choices.setdefault(c, set()).add(p)
+    out += [(f"R({c})", ps, set()) for c, ps in choices.items()]
+    if not built_only:
+        out += [(n, set(p.get("expands_to") or []), {tuple(e) for e in p.get("transitions") or []})
+                for n, p in proposals(reg, "proposed_tools").items()]
+        out += [(f"R({n})", set((p.get("pairs") or {}).values()), {tuple(e) for e in p.get("transitions") or []})
+                for n, p in proposals(reg, "proposed_choices").items()]
+    return out  # type: ignore[return-value]
+
+
+def _edge_matches(patterns: set[tuple[str, str]], s: str, d: str) -> bool:
+    return any(a in (s, ANY_STATE) and b in (d, ANY_STATE) for a, b in patterns)
+
+
+def row_uses(name: str, plan: dict[str, Any]) -> list[str]:
+    """Every use of command ``name`` the three scans derive, as stable strings."""
+    return ([f"{via} {s} -> {d}" for s, d, via in command_edges(name)]
+            + [f"entrypoint {ep}" for ep in command_entrypoints(name)]
+            + [f"option {o}" for o in command_options(name)])
+
+
+def row_uncovered(reg: dict[str, Any], name: str, plan: dict[str, Any], *, built_only: bool = False) -> list[str]:
+    """The uses of a typed plan's command that no typed home covers (built ones only, with ``built_only``). A plan
+    that is not typed has no typed uses: its command leaves the Lead's doors."""
+    if plan.get("disposition") != TYPED or name not in live_commands():
+        return []
+    pool = typed_homes(reg, built_only)
+    built = {h for h, _, _ in typed_homes(reg, True)}
+    out = []
+    for s, d, via in command_edges(name):
+        if via == "transition":
+            covered = any(_edge_matches(edges, s, d) for _, _, edges in pool)
+        else:
+            covered = any(primitive_names(name, p) for _, ps, _ in pool for p in ps if p != "work.transition")
+        if not covered:
+            out.append(f"{via} {s} -> {d}")
+    out += [f"entrypoint {ep}" for ep in command_entrypoints(name) if not any(ep in ps for _, ps, _ in pool)]
+    options = plan.get("options") or {}
+    for o in command_options(name):
+        v = options.get(o)
+        homes = [str(h) for h in plan.get("homes") or []] if v == COVERED_BY_ALL_HOMES else [str(v)]
+        if v == RETIRED_USE:
+            continue
+        if v in (None, UNCOVERED_USE) or not homes or (built_only and not set(homes) <= built):
+            out.append(f"option {o}")
+    return sorted(out)
+
+
+def check_planned_coverage(reg: dict[str, Any]) -> list[str]:
+    """The A1-0 review's F1: every typed plan classifies each of its command's options (the parser's set: none missing,
+    none stray) as covered by its homes (`homes`, or one of them), `uncovered` or `retired`; its `uncovered.uses` are
+    exactly the uses no typed home covers, built or proposed (derived, never typed in), with the slice that homes them;
+    a plan that is not typed has neither; a proposal running `work.transition` names the edges it takes."""
+    lands = set((reg.get("vocabulary") or {}).get("lands") or {})
+    out = []
+    for name, _, plan in planned_rows(reg):
+        it, options, typed = f"`aew {name}`'s plan", plan.get("options"), plan.get("disposition") == TYPED
+        if not typed:
+            out += [f"{it} is {plan.get('disposition')}: it has no `{k}`" for k in PLANNED_OPTIONAL if k in plan]
+            continue
+        if not isinstance(options, dict):
+            out.append(f"{it} classifies its command's options: give `options` ({command_options(name)})")
+            options = {}
+        live = command_options(name)
+        out += [f"{it}: option {o} is not classified (`options`)" for o in live if o not in options]
+        out += [f"{it}: `options` names {o}, which `aew {name}` does not take" for o in options if o not in live]
+        allowed = {COVERED_BY_ALL_HOMES, UNCOVERED_USE, RETIRED_USE, *map(str, plan.get("homes") or [])}
+        out += [f"{it}: option {o} is classified {v!r}, neither `homes`, one of its homes, `uncovered` nor `retired`"
+                for o, v in options.items() if v not in allowed]
+        derived = row_uncovered(reg, name, plan)
+        stated = plan.get("uncovered")
+        uses = stated.get("uses") if isinstance(stated, dict) else None
+        if derived and (uses != derived or stated.get("lands") not in lands):
+            out.append(f"{it}: `uncovered` is {{lands: <slice>, uses: {derived}}} (derived by the coverage scans); "
+                       f"not {stated!r}")
+        elif not derived and stated is not None:
+            out.append(f"{it}: every use is covered now: drop `uncovered`")
+    for section in ("proposed_tools", "proposed_choices"):
+        for n, p in proposals(reg, section).items():
+            runs = set(p.get("expands_to") or []) | set((p.get("pairs") or {}).values())
+            if "work.transition" in runs and not p.get("transitions"):
+                out.append(f"{section} `{n}` runs work.transition: name the edges it takes (`transitions`)")
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- the behavioural probe
@@ -1318,7 +1492,7 @@ CHECK_FUNCTIONS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "probe_flags": check_probe_flags, "shell_reachable_mutation": check_shell_reachable_mutation,
     "keep_out": check_keep_out, "keep_out_coverage": check_keep_out_coverage,
     "home_built": check_home_built, "out_of_door": check_out_of_door, "planned_sweep": check_planned_sweep,
-    "planned_by_slice": check_planned_by_slice,
+    "planned_by_slice": check_planned_by_slice, "planned_coverage": check_planned_coverage,
 }
 
 
@@ -1354,6 +1528,8 @@ def shared_state() -> dict[str, Any]:
     return {
         "contract.TOOLS": list(contract.TOOLS.items()),
         "contract.RESOLVE_CHOICE_PRIMITIVE": list(contract.RESOLVE_CHOICE_PRIMITIVE.items()),
+        "transitions.RULES": list(transitions.RULES.items()),
+        "dispatch.ENTRYPOINTS": list(dispatch.ENTRYPOINTS.items()),
         "lead_broker.LEAD_REACHABLE": (id(lead_broker.LEAD_REACHABLE), sorted(map(sorted, lead_broker.LEAD_REACHABLE))),
         "lead_broker.NOT_RELAYED": (id(lead_broker.NOT_RELAYED), list(lead_broker.NOT_RELAYED)),
         "lead_broker.OPERATOR_ONLY": (id(lead_broker.OPERATOR_ONLY), list(lead_broker.OPERATOR_ONLY)),
@@ -1687,10 +1863,30 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "proposed choice `continue` is built now"),
     ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "A2"}),
      "proposed tool `ticket_start` is built now"),
-    # Today's request stages all run `invoke.create.mutating`: without the unbuilt `ticket_rework`, the row is homed.
-    ("home_built", lambda r: _entry(r, "invoke create")["planned"].update(homes=[
-        h for h in _entry(r, "invoke create")["planned"]["homes"] if h != "ticket_rework"]),
-     "every home of `aew invoke create`"),
+    # The A1-0 review's F1: a typed plan accounts for every use of its command (`planned_coverage`).
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"].pop("options"),
+     "`aew work transition`'s plan classifies its command's options"),
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["options"].pop("--reason"),
+     "`aew work transition`'s plan: option --reason is not classified"),
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["options"].update({"--teleport": "homes"}),
+     "`aew work transition`'s plan: `options` names --teleport"),
+    ("planned_coverage", lambda r: _entry(r, "gate waive")["planned"]["options"].update({"--gate": "ticket_fly"}),
+     "`aew gate waive`'s plan: option --gate is classified 'ticket_fly'"),
+    # A gap typed in by hand, or dropped, is named: `uncovered` is the scans' output.
+    ("planned_coverage", lambda r: _entry(r, "work transition")["planned"]["uncovered"]["uses"].pop(),
+     "`aew work transition`'s plan: `uncovered` is {lands: <slice>, uses:"),
+    ("planned_coverage", lambda r: _entry(r, "gate waive")["planned"]["options"].update({"--finding": "homes"}),
+     "`aew gate waive`'s plan: every use is covered now: drop `uncovered`"),
+    ("planned_coverage", lambda r: _entry(r, "work staff")["planned"].pop("uncovered"),
+     "`aew work staff`'s plan: `uncovered` is {lands: <slice>, uses:"),
+    ("planned_coverage", lambda r: _entry(r, "evidence ingest")["planned"].update(options={}),
+     "`aew evidence ingest`'s plan is engine-owned: it has no `options`"),
+    ("planned_coverage", lambda r: proposals(r, "proposed_choices")["escalate"].pop("transitions"),
+     "proposed_choices `escalate` runs work.transition: name the edges it takes"),
+    # Without escalation's proposed homes, its 11 edges and the 3 returns are gaps again.
+    ("planned_coverage", lambda r: r.update(proposed_choices=[p for p in r["proposed_choices"]
+                                                              if p["name"] != "escalate"]),
+     "transition RUNNING -> ESCALATED"),
     ("out_of_door", lambda r: _entry(r, "work list").update(lead_disposition=UNDECIDED),
      "`aew work list` has left the Lead's shell door"),
     # G1's pair check (§2.1 item 4): `resolve` homes a command only through choices that run its primitive.
@@ -1979,8 +2175,15 @@ ABLATIONS: list[tuple[str, Callable[[Ablator], None], str]] = [
      "starts `aew status`, not `aew integrate custody`"),
     # The A1 slice plan (reviewed CLEAR) §2.1: building a home in the code decides its rows; leaving the shell door
     # decides the command; a `resolve` pair that stops running a typed row's primitive breaks its door.
-    ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
-        "ticket_request_review"]._replace(name="ticket_rework")), "every home of `aew work transition`"),
+    ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_record", "unit"), "work.accept"),
+     "every home of `aew work accept`"),
+    # F1's scans read the code: a new transition edge, a dispatch entrypoint gone, change the derived gaps.
+    ("planned_coverage", lambda ab: ab.setitem(transitions.RULES, ("READY", "VERIFIED"),
+                                               transitions.Rule("transition")),
+     "'transition READY -> VERIFIED'"),
+    ("planned_coverage", lambda ab: ab.delitem(dispatch.ENTRYPOINTS, "invoke.create.parent"),
+     "`aew invoke create`'s plan: `uncovered` is {lands: <slice>, uses: ['entrypoint invoke.create.non_mutating', "
+     "'option --card']}"),
     ("home_built", lambda ab: ab.setitem(contract.TOOLS, "ticket_rework", contract.TOOLS[
         "ticket_request_review"]._replace(name="ticket_rework")), "proposed tool `ticket_rework` is built now"),
     ("home_built", lambda ab: ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, ("accept_plan", "plan"), "plan.accept"),
@@ -2020,6 +2223,54 @@ def test_an_enforced_check_fails_when_its_code_input_loses_the_property(check, a
     finally:
         ab.restore()
     assert any(named in f for f in findings), findings
+
+
+def test_home_built_waits_until_every_use_is_covered(monkeypatch):
+    """The A1-0 review's F1, differentially: with every home of `work transition` (and of `invoke create`) built and
+    running its primitive, `home_built` still does not decide the row while a use of the command has no BUILT home;
+    take away exactly the uses the scans report uncovered (from the code: the RULES edges, the entrypoints) and
+    classify the remaining option, and it does."""
+    rework = contract.TOOLS["ticket_request_review"]._replace(name="ticket_rework")
+    ab = Ablator(monkeypatch)
+    try:
+        ab.setitem(contract.TOOLS, "ticket_rework", rework)
+        for choice in ("escalate", "return_escalated"):
+            ab.setitem(contract.RESOLVE_CHOICE_PRIMITIVE, (choice, "unit"), "work.transition")
+        reg = copy.deepcopy(load())
+        for name in ("work transition", "invoke create"):
+            assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg))
+        _entry(reg, "invoke create")["planned"]["options"]["--card"] = COVERED_BY_ALL_HOMES
+        for name in ("work transition", "invoke create"):
+            gaps = row_uncovered(reg, name, _entry(reg, name)["planned"], built_only=True)
+            assert gaps, name
+            for gap in gaps:
+                kind, _, rest = gap.partition(" ")
+                if kind == "entrypoint":
+                    ab.delitem(dispatch.ENTRYPOINTS, rest)
+                else:
+                    s, _, d = rest.partition(" -> ")
+                    ab.delitem(transitions.RULES, (s, d))
+        findings = check_home_built(reg)
+        for name in ("work transition", "invoke create"):
+            assert any(f"every home of `aew {name}`" in f for f in findings), (name, findings)
+    finally:
+        ab.restore()
+
+
+def test_the_option_scan_reads_the_live_parser():
+    """The A1-0 review's F2 class: an option the command gains is a use the plan must classify (the parser is the
+    source, never a list here)."""
+    parser_of = live_commands()["gate waive"]
+    assert check_planned_coverage(load()) == []
+    action = parser_of.add_argument("--teleport")
+    try:
+        assert any("`aew gate waive`'s plan: option --teleport is not classified" in f
+                   for f in check_planned_coverage(load()))
+    finally:
+        parser_of._remove_action(action)
+        for option in action.option_strings:
+            parser_of._option_string_actions.pop(option, None)
+    assert check_planned_coverage(load()) == []
 
 
 def test_the_ideal_path_check_reads_the_vertical_module(tmp_path, monkeypatch):

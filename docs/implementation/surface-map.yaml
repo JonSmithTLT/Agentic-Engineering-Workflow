@@ -87,6 +87,7 @@ proposed:
 proposed_tools:
   - name: ticket_rework
     expands_to: [work.transition, invoke.create.mutating, dispatch.launch]
+    transitions: [[REVIEW_FAILED, RUNNING]]
     lands: A1a-1
     note: "the mutating rework stage, shaped like ticket_request_review; blocked on the G3 budget question"
   - name: work_amend
@@ -118,6 +119,7 @@ proposed_choices:
     note: "while VERIFICATION_FAILED; argument class"
   - name: cancel
     pairs: {unit: work.cancel, invocation: invoke.cancel}
+    transitions: [["*", CANCELLED]]
     lands: A2
     note: "a unit, or a live invocation"
   - name: close
@@ -144,6 +146,17 @@ proposed_choices:
   - name: requeue
     pairs: {queue: integrate.requeue}
     lands: A2
+  # The A1-0 review's F1: escalation and its return, the A2 design item of the A1 slice plan §2.7.
+  - name: escalate
+    pairs: {unit: work.transition}
+    transitions: [["*", ESCALATED]]
+    lands: A2
+    note: "a judgment with a rationale; its typed home is the A2 design item (§2.7)"
+  - name: return_escalated
+    pairs: {unit: work.transition}
+    transitions: [[ESCALATED, RUNNING], [ESCALATED, REVIEW_PENDING], [ESCALATED, VERIFY_PENDING]]
+    lands: A2
+    note: "the escalation's outcome, with a rationale; the returns the phase order admits (§2.7, §3.1a)"
 
 commands:
   - name: doctor
@@ -454,7 +467,15 @@ commands:
       homes: [ticket_draft]
       primitive: work.staff
       lands: A2
-      reason: "a specialty choice is the Lead's judgment, with no operator attribution path"
+      reason: "a specialty choice is the Lead's judgment, with no operator attribution path (`--by` retired); `ticket_draft` staffs at creation only, so re-staffing an existing Ticket has no typed home yet (`uncovered`, the A1-0 review's F2)"
+      options: {work_id: uncovered, "--execute": ticket_draft, "--review": ticket_draft, "--verify": ticket_draft, "--forbid": uncovered, "--remove": uncovered, "--by": retired, "--pin": uncovered, "--reason": ticket_draft}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --forbid"
+          - "option --pin"
+          - "option --remove"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work transition
@@ -469,10 +490,37 @@ commands:
     lead_disposition: undecided
     planned:
       disposition: typed
-      homes: [ticket_rework, ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare]
+      homes: [ticket_rework, ticket_start, ticket_request_review, ticket_request_verification, ticket_prepare, "R(escalate)", "R(return_escalated)"]
       primitive: work.transition
-      lands: A1a-1
-      reason: "every free transition is a rework or a stage step; cancelling is `work cancel`'s and `invoke cancel`'s. Lands with `ticket_rework`, blocked on the G3 budget question"
+      lands: A2
+      reason: "the stage steps, the rework (`ticket_rework`, blocked on the G3 budget question) and escalation and its return (A2) type some of its edges, and cancelling is `work cancel`'s; the replans, the regressions and the re-verification have no typed home yet (`uncovered`, the A1-0 review's F1), so it is decided in A2 at the earliest"
+      options: {work_id: homes, "--to": homes, "--reason": homes}
+      uncovered:
+        lands: A2
+        uses:
+          - "transition ASSIGNED -> REPLAN_REQUIRED"
+          - "transition BLOCKED -> REPLAN_REQUIRED"
+          - "transition COMMIT_READY -> REPLAN_REQUIRED"
+          - "transition COMMIT_READY -> RUNNING"
+          - "transition ESCALATED -> REPLAN_REQUIRED"
+          - "transition INTERRUPTED -> REPLAN_REQUIRED"
+          - "transition READY -> REPLAN_REQUIRED"
+          - "transition REVIEW_FAILED -> REPLAN_REQUIRED"
+          - "transition REVIEW_PASSED -> COMMIT_READY"
+          - "transition REVIEW_PASSED -> REPLAN_REQUIRED"
+          - "transition REVIEW_PASSED -> RUNNING"
+          - "transition REVIEW_PENDING -> REPLAN_REQUIRED"
+          - "transition REVIEW_PENDING -> RUNNING"
+          - "transition RUNNING -> COMMIT_READY"
+          - "transition RUNNING -> REPLAN_REQUIRED"
+          - "transition RUNNING -> VERIFY_PENDING"
+          - "transition VERIFICATION_INCONCLUSIVE -> REPLAN_REQUIRED"
+          - "transition VERIFICATION_INCONCLUSIVE -> RUNNING"
+          - "transition VERIFICATION_INCONCLUSIVE -> VERIFY_PENDING"
+          - "transition VERIFIED -> REPLAN_REQUIRED"
+          - "transition VERIFIED -> RUNNING"
+          - "transition VERIFY_PENDING -> REPLAN_REQUIRED"
+          - "transition VERIFY_PENDING -> RUNNING"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the stages run the transitions they own; a free transition (rework, a projection hint) has no typed home"
@@ -490,6 +538,17 @@ commands:
       primitive: work.dispatch
       lands: A2
       reason: "policy picks the executor and the loop runs it; its non-mutating start home is A2's design item, and it stays reachable until then"
+      options: {work_id: uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint work.dispatch"
+          - "option --card"
+          - "option --effort"
+          - "option --launch"
+          - "option --model"
+          - "option --profile"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work redispatch
@@ -506,6 +565,18 @@ commands:
       primitive: work.redispatch
       lands: A2
       reason: "retrying is judgment; its non-mutating start home is A2's design item (not the mutating `ticket_rework`), and it stays reachable until then"
+      options: {work_id: uncovered, "--reason": uncovered, "--card": uncovered, "--profile": uncovered, "--model": uncovered, "--effort": uncovered, "--launch": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint work.redispatch"
+          - "option --card"
+          - "option --effort"
+          - "option --launch"
+          - "option --model"
+          - "option --profile"
+          - "option --reason"
+          - "option work_id"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "named by V2's redispatch fallback for a non-mutating Ticket; V2's Ticket is mutating"
@@ -523,6 +594,7 @@ commands:
       primitive: work.accept
       lands: A2
       reason: "evidence acceptance is the Lead's judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work close
@@ -539,6 +611,7 @@ commands:
       primitive: work.close
       lands: A2
       reason: "closeout is a Lead decision record, at ACCEPTANCE_PENDING with the gates current"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work cancel
@@ -555,6 +628,7 @@ commands:
       primitive: work.cancel
       lands: A2
       reason: "cancelling a unit is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work move
@@ -571,6 +645,7 @@ commands:
       primitive: work.move
       lands: A2
       reason: "decomposition; the engine keeps its own guards (no moving a committed Ticket)"
+      options: {work_id: homes, "--parent": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work promote
@@ -587,6 +662,7 @@ commands:
       primitive: work.promote
       lands: A2
       reason: "decomposition; the engine keeps its own guards"
+      options: {work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work reclassify
@@ -603,6 +679,7 @@ commands:
       primitive: work.reclassify
       lands: A2
       reason: "decomposition; risk only rises (the engine's guard)"
+      options: {work_id: homes, "--class": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work depend
@@ -619,6 +696,7 @@ commands:
       primitive: work.depend
       lands: A2
       reason: "decomposition; the engine keeps its own guards"
+      options: {work_id: homes, "--add": homes, "--remove": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work acknowledge-input
@@ -635,6 +713,7 @@ commands:
       primitive: work.acknowledge-input
       lands: A2
       reason: "acknowledging an input is judgment"
+      options: {work_id: homes, "--input": homes, "--from": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work tree
@@ -659,6 +738,7 @@ commands:
       primitive: work.reconcile
       lands: A1a-2
       reason: "V2's reconcile, with the phases the engine offers; until then its recovery home covers V2"
+      options: {work_id: homes, "--to": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "V2's RECONCILE decision runs its cli_fallback"
@@ -750,6 +830,7 @@ commands:
       primitive: plan.accept
       lands: A1a-2
       reason: "asked of the operator and recorded by the Lead (decided_by: lead, quoting the chat answer); until then a recovery command"
+      options: {work_id: homes, "--revision": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted shell fallback after the operator approves the plan; its typed home will be a resolve
@@ -768,6 +849,15 @@ commands:
       primitive: plan.adopt
       lands: A2
       reason: "adopting a proposal is judgment"
+      options: {work_id: homes, "--evidence": uncovered, "--from": uncovered, "--reason": homes, "--review": uncovered, "--verify": uncovered, "--assurance": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --assurance"
+          - "option --evidence"
+          - "option --from"
+          - "option --review"
+          - "option --verify"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: plan reconfirm
@@ -784,6 +874,7 @@ commands:
       primitive: plan.reconfirm
       lands: A2
       reason: "reconfirming a plan is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke create
@@ -800,8 +891,15 @@ commands:
       disposition: typed
       homes: [ticket_request_review, ticket_request_verification, ticket_prepare, integration_publish, ticket_rework]
       primitive: invoke.create.mutating
-      lands: A1a-1
-      reason: "the request stages launch their attempts, and `ticket_rework` a new mutating implementer attempt (V2's redispatch). Lands with `ticket_rework`, blocked on the G3 budget question; until then a recovery exception"
+      lands: A2
+      reason: "the request stages launch their mutating attempts, and `ticket_rework` a new mutating implementer attempt (V2's redispatch; blocked on the G3 budget question, a recovery exception until then); the non-mutating and parent-acceptance dispatches have no typed home yet (`uncovered`, the A1-0 review's F1)"
+      options: {work_id: homes, "--card": uncovered, "--role": homes, "--scope": homes, "--profile": homes, "--model": homes, "--effort": homes, "--launch": homes}
+      uncovered:
+        lands: A2
+        uses:
+          - "entrypoint invoke.create.non_mutating"
+          - "entrypoint invoke.create.parent"
+          - "option --card"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the request stages create their reviewers and verifiers; a new implementer attempt (V2's redispatch
@@ -820,6 +918,7 @@ commands:
       primitive: invoke.cancel
       lands: A2
       reason: "cancelling a live invocation is judgment; ended invocations close themselves (C5)"
+      options: {invocation: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: invoke show
@@ -885,6 +984,11 @@ commands:
       primitive: harness.launch
       lands: A2
       reason: "relaunching a failed run is judgment"
+      options: {invocation: homes, "--replace": uncovered}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --replace"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
@@ -941,6 +1045,7 @@ commands:
       primitive: message.send
       lands: F9-A
       reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
+      options: {run: homes, "--text": homes, "--file": homes, "--when": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
     note: "messaging (F9-A1): A4 keeps a typed home or leaves it reachable, with its reason"
@@ -958,6 +1063,7 @@ commands:
       primitive: message.send
       lands: F9-A
       reason: "messaging (F9-A1): F9-A's typed send; reachable until then"
+      options: {run: homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
   - name: harness config
@@ -989,7 +1095,12 @@ commands:
       homes: ["R(waive)"]
       primitive: gate.waive
       lands: A2
-      reason: "waiving a gate is the Lead's (operator, 2026-10-06)"
+      reason: "waiving a gate is the Lead's (operator, 2026-10-06); `R(waive)` pairs only a gate, so waiving a required finding (`--finding`) has no typed home yet (`uncovered`, the A1-0 review's F2)"
+      options: {work_id: homes, "--gate": "R(waive)", "--finding": uncovered, "--reason": homes}
+      uncovered:
+        lands: A2
+        uses:
+          - "option --finding"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: evidence ingest
@@ -1046,6 +1157,7 @@ commands:
       primitive: verify.classify
       lands: A2
       reason: "classifying a verification failure is judgment"
+      options: {work_id: homes, "--as": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate prepare
@@ -1144,6 +1256,7 @@ commands:
       primitive: integrate.defer
       lands: A2
       reason: "deferring a queue entry is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate requeue
@@ -1160,6 +1273,7 @@ commands:
       primitive: integrate.requeue
       lands: A2
       reason: "requeueing a queue entry is judgment"
+      options: {work_id: homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: integrate reorder
@@ -1238,6 +1352,7 @@ commands:
       primitive: history.load
       lands: A2
       reason: "a brief's input, as `context_refs`"
+      options: {record_id: homes, "--into": homes, "--reason": homes}
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: history audit

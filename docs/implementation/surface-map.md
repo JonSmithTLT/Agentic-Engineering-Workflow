@@ -201,14 +201,41 @@ registry records the plan, not the decision:
 - **Shrink-only.** The planned rows and both proposal lists are pinned in the test by their digests. The registry
   holds exactly the pinned entries less those that graduated, so one leaves only through its graduated list, and none
   is added.
-- **Home built ⇒ row decided** (`home_built`). When every home of a planned row is built and runs its primitive, the
-  same change sets the row `typed` (door typed, `via`, `primitive`) and drops `planned`; a built proposal leaves its
-  section. A built home that does not run the primitive yet is an A2 debt, which `planned_sweep` reports.
+- **Every use is accounted for** (`planned_coverage`; the A1-0 review's F1 and F2). A typed plan's homes must cover
+  every use of its command before the row can be decided. Three scans derive the uses from the code, for every
+  planned row:
+  - **transition edges:** every `transitions.RULES` edge whose operation the command runs (the engine's own
+    `transitions._COMMANDS`, else `work <via>` when that command is live);
+  - **dispatch entrypoints:** every `dispatch.ENTRYPOINTS` entry whose `cli` is the command;
+  - **options:** every option and positional of the live parser's command, less the generic ones (the Lead
+    credential, the expected revisions, the print-only options).
+
+  A built stage covers the edges its `work.transition` step takes: into its fixed target (`availability.STAGES`),
+  from the state its producing step leaves, or from any state when no earlier step produces one. A proposal covers
+  the edges its `transitions` name (`*` for any state); a proposal running `work.transition` must name them. Any
+  other edge is covered by a home whose primitive names the edge's command, and an entrypoint by a home that runs it.
+  Options are covered by the plan's `options` map, which classifies every option the parser gives (none missing,
+  none stray) as `homes` (all of the row's homes), one named home, `uncovered` or `retired`.
+
+  The uses no typed home covers, built or proposed, are the plan's `uncovered: {lands, uses}`. That list is the
+  scans' output, checked equal to them, never typed in. A plan that is not typed has neither key: its command leaves
+  the Lead's doors.
+- **Home built ⇒ row decided** (`home_built`). The trigger is every home of a planned row built and running its
+  primitive, and every use of the command covered by a built home. When it holds, the same change sets the row
+  `typed` (door typed, `via`, `primitive`) and drops `planned`; a built proposal leaves its section. A built home
+  that does not run the primitive yet is an A2 debt, which `planned_sweep` reports.
 - **Out of the door ⇒ row decided** (`out_of_door`). A command that has left `LEAD_REACHABLE` is not `undecided`;
   `keep_out` then proves an `engine-owned` or `forbidden-to-lead` one.
-- **What the checks cannot see.** They read the homes a plan names. A tool that starts to run a planned row's
-  primitive without being named in its `homes` is not seen by `home_built`; `new_surface` and `door` still hold it to
-  the standing rule once the row is decided.
+- **What the checks cannot see.**
+  - `home_built` reads the homes a plan names. A tool that starts to run a planned row's primitive without being
+    named in its `homes` is not seen by it; `new_surface` and `door` still hold it to the standing rule once the row
+    is decided.
+  - The option scan derives the option set, not its meaning. Whether a home's argument really does what an option
+    does is the classification's judgment, which review checks.
+  - A stage that runs from more states than its producing step leaves is not credited with them.
+  - A built `resolve` choice that runs `work.transition` covers no edge until its edges have an owner in the code.
+  - Routes of two or more steps are not scanned.
+  - A use that is neither an edge, an entrypoint nor an option is not seen.
 
 ## The end-state metric
 
@@ -263,7 +290,8 @@ each check.
 | `keep_out` | enforce | a keep-out claim (`lead_kept_out_by`, `engine-owned`, `forbidden-to-lead`, an `internal` home other than a `NOT_RELAYED` transport) has no `keep_out_probe`; declares a refusal that does not mean "not here"; in a real Lead session's environment is not refused with it or changes the sample; or is refused the same way outside one; outside `KEEP_OUT_LIMITED` (empty) |
 | `keep_out_coverage` | report | the `KEEP_OUT_LIMITED` claims, with why each is not proved by running it |
 | `shell_reachable_mutation` | report | a grandfathered command that mutates, takes no credential, and is kept from the Lead's shell by no stated mechanism |
-| `home_built` | enforce | a proposed tool or `resolve` choice is built now and still proposed; every home of a planned row is built and runs its primitive, yet the row is undecided |
+| `home_built` | enforce | a proposed tool or `resolve` choice is built now and still proposed; every home of a planned row is built and runs its primitive, and built homes cover every use of its command, yet the row is undecided |
+| `planned_coverage` | enforce | a typed plan does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
 | `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
 | `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
 | `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |

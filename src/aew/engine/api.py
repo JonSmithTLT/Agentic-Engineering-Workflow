@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -21,7 +21,8 @@ from aew import SPEC_SET
 from aew.engine import usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
-from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
+from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
+from aew.engine.configuration import CLI_ENVIRONMENT, Configuration
 from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
 from aew.engine.custody_ops import Custody, spawn_worker
@@ -189,18 +190,7 @@ class ProjectAdmin:
                 pins[rel] = None
                 continue
             raw = path.read_bytes()
-            data = load_yaml(raw.decode("utf-8"), source=str(path))
-            name = names.get(rel, "execution")
-            if name == "execution":  # before the schema, so an unquoted `off` is refused with its cause and fix
-                X.refuse_yaml_boolean(data, source=str(path))
-            if name in ("guardrails", "checks", "gates", "execution"):
-                validate(name, data, source=str(path))
-            if name == "pricing":  # parsed as the ledger parses it (a YAML date is the table's `as_of` string)
-                from aew.engine.usage_ops import Prices
-
-                Prices(raw, source=str(path))
-            if name == "execution":
-                X.check_semantics(data, source=str(path))
+            check_policy_bytes(names.get(rel, "execution"), raw, source=str(path))
             pins[rel] = sha256_bytes(raw)
         return pins
 
@@ -479,6 +469,7 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
+        self._configuration = Configuration(k)  # the configuration read projection (F46.1)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
@@ -663,6 +654,10 @@ class Engine:
 
     def doctor_checks(self) -> list[dict[str, str]]:
         return self._project.doctor_checks()
+
+    def configuration(self, document: str | None = None, *, observed_in: str = CLI_ENVIRONMENT,
+                      env: Mapping[str, str] | None = None) -> dict[str, Any]:
+        return self._configuration.configuration(document, observed_in=observed_in, env=env)
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.evidence_gate_context(state, work_id)

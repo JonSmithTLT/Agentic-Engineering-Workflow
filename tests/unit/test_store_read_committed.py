@@ -75,3 +75,38 @@ def test_read_committed_sees_each_commit_as_a_whole(tmp_path):
     stop.set()
     t.join(30)
     assert errors == [] and seen == sorted(seen) and seen[-1] <= 15
+
+
+def _counting_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    from aew.engine import store as S
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(S.time, "sleep", sleeps.append)
+    return sleeps
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX rename is atomic; Windows retries a missing file")
+def test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic(tmp_path, monkeypatch):
+    """F1a re-review R8: on POSIX a missing file is absent with no retry and no sleep (a reader never sees a present
+    file as missing there), so an optional file's absence costs nothing."""
+    from aew.engine.store import MISSING_MID_REPLACE, read_lock_free
+
+    sleeps = _counting_sleeps(monkeypatch)
+    assert MISSING_MID_REPLACE == ()
+    assert read_lock_free(tmp_path / "absent.yaml") is None and sleeps == []
+    (tmp_path / "present.yaml").write_bytes(b"x: 1\n")
+    assert read_lock_free(tmp_path / "present.yaml") == b"x: 1\n" and sleeps == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows reports a present file missing mid-replace")
+def test_an_absent_file_is_absent_only_after_the_retries_on_windows(tmp_path, monkeypatch):
+    """R4: on Windows an open in the middle of a replace can report a present file missing, so a missing file is
+    absent only after the retries (their backoff is the cost of an absent file there; a present file reads at once)."""
+    from aew.engine.store import MISSING_MID_REPLACE, READ_RETRIES, read_lock_free
+
+    sleeps = _counting_sleeps(monkeypatch)
+    assert MISSING_MID_REPLACE == (FileNotFoundError,)
+    assert read_lock_free(tmp_path / "absent.yaml") is None and len(sleeps) == READ_RETRIES - 1
+    sleeps.clear()
+    (tmp_path / "present.yaml").write_bytes(b"x: 1\n")
+    assert read_lock_free(tmp_path / "present.yaml") == b"x: 1\n" and sleeps == []

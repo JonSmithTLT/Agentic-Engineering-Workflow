@@ -57,7 +57,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from aew import profile
 from aew.coordination import layout as coordination
@@ -84,6 +84,41 @@ TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
 LOCK_REL = "local/control.lock"
 READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
+_T = TypeVar("_T")
+# What an open reports for a present file in the middle of a replace, besides a sharing violation: only Windows.
+MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
+
+
+def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = ()) -> _T:
+    """``read()``, retried briefly on ``PermissionError`` (and on ``also``): on Windows a lock-free reader's open can
+    collide with a writer's atomic replace for a moment (a sharing violation), as the writer's own
+    ``replace_with_retry`` does on its side. The one owner of that retry, for every lock-free read of a file that may
+    be replaced. The last attempt's error is raised."""
+    for attempt in range(READ_RETRIES):
+        try:
+            return read()
+        except (PermissionError, *also):
+            if attempt == READ_RETRIES - 1:
+                raise
+            time.sleep(0.01 * (attempt + 1))
+    raise AssertionError("unreachable")
+
+
+def read_lock_free(path: Path) -> bytes | None:
+    """A file's bytes without the control lock, or None when it does not exist. No ``is_file()`` pre-check. On
+    Windows a missing file is absent only after the retries: in the middle of a replace, a stat can fail and an open can
+    even report the file missing, so a present file would look absent (F1a review, R4). That costs a truly absent file
+    the retries' backoff (about 0.3 s) there. On POSIX ``rename`` replaces a name atomically, so a missing file is
+    absent at once (F1a re-review, R8; as ``aew.dashboard.reader`` gates its own retry). A directory reads as absent."""
+    try:
+        return retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE)
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    except PermissionError:
+        if path.is_dir():  # Windows refuses to open a directory with a PermissionError
+            return None
+        raise
+
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
 AfterApply = Callable[[dict[str, Any]], None]
@@ -208,7 +243,6 @@ class Session:
         self.committed_revision = self._store._commit(self._committed_state, after, self._writes, transition,
                                                       self._prewritten, working=self.state)
         return self.committed_revision
-
 
     # ------------------------------------------------------------------ the seal check (F9-A plan D-16, R3)
 
@@ -351,14 +385,7 @@ class ControlStore:
 
         On Windows the writer's atomic replace and a reader's open can collide for a moment (a sharing violation,
         ``PermissionError``); the reader retries briefly, as the writer does on its side (``replace_with_retry``)."""
-        for attempt in range(READ_RETRIES):
-            try:
-                return copy.deepcopy(self._load())
-            except PermissionError:
-                if attempt == READ_RETRIES - 1:
-                    raise
-                time.sleep(0.01 * (attempt + 1))
-        raise AssertionError("unreachable")
+        return retry_lock_free(lambda: copy.deepcopy(self._load()))
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.

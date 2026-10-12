@@ -32,7 +32,7 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
-from dashboard_contract import base_contract, note_text, proposed  # noqa: E402
+from dashboard_contract import LATER_ROUTES, expected_pending, proposed_routes  # noqa: E402
 from fake_harness import IMPL_REPORT, HarnessLab  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
 
@@ -236,11 +236,10 @@ def test_a_pending_route_is_refused_as_without_it_before_authentication_or_by_it
     """Without a session, a pending route that no template matches is ``404`` "no such route" (routing comes before
     authentication), and one a template matches is that template's ``401``: exactly today's answers (change note
     §3.3)."""
-    # Every route contract 0.1.3 adds is served now (S1, S2): a later version's routes stand in for pending ones, one
-    # that no template matches and one a template does (``/runs/{id}``).
-    later = {"/maps/semantic", "/runs/latest"}
-    pending = pending_routes(set(CONTRACT.paths) | set(proposed(note_text(), base_contract())["paths"]) | later)
-    assert pending == later
+    # The change notes' proposed routes not served yet, and a later version's stand-ins: one that no template matches
+    # and one a template does (``/runs/{id}``); the one owner of the expected set is dashboard_contract.
+    pending = pending_routes(set(CONTRACT.paths) | proposed_routes() | LATER_ROUTES)
+    assert pending == expected_pending(set(ROUTES), set(CONDITIONAL_ROUTES))
     assert match_route("/maps/semantic") is None and match_route("/runs/latest") is not None
     world.gate.closed = True
     try:

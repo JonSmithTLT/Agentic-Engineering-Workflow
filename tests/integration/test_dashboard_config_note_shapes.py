@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 import yaml
+from conftest import run_aew
 from dashboard_contract import CONFIG_NOTE_REL, config_base_contract, note_text, proposed
 from test_configuration_hostile import CASES, SHARED
 from test_configuration_projection import (
@@ -127,6 +128,21 @@ def test_the_projection_validates_against_the_appendix(contract, tmp_path, kind,
     """Every index and execution projection (from the CLI's and the dashboard server's observation site) is valid
     under Appendix A merged into 0.1.3, envelope included."""
     assert problems(contract, build(tmp_path, kind, name)) == []
+
+
+CLI_CASES = [("row", "adopted"), ("row", "manifest_drifted"), ("row", "no_pins_invalid"), ("row", "deleted"),
+             ("extra", "withheld_keys"), ("extra", "inventory"), ("hostile", "yaml_mark")]
+
+
+@pytest.mark.parametrize("kind,name", CLI_CASES, ids=[f"{k}-{n}" for k, n in CLI_CASES])
+def test_the_cli_json_validates_against_the_appendix(contract, tmp_path, kind, name):
+    """What `aew settings show [execution] --json` prints, from its own process, validates as the routes' data."""
+    e = build(tmp_path, kind, name)
+    for args, schema_name in ((["settings", "show", "--json"], "ConfigurationIndex"),
+                              (["settings", "show", "execution", "--json"], "ExecutionConfiguration")):
+        res = run_aew("-C", str(e.repo_root), *args)
+        assert res.returncode == 0, res.stderr
+        assert contract.violations(schema_name, res.json) == [], (args, contract.violations(schema_name, res.json))
 
 
 def schema_properties(node: Any) -> set[str]:

@@ -64,6 +64,26 @@ def note_text(root: Path = ROOT, rel: str = NOTE_REL) -> str:
     return (root / rel).read_text(encoding="utf-8")
 
 
+# Stand-ins for a later version's routes, which the pending answers are tested on: one no template matches and one a
+# template does (``/runs/latest`` is ``/runs/{id}`` with the id ``latest``).
+LATER_ROUTES = frozenset({"/maps/semantic", "/runs/latest"})
+
+
+def proposed_routes(root: Path = ROOT) -> set[str]:
+    """Every route a change note proposes over its base (the 0.1.3 note over 0.1.2, the 0.1.4 note over 0.1.3), read
+    from the notes themselves: the one owner of "proposed" that the dashboard's pending-route tests derive from."""
+    out: set[str] = set()
+    for rel, base in ((NOTE_REL, base_contract(root)), (CONFIG_NOTE_REL, config_base_contract(root))):
+        out |= set(proposed(note_text(root, rel), base)["paths"]) - set(base["paths"])
+    return out
+
+
+def expected_pending(served: set[str], conditional: set[str], root: Path = ROOT) -> set[str]:
+    """The routes the dashboard's tests expect pending: the later stand-ins, and every route a change note proposes
+    that no slice serves yet (the 0.1.4 note's two until F1c), before and after the web developer adopts them."""
+    return set(LATER_ROUTES) | (proposed_routes(root) - served - conditional)
+
+
 def appendix(text: str) -> list[dict[str, Any]]:
     """The appendix's YAML blocks, in order: every ```yaml fence after the appendix heading."""
     blocks: list[dict[str, Any]] = []

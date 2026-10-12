@@ -2539,6 +2539,7 @@ def test_home_built_waits_until_every_use_is_covered(monkeypatch):
             assert not any(f"every home of `aew {name}`" in f for f in check_home_built(reg))
         for option in ("--card", "--launch"):
             _entry(reg, "invoke create")["planned"]["options"][option] = COVERED_BY_ALL_HOMES
+
         def remove(gap: str) -> None:
             kind, _, rest = gap.partition(" ")
             if kind == "entrypoint" and " in " in rest:  # a state-selected use: drop the guard that selects it

@@ -355,7 +355,6 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
                                                                       3: mcp.INVALID_PARAMS, 4: None}
 
 
-
 # ---------------------------------------------------------------------------------------------- A1-0: the G3 spike
 # The A1 slice plan (reviewed CLEAR) §3.4 and §7 `test_a1_rows_measured`: every advertised row A1 changes, built as a
 # catalog entry with no behaviour (none of these is in `contract.TOOLS`, and none has a runner), swapped into the

@@ -27,6 +27,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from jsonschema import Draft202012Validator
+
 from aew.engine import steering as S
 from aew.engine.base import POLICY_PINS, Kernel, check_policy_bytes
 from aew.engine.store import read_lock_free
@@ -91,13 +93,31 @@ FIELD_WITHHELD = "field_withheld"
 # A string over Appendix A's bound ("strings are at most 512 bytes unless stated") is withheld, never clipped: a clipped
 # value would show content that is not the file's (the operator's decision on the F1a review, R5). An open code.
 MAX_STRING_BYTES, TOO_LONG = 512, "too_long"
-# A violation code for a document the structured walk cannot process (F1a review, R3): one, at the root, no message.
+def _schema_keys(node: Any) -> set[str]:
+    """Every key used anywhere in a schema document (properties' names included; the validator's keywords filter)."""
+    if isinstance(node, dict):
+        return set(node) | {k for v in node.values() for k in _schema_keys(v)}
+    if isinstance(node, list):
+        return {k for v in node for k in _schema_keys(v)}
+    return set()
+
+
+# The projection's data-code vocabulary: the codes it writes inside a successful read to describe a policy file's
+# content (`document.yaml_error.code`, `document.violations[].code`). They are data, never a refusal's code; the one
+# definition, which the code registry's test derives its outside namespace from (vertical-uat.md §8.4).
+YAML_SYNTAX = "YAML_SYNTAX"  # a YAML syntax error, located by its line and column only (§7 rule 2)
+# A document the structured walk cannot process (F1a review, R3): one violation at the root, no message.
 UNPROCESSABLE = "UNPROCESSABLE"
 UNPROCESSABLE_VIOLATION = {"path": "", "code": UNPROCESSABLE, "expected": None, "extra_key": None}
+# A schema violation's code is the keyword that failed: every validation keyword the execution schema uses.
+SCHEMA_KEYWORD_CODES = frozenset(Draft202012Validator.VALIDATORS) & frozenset(_schema_keys(schema(EXECUTION)))
+DATA_CODES = frozenset({YAML_SYNTAX, UNPROCESSABLE, X.NO_SUCH_PROFILE, X.NO_DEFAULT_ROUTE, *SCHEMA_KEYWORD_CODES})
 
 
 def too_long(value: Any) -> bool:
     return isinstance(value, str) and len(value.encode("utf-8")) > MAX_STRING_BYTES
+
+
 # Edit scope (§3.3): in F46.2's first scope, a later slice, or never.
 F46_2, LATER, NEVER = "F46.2", "later", "never"
 
@@ -287,8 +307,8 @@ def yaml_error(exc: BaseException | None) -> dict[str, Any]:
     message, the path or a line of content."""
     mark = getattr(getattr(exc, "__cause__", None), "problem_mark", None)
     if mark is None:
-        return {"code": "YAML_SYNTAX", "line": None, "column": None}
-    return {"code": "YAML_SYNTAX", "line": int(mark.line) + 1, "column": int(mark.column) + 1}
+        return {"code": YAML_SYNTAX, "line": None, "column": None}
+    return {"code": YAML_SYNTAX, "line": int(mark.line) + 1, "column": int(mark.column) + 1}
 
 
 def _expected(e: Any) -> str | None:

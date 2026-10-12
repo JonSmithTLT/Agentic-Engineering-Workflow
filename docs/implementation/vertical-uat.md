@@ -393,10 +393,9 @@ and fails on any code missing here or listed here and no longer defined, so the 
 
 The scan also finds codes that are not refusals: the assurance lint, Class 0 eligibility and dispatch blocker codes
 (`LINT_*`, `CLASS0_*`, `ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`, `GIT_DRIVER_UNTRUSTED`,
-`PROTECTED_CONDITION_OVERLAP`), and the configuration projection's `YAML_SYNTAX` (register F46.1:
-`document.yaml_error.code`, the shape of a policy file's content inside a successful read). They are entries in a
-refusal's details, a decision's reason codes or a projection's data, never a refusal's code, so the test pins them as
-a named list outside the registry; one that is no longer written, or that this registry lists, fails it.
+`PROTECTED_CONDITION_OVERLAP`). They are entries in a refusal's details or a decision's reason codes, never a
+refusal's code, so the test pins them as a named list outside the registry; one that is no longer written, or that
+this registry lists, fails it.
 
 **Outside the registry by namespace:** the dashboard's reason vocabulary (`dashboard/reasons.py`, and the reason codes
 its projections compute, such as `ARCHITECTURE_*`, `MAP_STALE_*`, `RUN_CRASHED`, `RUN_LOST` and
@@ -408,6 +407,13 @@ name it imports is not its own), so a new stop code joins it as it is added; the
 is passed by a constant's name (`Stop(BLOCKED)`), resolving module constants in the calling module or imported from
 another. A stop code that is also written anywhere outside the steering loop, or is one of the typed surface's codes,
 is a refusal code too and keeps its row: today that is `STALE_AUTHORITY` and `STALE_POLICY`.
+
+The configuration projection's data-code vocabulary (register F46.1) is outside the registry by namespace too: the
+codes a successful read writes to describe a policy file's content (`document.yaml_error.code` and
+`document.violations[].code`), never a refusal's code. Its one definition is `aew.engine.configuration.DATA_CODES`:
+`YAML_SYNTAX`, `UNPROCESSABLE`, the execution policy's semantic codes and the schema keywords a violation names. The
+test derives the namespace from it, and fails when a data code is also written outside that module, is one of the
+typed surface's codes, or is listed here, so the vocabulary can never hide a refusal code.
 
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.

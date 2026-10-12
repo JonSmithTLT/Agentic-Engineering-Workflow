@@ -135,6 +135,8 @@ def test_nothing_withheld_escapes_a_hostile_document(tmp_path, case):
     assert [m for m in MARKERS if m in text] == []
     assert [p for fv in field_values(execution) for p in fieldvalue_problems(fv)] == []
     document = execution["document"]
+    emitted = {v["code"] for v in document["violations"]} | {(document["yaml_error"] or {}).get("code")} - {None}
+    assert emitted <= C.DATA_CODES, emitted - C.DATA_CODES  # the projection's one data-code vocabulary
     assert not (document["in_force"] and document["state"] != C.ABSENT and document["violations"]), document
     assert long_strings(execution) == []
 

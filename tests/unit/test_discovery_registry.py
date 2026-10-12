@@ -31,9 +31,6 @@ OUTSIDE_REGISTRY = frozenset({
     "CLASS0_PLAN_LINT", "CLASS0_SUBJECT_UNBOUNDED",
     "LINT_ACCEPTANCE_CHECK_UNKNOWN", "LINT_ACCEPTANCE_INPUT_WRITABLE", "LINT_AFFECTED_OUTSIDE_SCOPE",
     "LINT_AFFECTED_PROTECTED", "LINT_NO_ACCEPTANCE_MECHANISM",
-    # the configuration projection's data (register F46.1): `document.yaml_error.code`, which describes a policy
-    # file's content inside a successful read, never a refusal's code
-    "YAML_SYNTAX",
 })
 
 
@@ -178,9 +175,25 @@ def stops_outside(root: Path = SRC) -> frozenset[str]:
     return steering_stop_codes(root) - elsewhere - set(surface_errors.CODES)
 
 
+CONFIGURATION = "engine/configuration.py"  # the module that owns the projection's data codes, relative to the root
+
+
+def projection_data_outside(root: Path = SRC) -> frozenset[str]:
+    """The configuration projection's data-code vocabulary (register F46.1), an outside namespace derived from its one
+    definition, `aew.engine.configuration.DATA_CODES`, rather than pinned: the codes a successful read writes to
+    describe a policy file's content. A data code also written anywhere outside that module, or one of the typed
+    surface's codes, is a refusal code too and stays in the registry's scope (the test below fails on any such
+    overlap)."""
+    from aew.engine.configuration import DATA_CODES
+
+    elsewhere = {code for code, sites in code_write_sites(root).items()
+                 if any(not site.startswith(CONFIGURATION + ":") for site in sites)}
+    return frozenset(DATA_CODES) - elsewhere - set(surface_errors.CODES)
+
+
 def defined_codes(root: Path = SRC) -> dict[str, str]:
     """Every refusal code the product defines that the Lead or the operator can see, with where it is written."""
-    outside = OUTSIDE_REGISTRY | stops_outside(root)
+    outside = OUTSIDE_REGISTRY | stops_outside(root) | projection_data_outside(root)
     codes = {c: where for c, where in code_writes(root).items() if c not in outside}
     codes.update({c: "surface/errors.py:CODES" for c in surface_errors.CODES})
     return codes
@@ -202,6 +215,35 @@ def test_a_stop_code_that_is_also_written_elsewhere_stays_a_refusal_code(tmp_pat
     assert stops_outside(tmp_path) == {"ONLY_A_STOP"}
     kept = defined_codes(tmp_path)
     assert {"BRIDGE_ERROR", "ONLY_IMPORTED", "UNKNOWN_TOOL"} <= set(kept) and "ONLY_A_STOP" not in kept
+
+
+def test_the_projection_data_codes_are_outside_the_registry_and_overlap_no_refusal_code():
+    """The configuration projection's data codes (`aew.engine.configuration.DATA_CODES`) are a derived namespace
+    outside the registry: none is a refusal code (an `aew.errors` class's code, a registry row, a typed surface's code,
+    or a code the product writes outside the projection's module), and the scan finds them only in that module."""
+    from aew.engine.configuration import DATA_CODES
+
+    assert {"YAML_SYNTAX", "UNPROCESSABLE", "NO_SUCH_PROFILE", "NO_DEFAULT_ROUTE"} <= DATA_CODES
+    assert projection_data_outside() == DATA_CODES  # nothing in the vocabulary is also written as a refusal
+    listed = {str(r["code"]) for r in registry.rows(page())}
+    assert not DATA_CODES & listed and not DATA_CODES & refusal_class_codes()
+    assert not DATA_CODES & set(surface_errors.CODES)
+    for code, sites in code_write_sites().items():
+        if code in DATA_CODES:
+            assert all(site.startswith(CONFIGURATION + ":") for site in sites), (code, sites)
+            assert code not in defined_codes()
+
+
+def test_a_data_code_also_written_elsewhere_stays_a_refusal_code(tmp_path):
+    """A projection data code that another module writes as a refusal leaves the derived namespace, so the registry
+    must list it (the overlap is caught, never hidden)."""
+    (tmp_path / "engine").mkdir()
+    (tmp_path / STEERING_LOOP).parent.mkdir(parents=True)
+    (tmp_path / STEERING_LOOP).write_text("", encoding="utf-8")  # no stop codes in this tree
+    (tmp_path / "engine" / "configuration.py").write_text("yaml_error = {'code': 'YAML_SYNTAX'}\n", encoding="utf-8")
+    assert "YAML_SYNTAX" in projection_data_outside(tmp_path) and "YAML_SYNTAX" not in defined_codes(tmp_path)
+    (tmp_path / "engine" / "other.py").write_text("refusal = {'code': 'YAML_SYNTAX'}\n", encoding="utf-8")
+    assert "YAML_SYNTAX" not in projection_data_outside(tmp_path) and "YAML_SYNTAX" in defined_codes(tmp_path)
 
 
 def test_the_steering_stop_codes_are_named_outside_and_the_scan_reads_them_through_constants():

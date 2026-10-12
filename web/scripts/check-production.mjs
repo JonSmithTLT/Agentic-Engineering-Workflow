@@ -11,6 +11,7 @@ function files(dir) {
 }
 for (const file of files('dist')) {
   const text = fs.readFileSync(file, 'utf8');
+  if (/Settings fixture preview|Configuration display locator|EXAMPLE_PROVIDER_KEY|settingsFixture|F46.1 fixtures are read-only/.test(text)) throw new Error('Production Settings fixture leakage: '+file);
   if (/raw-history-(?:search-)?fixture|Derived navigation context; fictional fixture/.test(text)) throw new Error('Production additive contract fixture leakage: '+file);
   if (/ASSOC-J05-Later|Context association manifest invalid|Validating supplied context association/.test(text)) throw new Error('Production reuse preview leakage: '+file);
   if (/execution-preview|execution-fixtures|TRACE-Clangd|Inspect recorded execution|Supplied execution controls|Recorded investigation|\/api\/preview\/execution/.test(text)) throw new Error('Production execution preview leakage: '+file);

@@ -4,6 +4,8 @@ Sources: `docs/design-direction.md`, `docs/design/plans/w02-workspace.md`, `docs
 
 ## Canonical UI map
 
+Demo Settings uses shared InvestigationTabs, CopyDashboardLink and focusBelowHeader. Fields are read-only data; no Save or catalog action. SET/NULL/ABSENT/withheld/effective facts and completeness retain supplied meaning. Inventory and detail binding are validated before display. Unsupported activities issue no execution detail read. Source/session/scenario/activity changes retire late responses. Profile index is digest-bound, including masked locators; mismatched links never select a replacement profile. Production contains no Settings fixture UI or schemas. Live transport and adoption remain F1b/F1c work.
+
 Overview and the shared header label the supplied health projection as project health. Its status and reasons remain backend-owned; this label neither represents U1/H1 run health nor changes the API's `health` field or vocabulary.
 
 Shared `src/styles.css` owns disclosure boundaries and table scroll frames. Native details/summary interaction, document scrolling and table semantics remain unchanged; expanded content stays visually enclosed. Map Fields owns supplied label/value grouping without reinterpreting values. Each Maps metadata disclosure names its response (overview, selected map, input page, stored maps or comparison). Borders do not imply authority, completeness or a new data scope.

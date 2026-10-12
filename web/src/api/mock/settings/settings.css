@@ -1,0 +1,16 @@
+.settings-toolbar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.settings-panel { padding: 18px; margin-bottom: 16px; min-width: 0; }
+.settings-facts { margin: 0; }
+.settings-facts > div { display: grid; grid-template-columns: minmax(140px, 28%) minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.settings-facts dt { color: var(--muted); }
+.settings-facts dd { margin: 0; overflow-wrap: anywhere; }
+.settings-facts p { margin: 4px 0; }
+.settings-field { border: 1px solid var(--border); padding: 12px; margin: 12px 0; min-width: 0; }
+.settings-field h4 { margin: 0 0 8px; text-transform: none; }
+.settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settings-page :is(code, h2, h3, p, td, button) { overflow-wrap: anywhere; }
+.settings-page td { vertical-align: top; }
+.settings-page td button { text-align: left; white-space: normal; }
+.settings-page h2[tabindex] { scroll-margin-top: 140px; }
+@media (max-width: 1023px) { .settings-fields { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) { .settings-facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } .settings-panel { padding: 12px; } }

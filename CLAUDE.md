@@ -115,7 +115,7 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   text, guides, the dashboard, the CLI) derive it from the owner's accessor and never restate it by hand: a hand-written
   restatement of a fact is a defect, even while it happens to be true. Every plan names the facts it consumes and their
   owners. The information catalog (planned; it generalises the owner registry of register F44) will list the owners
-  and their accessors; until it exists, name the owner and the accessor in the plan.
+  and their accessors.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

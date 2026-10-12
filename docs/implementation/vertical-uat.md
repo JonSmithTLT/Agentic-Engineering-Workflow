@@ -386,13 +386,21 @@ the causes allowed to use it, and the owner of the remedy. `tests/unit/test_disc
 and fails on any code missing here or listed here and no longer defined, so the registry cannot drift:
 - every code the source writes, read by a scan in each form the product uses: a class's `code` (`aew.errors`, the
   dashboard's two request errors, the validation runner's two), a dict literal's `"code"` (`NOT_COMPLETED`, the
-  bridge's `BRIDGE_ERROR`, the broker's `DEFECT`), a `code=` keyword, and an `x.code =` assignment;
+  bridge's `BRIDGE_ERROR`, the broker's `DEFECT`), a `code=` keyword, an `x.code =` assignment, and a constructor
+  argument: a class whose `__init__` stores a parameter in `self.code`, or a dataclass with a `code` field, writes the
+  literal its call sites pass (the dashboard's `CURSOR_INVALID` and `CURSOR_EXPIRED`);
 - the typed surface's input refusals, `aew.surface.errors.CODES`.
 
-The scan also finds the assurance lint and Class 0 eligibility codes (`LINT_*`, `CLASS0_*`,
-`ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`). They are entries in a refusal's or a lint's details,
-never a refusal's code, so the test pins them as a named list outside the registry; one that is no longer written,
-or that this registry lists, fails it.
+The scan also finds codes that are not refusals: the assurance lint, Class 0 eligibility and dispatch blocker codes
+(`LINT_*`, `CLASS0_*`, `ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`, `GIT_DRIVER_UNTRUSTED`,
+`PROTECTED_CONDITION_OVERLAP`). They are entries in a refusal's details or a decision's reason codes, never a
+refusal's code, so the test pins them as a named list outside the registry; one that is no longer written, or that
+this registry lists, fails it.
+
+**Outside the registry by namespace:** the dashboard's reason vocabulary (`dashboard/reasons.py`, and the reason codes
+its projections compute, such as `ARCHITECTURE_*`, `MAP_STALE_*`, `RUN_CRASHED`, `RUN_LOST` and
+`RECALL_NOT_IN_INVOCATIONS`). These explain a projection's state; they are never a refusal's code, and the registry
+does not list them.
 
 O-CODE checks an observed refusal's cause against its code's row. The cause ids
 are this registry's own vocabulary; the refusal schema will carry them.
@@ -467,6 +475,8 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `NOT_COMPLETED` | The `cli` escape's command answered `ok: false`: it did not do what was asked | `command_not_completed` | Lead |
 | `BRIDGE_ERROR` | A worker's bridge request failed inside the supervisor with an unexpected error; the worker's CLI shows it as the refusal | `engine_defect` | engine |
 | `DEFECT` | The Lead broker's record of a typed-tool call that produced no answer at all | `engine_defect` | engine |
+| `CURSOR_INVALID` | A dashboard request's page cursor is malformed or does not belong to the request (400) | `cursor_invalid` | operator |
+| `CURSOR_EXPIRED` | A dashboard request's page cursor is past its lifetime (409) | `cursor_expired` | operator |
 
 The dashboard's `CAPABILITY_UNAVAILABLE` is the same code as `aew.errors`' and shares its row.
 

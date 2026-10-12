@@ -19,11 +19,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "implementation" / "vertical-uat.md"
 SRC = ROOT / "src" / "aew"
 CODE_SHAPE = re.compile(r"^[A-Z][A-Z0-9_]{2,}$")
-# Codes the product writes that are not refusals, so outside the refusal registry (review of #218, G3): the assurance
-# lint and Class 0 eligibility blockers, which are entries in a refusal's or a lint's details, never its code. Pinned
-# here so each is named: a code that leaves this list or is no longer written fails the test.
+# Codes the product writes that are not refusals, so outside the refusal registry (review of #218, G3 and G3b): the
+# assurance lint, Class 0 eligibility and dispatch blocker codes, which are entries in a refusal's details or a
+# decision's reason codes, never a refusal's code. Pinned here so each is named: a code that leaves this list or is no
+# longer written fails the test.
 OUTSIDE_REGISTRY = frozenset({
     "ACCEPTANCE_INPUT_IN_SCOPE", "INHERITED_ELEVATED_OBLIGATION",
+    "GIT_DRIVER_UNTRUSTED", "PROTECTED_CONDITION_OVERLAP",
     "CLASS0_ACCEPTANCE_NOT_DETERMINISTIC", "CLASS0_ASSERTION_MISSING", "CLASS0_CONSEQUENTIAL_BOUNDARY",
     "CLASS0_HARD_TRIGGER", "CLASS0_INHERITED_ELEVATED_OBLIGATION", "CLASS0_NO_ACCEPTANCE_REFERENCE",
     "CLASS0_PLAN_LINT", "CLASS0_SUBJECT_UNBOUNDED",
@@ -39,15 +41,26 @@ def page() -> str:
 def code_writes(root: Path = SRC) -> dict[str, str]:
     """``code -> "module:line"`` for every place the product's source writes a code string (review of #218, m6 and
     G3), in each form it uses: a class's ``code =`` or ``code: T =``, a dict literal's ``"code": "X"``, a keyword
-    ``code="X"``, and an ``x.code = "X"`` assignment."""
+    ``code="X"``, an ``x.code = "X"`` assignment, and a constructor argument (review of #218, G3b): a class whose
+    ``__init__`` stores a parameter in ``self.code``, or a dataclass with a ``code`` field, writes the literal its
+    call sites pass at that position."""
     out: dict[str, str] = {}
 
     def add(value: object, path: Path, line: int) -> None:
         if isinstance(value, str) and CODE_SHAPE.match(value):
             out.setdefault(value, f"{path.relative_to(root).as_posix()}:{line}")
 
-    for path in sorted(root.rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(root.rglob("*.py"))}
+    takers = {name: index for tree in trees.values() for name, index in code_parameters(tree).items()}
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+                index = takers.get(name) if isinstance(name, str) else None
+                if index is not None and len(node.args) > index and isinstance(node.args[index], ast.Constant):
+                    add(node.args[index].value, path, node.lineno)
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 for stmt in node.body:
                     targets = (stmt.targets if isinstance(stmt, ast.Assign)
@@ -66,6 +79,29 @@ def code_writes(root: Path = SRC) -> dict[str, str]:
     return out
 
 
+def code_parameters(tree: ast.AST) -> dict[str, int]:
+    """``class name -> positional index of its code`` for every class in ``tree`` that takes its code as a constructor
+    argument: an ``__init__`` storing a parameter in ``self.code``, or a dataclass with a ``code`` field."""
+    out: dict[str, int] = {}
+    for cls in ast.walk(tree):
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        fields = [s.target.id for s in cls.body if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)]
+        decorated = any((getattr(d, "id", None) or getattr(d, "attr", None)) == "dataclass"
+                        or (isinstance(d, ast.Call) and (getattr(d.func, "id", None)
+                                                         or getattr(d.func, "attr", None)) == "dataclass")
+                        for d in cls.decorator_list)
+        if decorated and "code" in fields:
+            out[cls.name] = fields.index("code")
+        for init in (f for f in cls.body if isinstance(f, ast.FunctionDef) and f.name == "__init__"):
+            params = [a.arg for a in init.args.args][1:]
+            for stmt in ast.walk(init):
+                if (isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Name) and stmt.value.id in params
+                        and any(isinstance(t, ast.Attribute) and t.attr == "code" for t in stmt.targets)):
+                    out[cls.name] = params.index(stmt.value.id)
+    return out
+
+
 def defined_codes() -> dict[str, str]:
     """Every refusal code the product defines that the Lead or the operator can see, with where it is written."""
     codes = {c: where for c, where in code_writes().items() if c not in OUTSIDE_REGISTRY}
@@ -81,6 +117,7 @@ def test_the_source_scan_sees_every_class_aew_errors_defines():
     assert len(imported) > 50 and imported <= set(found)
     assert {"INVALID_REQUEST", "VALIDATION_RUNNING", "VALIDATION_CONTAINMENT_UNAVAILABLE"} <= set(found)
     assert {"NOT_COMPLETED", "BRIDGE_ERROR", "DEFECT"} <= set(found)  # dict literals (G3)
+    assert {"CURSOR_INVALID", "CURSOR_EXPIRED", "GIT_DRIVER_UNTRUSTED"} <= set(found)  # constructor arguments (G3b)
 
 
 @pytest.mark.parametrize("source", [
@@ -89,6 +126,11 @@ def test_the_source_scan_sees_every_class_aew_errors_defines():
     "reply = {'ok': False, 'error': {'code': 'BRAND_NEW', 'message': 'm'}}\n",
     "refuse(code='BRAND_NEW')\n",
     "err.code = 'BRAND_NEW'\n",
+    "class E(Exception):\n    def __init__(self, message, code):\n        self.code = code\n"
+    "raise E('m', 'BRAND_NEW')\n",
+    "import dataclasses\n@dataclasses.dataclass\nclass B:\n    subject: str\n    code: str\n"
+    "B('s', 'BRAND_NEW')\n",
+    "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass B:\n    code: str\nB('BRAND_NEW')\n",
 ])
 def test_a_new_code_written_in_any_form_is_caught(tmp_path, source):
     (tmp_path / "m.py").write_text(source, encoding="utf-8")

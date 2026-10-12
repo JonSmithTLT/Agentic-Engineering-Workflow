@@ -47,12 +47,28 @@ def test_hook_wraps_output_positions_with_a_space_only():
         classes = {}
         for q in pt_hook.hook_modules()[rel]:
             classes.update(pt_hook.positions(defs[q]))
-        constants = {(n.lineno, n.col_offset): n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)
+        constants = {plan.keys[id(n)]: n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)
                      and isinstance(n.value, str)}
         assert all(classes[p] == "output" and " " in constants[p] for p in plan.wrapped), rel
         assert {p for p, c in classes.items() if c == "output"} == set(plan.wrapped), rel
     assert totals == {"output": 583, "output-spaceless": 315, "semantic": 509, "dict-key": 177, "other": 686,
                       "docstring": 26, "raise": 40}
+
+
+def test_every_string_constant_has_its_own_key():
+    """The hook keys nodes by position, and Python before 3.12 places an f-string's parts at the f-string's own
+    position: the keys still name one constant each (``pt_hook.node_keys``), here and on 3.11."""
+    for rel in pt_hook.hook_modules():
+        tree = ast.parse((pt_hook.PKG / rel).read_text(encoding="utf-8"))
+        keys = pt_hook.node_keys(tree)
+        constants = [keys[id(n)] for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        assert len(constants) == len(set(constants)), rel
+    js = ast.parse('f"a {b} c{d!r:>{w}} e"').body[0].value  # type: ignore[attr-defined]
+    keys = pt_hook.node_keys(js)
+    parts = [keys[id(v)] for v in js.values]
+    assert [p[-2:] for p in parts] == [("part", i) for i in range(5)]
+    spec = js.values[3].format_spec
+    assert keys[id(spec)] == (*parts[3], "spec") and keys[id(spec.values[1])] == (*parts[3], "spec", "part", 1)
 
 
 def test_semantic_positions_are_never_output():

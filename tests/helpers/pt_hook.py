@@ -386,64 +386,100 @@ def qualnames(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunction
 # ---------------------------------------------------------------------------------------- position classification
 
 
-def _strings(node: ast.AST) -> list[tuple[int, int]]:
-    return [(k.lineno, k.col_offset) for k in ast.walk(node)
-            if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+Key = tuple[Any, ...]
 
 
-def positions(fn: ast.AST) -> dict[tuple[int, int], str]:
+def node_keys(root: ast.AST) -> dict[int, Key]:
+    """id(node) -> the node's key, for every positioned node under ``root``, within this one parse (ids are never
+    compared across parses). A node's key is its ``(line, column, end line, end column, type)``. Inside an f-string,
+    Python before 3.12 places every part (a constant, an interpolation, a format spec) at the f-string's own position,
+    so a part's key is its f-string's key plus its index, and a format spec's is its interpolation's key plus "spec":
+    the same keys on every supported Python."""
+    keys: dict[int, Key] = {}
+
+    def fstring(js: ast.JoinedStr, base: Key) -> None:
+        keys[id(js)] = base
+        for i, v in enumerate(js.values):
+            k = (*base, "part", i)
+            keys[id(v)] = k
+            if isinstance(v, ast.FormattedValue) and isinstance(v.format_spec, ast.JoinedStr):
+                fstring(v.format_spec, (*k, "spec"))
+
+    for n in ast.walk(root):
+        if id(n) in keys or not hasattr(n, "lineno"):
+            continue
+        base = (n.lineno, n.col_offset, n.end_lineno, n.end_col_offset, type(n).__name__)  # type: ignore[attr-defined]
+        if isinstance(n, ast.JoinedStr):
+            fstring(n, base)
+        else:
+            keys[id(n)] = base
+    return keys
+
+
+def _strings(node: ast.AST, keys: dict[int, Key] | None = None) -> list[Key]:
+    keys = keys if keys is not None else node_keys(node)
+    return [keys[id(k)] for k in ast.walk(node) if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+
+
+def positions(fn: ast.AST) -> dict[Key, str]:
     """Every string constant in ``fn`` -> its position class (§2.2), first match wins; an `output` constant without
     a space is `output-spaceless` (V11-1) and is not wrapped."""
-    cls: dict[str, set[tuple[int, int]]] = {k: set() for k in ORDER}
+    keys = node_keys(fn)
+
+    def k(x: ast.AST) -> Key:
+        return keys[id(x)]
+
+    def strings(x: ast.AST) -> set[Key]:
+        return set(_strings(x, keys))
+
+    cls: dict[str, set[Key]] = {c: set() for c in ORDER}
     for n in ast.walk(fn):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.body and \
                 isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant):
-            cls["docstring"] |= set(_strings(n.body[0].value))
+            cls["docstring"] |= strings(n.body[0].value)
         if isinstance(n, ast.Raise):
-            cls["raise"] |= set(_strings(n))
+            cls["raise"] |= strings(n)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in LOGGING:
             for a in n.args:
-                cls["log"] |= set(_strings(a))
+                cls["log"] |= strings(a)
         if isinstance(n, ast.Subscript):
-            cls["semantic"] |= set(_strings(n.slice))
+            cls["semantic"] |= strings(n.slice)
         if isinstance(n, ast.Compare):
             for x in (n.left, *n.comparators):
-                cls["semantic"] |= set(_strings(x))
+                cls["semantic"] |= strings(x)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in LOOKUP and n.args:
-            cls["semantic"] |= set(_strings(n.args[0]))
+            cls["semantic"] |= strings(n.args[0])
         if isinstance(n, ast.Dict):
-            for k in n.keys:
-                if k is not None:
-                    cls["dict-key"] |= set(_strings(k))
+            for key in n.keys:
+                if key is not None:
+                    cls["dict-key"] |= strings(key)
             for v in n.values:
-                cls["output"] |= set(_strings(v))
+                cls["output"] |= strings(v)
         if isinstance(n, ast.JoinedStr):
-            cls["output"] |= {(v.lineno, v.col_offset) for v in n.values if isinstance(v, ast.Constant)}
+            cls["output"] |= {k(v) for v in n.values if isinstance(v, ast.Constant)}
         if isinstance(n, (ast.List, ast.Tuple)):
-            cls["output"] |= {(e.lineno, e.col_offset) for e in n.elts if isinstance(e, ast.Constant)
-                              and isinstance(e.value, str)}
+            cls["output"] |= {k(e) for e in n.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
         if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
-            cls["output"] |= {(x.lineno, x.col_offset) for x in (n.left, n.right) if isinstance(x, ast.Constant)}
+            cls["output"] |= {k(x) for x in (n.left, n.right) if isinstance(x, ast.Constant)}
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
             if n.func.attr == "join":
                 for x in (n.func.value, *n.args):
                     if isinstance(x, ast.Constant):
-                        cls["output"].add((x.lineno, x.col_offset))
+                        cls["output"].add(k(x))
             if n.func.attr in ("append", "extend", "insert"):
-                cls["output"] |= {(a.lineno, a.col_offset) for a in n.args if isinstance(a, ast.Constant)}
+                cls["output"] |= {k(a) for a in n.args if isinstance(a, ast.Constant)}
         if isinstance(n, ast.Call) and (getattr(n.func, "attr", None) or getattr(n.func, "id", None)) in PARSER_CALLS:
             for kw in n.keywords:
                 if kw.arg in HELP_KEYWORDS:
-                    cls["output"] |= set(_strings(kw.value))
+                    cls["output"] |= strings(kw.value)
         if isinstance(n, ast.AugAssign) and isinstance(n.op, ast.Add) and isinstance(n.value, ast.Constant):
-            cls["output"].add((n.value.lineno, n.value.col_offset))
+            cls["output"].add(k(n.value))
         if isinstance(n, ast.Return) and isinstance(n.value, ast.Constant):
-            cls["output"].add((n.value.lineno, n.value.col_offset))
-    value = {(k.lineno, k.col_offset): k.value for k in ast.walk(fn) if isinstance(k, ast.Constant)
-             and isinstance(k.value, str)}
+            cls["output"].add(k(n.value))
+    value = {k(c): c.value for c in ast.walk(fn) if isinstance(c, ast.Constant) and isinstance(c.value, str)}
     out = {}
-    for p in _strings(fn):
-        c = next((k for k in ORDER if p in cls[k]), "other")
+    for p in _strings(fn, keys):
+        c = next((name for name in ORDER if p in cls[name]), "other")
         out[p] = "output-spaceless" if c == "output" and " " not in value[p] else c
     return out
 
@@ -480,23 +516,18 @@ def hook_modules() -> dict[str, list[str]]:
     return out
 
 
-Site = tuple[int, int, int, int, str]  # (line, column, end line, end column, node type): one node in one parse
-
-
-def site_of(node: ast.AST) -> Site:
-    return (node.lineno, node.col_offset, node.end_lineno or 0, node.end_col_offset or 0,  # type: ignore[attr-defined]
-            type(node).__name__)
-
-
 @dataclass(frozen=True)
 class Plan:
-    """What a module's rewrite does, decided before any node changes (so the classification sees the original)."""
+    """What a module's rewrite does, decided before any node changes (so the classification sees the original). Its
+    ``keys`` belong to the one parse it was made from, which the rewrite then transforms."""
 
-    wrapped: dict[tuple[int, int], str]  # constant (line, col) -> unit id
-    values: dict[Site, str]  # an interpolated expression -> its expression id
-    refs: dict[Site, dict[str, str]]  # a name bound to constants -> {constant text: unit id}
-    data: dict[str, tuple[ast.expr, dict[tuple[int, int], str]]]  # module display a hook function reads -> leaves
+    keys: dict[int, Key]
+    wrapped: dict[Key, str]  # an output constant -> its unit id
+    values: dict[Key, str]  # an interpolated expression -> its expression id
+    refs: dict[Key, dict[str, str]]  # a name bound to constants -> {constant text: unit id}
+    data: dict[str, tuple[ast.expr, dict[Key, str]]]  # a module display a hook function reads -> its leaves' unit ids
     counts: dict[str, int]
+    nodes: list[ast.AST]  # every original node, kept alive so no id in ``keys`` is ever reused
 
 
 def _const_choices(expr: ast.expr) -> list[ast.Constant] | None:
@@ -528,7 +559,7 @@ def _bindings(fn: ast.AST, name: str) -> list[ast.expr] | None:
     return out
 
 
-def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | None = None,
+def plan_module(rel: str, source: str, *, plants: dict[Key, str] | None = None,
                 registry: Registry | None = None) -> tuple[ast.Module, Plan]:
     """Classify the module's hook functions and allocate an id for everything the hook wraps there:
     - an output-position constant with a space: a unit (the inventory's key: the outermost f-string, else itself);
@@ -538,9 +569,14 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
     - a module-level display of constants that a hook function reads: its leaves, as units, after the module runs."""
     reg = registry if registry is not None else REGISTRY
     tree = ast.parse(source)
+    keys = node_keys(tree)
+
+    def key(n: ast.AST) -> Key:
+        return keys[id(n)]
+
     defs = qualnames(tree)
     quals = hook_modules().get(rel, [])
-    pos: dict[tuple[int, int], str] = {}
+    pos: dict[Key, str] = {}
     counts: dict[str, int] = {}
     for q in quals:
         fn = defs.get(q)
@@ -555,23 +591,22 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
     names, mods = _import_map(tree, mod)
     scopes = _outer_scopes(tree)
     file = f"src/aew/{rel}"
-    constants = {(n.lineno, n.col_offset): n for n in ast.walk(tree) if isinstance(n, ast.Constant)
-                 and isinstance(n.value, str)}
+    constants = {key(n): n for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
     # The inventory's unit for a constant inside an f-string is the outermost f-string.
-    owner: dict[tuple[int, int], ast.JoinedStr] = {}
+    owner: dict[Key, ast.JoinedStr] = {}
     for n in ast.walk(tree):
         if isinstance(n, ast.JoinedStr):
             for m in ast.walk(n):
-                if isinstance(m, ast.Constant) and (m.lineno, m.col_offset) not in owner:
-                    owner[(m.lineno, m.col_offset)] = n
-    wrapped: dict[tuple[int, int], str] = {}
-    for p, c in sorted(pos.items()):
+                if isinstance(m, ast.Constant) and key(m) not in owner:
+                    owner[key(m)] = n
+    wrapped: dict[Key, str] = {}
+    for p, c in sorted(pos.items(), key=lambda item: repr(item[0])):
         if c != "output":
             continue
         node = constants[p]
         js = owner.get(p)
         unit_text = _render_fstring(js, source, local, names, mods) if js is not None else node.value
-        at = (js.lineno, js.col_offset) if js is not None else p
+        at = (js.lineno, js.col_offset) if js is not None else (node.lineno, node.col_offset)
         wrapped[p] = reg.unit({"kind": "code", "file": file, "line": at[0], "col": at[1],
                                "scope": scopes.get(at, "<module>"), "hash": key_hash(unit_text),
                                "planted": (plants or {}).get(p)})
@@ -594,9 +629,9 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
                 return f"src/{m.replace('.', '/')}.py", 0, consts[m][e.attr]
         return None
 
-    values: dict[Site, str] = {}
-    refs: dict[Site, dict[str, str]] = {}
-    data: dict[str, tuple[ast.expr, dict[tuple[int, int], str]]] = {}
+    values: dict[Key, str] = {}
+    refs: dict[Key, dict[str, str]] = {}
+    data: dict[str, tuple[ast.expr, dict[Key, str]]] = {}
 
     def ref_choices(fn: ast.AST, e: ast.expr) -> dict[str, str] | None:
         found = module_constant(e)
@@ -627,7 +662,7 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
         return out
 
     def interpolate(fn: ast.AST, q: str, e: ast.expr) -> None:
-        s = site_of(e)
+        s = key(e)
         if s in values or s in refs or isinstance(e, (ast.Constant, ast.Starred)):
             return
         choices = ref_choices(fn, e)
@@ -639,9 +674,9 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
 
     def is_prose(e: ast.expr) -> bool:
         if isinstance(e, ast.Constant):
-            return (e.lineno, e.col_offset) in wrapped
+            return key(e) in wrapped
         if isinstance(e, ast.JoinedStr):
-            return any((v.lineno, v.col_offset) in wrapped for v in e.values if isinstance(v, ast.Constant))
+            return any(key(v) in wrapped for v in e.values if isinstance(v, ast.Constant))
         if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add):
             return is_prose(e.left) or is_prose(e.right)
         return False
@@ -654,9 +689,9 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
                     if isinstance(v, ast.FormattedValue):
                         if v.conversion == -1 and v.format_spec is None and ref_choices(fn, v.value) is not None:
                             interpolate(fn, q, v.value)
-                        elif site_of(v) not in values:
-                            values[site_of(v)] = reg.value({
-                                "file": file, "line": v.lineno, "col": v.col_offset, "function": q,
+                        elif key(v) not in values:
+                            values[key(v)] = reg.value({  # the expression's own position: the same on every Python
+                                "file": file, "line": v.value.lineno, "col": v.value.col_offset, "function": q,
                                 "expr": ast.get_source_segment(source, v.value) or ast.unparse(v.value)})
             if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add) and (is_prose(n.left) or is_prose(n.right)):
                 for side in (n.left, n.right):
@@ -676,36 +711,43 @@ def plan_module(rel: str, source: str, *, plants: dict[tuple[int, int], str] | N
                     and _bindings(fn, n.id) == []:
                 leaves = {}
                 display = module_assign[n.id].value
+                dict_keys = {id(k) for d in ast.walk(display) if isinstance(d, ast.Dict) for k in d.keys}
+                in_fstring = {id(m) for d in ast.walk(display) if isinstance(d, ast.JoinedStr) for m in ast.walk(d)}
                 for c in ast.walk(display):
                     if isinstance(c, ast.Constant) and isinstance(c.value, str) and " " in c.value and \
-                            not any(c is k for d in ast.walk(display) if isinstance(d, ast.Dict) for k in d.keys):
-                        leaves[(c.lineno, c.col_offset)] = reg.unit({
+                            id(c) not in dict_keys and id(c) not in in_fstring:
+                        leaves[key(c)] = reg.unit({
                             "kind": "code", "file": file, "line": c.lineno, "col": c.col_offset, "scope": "<module>",
-                            "hash": key_hash(c.value), "planted": (plants or {}).get((c.lineno, c.col_offset)),
+                            "hash": key_hash(c.value), "planted": (plants or {}).get(key(c)),
                             "via": f"module data {n.id}"})
                 if leaves:
                     data[n.id] = (display, leaves)
-    return tree, Plan(wrapped, values, refs, data, counts)
+    return tree, Plan(keys, wrapped, values, refs, data, counts, list(ast.walk(tree)))
 
 
 class _Rewrite(ast.NodeTransformer):
-    def __init__(self, plan: Plan, plants: dict[tuple[int, int], str]) -> None:
+    """Applies a plan to the parse it was made from. Only original nodes are ever looked up (a replacement is never
+    visited), and the plan keeps every original alive, so an id always names the node it was taken from."""
+
+    def __init__(self, plan: Plan, plants: dict[Key, str]) -> None:
         self.plan = plan
         self.plants = plants
 
+    def key(self, node: ast.AST) -> Key | None:
+        return self.plan.keys.get(id(node))
+
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
-        uid = self.plan.wrapped.get((node.lineno, node.col_offset))
+        uid = self.plan.wrapped.get(self.key(node))  # type: ignore[arg-type]
         if uid is None or not isinstance(node.value, str):
             return node
         text = node.value
-        token = self.plants.get((node.lineno, node.col_offset))
+        token = self.plants.get(self.key(node))
         if token:
             text = f"{text} {token} "
         return ast.copy_location(ast.Constant(wrap_unit(text, uid)), node)
 
     def visit_FormattedValue(self, node: ast.FormattedValue) -> ast.AST:
-        s = site_of(node)
-        vid = self.plan.values.get(s)
+        vid = self.plan.values.get(self.key(node))  # type: ignore[arg-type]
         self.generic_visit(node)
         if vid is None:
             return node
@@ -716,7 +758,7 @@ class _Rewrite(ast.NodeTransformer):
 
     def visit(self, node: ast.AST) -> Any:
         if isinstance(node, ast.expr) and not isinstance(node, ast.FormattedValue):
-            s = site_of(node) if hasattr(node, "lineno") else None
+            s = self.plan.keys.get(id(node))
             if s is not None and (s in self.plan.values or s in self.plan.refs):
                 inner = super().visit(node)
                 if s in self.plan.refs:
@@ -753,25 +795,25 @@ def _ref(value: Any, choices: dict[str, str]) -> Any:
     return wrap_unit(value, choices[value]) if isinstance(value, str) and value in choices else value
 
 
-def wrap_data(obj: Any, display: ast.expr, leaves: dict[tuple[int, int], str]) -> Any:
+def wrap_data(obj: Any, display: ast.expr, leaves: dict[Key, str], keys: dict[int, Key]) -> Any:
     """A module-level display's runtime value with each prose leaf wrapped as its constant's unit, walked beside the
     display's AST; a value that does not match its display is returned unchanged (fail closed: it stays untraced)."""
     if isinstance(display, ast.Constant):
-        uid = leaves.get((display.lineno, display.col_offset))
+        uid = leaves.get(keys[id(display)])
         return wrap_unit(obj, uid) if uid and isinstance(obj, str) and obj == display.value else obj
     if isinstance(display, ast.Dict) and isinstance(obj, dict) and \
             all(isinstance(k, ast.Constant) for k in display.keys):
-        keys = [k.value for k in display.keys]  # type: ignore[union-attr]
-        if keys != list(obj):
+        names = [k.value for k in display.keys]  # type: ignore[union-attr]
+        if names != list(obj):
             return obj
-        return {k: wrap_data(obj[k], v, leaves) for k, v in zip(keys, display.values, strict=True)}
+        return {k: wrap_data(obj[k], v, leaves, keys) for k, v in zip(names, display.values, strict=True)}
     if isinstance(display, (ast.List, ast.Tuple)) and isinstance(obj, (list, tuple)) and len(obj) == len(display.elts):
-        out = [wrap_data(o, d, leaves) for o, d in zip(obj, display.elts, strict=True)]
+        out = [wrap_data(o, d, leaves, keys) for o, d in zip(obj, display.elts, strict=True)]
         return tuple(out) if isinstance(obj, tuple) else out
     return obj
 
 
-def rewrite(rel: str, source: str, *, plants: dict[tuple[int, int], str] | None = None,
+def rewrite(rel: str, source: str, *, plants: dict[Key, str] | None = None,
             registry: Registry | None = None) -> tuple[ast.Module, Plan]:
     tree, plan = plan_module(rel, source, plants=plants, registry=registry)
     tree = _Rewrite(plan, plants or {}).visit(tree)
@@ -908,7 +950,7 @@ class _Loader(importlib.machinery.SourceFileLoader):
     """Compiles a hook module from its rewritten AST (never from a cached ``.pyc``), then applies the module's patch."""
 
     rel: str = ""
-    plants: dict[tuple[int, int], str] = {}  # noqa: RUF012 (set per instance before use)
+    plants: dict[Key, str] = {}  # noqa: RUF012 (set per instance before use)
     after: Callable[[Any], None] | None = None
     plan: Plan | None = None
 
@@ -924,13 +966,13 @@ class _Loader(importlib.machinery.SourceFileLoader):
         module.__dict__.update(_pt_hook_fv=_fv, _pt_hook_value=_value, _pt_hook_ref=_ref)
         super().exec_module(module)
         for name, (display, leaves) in (self.plan.data if self.plan else {}).items():
-            module.__dict__[name] = wrap_data(module.__dict__[name], display, leaves)
+            module.__dict__[name] = wrap_data(module.__dict__[name], display, leaves, self.plan.keys)  # type: ignore[union-attr]
         if self.after is not None:
             self.after(module)
 
 
 class Finder(importlib.abc.MetaPathFinder):
-    def __init__(self, plants: dict[str, dict[tuple[int, int], str]], patches: dict[str, Callable[[Any], None]]):
+    def __init__(self, plants: dict[str, dict[Key, str]], patches: dict[str, Callable[[Any], None]]):
         self.modules = {"aew." + rel[:-3].replace("/", "."): rel for rel in hook_modules()}
         self.plants = plants
         self.patches = patches
@@ -1069,7 +1111,7 @@ def _patch_context_ops(yaml_plants: dict[str, dict[str, str]]) -> Callable[[Any]
     return patch
 
 
-def install(*, plants: dict[str, dict[tuple[int, int], str]] | None = None,
+def install(*, plants: dict[str, dict[Key, str]] | None = None,
             yaml_plants: dict[str, dict[str, str]] | None = None) -> Finder:
     """Install the hook in this process (before ``aew`` is imported) and patch argparse."""
     if any(name == "aew" or name.startswith("aew.") for name in sys.modules):

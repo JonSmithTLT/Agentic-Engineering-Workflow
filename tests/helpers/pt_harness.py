@@ -51,12 +51,15 @@ class Fixture:
 
 
 def _rmtree(path: Path) -> None:
-    def onexc(func: Any, p: str, exc: BaseException) -> None:
+    def retry(func: Any, p: str, _: Any) -> None:
         os.chmod(p, stat.S_IWRITE)  # git's object files are read-only on Windows
         func(p)
 
     if path.exists():
-        shutil.rmtree(path, onexc=onexc)
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=retry)
+        else:  # Python 3.11 (the Linux CI lanes) has only onerror
+            shutil.rmtree(path, onerror=retry)
 
 
 def build(base: Path, role: str) -> Fixture:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -36,12 +37,14 @@ QUOTED_COPY = "- Workspace: ` AEW_PT_PLANT_PERHIT "
 
 
 def constant_site(rel: str, line: int, contains: str) -> str:
-    """``line:col`` of the string constant on ``line`` of src/aew/``rel`` that contains ``contains``."""
+    """The node key (``pt_hook.node_keys``, as JSON) of the one string constant of src/aew/``rel`` on ``line`` (an
+    f-string part: on its f-string's line) that contains ``contains``."""
     tree = ast.parse((pt_hook.PKG / rel).read_text(encoding="utf-8"))
+    keys = pt_hook.node_keys(tree)
     found = [n for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
              and n.lineno == line and contains in n.value]
     assert len(found) == 1, (rel, line, contains, found)
-    return f"{found[0].lineno}:{found[0].col_offset}"
+    return json.dumps(keys[id(found[0])])
 
 
 PLANTS = {CONTEXT: {constant_site(CONTEXT, PER_HIT[1], PER_HIT[2]): PER_HIT[0],

@@ -134,7 +134,7 @@ def main() -> int:
     if spec["hooked"]:
         import pt_hook
 
-        plants = {rel: {(int(k.split(":")[0]), int(k.split(":")[1])): v for k, v in sites.items()}
+        plants = {rel: {tuple(json.loads(k)): v for k, v in sites.items()}  # a node key, as JSON (pt_hook.node_keys)
                   for rel, sites in (spec.get("plants") or {}).items()}
         pt_hook.install(plants=plants, yaml_plants=spec.get("yaml_plants") or {})
         registry = {"units": pt_hook.REGISTRY.units, "values": pt_hook.REGISTRY.values}

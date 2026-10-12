@@ -96,6 +96,14 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   several causes. Tests and operators rely on both. A refusal says what was refused, why, and what to do instead.
 - **Reuse work product, not proof.** Evidence is bound to the snapshot it was produced on; a change invalidates the
   proof even when it keeps the work.
+- **A new command or typed tool ships with its surface-map entry and honours it** (operator, 2026-10-12;
+  [`docs/implementation/surface-map.md`](docs/implementation/surface-map.md)). In the same pull request, add its full
+  entry to `docs/implementation/surface-map.yaml`: home, mutates, users, journeys, refusals, and a decided
+  `lead_disposition` if the Lead uses it to change anything. The code must honour that disposition in the same pull
+  request. `typed` means the Lead reaches it through a typed tool with a proved primitive, never through the shell
+  (keep it out of `lead_broker.LEAD_REACHABLE`). `engine-owned` means the engine does it, and it is absent from
+  `LEAD_REACHABLE` and the typed surface. `forbidden-to-lead` means it is reachable through neither Lead door.
+  `tests/unit/test_surface_map.py` (`new_surface`) enforces this. Its grandfathered baseline only shrinks.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

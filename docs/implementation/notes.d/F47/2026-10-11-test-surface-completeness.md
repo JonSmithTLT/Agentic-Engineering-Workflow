@@ -1,11 +1,31 @@
 **Anti-drift guard G1, the surface map** (operator approval, 2026-10-12): [`surface-map.yaml`](../../surface-map.yaml)
-registers every `aew` command and typed Lead tool with its users, the vertical UAT journeys that need it (or
-`diagnostic`, or `unmapped` when a decision is owed), the Lead's door for each Lead-reachable command (`typed`, or
-`shell-only (pending A2/A4)`, which makes F47.1's one-door gap explicit command by command) and its known refusal
-codes. `tests/unit/test_surface_map.py` (fast lane) checks it against the live parser, the live typed surface and the
-vertical UAT's `IDEAL_PATH`: an unregistered or vanished command or tool, a missing field, a Lead-reachable command
-without a door, an unregistered ideal-path command and an unknown error code fail from day one; the projection's
-`owner` (A1), structured refusals (A2), the shell-only doors (A2, A4) and the `unmapped` entries are reported until
-those slices land, each slice then flipping its check to enforce ([`surface-map.md`](../../surface-map.md)). The
-slices that build `settings set` (B3) and `preflight` (C2) move them from the registry's `proposed` list to its
-commands; A4's sorting of the Lead-reachable commands updates their doors.
+registers every `aew` command and typed Lead tool. Each entry has one intentional home (product, operator-admin,
+recovery, diagnostic or internal), its users, the vertical UAT journeys that exercise it (evidence), a declared
+`mutates` cross-checked against the code, and its known refusal codes. For each Lead-reachable command it also has
+the Lead's door today (`typed`, proved by its primitive, or `shell-only (pending A2/A4)`) and its `lead_disposition`
+(`typed`, `engine-owned`, `forbidden-to-lead`, or `undecided`).
+
+`tests/unit/test_surface_map.py` (fast lane) checks the registry against the live parser, the live typed surface, the
+primitive declarations and the vertical UAT's `IDEAL_PATH`.
+
+- **Fails from day one:** an unregistered or vanished surface; a missing field; a mutating surface homed diagnostic; a
+  `mutates` that contradicts the code; an unproved typed door; a missing disposition; an unregistered ideal-path
+  command; an unknown error code.
+- **Reported until its slice lands, which then flips its check to enforce** ([`surface-map.md`](../../surface-map.md)):
+  - the projection's `owner` (A1);
+  - structured refusals and the undecided dispositions (A2);
+  - dispositions applied, and Lead shell lifecycle operations at 0 (A4).
+
+**The end-state metric** (designer, 2026-10-12) is not one typed equivalent per command. It is every Lead lifecycle
+need covered by typed or engine-owned behaviour, with Lead shell lifecycle operations at 0. Today 36 of the 48
+Lead-reachable commands are shell-only and `undecided`. A2's plan decides each one, with its reason, and that decision
+sets A2's and A4's scope.
+
+**The standing rule** (operator, 2026-10-12), enforced by `new_surface` and stated in `CLAUDE.md`: every surface
+added after the grandfathered baseline ships with its full entry and a decided disposition, which its code honours in
+the same pull request. The baseline only shrinks.
+
+**Slices that touch the registry:**
+
+- B3 and C2 build `settings set` and `preflight`, and move them from `proposed` to `commands`.
+- A4's sorting of the Lead-reachable commands updates their doors and dispositions.

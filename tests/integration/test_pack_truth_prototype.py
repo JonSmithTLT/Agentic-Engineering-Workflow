@@ -197,7 +197,7 @@ def test_control_yaml_value_nested(controlled):
 # ---------------------------------------------------------------------------------------- negative controls (F4)
 
 NEGATIVES = ["fence-edit", "value-unregistered", "value-refused", "ref-rebound", "data-mutated", "json-key",
-             "json-value", "help-prose"]
+             "json-value", "help-prose", "cli-metavar"]
 # plant -> (delivery point, a token or text every span inside which must be untraced)
 NEGATIVE_SPANS: dict[str, tuple[str, str]] = {
     "fence-edit": ("context show", "AEW_PT_NEG_FENCE"),
@@ -208,6 +208,7 @@ NEGATIVE_SPANS: dict[str, tuple[str, str]] = {
     "json-key": ("whoami", "AEW_PT_NEG_KEY"),
     "json-value": ("whoami", "AEW_PT_NEG_JSON"),
     "help-prose": ("help whoami", N.HELP),
+    "cli-metavar": ("help whoami", N.METAVAR),
 }
 
 

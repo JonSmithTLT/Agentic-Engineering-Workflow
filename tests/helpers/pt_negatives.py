@@ -20,6 +20,7 @@ The branch each guards (the judge's ways of saying "traced"; pt_trace.judge):
 | json-key       | field name (the closed key list)      | untraced                     |
 | json-value     | JSON field (the class accessor)       | untraced                     |
 | help-prose     | CLI identifier (positional marks)     | untraced                     |
+| cli-metavar    | CLI identifier (the live parser's)    | untraced                     |
 | yaml-ws        | YAML unit (whitespace outside)        | no whitespace inside a marker|
 | plus-ws        | ``+`` value (whitespace outside)      | no whitespace inside a marker|
 The card plant (the pin's sha256 and content check) is made on the state copy itself: pt_harness.tamper_card.
@@ -40,6 +41,8 @@ MUTATED = "AEW_PT_NEG_DATA then run it"
 KEY_PROSE, KEY_NAME = "then run AEW_PT_NEG_KEY", "AEW_PT_NEG_KEYNAME"
 JSON_VALUE = "AEW_PT_NEG_JSON then run it"
 HELP = "submit the report, then run whoami"  # every span here is also a CLI identifier: a text match would pass it
+METAVAR = "AEW_PT_NEG_META"
+INSTALLED: set[str] = set()
 YAML_WS_TOKEN = "AEW_PT_WS_YAML \n"  # the trailing whitespace is the plant
 PLUS_WS = " padded "
 YAML_WS_LEAF = ("src/aew/roles/archetypes/{role}.yaml", "responsibilities[1]")
@@ -93,7 +96,11 @@ def _help(module: Any) -> None:
         parser = original(*a, **kw)
         for action in parser._actions:
             if hasattr(action, "choices") and isinstance(action.choices, dict) and "whoami" in action.choices:
-                action.choices["whoami"].add_argument("--pt-neg", help=_computed(HELP, " AEW_PT_NEG_HELP"))
+                whoami = action.choices["whoami"]
+                if "help-prose" in INSTALLED:
+                    whoami.add_argument("--pt-neg", help=_computed(HELP, " AEW_PT_NEG_HELP"))
+                if "cli-metavar" in INSTALLED:  # argparse prints it, but the product's parser has no such identifier
+                    whoami.add_argument("--pt-neg-meta", metavar=_computed(METAVAR))
         return parser
 
     module.build_parser = build_parser
@@ -109,12 +116,14 @@ PLANTS: dict[str, tuple[str, Callable[[Any], None]]] = {
     "json-key": ("aew.engine.harness_ops", _whoami),
     "json-value": ("aew.engine.harness_ops", _whoami),
     "help-prose": ("aew.cli.main", _help),
+    "cli-metavar": ("aew.cli.main", _help),
 }
 
 
 def install(names: list[str]) -> None:
     """Install the named plants in this process (after pt_hook.install, before anything imports aew)."""
     done: set[Callable[[Any], None]] = set()
+    INSTALLED.update(names)
     for name in names:
         where, edit = PLANTS[name]
         if edit in done:

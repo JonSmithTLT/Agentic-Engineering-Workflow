@@ -1,4 +1,4 @@
-"""The burden ledger of the vertical UAT (docs/implementation/vertical-uat.md, "The burden ledger").
+"""The burden ledger of the vertical UAT, spec v2 (docs/implementation/vertical-uat.md, "The burden ledger").
 
 One entry per counted event, each with its evidence (the exact input or call, credentials redacted). The counters,
 their thresholds and the hard limits are pinned here; ``tests/unit/test_vertical_ledger.py`` checks that they equal
@@ -9,6 +9,12 @@ results (each kept apart as "did not refuse", a safety regression, or "refused w
 and observations: setup steps that are not counted, the gaps a fallback covered, and facts a reviewer needs.
 
 Classification lives here, in one place: the actors only report what they typed or called.
+
+Spec v2 (the operator's approval of the amendments, Q8, 2026-10-11) adds: decisions by owner (only operator-owned
+ones, or ones whose owner is not stated, are the operator's); two operator counters, the PIN entered again in one
+endpoint's lifetime and a per-action console challenge on Windows; the Lead's containment label, with per-platform
+minimums that only ratchet up; and Windows outside the enforced gate, its unqualified state leading every verdict and
+summary it prints (the operator, Q1(e)).
 """
 
 from __future__ import annotations
@@ -25,7 +31,8 @@ VERTICAL_MODE = "shadow"
 VERTICAL_MODES = ("shadow", "enforce")
 
 OPERATOR_COUNTERS = ("credentials", "env_vars", "raw_yaml", "revisions", "generations", "invocation_ids", "run_ids",
-                     "takeovers", "seat_operations", "lifecycle_steps", "manifest_adopts")
+                     "takeovers", "seat_operations", "lifecycle_steps", "manifest_adopts", "pin_reentries",
+                     "windows_console_challenges")
 LEAD_COUNTERS = ("help_calls", "guessed_commands", "cli_tool_calls", "shell_aew_calls", "ambiguous_next_action",
                  "revision_args", "stale_retries", "refusals", "mechanical_calls")
 COUNTERS = OPERATOR_COUNTERS + LEAD_COUNTERS
@@ -36,9 +43,36 @@ STEERING_ONLY = frozenset({"mechanical_calls"})
 # V1's operator decisions, exactly: approving the plan and approving the publish (publish stays a judgement unless a
 # grant covers it). Any other question fails the comparison and is reviewed by hand.
 V1_DECISIONS = ("plan", "publish")
+# Whose decision it is, as the projection states it (spec v2): `decisions_required` counts operator-owned decisions
+# only. The scripted Lead puts to the operator only a decision the projection gives to the operator, or one whose owner
+# is not stated (every one, until the projection carries owners: today's behaviour, kept, and the summary says "owner
+# not stated"). One owned by the Lead or the mechanism it takes itself; it is listed apart and never asked. Every
+# question that does reach the operator is an operator decision and is compared, whatever owner it names.
+OPERATOR_OWNER, OWNER_NOT_STATED = "operator", "not stated"
 HARD_LIMITS = ("semantic_conflict", "evidence_mismatch", "publish_needs_decision", "containment")
-# Each harness run's containment label, unchanged from today's minimum per platform (the test never weakens it).
-CONTAINMENT_MINIMUM = {"win32": "workdir_separation_only", "linux": "os_readonly_roots"}
+# Publish (spec v2, from the operator's Q3 answer): from B1, the limit also checks that the publish record is
+# console-approved and attributed to the operator. Until B1 builds that channel the limit stays "main moved only after
+# the operator's yes", and this stays False; B1 flips it together with the check (vertical-uat.md, the hard limits).
+PUBLISH_CONSOLE_ATTRIBUTION = False
+
+# Containment (spec v2): every run's label and the Lead's, each at or above its platform's minimum. The order runs from
+# weakest to strongest; `None` is no label recorded (today's Lead, uncontained on every platform). The minimums only
+# ratchet up: `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is ever lowered.
+LABEL_ORDER: tuple[str | None, ...] = (None, "workdir_separation_only", "os_readonly_roots")
+WORKERS, LEAD = "workers", "lead"
+CONTAINMENT_MINIMUM: dict[str, dict[str, str | None]] = {
+    "linux": {WORKERS: "os_readonly_roots", LEAD: None},
+    "win32": {WORKERS: "workdir_separation_only", LEAD: None},
+}
+
+# Windows is outside the enforced gate (the operator, Q1(e); temporary). Its job keeps running and reporting, and
+# every verdict and summary it prints leads with this line and the conditions still open. Lifting it is the
+# operator's decision.
+ENFORCED_PLATFORMS = ("linux",)
+WINDOWS_UNQUALIFIED = "Windows: UNQUALIFIED (excluded from the enforced gate)"
+WINDOWS_OPEN_CONDITIONS = ("B5q, the Low-integrity Lead qualification",
+                           "B5 (or B5b), the MIC backend for the workers and the Lead",
+                           "the isolation the designer required in 1(g), closing residuals (a) to (d)")
 # Hard-limit outcomes. Every one but `held` fails the test; the ledger keeps them apart: `did_not_refuse` is a safety
 # regression (the protected action went ahead), `refused_without_naming` an explanation gap, `rebuilt_not_published` a
 # conflicting change AEW carried on with (rebuilt and re-verifying) instead of refusing, and `not_exercised` a limit
@@ -77,12 +111,29 @@ def _starts(words: tuple[str, ...], prefixes: tuple[tuple[str, ...], ...]) -> bo
     return any(words[:len(p)] == p for p in prefixes)
 
 
+def at_least(label: str | None, minimum: str | None) -> bool:
+    """Whether ``label`` is at or above ``minimum`` in :data:`LABEL_ORDER` (a label outside the order is below all)."""
+    if label not in LABEL_ORDER:
+        return False
+    return LABEL_ORDER.index(label) >= LABEL_ORDER.index(minimum)
+
+
+def windows_lines() -> list[str]:
+    """What every verdict and summary on Windows leads with (Q1(e)): the state, then the conditions still open."""
+    return [WINDOWS_UNQUALIFIED, "  open conditions: " + "; ".join(WINDOWS_OPEN_CONDITIONS)]
+
+
+def owner_of(decision: dict[str, Any]) -> str:
+    return str((decision.get("detail") or {}).get("owner") or OWNER_NOT_STATED)
+
+
 class Ledger:
-    def __init__(self, scenario: str, *, steering: bool = False) -> None:
+    def __init__(self, scenario: str, *, steering: bool = False, platform: str | None = None) -> None:
         self.scenario = scenario
         self.steering = steering
-        self.platform = "win32" if sys.platform == "win32" else "linux"
+        self.platform = platform or ("win32" if sys.platform == "win32" else "linux")
         self.entries: list[dict[str, Any]] = []
+        self.pins: dict[str, int] = {}  # PIN entries per endpoint lifetime
         self.decisions: list[dict[str, Any]] = []
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
@@ -114,6 +165,32 @@ class Ledger:
         self.hard_limits[name] = {"outcome": outcome, **json.loads(redact(json.dumps(evidence)))}
 
     # ------------------------------------------------------------------ classification
+
+    def pin_entered(self, endpoint: str, *, step: str) -> None:
+        """The operator typed the PIN into the console of ``endpoint`` (one endpoint lifetime: one project, one login
+        session). "Authenticate at most once": the first entry in that lifetime is allowed and recorded; every further
+        one is counted (``pin_reentries``). Never under ``credentials``: the PIN is the operator's own secret, not an
+        AEW credential (spec v2). The auto-opened console itself is not a step and is never counted."""
+        n = self.pins.get(endpoint, 0) + 1
+        self.pins[endpoint] = n
+        if n == 1:
+            self.observe("pin_entered", step=step, endpoint=endpoint, note="the first in this endpoint's lifetime")
+        else:
+            self.count("pin_reentries", {"endpoint": endpoint, "entry": n}, actor="operator", step=step,
+                       note="the PIN again while the same endpoint lives")
+
+    def console_challenge(self, operation: str, *, step: str) -> None:
+        """A per-action challenge at the operator console (a one-time code typed back at the requesting terminal) that
+        stands in for "authenticate once": an operator-principal operation that is not a decision (configure, open).
+        On Windows it is ``windows_console_challenges`` (spec v2). On Linux, where the PIN authenticates once, it is
+        an authentication beyond the once, counted under ``pin_reentries``. A decision confirmed at the console (the
+        steering raise, every Q9 item) is a decision on every platform and never comes here."""
+        evidence = {"operation": operation}
+        if self.platform == "win32":
+            self.count("windows_console_challenges", evidence, actor="operator", step=step)
+        else:
+            self.count("pin_reentries", evidence, actor="operator", step=step,
+                       note="a per-action console challenge on Linux: authentication beyond the once")
 
     def operator_input(self, text: str, *, step: str, argv: list[str] | None = None, shown: str = "") -> None:
         """One thing the operator typed (a command line, or a chat line to the Lead), and what it showed them."""
@@ -187,6 +264,21 @@ class Ledger:
         it (a fallback no counter sees must not let the zeros pass)."""
         return [o for o in self.observations if o["kind"] == "fallback"]
 
+    def not_the_operators(self) -> list[dict[str, Any]]:
+        """The decisions the projection gave to the Lead or the mechanism, which the scripted Lead took itself and
+        never put to the operator (spec v2): listed apart, never among the operator's decisions."""
+        return [o for o in self.observations if o["kind"] == "lead.own_decision"]
+
+    def enforced(self) -> bool:
+        """Whether this platform is inside the enforced gate (Windows is not: Q1(e))."""
+        return self.platform in ENFORCED_PLATFORMS
+
+    def qualification(self) -> dict[str, Any]:
+        if self.enforced():
+            return {"platform": self.platform, "state": "in the enforced gate"}
+        return {"platform": self.platform, "state": WINDOWS_UNQUALIFIED,
+                "open_conditions": list(WINDOWS_OPEN_CONDITIONS)}
+
     def counts(self) -> dict[str, int]:
         out = {c: 0 for c in COUNTERS}
         for e in self.entries:
@@ -199,18 +291,31 @@ class Ledger:
         return {c: n for c, n in found.items() if n > THRESHOLDS[c] and (self.steering or c not in STEERING_ONLY)}
 
     def to_json(self) -> dict[str, Any]:
-        return {"schema": "aew/vertical-ledger/v1", "scenario": self.scenario, "mode": VERTICAL_MODE,
-                "platform": self.platform, "steering": self.steering, "counts": self.counts(),
+        return {"schema": "aew/vertical-ledger/v2", "scenario": self.scenario, "mode": VERTICAL_MODE,
+                "platform": self.platform, "qualification": self.qualification(), "steering": self.steering,
+                "counts": self.counts(),
                 "thresholds": THRESHOLDS, "decisions": self.decisions, "hard_limits": self.hard_limits,
                 "entries": self.entries, "observations": self.observations}
 
+    def verdict_text(self, problems: list[str]) -> str:
+        """A failed verdict as the test prints it: on Windows it leads with the unqualified state and the conditions
+        still open (Q1(e)); then every problem, then the summary. The line is reported, never a problem of its own,
+        and no problem is dropped on any platform."""
+        lead = [] if self.enforced() else [*windows_lines(), ""]
+        return "\n".join(lead + problems) + "\n\n" + self.summary()
+
     def summary(self) -> str:
         c = self.counts()
-        lines = [f"vertical UAT {self.scenario} ({self.platform}, steering {'on' if self.steering else 'off'}, "
-                 f"mode {VERTICAL_MODE})",
-                 "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
-                 "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
-                 "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none")]
+        others = self.not_the_operators()
+        lines = [] if self.enforced() else windows_lines()
+        lines += [f"vertical UAT {self.scenario} ({self.platform}, steering {'on' if self.steering else 'off'}, "
+                  f"mode {VERTICAL_MODE})",
+                  "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
+                  "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
+                  "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none")]
+        if others:
+            lines.append("not the operator's: " + "; ".join(f"{o.get('decision')} [owner {o.get('owner')}]"
+                                                             for o in others))
         lines.append("operator fallbacks: " + (", ".join(o.get("step") or "?" for o in self.operator_fallbacks())
                                                or "none"))
         for name, r in sorted(self.hard_limits.items()):
@@ -237,8 +342,7 @@ class Ledger:
 
 def decision_line(d: dict[str, Any]) -> str:
     """One decision as the summary shows it: what was asked, the tool its answer drives, whose decision the
-    projection says it is (it says nowhere today: the test does not settle that), and the answer (bounded)."""
-    detail = d.get("detail") or {}
-    tool = detail.get("tool") or "-"
-    owner = detail.get("owner") or "not stated"
-    return f"{d['label']} [drives {tool}; owner {owner}] -> {str(d['answer'])[:40]}"
+    projection says it is ("not stated" until it carries owners: the test does not settle that), and the answer
+    (bounded)."""
+    tool = (d.get("detail") or {}).get("tool") or "-"
+    return f"{d['label']} [drives {tool}; owner {owner_of(d)}] -> {str(d['answer'])[:40]}"

@@ -8,11 +8,17 @@ Lead broker), and its shell commands run in the TUI's own environment.
 **Its whole policy** (docs/implementation/vertical-uat.md, "The Lead"):
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
-2. If ``decisions_required`` is non-empty, ask the operator and wait for the reply.
+2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
+   stated (every one today), ask the operator and wait for the reply. One it gives to the Lead or the mechanism, the
+   Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned decisions only).
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator.
+
+**Judgment inputs** (spec v2): where an action or a decision names ``judgment_inputs``, the Lead supplies them, its
+own judgment, with nothing asked: a value the projection offers (or the first of its ``options``) goes into the call's
+arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1) does.
 
 **Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
 call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
@@ -66,6 +72,7 @@ from pathlib import Path
 from typing import Any
 
 from vertical.chat import Gone, Mailbox
+from vertical.ledger import OPERATOR_OWNER
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 LOOP_WAIT_S = 120.0  # the bound on waiting for the steering loop's event
@@ -280,6 +287,9 @@ class Lead:
             self.report(out)
             return False
         decisions = proj.get("decisions_required") or []
+        for d in decisions:  # a decision the projection gives to the Lead or the mechanism is never asked (spec v2)
+            if d.get("owner") not in (None, OPERATOR_OWNER):
+                return self.own_decision(d)
         if decisions:
             return self.decide(decisions[0], proj)
         offered = [a for a in proj.get("actions") or [] if a.get("availability") == AVAILABLE and a.get("callable")]
@@ -290,7 +300,7 @@ class Lead:
             if self.steering and a.get("auto_runnable") and self.loop_acts(proj):
                 return True  # the loop did it: nothing for the Lead to push
             mechanical = a.get("kind") == "wait" or bool(a.get("auto_runnable"))
-            self.call(a["action"], a["arguments"], offered=True, mechanical=mechanical)
+            self.call(a["action"], self.judged(a, a["arguments"]), offered=True, mechanical=mechanical)
             return True
         return self.gap(out, proj)
 
@@ -329,7 +339,7 @@ class Lead:
             self.hear()
             return True
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
-            self.call(d["tool"], d["arguments"], offered=True)
+            self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
             return True
         cli = list(d.get("cli_fallback") or [])
         if d["decision"] == "RECONCILE" and "<phase>" in cli:
@@ -344,6 +354,39 @@ class Lead:
         self.event("gap", gap="decision_without_tool", decision=d["decision"])
         self.shell(cli, why=f"decision {d['decision']} has no typed tool")
         return True
+
+    def judged(self, item: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
+        """The call's arguments with the Lead's own judgments supplied where the projection names ``judgment_inputs``
+        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first);
+        it fills only what the projection's arguments leave out. A list names the judgments the complete arguments
+        carry. Either way the names are recorded as the Lead's, never asked of the operator."""
+        inputs = item.get("judgment_inputs")
+        if not inputs:
+            return arguments
+        out = dict(arguments)
+        if isinstance(inputs, dict):
+            for name, offer in inputs.items():
+                if isinstance(offer, dict) and offer.get("options"):
+                    offer = offer["options"][0]
+                elif isinstance(offer, dict) and "value" in offer:
+                    offer = offer["value"]
+                out.setdefault(str(name), offer)
+        self.event("judgment", tool=item.get("action") or item.get("tool"),
+                   inputs=sorted(map(str, inputs)) if isinstance(inputs, (dict, list)) else inputs)
+        return out
+
+    def own_decision(self, d: dict[str, Any]) -> bool:
+        """A decision the projection gives to the Lead (or the mechanism): the Lead takes it itself, with its
+        judgment inputs supplied, and never asks the operator. Recorded apart from the operator's decisions."""
+        asked = ("own", d.get("decision"), tuple(d.get("evidence") or []))
+        if self.seen.get(asked):
+            return self.decision_refused(d, self.last_projection or {})
+        self.seen[asked] = 1
+        self.event("own_decision", decision=d.get("decision"), owner=d.get("owner"), tool=d.get("tool"))
+        if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
+            self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
+            return True
+        return self.stuck(f"decision {d.get('decision')} is the {d.get('owner')}'s and offers no typed call")
 
     def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         """A decision still required after its answer was acted on (its call refused): one ``explain``, then its

@@ -38,7 +38,7 @@ from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import workers
 from vertical.chat import Gone, Mailbox
-from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_EXERCISED, NOT_REFUSED, Ledger
+from vertical.ledger import CONTAINMENT_MINIMUM, HELD, LEAD, NOT_EXERCISED, NOT_REFUSED, WORKERS, Ledger, at_least
 
 SESSION_START_S = 300.0
 CONVERSATION_S = 1800.0
@@ -330,18 +330,31 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def lead_label(lab: HarnessLab) -> str | None:
+    """The Lead session's containment label. Nothing records one today: the Lead is uncontained on every platform, so
+    it is ``None`` (no label). B4 (Linux) and B5 (Windows) give the Lead a label and read it here, raising the Lead's
+    minimum with it (spec v2: the minimums only ratchet up)."""
+    del lab
+    return None
+
+
 def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
-    """Every harness run's containment label, against today's minimum for this platform."""
+    """Every harness run's containment label and the Lead's, each at or above this platform's minimum (spec v2)."""
     runs = runlog.run_dir(lab.aew_root, "x").parent
     want = CONTAINMENT_MINIMUM[ledger.platform]
     labels = {}
     for d in sorted(runs.glob("R-*")) if runs.is_dir() else []:
         record = runlog.read_record(d) or {}
         labels[d.name] = (record.get("containment") or {}).get("filesystem")
-    weaker = sorted(r for r, label in labels.items() if label != want)
+    lead = lead_label(lab)
+    weaker = sorted(r for r, label in labels.items() if not at_least(label, want[WORKERS]))
+    if not at_least(lead, want[LEAD]):
+        weaker.append(LEAD)
     if not labels:
-        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, note="no harness run was launched")
+        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, lead=lead, note="no harness run was launched")
         return []
-    ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, minimum=want)
+    ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, lead=lead, minimum=want,
+                      **({"weaker": weaker} if weaker else {}),
+                      **({} if lead else {"lead_note": "no label recorded for the Lead (uncontained today)"}))
     return weaker
 

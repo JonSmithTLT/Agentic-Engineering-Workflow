@@ -1,10 +1,19 @@
-# The vertical UAT (v1): the release gate's measurement
+# The vertical UAT (v2): the release gate's measurement
 
 **Status:** in shadow (`VERTICAL_MODE = "shadow"`). It is a test, not a feature, and **it is expected to fail on
 today's `main`**: its first job is to measure by how much. Flipping it to `enforce` is the operator's decision, made
 when the job is green. This page holds its thresholds; the test module pins the same values and
 `tests/unit/test_vertical_ledger.py` checks that the two agree, so **changing a threshold means changing this page,
 which needs the operator.** It is an implementation document, not a design.
+
+**Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
+outside the enforced gate; Q3: publish by console approval). §7 lists each one and where it is implemented.
+
+**Windows: UNQUALIFIED (excluded from the enforced gate).** The operator's decision (Q1(e)), temporary. The Windows job
+keeps running and uploading its ledger, and every verdict and summary it prints leads with that line and the
+conditions still open: B5q (the Low-integrity Lead qualification), B5 or B5b (the MIC backend for the workers and the
+Lead), and the isolation the designer required in 1(g). Enforcing covers Linux only (`ENFORCED_PLATFORMS`). Lifting
+the exclusion is the operator's decision.
 
 Code: `tests/acceptance/test_vertical_path.py` (marker `acceptance("VUAT")`, lane `vertical`) and
 `tests/helpers/vertical/` (the ledger and the scripted actors). CI: the `vertical` workflow (`vertical.yml`), per OS
@@ -44,11 +53,20 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
 
 1. Read the projection (`status`; `resume` once at the start of a session, as its tool description says). Reading the
    projection is the policy's own step, never counted as a guess.
-2. If `decisions_required` is non-empty, ask the operator and wait for the reply.
+2. If `decisions_required` holds a decision the projection gives to the operator (`owner: operator`), ask the
+   operator and wait for the reply. **`decisions_required` counts operator-owned decisions only** (v2): one whose
+   stated owner is the Lead or the mechanism, the Lead takes itself and never asks, and the ledger lists it apart.
+   **Until the projection states owners** (projection v2), no decision has one: the Lead asks the operator, as
+   today, and the summary shows "owner not stated" for each.
 3. Otherwise call the single action the projection marks as next, with **exactly the arguments the projection
    supplied**. Today's projection marks no action as next, so a single AVAILABLE action is taken as the next one; if
    several are AVAILABLE, `ambiguous_next_action` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator: the diff, an evidence summary and the commit.
+
+**Judgment inputs (v2).** Where an action or a decision names `judgment_inputs`, the Lead supplies them, as its own
+judgment, and asks no one: a value the projection offers (or the first of its `options`) fills an argument the
+projection's arguments leave out, and the names are recorded as the Lead's (`lead.judgment`). Today's projection names
+none; projection v2 does, with its `next`.
 
 Where that policy cannot make progress (no available action, a refusal, a blocked state), it falls back the way a
 real Lead did, and **counts it**: `explain` or help, the `cli` tool, `aew` from its shell, or a tool the projection did
@@ -91,6 +109,13 @@ installed tool: its variables are not the operator's.
   into the profile's `model`, and AEW passes the provider and the id apart, so the reference it uses is doubled
   (`<provider>/<provider>/<model>`). The ideal outcome is that AEW accepts the id as typed (no error at all);
   otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic.
+- **Opening AEW (v2).** The ideal `open` step is `aew opencode`, which opens the operator console (when no endpoint is
+  live for the project) and the console asks for the operator's PIN. **The auto-opened console is not a counted
+  step**: the test records whether it opened (`open.console`). The PIN is counted under "authenticate at most once"
+  (§4, `pin_reentries`). Until the endpoint becomes the operator session, no console opens, the ideal attempt fails,
+  and today's fallback (the credential in `AEW_LEAD_TOKEN`) is counted as before. `configure` opens the console the
+  same way if it runs first. The steering `raise` stays a decision confirmed at the endpoint's console on every
+  platform.
 - **V2's reopen.** The ideal step is `aew opencode` with nothing carried over. When it fails, the operator opens the
   Lead the way `docs/guides/opencode.md` documents (`aew opencode --acquire`), and when that is refused, takes the
   seat over at their own terminal and hands the new credential to the session (quickstart, "Losing the session"):
@@ -128,6 +153,8 @@ the end and writes its ledger before it asserts.
 | `seat_operations` | acquire, release or reacquire, by hand |
 | `lifecycle_steps` | any operator command or chat line that pushes a lifecycle stage. Approving the plan and the publish are decisions, not steps. |
 | `manifest_adopts` | any separate adopt step |
+| `pin_reentries` | "Authenticate at most once" (v2): the operator's PIN, entered in the operator console, is allowed once per endpoint lifetime (per project, per login session; "session open" is that lifetime). Any further entry while the same endpoint lives is counted, and so is a per-action console challenge on Linux. Never under `credentials`: the PIN is the operator's own secret. |
+| `windows_console_challenges` | (v2) each per-action challenge at the operator console on Windows (a one-time code typed back) for an operator-principal operation that is not a decision, such as configure or open, standing in for "authenticate once" until Windows qualifies. A decision confirmed at the console (the steering raise, every re-authenticated item) is a decision on every platform, never a challenge. |
 
 **Any operator fallback fails the verdict.** Every fallback the operator took (each a ledger entry with its evidence)
 is listed in the summary and fails the scenario, whether or not one of the counters above classifies it, so a
@@ -136,7 +163,11 @@ workaround no counter sees (editing git's own exclude file, for example) can nev
 **Operator decisions** are listed, not counted against: every question AEW or the Lead put to the operator, with the
 answer. V1 must list exactly `plan`, `publish`. Any other question fails that comparison and is reviewed by hand: is it
 a real product, policy or safety judgement? The summary shows, for each decision, the tool its answer drives and
-whose decision the projection says it is (today it says nowhere); the test does not settle that ownership.
+whose decision the projection says it is ("owner not stated" until the projection carries owners); the test does not
+settle that ownership. **v2:** only operator-owned decisions are the operator's. A decision the projection gives to the
+Lead or the mechanism is never put to the operator, and the summary lists it apart ("not the operator's"). Every
+question that does reach the operator is compared, whatever owner it names, so a question cannot leave the
+comparison by its label.
 
 **Lead counters (all must be 0):**
 
@@ -162,15 +193,24 @@ actually went ahead. Every one of them fails the test; only `held` passes.
 |---|---|---|
 | `semantic_conflict` | V1, with main moved under the prepared publish by a change to the very line the Ticket fixes | the step refuses, with a message that names the change (its commit, subject or path); "last writer wins" fails, and so does a rebuild that carries on |
 | `evidence_mismatch` | V1, with a check that also rewrites a tracked file (`ledger/build-stamp.txt`), which no scrubbing of caches can make legitimate | the gate refuses (or AEW flags the check), naming that path; an auto-waived mismatch fails |
-| `publish_needs_decision` | every scenario | main moves only after the operator's publish decision (or a grant) |
-| `containment` | every scenario | every run record carries the platform's containment label, unchanged from today's minimum |
+| `publish_needs_decision` | every scenario | main moves only after the operator's publish decision (or a grant). **From B1** (the operator's Q3 answer), the publish record must also be console-approved and attributed to the operator; until B1 builds that channel the limit stays "main moved only after the operator's yes" (`PUBLISH_CONSOLE_ATTRIBUTION`, false until B1) |
+| `containment` | every scenario | every run's label and the Lead's are each at or above the platform's minimum below (v2: the Lead's label is included, and the minimums only ratchet up) |
 
 A positive counterpart runs beside the semantic conflict: a **compatible** change (another file) lands on main under
 the prepared publish, and AEW should rebuild, re-verify and publish both, with no further question to the operator
 after the publish approval.
 
-**Today's minimum containment label:** `workdir_separation_only` on Windows, `os_readonly_roots` on Linux. The test
-never weakens it.
+**Containment minimums (they only ratchet up):** labels run from weakest to strongest: no label (`none`),
+`workdir_separation_only`, `os_readonly_roots` (`LABEL_ORDER`). A minimum may only be raised, with this page and the
+operator; `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is lowered. Today's Lead has
+no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum, B5 the Windows one.
+
+| Platform | Actor | Minimum | Since |
+|---|---|---|---|
+| Linux | workers | `os_readonly_roots` | v1 |
+| Linux | lead | `none` | v2 |
+| Windows | workers | `workdir_separation_only` | v1 |
+| Windows | lead | `none` | v2 |
 
 ## 5. Where it lives and how it gates
 
@@ -184,11 +224,36 @@ never weakens it.
   It is not in `assurance`'s needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered
   assertion.
 - **Platforms.** It runs on Windows and Linux; any platform-only part is pinned in `tests/platform-skips.yaml` (none
-  today).
+  today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
+  its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).
+  `tests/unit/test_ci_tools.py` proves the Windows job stays in the matrix.
 
 ## 6. Later (not v1)
 
 - **The live variant:** the same scenarios against real OpenCode 2.0.18 and a real provider, run by the operator. It
-  adds the provider key counter and the paid preflight tier (real authenticated calls).
+  adds the provider key counter and the paid preflight tier (real authenticated calls), and (v2) **a live check of
+  auto-open**: `aew opencode` with no endpoint live opens one real operator console window, which asks for the PIN.
+  The offline test never opens a window; it records whether a console endpoint came up.
 - **A real-model Lead variant:** the same ledger with an actual model as the Lead, to measure what the scripted Lead
   cannot, such as attention spent on judgement, and the Lead's own `aew` shell calls seen at the broker.
+
+## 7. Spec v2: the approved amendments
+
+Approved by the operator on 2026-10-11 (Q8: every listed amendment). Each threshold change here is that approval's.
+
+| Amendment | Where it is implemented |
+|---|---|
+| The scripted Lead supplies the projection's `judgment_inputs`, where present | §2; `vertical/lead.py` (`judged`) |
+| `decisions_required` counts operator-owned decisions only; until the projection states owners, "owner not stated" and today's behaviour | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
+| The evidence-mismatch sub-scenario no longer relies on `__pycache__` | **already met** in v1 (the check rewrites the tracked `ledger/build-stamp.txt`) |
+| The `open` row opens the operator console and asks for the PIN; the auto-opened console is not counted; until then the ideal attempt fails and today's fallback is counted | §3; the test module (`IDEAL_PATH`, `console_opened`) |
+| A live-UAT check of auto-open | §6, the live variant |
+| The PIN under "authenticate at most once": at most 1 per endpoint lifetime, any further entry counted | §4 `pin_reentries`; `Ledger.pin_entered` |
+| A `windows_console_challenges` counter, threshold 0 | §4; `Ledger.console_challenge` |
+| Windows outside the enforced gate, its unqualified state explicit (the operator, Q1(e)) | the status above, §5; `ENFORCED_PLATFORMS`, `windows_lines` |
+| The containment limit includes the Lead's label and only ratchets up | §4; `CONTAINMENT_MINIMUM`, `LABEL_ORDER`, `scripted_operator.containment` |
+| From B1, publish is checked as console-approved and attributed to the operator. This one derives from the operator's Q3 answer (2026-10-11), not from the Q8 list; thresholds are the operator's | §4 `publish_needs_decision`; `PUBLISH_CONSOLE_ATTRIBUTION` (false until B1) |
+
+The PIN, the console challenge and the console attribution have no event to observe until the endpoint becomes the
+operator session: their counters read 0 and the attribution check stays off until then. That slice wires its console
+to `pin_entered`, `console_challenge` and the attribution check, and changes this page if a rule needs to.

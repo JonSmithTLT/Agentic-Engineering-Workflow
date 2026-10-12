@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from aew.errors import UsageError
+from aew.errors import HarnessIncompatible, UsageError
 from aew.harness.contract import LaunchContract
 from aew.harness.opencode import adapter, capabilities, lead, projection
 
@@ -191,22 +191,29 @@ def base_env() -> dict[str, str]:
 
 
 def test_the_server_gets_basics_named_provider_variables_and_private_state(tmp_path):
-    env = adapter.server_env(base_env(), tmp_path, provider_env=["ANTHROPIC_API_KEY", "AEW_LEAD_TOKEN", "MISSING"],
-                             config={"a": 1}, password="pw2")
+    env = adapter.server_env(base_env(), tmp_path, provider_env=["ANTHROPIC_API_KEY"], config={"a": 1},
+                             password="pw2")
     assert env["ANTHROPIC_API_KEY"] == "sk-ant-secret"
     assert adapter.server_env({**base_env(), "SHELL": "/bin/bash"}, tmp_path, provider_env=[], config={},
                               password="p")["SHELL"] == "/bin/bash"  # OpenCode picks the agent's shell from it
-    assert not {"OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_HARNESS_ADAPTERS", "AEW_LEAD_TOKEN", "MISSING"} & set(env)
+    assert not {"OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_HARNESS_ADAPTERS", "AEW_LEAD_TOKEN"} & set(env)
     assert env["OPENCODE_PASSWORD"] == "pw2" and env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == {"a": 1}
     for kind in ("CONFIG", "DATA", "STATE", "CACHE"):
         assert Path(env[f"XDG_{kind}_HOME"]).parent == tmp_path
 
 
-def test_a_provider_variable_holding_a_credential_is_never_passed(tmp_path):
-    env = adapter.server_env({**base_env(), "SNEAKY": CREDENTIAL}, tmp_path, provider_env=["SNEAKY"], config={},
-                             password="p")
-    assert "SNEAKY" not in env
+@pytest.mark.parametrize(("name", "why"), [("MISSING", "MISSING is not set in this environment: set MISSING in the "
+                                                     "terminal you launch AEW from"),
+                                         ("AEW_LEAD_TOKEN", "AEW_LEAD_TOKEN is an AEW variable"),
+                                         ("SNEAKY", "SNEAKY holds an AEW credential")])
+def test_a_provider_variable_the_server_cannot_get_refuses_the_start_naming_it_never_silently_dropped(tmp_path, name,
+                                                                                                    why):
+    with pytest.raises(HarnessIncompatible) as refused:
+        adapter.server_env({**base_env(), "SNEAKY": CREDENTIAL}, tmp_path, provider_env=["ANTHROPIC_API_KEY", name],
+                           config={}, password="p")
+    assert why in refused.value.message and refused.value.details["variables"] == [name]
+    assert CREDENTIAL not in refused.value.message  # the refusal names the variable, never its value
 
 
 def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():

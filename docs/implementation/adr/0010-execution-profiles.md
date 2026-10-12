@@ -3,6 +3,7 @@
 - **Status:** Accepted (M3, 2026-09-29). Operator-approved plan: `m3-ambiguity-report.md` §2.4.
   - Proposed in M3 step 0 and implemented in step 1. Subject to the M3 independent review (`m3-reviewer-brief.md`).
   - Amended 2026-10-06: Q12, the Lead attachment's profile and the reference models (designed, not built; register F31, F32).
+  - Amended 2026-10-11: the model identity owned by the harness adapter, provider variables refused before launch, and doctor (built).
 - **Spec basis:**
   - WC §18: model routing is policy, not architecture.
   - WC §9.9 and KC §11: validation provenance "who" includes model/provider.
@@ -151,3 +152,60 @@ policy is this ADR's.
   takes effect only after the operator's `aew manifest adopt`. Until then a read of the policy is an integrity error,
   never stale policy.
 - **Staged actions** (the StageIntent, M4-E E3) record the same two digests when the journal lands.
+
+## Amendment 2026-10-11 — the model identity and provider variables (built)
+
+The M4 user acceptance test found two configuration failures that surfaced only after a launch, blaming the wrong
+thing. Both are now refused before any launch, by one rule each, and `aew doctor` reports both.
+
+**One model identity, owned by the harness adapter** (`HarnessAdapter.model_identity`; the rule is
+`aew.harness.models`).
+- **Why.** OpenCode lists and prints a model as `provider/model`. A profile written as
+  `{provider: openai, model: openai/<model>}`, the id pasted exactly as OpenCode printed it, became
+  `openai/openai/<model>` at the harness, because the provider and the model were passed apart unchanged.
+- **The rule.** A profile's `model` is written exactly as the harness lists it, and `provider` becomes optional:
+  - with `provider: p`, a model `p/m` has its own provider's prefix removed silently, and pins `(p, m)`;
+  - with no `provider`, the provider is taken from the prefix: `p/m` pins `(p, m)`;
+  - a bare model `m` under `provider: p` pins `(p, m)`, as before;
+  - a prefix that names another provider (`provider: p`, `model: q/m`) is refused with `VALIDATION_FAILED`
+    (reason `model_id_provider_conflict`), naming the field (`profiles.<name>.model`), the value and both ids it may
+    mean: `q/m` (another provider's model), or `p/q/m` (a model of `p` whose own id contains `/`). AEW does not guess
+    between them. The full listed id is always accepted, so a routing provider's `router/vendor/model` stays
+    expressible.
+  - A model with no provider and no prefix, an empty part or whitespace is refused with its own reason.
+- **Where it applies.** At dispatch, the single invocation factory resolves the profile's model through its harness's
+  adapter (`aew.harness.registry.model_identity`), so the pin always holds the pair apart; the Lead's
+  `--model PROVIDER/MODEL` uses the same rule. The projection passes the pinned pair as it is and never splits or
+  joins it. A pin made before this amendment is unchanged.
+- **The three identities.** Each result carries the raw catalog id, AEW's provider/model pair and the harness
+  reference (`provider/model`). A provider's own catalog (`GET /v1/models`) lists bare ids, which `from_catalog` never
+  strips. The model catalog of the Operator Settings Surface (register F46) fills ids from these, and a browser never
+  prefixes or strips anything.
+- **An adapter whose harness names models differently** overrides `model_identity`; every other adapter inherits the
+  rule.
+
+**Provider variables are refused up front, never dropped.** A variable the policy's `provider_env` names that is unset
+or empty where AEW launches, an `AEW_` variable, or one holding an AEW credential
+(`aew.harness.agentenv.provider_env_problems`):
+- refuses the launch before anything is committed (`HARNESS_INCOMPATIBLE`, reason `provider_env`, the variables
+  named), whether the launch is `harness launch` or a dispatch with `--launch`. The check reads the launching process's
+  environment, which the run's supervisor inherits. The message names the variable and the fix: set it in the
+  terminal AEW is launched from;
+- refuses the harness server's start again, as a backstop, instead of starting it without the key. Before, the server
+  started with no key and the run ended `provider_auth_failed`, blaming the provider;
+- refuses `aew opencode --provider-env` for the Lead's own OpenCode, with the same text.
+No value is ever echoed.
+
+**`aew doctor`** (structural: no provider is called, and whether the harness lists a model is readiness, not doctor):
+- `model-refs`: PASS lists each profile's model as the harness is given it; FAIL names each profile whose model maps to
+  no pair, with the fix;
+- `provider-env`: FAIL names each variable a launch from this environment would be refused for, with the fix; PASS
+  names them, never their values;
+- on Windows, a `platform` line, first: "Windows: UNQUALIFIED (excluded from the enforced gate)", and why (workdir
+  separation only, no isolation between runs, an uncontained Lead), until a Low-integrity containment backend with
+  run-to-run isolation passes its qualification self-tests (the operator's decision of 2026-10-11: that state is never
+  silently absent).
+
+**Evidence:** `tests/unit/test_model_identity.py`, `tests/unit/test_doctor_states_readiness.py`,
+`tests/integration/test_launch_readiness_named.py`, and in `tests/integration/test_opencode_adapter.py` a model id typed
+as OpenCode prints it reaching the fake server's session undoubled, with `model_check: match`.

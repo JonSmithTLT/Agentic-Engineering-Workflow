@@ -30,6 +30,30 @@ PROXY_VARS = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"})
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
 
 
+def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:
+    """``(name, why)`` for each provider variable (``provider_env``, ``--provider-env``) that a harness could not be
+    given from ``env``: an AEW variable, one that is unset or empty, or one that holds an AEW credential. A run never
+    starts without a variable its policy names: the provider would refuse it and the failure would blame the key
+    (M4 user acceptance test). The launch refuses up front instead (``require_launchable``), the harness server's
+    environment refuses again (``server_env``), and ``aew doctor`` reports the same text. No value is ever echoed."""
+    from aew.harness.contract import CREDENTIAL_RE
+
+    out: list[tuple[str, str]] = []
+    for name in names:
+        value = env.get(name)
+        if name.upper().startswith("AEW_"):
+            out.append((name, f"{name} is an AEW variable, and AEW variables never reach a harness: remove it from "
+                              "provider_env"))
+        elif not value:
+            out.append((name, f"{name} is not set in this environment: set {name} in the terminal you launch AEW "
+                              f"from (export {name}=...; in PowerShell, $env:{name} = '...'), then launch from that "
+                              "terminal"))
+        elif CREDENTIAL_RE.search(value):
+            out.append((name, f"{name} holds an AEW credential, which never reaches a harness: put the provider's "
+                              f"key in {name} instead"))
+    return out
+
+
 def bypass_proxy_for_loopback(env: dict[str, str]) -> None:
     """A proxy variable the operator passes to a harness (``provider_env``, ``--provider-env``) is for its provider
     traffic; its loopback traffic (the run's own server, a loopback-hosted provider, the Lead TUI's link to its server)

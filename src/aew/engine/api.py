@@ -10,6 +10,7 @@ every public operation to the one collaborator that owns it. No collaborator hol
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -322,7 +323,15 @@ class ProjectAdmin:
             else:
                 add("policy:execution", "PASS", f"configured; default profile {execution['routing']['default']}")
         except Exception as exc:
-            add("policy:execution", "FAIL", str(exc))
+            add("policy:execution", "FAIL", _with_violations(exc))
+        else:
+            # Before any launch, and structural only (no provider is called): each profile's model as the harness
+            # will be given it, and the provider variables a launch from this environment would need (ADR-0010
+            # amendment 2026-10-11; the M4 user acceptance test's doubled model id and silently dropped key).
+            if execution is not None and execution.get("profiles"):
+                add("model-refs", *_model_refs_doctor(execution))
+            if execution is not None and execution.get("provider_env"):
+                add("provider-env", *_provider_env_doctor(execution))
         # F25 (the cost and usage ledger design v0.2 R4, R6): the price table, the snapshots usage records name (the
         # hot state and the recent ring: a bounded read; `aew usage show --all` covers the whole archive), and the
         # hot runs' copy state.
@@ -372,6 +381,43 @@ class ProjectAdmin:
         if proposed:
             add("authority", "WARN", f"unclassified authority candidates: {proposed}")
         return checks
+
+
+def _with_violations(exc: Exception) -> str:
+    """An error's message with the violations it lists, so a doctor line names the field and the fix."""
+    found = (getattr(exc, "details", None) or {}).get("violations")
+    return str(exc) + (": " + "; ".join(map(str, found)) if isinstance(found, list) and found else "")
+
+
+def _model_refs_doctor(policy: dict[str, Any]) -> tuple[str, str]:
+    """Each profile's model through its harness adapter's model identity: the reference the harness is given, or
+    why the profile's model maps to no provider/model pair and what to write instead (FAIL). Structural: whether the
+    harness lists that model is readiness, which needs the harness itself."""
+    from aew.harness import registry
+
+    refs, problems = [], []
+    for name in sorted(policy["profiles"]):
+        try:
+            pair = X.model_pair(policy, name, registry.model_identity)
+        except AEWError as exc:
+            problems.append(exc.message)
+            continue
+        refs.append(f"{name}: {pair.harness_ref}")
+    if problems:
+        return "FAIL", "; ".join(problems) + "; dispatch with these profiles is refused until they are fixed"
+    return "PASS", "the harness is given " + "; ".join(refs)
+
+
+def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
+    """The provider variables the policy names, as a launch from this environment would find them (FAIL: a launch
+    from here is refused, naming each; never their values)."""
+    from aew.harness import agentenv
+
+    names = [str(n) for n in policy.get("provider_env") or []]
+    problems = agentenv.provider_env_problems(names, os.environ)
+    if problems:
+        return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems))
+    return "PASS", f"set in this environment: {', '.join(names)} (values not shown)"
 
 
 class Engine:

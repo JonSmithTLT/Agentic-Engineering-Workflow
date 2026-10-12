@@ -24,6 +24,7 @@ from proxy_env import RecordingProxy, proxy_env
 
 from aew.harness import runlog
 from aew.harness.opencode import projection
+from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
 
@@ -111,6 +112,27 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert record["launch"]["health"]["version"] == "2.0.18" and record["launch"]["health"]["tested"]
     assert record["result"]["effective"] == [{"provider": "fakeprov", "model": "fake-model", "effort": "high"}]
     assert record["model_check"]["status"] == "match" and record["result"]["prompts"] == 1
+
+
+@pytest.mark.parametrize("profile", [{"provider": "fakeprov", "model": "fakeprov/fake-model", "effort": "high"},
+                                     {"model": "fakeprov/fake-model", "effort": "high"}])
+def test_a_model_id_typed_as_opencode_prints_it_reaches_the_session_undoubled_and_matches(lab, tmp_path, profile):
+    """The operator pastes OpenCode's own ``provider/model`` id, with or without the provider beside it: the adapter's
+    model identity pins the pair apart, so the session gets ``fakeprov`` and ``fake-model`` (never
+    ``fakeprov/fakeprov/fake-model``) and the effective model matches the pin (ADR-0010 amendment 2026-10-11)."""
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy["profiles"] = {"standard": profile}
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    script(lab, IMPLEMENT)
+    _, inv, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    pinned = lab.ok("invoke", "show", inv)["execution_profile"]
+    assert (pinned["provider"], pinned["model"]) == ("fakeprov", "fake-model")
+    [session] = fake_db(lab).values()
+    assert session["info"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
+    assert lab.record(run)["model_check"]["status"] == "match"
 
 
 def test_tool_calls_are_logged_by_name_never_by_input(lab, tmp_path):

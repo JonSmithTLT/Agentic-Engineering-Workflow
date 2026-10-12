@@ -86,7 +86,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **New behaviour comes with the test that proves it**, named for the guarantee (`test_a_diagnostic_run_never_...`).
   Engine invariants live in `tests/helpers/invariants.py`; extend them when a new state appears.
 - Static checks run in CI: Ruff, Pyright and pip-audit (`pip install -e ".[lint]"`). Fix what they report; do not
-  silence a rule without a reason in the line's comment.
+  silence a rule without a reason in the line's comment. Ruff runs twice: `ruff check .`, and
+  `ruff check --preview --select E301,E302,E303,E304,E305,E306 .` for the blank-line rules, which are preview-only.
 
 ## Code
 

@@ -279,6 +279,11 @@ jobs:
       - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
         if: success() || failure()
         run: ruff check --output-format github .
+      - name: Ruff blank-line rules E301-E306 (preview-only in the pinned Ruff, so run apart from the main config)
+        if: success() || failure()
+        # --select replaces the config's selection, so preview applies to these six rules only; the main config stays
+        # non-preview, so no stable rule's detection, fix or code-named output changes (review of #222, W1).
+        run: ruff check --preview --select E301,E302,E303,E304,E305,E306 --output-format github .
       - name: Pyright as Linux
         if: success() || failure()
         run: pyright --pythonplatform Linux

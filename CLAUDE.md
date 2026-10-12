@@ -111,6 +111,10 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   0, every option it takes) against the test's sample project and leave the sample unchanged. A refused or exempt
   probe is only for the test's pinned `PROBE_LIMITED` list, which only shrinks. A new `diagnostic` home has no
   journeys and gives a one-line `diagnostic_justification`.
+- **Derive, don't restate** (operator, 2026-10-12). Every fact has one owner. Its consumers derive it from the owner's
+  accessor and never restate it by hand: restating a fact is a defect. Every plan names the facts it consumes and their
+  owners. The information catalog (planned; it generalises the owner registry of register F44) will list the owners
+  and their accessors.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

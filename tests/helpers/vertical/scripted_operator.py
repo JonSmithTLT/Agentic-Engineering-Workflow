@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,7 +39,7 @@ from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import workers
 from vertical.chat import Gone, Mailbox
-from vertical.ledger import CONTAINMENT_MINIMUM, HELD, NOT_EXERCISED, NOT_REFUSED, Ledger
+from vertical.ledger import CONTAINMENT_MINIMUM, HELD, LEAD, NOT_EXERCISED, NOT_REFUSED, WORKERS, Ledger, at_least
 
 SESSION_START_S = 300.0
 CONVERSATION_S = 1800.0
@@ -80,6 +81,8 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
+    session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
+    chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
     @property
     def root(self) -> Path:
@@ -160,9 +163,19 @@ class Operator:
 
     # ------------------------------------------------------------------ the Lead session
 
+    def new_session(self, lead_spec: dict[str, Any]) -> dict[str, Any]:
+        """Each open is its own session (review of #213, I1): a fresh id its records carry (a reused pid cannot match
+        it), no state file left from the previous session, and the operator's chat errors counted from here, so a
+        silence is judged only on this session's evidence. The spec the TUI reads is written with the id."""
+        lead_spec = {**lead_spec, "session": uuid.uuid4().hex}
+        self.session_id = lead_spec["session"]
+        self.chat_errors_at_open = len(self.chat.errors)
+        Path(lead_spec["state"]).unlink(missing_ok=True)
+        (Path(self.lab.env[SCRIPTS_ENV]) / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
+        return lead_spec
+
     def open_session(self, step: str, argv: list[str], lead_spec: dict[str, Any]) -> Session:
-        scripts = Path(self.lab.env[SCRIPTS_ENV])
-        (scripts / TUI_SCRIPT).write_text(json.dumps(lead_spec), encoding="utf-8")
+        lead_spec = self.new_session(lead_spec)
         n = len(self.lab.sessions)
         out, err = self.tmp / f"session-{n}.out", self.tmp / f"session-{n}.err"
         kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
@@ -181,9 +194,24 @@ class Operator:
         try:
             msg = self.chat.receive(SESSION_START_S, gone=session.ended)
         except Gone:
+            if not session.ended():
+                self.lead_silent("first words", SESSION_START_S)
             return None
         self.said.append(msg)
         return msg
+
+    def lead_silent(self, waiting_for: str, bound: float) -> None:
+        """The Lead's session is alive and said nothing within the bound. Recorded with whose fault it is, only as far
+        as the evidence goes (review of #213, G2 and H1): see :func:`silence_fault`."""
+        state = lead_state(self.lab)
+        events = lead_events(self.lab)
+        errors = self.chat.errors[self.chat_errors_at_open:]
+        fault, why = silence_fault(chat_errors=errors, events=events, state=state, sent=self.chat.sent,
+                                   session=self.session_id)
+        mine = [e for e in events if e.get("session") == self.session_id]
+        self.ledger.observe("lead_silent", waiting_for=waiting_for, bound_s=bound, fault=fault, why=why,
+                            session=self.session_id, chat_errors=errors[-6:], lead_state=state,
+                            last_lead_event=mine[-1] if mine else None)
 
     def say(self, step: str, text: str) -> None:
         self.chat.send({"text": text})
@@ -198,6 +226,8 @@ class Operator:
                 msg = self.chat.receive(CONVERSATION_S,
                                         gone=lambda: session.ended() or (stop is not None and stop()))
             except Gone:
+                if not session.ended() and not (stop is not None and stop()):
+                    self.lead_silent("the conversation", CONVERSATION_S)
                 return None
             self.said.append(msg)
             kind = msg.get("type")
@@ -320,6 +350,7 @@ def execution_policy(lab: HarnessLab, *, steering: str | None = None) -> dict[st
 def lead_spec(lab: HarnessLab, *, steering: bool = False) -> dict[str, Any]:
     sync = lab.tmp / "sync"
     return {"driver": "vertical", "chat": str(sync / "chat"), "events": str(sync / "lead-events.jsonl"),
+            "state": str(sync / "lead-state.json"),
             "pidfile": str(sync / f"lead-{len(lab.sessions)}.pid"), "draft": workers.DRAFT, "steering": steering}
 
 
@@ -330,18 +361,116 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+# Whether `lead_label` reads the Lead's label from the product. False while it returns the hard-coded `None`; the slice
+# that records the Lead's label sets it, and `enforce` is refused until it is True (ledger.enforce_blockers; F1).
+LEAD_LABEL_WIRED = False
+
+
+def lead_label(lab: HarnessLab) -> str | None:
+    """The Lead session's containment label. Nothing records one today: the Lead is uncontained on every platform, so
+    it is ``None`` (no label). B4 (Linux) and B5 (Windows) give the Lead a label and read it here, raising the Lead's
+    minimum with it (spec v2: the minimums only ratchet up)."""
+    del lab
+    return None
+
+
 def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
-    """Every harness run's containment label, against today's minimum for this platform."""
+    """Every harness run's containment label and the Lead's, each at or above this platform's minimum (spec v2)."""
     runs = runlog.run_dir(lab.aew_root, "x").parent
     want = CONTAINMENT_MINIMUM[ledger.platform]
     labels = {}
     for d in sorted(runs.glob("R-*")) if runs.is_dir() else []:
         record = runlog.read_record(d) or {}
         labels[d.name] = (record.get("containment") or {}).get("filesystem")
-    weaker = sorted(r for r, label in labels.items() if label != want)
+    lead = lead_label(lab)
+    weaker = sorted(r for r, label in labels.items() if not at_least(label, want[WORKERS]))
+    if not at_least(lead, want[LEAD]):
+        weaker.append(LEAD)
     if not labels:
-        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, note="no harness run was launched")
+        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, lead=lead, note="no harness run was launched")
         return []
-    ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, minimum=want)
+    ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, lead=lead, minimum=want,
+                      **({"weaker": weaker} if weaker else {}),
+                      **({} if lead else {"lead_note": "no label recorded for the Lead (uncontained today)"}))
     return weaker
 
+
+
+# ---------------------------------------------------------------------------------------------- stale attribution
+
+
+def stage_intents(aew_root: Path) -> dict[str, dict[str, Any]]:
+    """Every stage intent the project holds: the archived records (``**/stage-intents/*.yaml``) and the live ones in
+    the control state, the live copy winning."""
+    import yaml
+
+    found: dict[str, dict[str, Any]] = {}
+    for path in sorted(aew_root.glob("**/stage-intents/*.yaml")):
+        intent = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if intent.get("id"):
+            found[str(intent["id"])] = intent
+    control = aew_root / "state" / "control.yaml"
+    if control.exists():
+        state = yaml.safe_load(control.read_text(encoding="utf-8")) or {}
+        found.update({str(k): v for k, v in (state.get("stage_intents") or {}).items() if isinstance(v, dict)})
+    return found
+
+
+def staled_by(record: dict[str, Any], intents: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Whose commit ``record`` (a transition) was, through the stage intent it belongs to (review of #213, F5): the
+    intent its ``refs`` name (``stage.open`` and the other journal commits name theirs), else the intent that recorded
+    a step at its revision. An intent the steering loop ran carries ``auto_run``; any other is the Lead's stage. Only
+    when no intent is found does the actor's kind stand in, and a Lead credential then cannot tell the Lead from the
+    loop (the loop runs under it), which the attribution says."""
+    revision = record.get("revision")
+    intent = next((intents[r] for r in record.get("refs") or [] if isinstance(r, str) and r in intents), None)
+    if intent is None:
+        intent = next((si for si in intents.values() if (si.get("opened") or {}).get("rev") == revision
+                       or any(s.get("revision") == revision for s in si.get("steps") or [])), None)
+    if intent is not None:
+        loop = bool(intent.get("auto_run"))
+        return {"by": "the steering loop" if loop else "the Lead", "intent": intent.get("id"), "via": "stage intent",
+                "intent_tool": intent.get("tool")}
+    actor = record.get("actor")
+    kind = actor.get("kind") if isinstance(actor, dict) else actor
+    by = ("the Lead's credential, no stage intent (the Lead, or the loop under it)" if kind == "lead"
+          else str(kind))
+    return {"by": by, "intent": None, "via": "actor"}
+
+
+# ---------------------------------------------------------------------------------------------- a silent Lead
+
+
+def lead_state(lab: HarnessLab) -> dict[str, Any] | None:
+    """What the scripted Lead last said it was doing (``lead-state.json``), or None when no Lead ever started."""
+    path = lab.tmp / "sync" / "lead-state.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def silence_fault(*, chat_errors: list[str], events: list[dict[str, Any]], state: dict[str, Any] | None,
+                  sent: int, session: str) -> tuple[str, str]:
+    """Whose fault a silent Lead is, from the evidence (review of #213, H1). ``harness`` only with harness evidence:
+    a chat read error on either side, or the Lead waiting to hear while an operator message it has not read exists
+    (both sides waiting on the chat). Otherwise ``not established``, with what the Lead was doing, so a product hang
+    (a call that never returned, no TUI started) reads as one and never as the harness's.
+
+    Only ``session``'s evidence counts (review of #213, I1): its events and its state carry its per-open id, and an
+    earlier session's state or ``listener_error`` is ignored. ``chat_errors`` are the operator's since this session
+    opened."""
+    listener = [e for e in events if e.get("kind") == "listener_error" and e.get("session") == session]
+    if state is not None and state.get("session") != session:
+        state = None  # an earlier session's: not this one's evidence
+    if chat_errors or listener:
+        return "harness", f"chat read errors: operator {len(chat_errors)}, Lead {len(listener)}"
+    if state is not None and state.get("doing") == "waiting_to_hear" and sent > int(state.get("chat_read") or 0):
+        return "harness", (f"the Lead waits to hear, and {sent - int(state.get('chat_read') or 0)} operator "
+                           "message(s) it has not read exist")
+    if state is None:
+        return "not established", "no Lead activity was recorded (no TUI started, or it never reached its policy)"
+    if state.get("doing") == "calling":
+        call = state.get("tool") or state.get("method")
+        return "not established", f"the Lead is in a call that has not returned: {call}"
+    return "not established", f"the Lead's last activity: {state.get('doing')}"

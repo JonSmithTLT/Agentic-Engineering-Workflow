@@ -4,6 +4,11 @@ Each side writes its messages as numbered files in its own sequence (``operator-
 each written whole (a temporary file, then a rename), and reads the other side's in order. Ordering is by those
 files, never by time: a reader waits for the next file to exist. Every wait is bounded, and gives up early when
 ``gone`` says the other side has ended (a Lead session that exited, or a test that finished).
+
+A read that fails (an ``OSError``, such as a sharing violation on Windows while another process holds the file just
+renamed into place, or a ``ValueError`` from a file read whole but not parseable) is never fatal and never loses the
+message: the reader stays on that message, reports the error to ``on_error``, and tries it again on its next poll,
+within the same bound (review of #213, G2).
 """
 
 from __future__ import annotations
@@ -24,7 +29,8 @@ class Gone(Exception):
 
 
 class Mailbox:
-    def __init__(self, directory: Path, side: str) -> None:
+    def __init__(self, directory: Path, side: str,
+                 on_error: Callable[[Path, BaseException], None] | None = None) -> None:
         if side not in SIDES:
             raise ValueError(side)
         self.dir = Path(directory)
@@ -33,6 +39,8 @@ class Mailbox:
         self.other = SIDES[1 - SIDES.index(side)]
         self.sent = len(list(self.dir.glob(f"{side}-*.json")))  # a reopened session continues the same chat
         self.read = 0
+        self.on_error = on_error
+        self.errors: list[str] = []  # every failed read, in order (also reported to ``on_error``)
 
     def send(self, message: dict[str, Any]) -> int:
         n = self.sent
@@ -47,8 +55,15 @@ class Mailbox:
         path = self.dir / f"{self.other}-{self.read:04d}.json"
         if not path.exists():
             return None
+        try:
+            found = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:  # retried on the next poll; the message is never skipped
+            self.errors.append(f"{path.name}: {type(exc).__name__}: {exc}")
+            if self.on_error is not None:
+                self.on_error(path, exc)
+            return None
         self.read += 1
-        return json.loads(path.read_text(encoding="utf-8"))
+        return found
 
     def skip_to_end(self) -> None:
         """Mark every message the other side has written so far as read (a reopened session starts fresh)."""

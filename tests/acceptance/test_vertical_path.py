@@ -1,10 +1,11 @@
-"""The vertical UAT (v1): a fresh project and a normal operator session, from setup to a published one-line fix.
+"""The vertical UAT (spec v2): a fresh project and a normal operator session, from setup to a published one-line fix.
 
 docs/implementation/vertical-uat.md states what it proves, its actors, its scenarios (V1 to V4), the burden ledger and
 the hard limits. **It is expected to fail on today's main**: its first job is to measure by how much. Every scenario
 goes to the end and writes its ledger (``vertical-ledger.json`` and a one-screen summary) whatever it finds, then
 asserts. Nothing here is xfailed, skipped or softened; the job is in shadow (``VERTICAL_MODE``), outside the merge
-gate, until the operator flips it.
+gate, until the operator flips it. Windows is outside the enforced gate (the operator, Q1(e)): its job keeps running
+and reporting, and every verdict it prints leads with its unqualified state and the conditions still open.
 
 The actors are all scripted and offline: the operator (``vertical/scripted_operator.py``: only what a human types),
 the Lead (``vertical/lead.py``: no AEW knowledge, inside the fake OpenCode TUI that the real ``aew opencode`` starts,
@@ -16,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -28,7 +28,7 @@ from conftest import git, run_aew
 from notifier import recorder
 from vertical import workers
 from vertical.chat import Mailbox
-from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger
+from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger, diagnoses
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -36,6 +36,8 @@ from vertical.scripted_operator import (
     lead_events,
     lead_spec,
     new_world,
+    stage_intents,
+    staled_by,
 )
 
 from aew.harness import runlog
@@ -53,23 +55,28 @@ IDEAL_PATH: dict[str, dict[str, str]] = {
              "ideal": "initializes the project; confers no authority"},
     "configure": {"input": 'aew settings set checks.unit.command "python -m pytest -q tests"', "status": PROPOSED,
                   "ideal": "one command that validates and saves a setting; saving is the adoption"},
+    # Spec v2: opening AEW opens the operator console, which asks for the PIN at most once per endpoint lifetime
+    # (per project, per login session). The auto-opened console is not a counted step. Until B1, the ideal attempt
+    # fails and today's fallback (the credential in AEW_LEAD_TOKEN) is counted as before.
     "open": {"input": "aew opencode", "status": EXISTS,
-             "ideal": "opens the Lead session, runs preflight and authenticates the operator once (PROPOSED "
-                      "behaviour): no credential, no variable, no seat to manage"},
+             "ideal": "opens the operator console, which asks for the PIN (at most once per endpoint lifetime), then "
+                      "the Lead session, and runs preflight (PROPOSED behaviour): no credential, no variable, no "
+                      "seat to manage"},
     "ask": {"input": workers.REQUEST, "status": EXISTS, "ideal": "a chat line to the Lead"},
     "decide": {"input": "yes", "status": EXISTS,
                "ideal": "answers only real judgements: the plan, and the publish (unless a grant covers it)"},
     "exit": {"input": "/exit", "status": EXISTS, "ideal": "ends the Lead session; work in flight is untouched"},
     "reopen": {"input": "aew opencode", "status": EXISTS,
-               "ideal": "resumes without a takeover or a credential, and says where things stand in words "
-                        "(PROPOSED behaviour)"},
+               "ideal": "resumes without a takeover or a credential, and says where things stand in words; the "
+                        "console's PIN is asked again only by a new endpoint (PROPOSED behaviour)"},
     "preflight": {"input": "aew preflight", "status": PROPOSED,
                   "ideal": "readiness: fails before any Ticket exists, naming the cause and the fix"},
     "change_model": {"input": "aew settings set execution.roles.implementer.model other/cheaper-model",
                      "status": PROPOSED,
                      "ideal": "one operator action that validates and saves; no raw YAML, no adopt, no restart"},
     "raise": {"input": "aew lead mode raise run", "status": EXISTS,
-              "ideal": "the operator raises the Lead's steering mode at the operator endpoint: a decision"},
+              "ideal": "the operator raises the Lead's steering mode at the operator endpoint: a decision, confirmed "
+                       "on the endpoint's console on every platform (never a console challenge)"},
 }
 
 
@@ -125,6 +132,7 @@ def open_session(op: Operator, step: str, *, steering: bool = False):
     spec = lead_spec(op.lab, steering=steering)
     session = op.open_session(step, ideal_argv(row), spec)
     first = op.first_words(session)
+    console_opened(op, step)
     if first is not None:
         return session, first
     op.fallback(step, IDEAL_PATH[row]["input"], session.output(), "export AEW_LEAD_TOKEN=<credential>; aew opencode")
@@ -136,10 +144,26 @@ def open_session(op: Operator, step: str, *, steering: bool = False):
     return session, first
 
 
+def console_opened(op: Operator, step: str) -> None:
+    """Whether opening AEW opened the operator console (spec v2, the ``open`` row): an endpoint is live for the
+    project that the test did not start in-process. Recorded, never counted: the auto-opened console is not a step.
+    The PIN it asks for is counted by ``Ledger.pin_entered`` (at most once per endpoint lifetime), wired with the
+    console by B1; nothing opens one before B1."""
+    from aew.harness import operator_client
+
+    found = operator_client.status(op.lab.aew_root)
+    opened = bool(found.get("running")) and found.get("pid") != os.getpid()
+    op.ledger.observe("open.console", step=step, auto_opened=opened,
+                      endpoint={k: found.get(k) for k in ("pid", "started_at")} if opened else None)
+
+
 def setup_operator(tmp_path: Path, scenario: str, *, steering: bool = False, **world: Any) -> Operator:
     lab = new_world(tmp_path, **world)
     ledger = Ledger(scenario, steering=steering)
-    op = Operator(lab, ledger, tmp_path, Mailbox(tmp_path / "sync" / "chat", "operator"))
+    chat = Mailbox(tmp_path / "sync" / "chat", "operator",
+                   on_error=lambda path, exc: ledger.observe("chat_read_error", file=path.name,
+                                                             error=f"{type(exc).__name__}: {exc}"[:300]))
+    op = Operator(lab, ledger, tmp_path, chat)
     op.allowed_heads.add(git("rev-parse", "main", cwd=lab.root))
     res = op.type("init", ideal_argv("init"))
     assert res.returncode == 0, res.stderr
@@ -163,6 +187,15 @@ def write_out(op: Operator, request: pytest.FixtureRequest) -> Path:
 
 def result_problems(op: Operator) -> list[str]:
     """The operator gets the result: the diff, an evidence summary, and the commit."""
+    ended = [o for o in op.ledger.observations if o["kind"] in ("lead_silent", "lead.lead_error")]
+    if not op.reports and ended:  # named with whose fault it is, as far as the evidence goes (review of #213, G2, H1)
+        o = ended[0]
+        what = (f"went silent waiting for {o.get('waiting_for')}" if o["kind"] == "lead_silent"
+                else f"ended with an error: {o.get('error')}")
+        side = ("a harness fault, not a product result" if o.get("fault") == "harness" else
+                "the product's (the aew-lead MCP server ended)" if o.get("fault") == "product" else
+                "fault not established: read as a possible product hang")
+        return [f"the scripted Lead {what} ({side}; {o.get('why') or ''})"]
     if not op.reports:
         stuck = [m for m in op.said if m.get("type") == "stuck"]
         return [f"no result reached the operator{': ' + stuck[-1]['text'] if stuck else ''}"]
@@ -197,15 +230,52 @@ def verdict(op: Operator, *, decisions: tuple[str, ...] | None = V1_DECISIONS,
     return problems
 
 
+def assert_verdict(op: Operator, problems: list[str]) -> None:
+    """Every problem fails the test, on every platform: nothing is softened. On Windows the verdict leads with its
+    unqualified state and the conditions still open (``Ledger.verdict_text``; the operator, Q1(e))."""
+    assert not problems, op.ledger.verdict_text(problems)
+
+
 def finish(op: Operator, session) -> None:
     op.end_session(session, "exit")
     merge_lead(op)
+    stale_attribution(op)
     containment(op.lab, op.ledger)
     if op.ledger.steering:
         steering_facts(op)
     if "publish_needs_decision" not in op.ledger.hard_limits:
         op.check_heads("at the end")
         op.ledger.hard_limits.setdefault("publish_needs_decision", {"outcome": HELD})
+
+
+def stale_attribution(op: Operator) -> None:
+    """For each STALE_REVISION the Lead met, the commit that staled it: the first transition after the revision the
+    call expected, read from the transition log, attributed through the stage intent it belongs to (the steering
+    loop's when that intent is auto-run; ``staled_by``). It makes the steering-on variance attributable; it is
+    recorded, never counted (counting stays with `stale_retries` and `refusals`)."""
+    from aew.engine.outbox import LogView
+
+    def expect_rev(e: dict[str, Any]) -> Any:
+        args = e.get("arguments")
+        return (args.get("expect_rev") if isinstance(args, dict) else
+                args[args.index("--expect-rev") + 1] if isinstance(args, list) and "--expect-rev" in args else None)
+
+    view = LogView(op.lab.aew_root, None)
+    events = lead_events(op.lab)
+    intents = stage_intents(op.lab.aew_root)
+    for e in events:
+        error = ((e.get("stopped") or {}).get("error") or {}) if e.get("kind") == "call" else {}
+        if error.get("code") != "STALE_REVISION":
+            continue
+        expected = expect_rev(e)
+        record: dict[str, Any] = {}
+        try:
+            record = view.resolve(int(expected) + 1) or {} if expected is not None else {}
+        except Exception as exc:  # recorded, never hidden: attribution is evidence, not a verdict  # noqa: BLE001
+            record = {"actor": f"unreadable: {exc}"[:200]}
+        op.ledger.observe("stale_revision", tool=e.get("tool"), expect_rev=expected, step=e.get("step"),
+                          **staled_by(record, intents), actor=record.get("actor"), op=record.get("op"),
+                          summary=record.get("summary"), revision=record.get("revision"))
 
 
 def steering_facts(op: Operator) -> None:
@@ -270,7 +340,7 @@ def test_v1_fresh_path_reaches_a_published_fix_with_no_machinery(tmp_path, world
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 # ---------------------------------------------------------------------------------------------- V1: the hard limits
@@ -317,7 +387,7 @@ def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, requ
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=None, limits=("semantic_conflict", "publish_needs_decision", "containment"))
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 def semantic_conflict(op: Operator, moved: dict[str, str]) -> None:
@@ -367,7 +437,7 @@ def test_v1_a_compatible_move_rebuilds_and_publishes_without_ceremony(tmp_path, 
     after = labels[labels.index("publish") + 1:] if "publish" in labels else []
     if after:
         problems.append(f"the operator was asked again after approving the publish: {after}")
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 # The evidence mismatch, independent of U14: the project's check also changes a TRACKED file (each run appends a line),
@@ -393,7 +463,7 @@ def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, req
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=None, limits=("evidence_mismatch", "publish_needs_decision", "containment"))
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 # The refusals that are about evidence and its snapshot (a git or usage error is not the gate speaking).
@@ -514,7 +584,7 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(tmp_path, world, request):
@@ -558,7 +628,7 @@ def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(
             problems.append(f"the forced path did not run its {step} step: {facts.get('chain')}")
     if facts.get("interrupted"):
         problems.append("the Ticket was INTERRUPTED")
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request):
@@ -573,7 +643,7 @@ def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request)
     finally:
         write_out(op, request)
     problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 def lead_gone(session: Any) -> bool:
@@ -688,22 +758,22 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
         accepted = bool(want.get("accept_as_typed")) and res.returncode == 0
         op.ledger.observe("v3", case=case, preflight_exit=res.returncode, preflight=said[-1500:],
                           doctor_exit=doctor.returncode,
-                          doctor_names_cause=bool(re.search(want["cause"], doctor.stdout + doctor.stderr)),
+                          doctor_names_cause=diagnoses(doctor.stdout + doctor.stderr, want["cause"]),
                           operator_input_was_the_harness_id=bool(want.get("accept_as_typed")),
                           accepted_as_typed=accepted)
         if not accepted:
             if res.returncode == 0:
                 problems.append(f"readiness passed with the cause in place: {said[-300:]}")
-            elif not re.search(want["cause"], said):
+            elif not diagnoses(said, want["cause"]):
                 problems.append(f"readiness did not name the cause {want['cause']}: {said[-300:]}")
-            elif not re.search(want["fix"], said):
+            elif not diagnoses(said, want["fix"]):
                 problems.append(f"readiness did not name the fix {want['fix']}: {said[-300:]}")
         launched = launched_anything(op)
         if launched:
             problems.append(f"something was launched before any Ticket: {launched}")
     finally:
         write_out(op, request)
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 def launched_anything(op: Operator) -> list[str]:
@@ -747,7 +817,7 @@ def test_v4_changing_a_setting_is_one_action_that_validates_and_saves(tmp_path, 
     problems = verdict(op) + result_problems(op)
     if pin.get("model") != CHEAPER["model"]:
         problems.append(f"the implementer ran on {pin.get('provider')}/{pin.get('model')}, not the new setting")
-    assert not problems, "\n".join(problems) + "\n\n" + op.ledger.summary()
+    assert_verdict(op, problems)
 
 
 # ---------------------------------------------------------------------------------------------- steering

@@ -88,6 +88,10 @@ jobs:
         run: >-
           python tools/ci/check_assurance.py reference-reports --skips tests/platform-skips.yaml
           --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
+      - name: "D2's ratchet over the whole suite: new and stale output-rule keys (tests/helpers/discovery)"
+        if: always()
+        run: >-
+          python tools/ci/discovery_ratchet.py reference-reports --event schedule --summary "$GITHUB_STEP_SUMMARY"
       - name: Every shard job succeeded
         if: always()
         run: |

@@ -876,6 +876,88 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "vertical" not in ci  # not a job of the gate's workflow, nor anything its jobs run
 
 
+DISCOVERY_TEST = "tests/discovery/test_static_texts.py"
+
+
+def test_the_discovery_layer_is_its_own_lane_and_never_a_required_one():
+    """The discovery layer (vertical-uat.md §8): `tests/discovery` maps to its own lane, which no tier requires, and
+    which a unit or other directory never maps to."""
+    import lanes
+
+    assert lanes.lane_of(DISCOVERY_TEST, []) == "discovery"
+    assert lanes.lane_of(DISCOVERY_TEST, ["serial"]) == "discovery"  # ahead of any marker, like the vertical UAT
+    assert lanes.lane_of("tests/unit/test_discovery_rules.py", []) == "fast"
+    assert "discovery" in lanes.LANES
+    assert all("discovery" not in required for required in tier.LANES.values())
+
+
+@pytest.mark.parametrize("lane", [None, "fast", "serial", "integration", "acceptance", "regression", "adversarial",
+                                  "vertical"])
+def test_no_required_lane_collects_the_discovery_lane(lane):
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config(lane)) is True
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config(lane, live=True)) is True
+    assert lanes.ignore_collect(ROOT / "tests" / "unit", _Config(lane)) is None
+
+
+def test_the_discovery_job_collects_it():
+    import lanes
+
+    assert lanes.ignore_collect(ROOT / "tests" / "discovery", _Config("discovery")) is None
+
+
+def test_collection_proves_the_discovery_lane_split(tmp_path):
+    """The real collection, walking `tests/` as a lane job does (the large directories left out, for time): a required
+    lane never collects the discovery lane's tests at all (its lane report's `collected`, before any deselection), and
+    the discovery lane selects only them."""
+    import subprocess
+
+    skip = [f"--ignore=tests/{d.name}" for d in (ROOT / "tests").iterdir() if d.is_dir() and d.name != "discovery"]
+
+    def collect(lane: str) -> tuple[set[str], set[str]]:
+        report = tmp_path / f"{lane}.json"
+        out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                              "-p", "no:xdist", "--lane", lane, "--lane-report", str(report), *skip, "tests"],
+                             cwd=ROOT, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL,
+                             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        selected = {line.split("::")[0] for line in out.stdout.splitlines() if "::" in line}
+        return {n.split("::")[0] for n in json.loads(report.read_text(encoding="utf-8"))["collected"]}, selected
+
+    collected, selected = collect("discovery")
+    assert selected == {DISCOVERY_TEST} and DISCOVERY_TEST in collected
+    for lane in ("fast", "serial"):
+        collected, _ = collect(lane)
+        assert collected and DISCOVERY_TEST not in collected
+
+
+def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_nightly():
+    """The discovery workflow runs the lane on every pull request and on main, both OSes; ci.yml's gate decides the
+    runtime findings the lane jobs wrote beside their lane reports (against the base's allow-list on a pull request),
+    and nightly decides them over the whole suite."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "discovery.yml").read_text(encoding="utf-8"))
+    job = wf["jobs"]["discovery"]
+    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]
+    assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
+    run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))
+    assert "--lane discovery tests/discovery" in run["run"] and "continue-on-error" not in run
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    gate = ci["jobs"]["assurance"]["steps"]
+    ratchet = next(s for s in gate if "discovery_ratchet.py" in str(s.get("run", "")))
+    assert ratchet["if"] == "always()" and "continue-on-error" not in ratchet
+    assert "lane-reports" in ratchet["run"] and '--event "$EVENT"' in ratchet["run"]
+    assert 'GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml' in ratchet["run"]
+    # an accepted residual counts only on a pull request with the operator-merge label, read live (review of #218, M1)
+    assert '--repo "$REPO" --pr "$PR"' in ratchet["run"] and ratchet["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert gate.index(ratchet) < len(gate) - 1  # the jobs-for check stays last
+    nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
+    nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]
+    assert any("discovery_ratchet.py reference-reports --event schedule" in str(s.get("run", ""))
+               for s in nightly_steps)
+    reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
+    assert "--lane-report" in reference  # the capture writes beside it
+
+
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
     """A scheduled job that hits its timeout ends `cancelled`; the report must open the issue for it too (CI posture
     review 2026-10-05, finding 1: six of eight nightlies timed out silently)."""
@@ -1729,6 +1811,7 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 PRE_G3A_TIMEOUT_MIN = {
     "ci.yml": {"core": 20, "lanes": 30, "fastbase": 15},
     "vertical.yml": {"vertical": 45},
+    "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
     "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60},
     "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
 }

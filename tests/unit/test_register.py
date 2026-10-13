@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -243,6 +244,155 @@ def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
     assert register.main(["check"]) == 1
     out = capsys.readouterr().out
     assert "due is one of" in out and "future-work.md differs" not in out, out
+
+
+# A cell's text survives the YAML round trip. render rewrites the YAML from what it parsed, so what parsing drops or
+# retypes is lost for good: "by #224" became "by" (review of #225, T1), and the re-review found five more ways (U1).
+# render refuses and check reports instead (register.text_problems: lost_text on the raw tokens, strict_problems on
+# the parsed values). Each case: the text, then how many problems lost_text and strict_problems each name.
+LOST = {
+    "kept: quoted": ("Source: 'added by #224'\n", 0, 0),
+    "kept: no hash": ("Source: added by pull request 224\n", 0, 0),
+    "kept: a hash inside a word": ("Source: see a#b\n", 0, 0),
+    "kept: a block cell": ("Source: >-\n  added by #224\n", 0, 0),
+    "kept: a section number": ("sections:\n- number: 6\n  title: Follow-ups\n", 0, 0),
+    "comment": ("Source: added by #224\n", 1, 0),
+    "comment on a later line": ("Work: 'quoted # stays'\nSource: plain\n  continued # lost\n", 1, 0),
+    "anchor": ("Source: &ref see the record\n", 1, 0),
+    "anchor and alias": ("Work: &w see\nSource: *w\n", 2, 0),
+    "tag": ("Source: !!str see the record\n", 1, 0),
+    "double-quoted escape": ('Source: "C:\\new folder"\n', 1, 0),
+    "double-quoted line break": ('Source: "C:\n  new folder"\n', 1, 0),
+    "repeated key": ("Notes: first\nNotes: second\n", 0, 1),
+    "YAML 1.1 boolean": ("What: no\n", 0, 1),
+    "null": ("What: ~\n", 0, 1),
+    "float": ("Due: 1.10\n", 0, 1),
+    "octal-looking": ("Due: 012\n", 0, 1),
+    "date": ("Due: 2026-10-12\n", 0, 1),
+    "a key that is not text": ("no: x\n", 0, 1),
+}
+
+
+@pytest.mark.parametrize("case", sorted(LOST))
+def test_text_a_render_would_lose_or_change_is_named(case):
+    text, raw, parsed = LOST[case]
+    assert len(register.lost_text(text, "f.yaml")) == raw, register.lost_text(text, "f.yaml")
+    assert len(register.strict_problems(text, "f.yaml")) == parsed, register.strict_problems(text, "f.yaml")
+    assert len(register.text_problems(text, "f.yaml")) == raw + parsed
+
+
+def test_a_comment_is_named_by_its_line():
+    assert [p.split(":")[1] for p in register.lost_text(LOST["comment on a later line"][0], "f.yaml")] == ["3"]
+
+
+E79_SOURCE = "    Source: Designer ruling, 2026-10-12, C3 (approved with amendment)\n"
+PLANTED = {  # the re-review's five ways a render lost text (U1), and T1's comment, each in E79's Source
+    "comment": E79_SOURCE[:-1] + " by #224\n",
+    "anchor": "    Source: &ref Designer ruling C3 anchored\n",
+    "tag": "    Source: !!str Designer ruling C3 tagged\n",
+    "repeated key": E79_SOURCE + "    Source: Designer ruling C3 second\n",
+    "YAML 1.1 boolean": "    Source: no\n",
+    "double-quoted escape": '    Source: "see C:\\new folder"\n',
+}
+
+
+PLANTED.update({  # V1: what the dumper can only write double-quoted, which the next render would refuse
+    "tab": "    Source: 'Designer ruling,\tC3'\n",
+    "byte-order mark": "    Source: 'Designer ruling,﻿C3'\n",
+    "noncharacter": "    Source: 'Designer ruling, C3\U0010ffff'\n",
+    "space before a line break": "    Source: |-\n      Designer ruling, \n      C3\n",
+})
+ACCEPTED = {  # special to the reader or the emitter, yet written back unchanged: render twice is stable
+    "line separator": "    Source: 'Designer ruling, C3'\n",
+    "non-ASCII": "    Source: 'Designer ruling — C3, café 设计 🙂'\n",
+    "hash in quotes": "    Source: 'Designer ruling, C3 by #224'\n",
+    "line break before a space": "    Source: |-\n      Designer ruling,\n       C3\n",
+    "leading and trailing space": "    Source: ' Designer ruling, C3 '\n",
+}
+
+
+@pytest.mark.parametrize("case", sorted(ACCEPTED))
+def test_what_render_writes_the_next_render_accepts_unchanged(tmp_path, case):
+    """V1, the class: a validator paired with a generator passes the generator's own output."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace(E79_SOURCE, ACCEPTED[case]), encoding="utf-8", newline="\n")
+    assert register.render(tmp_path) == []
+    once = source.read_bytes()
+    assert register.render(tmp_path) == [] and source.read_bytes() == once
+
+
+def test_every_authorable_value_is_refused_or_written_so_the_next_render_accepts_it():
+    """The emitter's special cases, enumerated (PyYAML's analyze_scalar): every C0 and C1 control, DEL, the byte-order
+    mark, the noncharacters, and a space on either side of each line break. A value an author can write (it loads from
+    a single-quoted or block cell) is refused by strict_problems, or its dump passes text_problems."""
+    breaks = ["\n", "\x85", " ", " "]
+    specials = [chr(c) for c in [*range(0x100), 0x2028, 0x2029, 0xFEFF, 0xFFFD, 0xFFFE, 0xFFFF, 0x10FFFE, 0x10FFFF]]
+    specials += [" " + b for b in breaks] + [b + " " for b in breaks]
+    checked = 0
+    for s in specials:
+        value = f"a{s}b"
+        for authored in (f"k: '{value}'\n", "k: |-\n  " + value.replace("\n", "\n  ") + "\n"):
+            try:
+                if yaml.safe_load(authored)["k"] != value:
+                    continue
+            except yaml.YAMLError:
+                continue  # the reader refuses it, loudly
+            checked += 1
+            if not register.strict_problems(authored, "f.yaml"):
+                written = register.dump({"k": value})
+                assert register.text_problems(written, "f.yaml") == [], (repr(value), written)
+                assert yaml.safe_load(written)["k"] == value, repr(value)
+    assert checked > 200
+
+
+@pytest.mark.parametrize("case", sorted(PLANTED))
+def test_render_refuses_each_way_of_losing_text_and_writes_nothing(tmp_path, case):
+    """Through the real render, on a copy of the register: each planted cell is named, and every file stays
+    byte-identical."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
+                                                                 register.DUE_MD)]
+    text = source.read_text(encoding="utf-8")
+    assert text.count(E79_SOURCE) == 1, "the planted cell's anchor (E79's Source) moved"
+    source.write_text(text.replace(E79_SOURCE, PLANTED[case]), encoding="utf-8", newline="\n")
+    before = [p.read_bytes() for p in shared]
+    refused = register.render(tmp_path)
+    assert refused and all(p.startswith("docs/implementation/future-work.yaml") for p in refused), refused
+    assert [p.read_bytes() for p in shared] == before
+
+
+def test_render_refuses_to_drop_authored_text_and_check_names_it(tmp_path, monkeypatch, capsys):
+    """Planted in a copy of the register: an unquoted " #" leaves every file byte-identical and is named; the same text
+    quoted renders and reaches the page."""
+    _register_copy(tmp_path)
+    source = tmp_path / register.YAML.relative_to(register.ROOT)
+    shared = [tmp_path / p.relative_to(register.ROOT) for p in (register.YAML, register.MD, register.DUE_YAML,
+                                                                 register.DUE_MD)]
+    text = source.read_text(encoding="utf-8")
+    anchor = E79_SOURCE
+    assert text.count(anchor) == 1, "the planted cell's anchor (E79's Source) moved"
+    source.write_text(text.replace(anchor, anchor[:-1] + " by #224\n"), encoding="utf-8", newline="\n")
+    before = [p.read_bytes() for p in shared]
+    refused = register.render(tmp_path)
+    assert len(refused) == 1 and "future-work.yaml:" in refused[0] and "#224" in refused[0], refused
+    assert [p.read_bytes() for p in shared] == before
+    planted = register.source_problems(tmp_path)
+    assert planted == refused
+    quoted = "    Source: 'Designer ruling, 2026-10-12, C3 (approved with amendment) by #224'\n"
+    source.write_text(text.replace(anchor, quoted), encoding="utf-8", newline="\n")
+    assert register.render(tmp_path) == []
+    assert "C3 (approved with amendment) by #224" in shared[1].read_text(encoding="utf-8")
+    monkeypatch.setattr(register, "source_problems", lambda root=register.ROOT: planted)  # check reports them
+    capsys.readouterr()
+    assert register.main(["check"]) == 1
+    assert "is a YAML comment, which render drops" in capsys.readouterr().out
+
+
+def test_the_register_holds_no_text_a_render_would_lose():
+    assert register.source_problems() == []
 
 
 # ------------------------------------------------------------------------------------------------------- later notes

@@ -17,7 +17,7 @@
   "body": {
    "collection_basis": null,
    "continuity": "unknown",
-   "correlation_id": "corr:4f8437bb02e245c9b9a5b0e90ca63e1d",
+   "correlation_id": "corr:cc215c76ed1d404c81b1e1d7ca5f1701",
    "effective_recipient_ref": "fixture:recipient-operator",
    "items": [
     {
@@ -35,7 +35,7 @@
        "package_digest": null,
        "revision": null
       },
-      "last_progress_at": "2026-10-20T00:51:27Z",
+      "last_progress_at": "2026-10-20T01:11:26Z",
       "limitations": [
        "source_unqualified",
        "unknown_remote_effect",
@@ -66,7 +66,7 @@
       "source_epoch": "fixture:r01-epoch-1",
       "stall_assessment": "POSSIBLE_STALL",
       "stall_basis_ref": "fixture:r01-stall-continue-1",
-      "started_at": "2026-10-20T00:06:27Z",
+      "started_at": "2026-10-20T00:26:26Z",
       "wake_assessment": "NOT_ESTABLISHED",
       "wake_basis_ref": null,
       "whole_invocation_effect_clearance": "NOT_ESTABLISHED",
@@ -97,7 +97,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer-r01",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T01:06:27Z",
+        "observed_at": "2026-10-20T01:26:26Z",
         "owner": "R01",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -126,7 +126,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer-wis",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T01:06:27Z",
+        "observed_at": "2026-10-20T01:26:26Z",
         "owner": "WIS",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -155,7 +155,7 @@
         "governing_owner": null,
         "issuer_ref": "unavailable:HEB",
         "observation_state": "unavailable",
-        "observed_at": "2026-10-20T01:06:40Z",
+        "observed_at": "2026-10-20T01:26:30Z",
         "owner": "HEB",
         "owner_coverage_class": "not_established",
         "qualification": "not_established",
@@ -184,7 +184,7 @@
         "governing_owner": null,
         "issuer_ref": "unavailable:IF10",
         "observation_state": "unavailable",
-        "observed_at": "2026-10-20T01:06:40Z",
+        "observed_at": "2026-10-20T01:26:30Z",
         "owner": "IF10",
         "owner_coverage_class": "not_established",
         "qualification": "not_established",
@@ -213,7 +213,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T00:51:27Z",
+        "observed_at": "2026-10-20T01:11:26Z",
         "owner": "IF12",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -250,7 +250,7 @@
       "governing_owner": null,
       "issuer_ref": "fixture:issuer-r01",
       "observation_state": "unknown",
-      "observed_at": "2026-10-20T01:06:27Z",
+      "observed_at": "2026-10-20T01:26:26Z",
       "owner": "R01",
       "owner_coverage_class": "not_established",
       "qualification": "unqualified",
@@ -276,7 +276,7 @@
    "mode": "detail",
    "outcome": "partial",
    "page": null,
-   "projection_as_of": "2026-10-20T01:06:40Z",
+   "projection_as_of": "2026-10-20T01:26:30Z",
    "wire_version": "0.3.4"
   }
  }

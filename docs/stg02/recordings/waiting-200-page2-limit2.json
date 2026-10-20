@@ -1,7 +1,7 @@
 {
  "request": {
   "method": "GET",
-  "path": "/v1/read/waiting?limit=2&cursor=c1.2.a26b32ffc8a5edaa20779e3c573712a9",
+  "path": "/v1/read/waiting?limit=2&cursor=c1.2.77ecad9a6243ccb0bd7e64eae01d0fed",
   "headers": {
    "X-AEW-Wire-Version": "0.3.4"
   },
@@ -23,7 +23,7 @@
     "governing_owner": null,
     "issuer_ref": "fixture:issuer-cni",
     "observation_state": "unknown",
-    "observed_at": "2026-10-20T01:06:27Z",
+    "observed_at": "2026-10-20T01:26:26Z",
     "owner": "CNI",
     "owner_coverage_class": "not_established",
     "qualification": "unqualified",
@@ -42,7 +42,7 @@
     "source_version": "fixture:cni-v1"
    },
    "continuity": "unknown",
-   "correlation_id": "corr:6f633d267a2345c295e2248fbe0f4db1",
+   "correlation_id": "corr:882d2da5b61e489faf79a5e20b71bcb1",
    "effective_recipient_ref": "fixture:recipient-operator",
    "items": [
     {
@@ -90,7 +90,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer-wis",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T01:06:27Z",
+        "observed_at": "2026-10-20T01:26:26Z",
         "owner": "WIS",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -119,7 +119,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer-aev",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T01:06:27Z",
+        "observed_at": "2026-10-20T01:26:26Z",
         "owner": "AEV",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -148,7 +148,7 @@
         "governing_owner": null,
         "issuer_ref": "fixture:issuer-heb",
         "observation_state": "unknown",
-        "observed_at": "2026-10-20T01:06:27Z",
+        "observed_at": "2026-10-20T01:26:26Z",
         "owner": "HEB",
         "owner_coverage_class": "not_established",
         "qualification": "unqualified",
@@ -185,7 +185,7 @@
       "governing_owner": null,
       "issuer_ref": "fixture:issuer-cni",
       "observation_state": "unknown",
-      "observed_at": "2026-10-20T01:06:27Z",
+      "observed_at": "2026-10-20T01:26:26Z",
       "owner": "CNI",
       "owner_coverage_class": "not_established",
       "qualification": "unqualified",
@@ -217,7 +217,7 @@
     "page_size": 2,
     "scope": "effective_recipient_view"
    },
-   "projection_as_of": "2026-10-20T01:06:40Z",
+   "projection_as_of": "2026-10-20T01:26:30Z",
    "wire_version": "0.3.4"
   }
  }

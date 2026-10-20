@@ -8,8 +8,8 @@
   },
   "body": {
    "wire_version": "o01-command-0.2-review-candidate",
-   "request_set_ref": "fixture:request-continue.rec20261020T010640.n21",
-   "client_request_key": "fixture:key-continue.rec20261020T010640.n21",
+   "request_set_ref": "fixture:request-continue.rec20261020T012630.n21",
+   "client_request_key": "fixture:key-continue.rec20261020T012630.n21",
    "recipient_ref": "fixture:recipient-operator",
    "installation_ref": "fixture:installation-slice",
    "consent_set_ref": null,
@@ -53,23 +53,23 @@
   },
   "body": {
    "carrier_state": "COMPLETE_WITH_PER_INTENT_RESULTS",
-   "observed_at": "2026-10-20T01:06:40Z",
+   "observed_at": "2026-10-20T01:26:30Z",
    "recipient_ref": "fixture:recipient-operator",
-   "request_set_ref": "fixture:request-continue.rec20261020T010640.n21",
+   "request_set_ref": "fixture:request-continue.rec20261020T012630.n21",
    "results": [
     {
      "admission_state": "REJECTED",
      "cancellation_state": "NONE",
      "effect_state": "FAILED_CONFIRMED_NO_EFFECT",
      "intent_ref": "fixture:intent-continue-held",
-     "operation_ref": "op:a546845ecf1704a7a40587759f56e012",
+     "operation_ref": "op:5c771f50750283efd49ff5011ab4c38a",
      "owner": "HEB",
-     "owner_evidence_ref": "fixture:heb-evidence-a546845ecf1704a7a40587759f56e012",
+     "owner_evidence_ref": "fixture:heb-evidence-5c771f50750283efd49ff5011ab4c38a",
      "reason_code": "PRECONDITION_STALE",
      "residual_remote_effect": "NONE_QUALIFIED"
     }
    ],
-   "source_valid_until": "2026-10-20T01:21:40Z",
+   "source_valid_until": "2026-10-20T01:41:30Z",
    "wire_version": "o01-command-0.2-review-candidate"
   }
  }

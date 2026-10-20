@@ -8,8 +8,8 @@
   },
   "body": {
    "wire_version": "o01-command-0.2-review-candidate",
-   "request_set_ref": "fixture:request-continue.rec20261020T010640.p07-changed",
-   "client_request_key": "fixture:key-continue.rec20261020T010640.p07",
+   "request_set_ref": "fixture:request-continue.rec20261020T012630.p07-changed",
+   "client_request_key": "fixture:key-continue.rec20261020T012630.p07",
    "recipient_ref": "fixture:recipient-operator",
    "installation_ref": "fixture:installation-slice",
    "consent_set_ref": null,
@@ -53,7 +53,7 @@
   },
   "body": {
    "code": "request_key_conflict",
-   "correlation_id": "corr:b52a57018a5c453e923fe0b32a6b186f",
+   "correlation_id": "corr:7c2164d0d9784383b1c57bf12f2a21ab",
    "retry": "never",
    "status": 409,
    "title": "This client request key was used for a different request",

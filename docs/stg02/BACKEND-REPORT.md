@@ -144,7 +144,7 @@ The 503s were made with the test-only outage switch (`POST /_test/engine-outage`
 
 ## 4. The driver's result
 
-The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `6b10073`, run against this server with the scratch project. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config`).
+The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `6109e0a` (its driver files last changed in `6b10073`), run against this server at commit `d09f5096` with the scratch project. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config`).
 
 | Run | Output | Result |
 |---|---|---|

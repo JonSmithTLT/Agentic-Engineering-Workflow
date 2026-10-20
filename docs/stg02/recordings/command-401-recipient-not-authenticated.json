@@ -8,8 +8,8 @@
   },
   "body": {
    "wire_version": "o01-command-0.2-review-candidate",
-   "request_set_ref": "fixture:request-continue.rec20261020T010640.p07.rec20261020T010640.rcpt",
-   "client_request_key": "fixture:key-continue.rec20261020T010640.p07.rec20261020T010640.rcpt",
+   "request_set_ref": "fixture:request-continue.rec20261020T012630.p07.rec20261020T012630.rcpt",
+   "client_request_key": "fixture:key-continue.rec20261020T012630.p07.rec20261020T012630.rcpt",
    "recipient_ref": "fixture:recipient-other",
    "installation_ref": "fixture:installation-slice",
    "consent_set_ref": null,
@@ -53,7 +53,7 @@
   },
   "body": {
    "code": "authentication_unqualified",
-   "correlation_id": "corr:342099a647954f8abe7b32cefc6b5f30",
+   "correlation_id": "corr:2c11d33b2ce74ac58e9c21f60e0bc9b0",
    "retry": "reauthenticate",
    "status": 401,
    "title": "The request is not authenticated",

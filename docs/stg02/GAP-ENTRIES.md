@@ -310,7 +310,7 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 
 **Interim choice.** (a). While the entitlement is withdrawn, every D-01 read, the owner GET and every lookup answer `404 not_found_or_not_disclosable`. A submission under an unused key is still decided by its origin (the profile's accepted residual LEAD-F21). Test: `test_a_lookup_after_read_entitlement_is_withdrawn_is_one_nondisclosing_404`.
 
-**Entitlement is stated, never presumed.** CS-04 step 1 refuses a lookup when the recipient lacks current read entitlement "or the world does not state it". The fixture world states it (`read_entitled`: the operator and the other recipient), and the server records it at start; a withdrawal is recorded and kept across restarts. A recipient the world does not name, even with a valid token, is not entitled: every read is the nondisclosing `404`. Test: `test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled`.
+**Entitlement is stated, never presumed.** CS-04 step 1 refuses a lookup when the recipient lacks current read entitlement "or the world does not state it". The fixture world states it (`read_entitled`: the operator and the other recipient), and the server records it at start; a withdrawal is recorded and kept across restarts, and a grant the world no longer states is dropped at the next start. A recipient the world does not name, even with a valid token, is not entitled: every read is the nondisclosing `404`, and the test-only route cannot grant it. Tests: `test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled` and `test_a_grant_the_world_no_longer_states_ends_at_restart_and_a_withdrawal_survives_it`.
 
 ## STG02-BE-16
 

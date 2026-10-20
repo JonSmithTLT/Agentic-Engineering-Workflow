@@ -44,6 +44,7 @@ import re
 import socket
 import sys
 import time
+import traceback
 from collections.abc import Callable
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -135,6 +136,16 @@ def _family(raw_path: str) -> str | None:
     if path.startswith("/o01/"):
         return "O01"
     return None
+
+
+# The request log is the operator's diagnostic record: a value taken from the request is bounded and carries no
+# control character, so a local client cannot forge a line or drive the operator's terminal (review R2-M1).
+LOG_METHOD_RE = re.compile(r"[A-Z]{1,16}")
+
+
+def log_text(text: str, limit: int) -> str:
+    """``text`` with every control and non-ASCII character escaped, cut to ``limit`` characters."""
+    return text.encode("unicode_escape").decode("ascii")[:limit]
 
 
 def refusal(raw_path: str) -> Answer:
@@ -272,8 +283,11 @@ def _test_route(s: Slice, path: str, body: bytes | None) -> Answer:
     except (UnicodeDecodeError, ValueError):
         return Answer(400, None, {"Content-Type": "text/plain"})
     if path == "/_test/read-entitlement":
+        recipient, entitled = str(req.get("recipient_ref") or s.fx.recipient), bool(req.get("entitled"))
+        if entitled and recipient not in s.fx.doc["read_entitled"]:  # a grant only restores what the world states
+            return Answer(400, None, {"Content-Type": "text/plain"})
         with s.ledger.transaction() as t:
-            t.set_entitled(str(req.get("recipient_ref") or s.fx.recipient), bool(req.get("entitled")))
+            t.set_entitled(recipient, entitled)
     elif s.engine is not None:
         s.engine.outage = bool(req.get("unavailable"))
     return Answer(204, None, {})
@@ -312,8 +326,9 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             body = self.rfile.read(n) if n else None
             try:
                 answer = handle(s, method, self.path, h, body)
-            except Exception:  # never a traceback to the client, and never an answer without the wire headers
-                LOG.exception("aew stg02: request failed")
+            except Exception as exc:  # never a traceback to the client, and never an answer without the wire headers
+                LOG.error("aew stg02: request failed\n%s", "\n".join(
+                    log_text(line, 1000) for line in "".join(traceback.format_exception(exc)).splitlines()[-40:]))
                 answer = failure(self.path)
             self._send(answer, method, t0)
 
@@ -335,7 +350,8 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             self.end_headers()
             if method != "HEAD":  # a HEAD answer has the headers of the GET it stands for, and no body
                 self.wfile.write(raw)
-            LOG.info("%s %s %d %.0fms", method, urlsplit(self.path).path[:256], a.status, (time.monotonic() - t0) * 1e3)
+            LOG.info("%s %s %d %.0fms", method if LOG_METHOD_RE.fullmatch(method) else "<other>",
+                     log_text(urlsplit(self.path).path, 256), a.status, (time.monotonic() - t0) * 1e3)
 
         def __getattr__(self, name: str) -> Any:
             """Every method the request line names (GET, POST, OPTIONS, HEAD, PATCH, TRACE, ``get``, any token) reaches

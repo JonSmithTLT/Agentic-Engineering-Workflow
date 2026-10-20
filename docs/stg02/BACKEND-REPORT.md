@@ -2,7 +2,7 @@
 
 **For:** the lead designer, who copies this into the architecture workspace (the handoff says not to edit it).
 **Contract:** the adopted STG-01 v0.5.4 ZIP, SHA-256 `64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f`: D-01 0.3.4, O-01 `o01-command-0.2-review-candidate`, the selection profile and the owner pins.
-**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (55), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
+**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (58), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
 **Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-16.
 **Date:** 2026-10-19 (UTC 2026-10-20).
 
@@ -163,7 +163,7 @@ The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at 
 |---|---|---|
 | default clock, driver at `75d30cf`, synthetic bearer | [`driver-output.txt`](driver-output.txt) | **PASS: 47 passed, 0 failed, 6 skipped** (A1: 12 of 12) |
 
-Before running against the server, the driver's self-test passed on this machine (clean run, 10 of 10 mutations killed). The same driver without a bearer in the config gives 35 passed, 0 failed, 7 skipped (the seventh is A1). Earlier, the driver at `6b10073` fixed "now" once at its start: its default clock gave 30 passed and 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), and 35 passed with `--now` set past the run's start. Those 5 FAILs were classified before anything changed, as the driver's own (STG02-BE-02). Neither this server nor the contract changed for them; the designer fixed the driver.
+Before running against the server, the driver's self-test passed on this machine (clean run; 10 of 10 mutations killed at `006f45b`, 11 of 11 at `75d30cf`, the latter run by the independent reviewer). The same driver without a bearer in the config gives 35 passed, 0 failed, 7 skipped (the seventh is A1). Earlier, the driver at `6b10073` fixed "now" once at its start: its default clock gave 30 passed and 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), and 35 passed with `--now` set past the run's start. Those 5 FAILs were classified before anything changed, as the driver's own (STG02-BE-02). Neither this server nor the contract changed for them; the designer fixed the driver.
 
 **Why each SKIP remains (a SKIP is not a pass):**
 
@@ -185,13 +185,14 @@ Before running against the server, the driver's self-test passed on this machine
 - HEB's own outcomes from a fixed state: no eligibility for the work (`HEB_STATE_UNKNOWN`) is held, nothing allocated; a predecessor from an earlier HEB epoch (`HEB_STALE_PREDECESSOR`) is an allocated `PRECONDITION_STALE`;
 - an expired entry and a dropped receipt (`409 unresolved_no_redispatch`);
 - an owner record past its retention, never disclosed, before any purge has run;
-- read entitlement stated, never presumed;
+- read entitlement stated, never presumed, and an earlier world's grant ended at restart;
 - every identifier encoding rule;
 - cursors bound to recipient, page size and visible set (a cursor replayed after the visible set changed is `409`);
 - a hidden member changing nothing, for fixture members; AEW's real records reach one recipient only (BE-16);
 - a repeated `X-AEW-Wire-Version`, `X-AEW-O01-Wire`, `Authorization`, `Host`, `Origin` or `Content-Length`, refused in either order;
 - every other method (`PUT`, `DELETE`, `PATCH`, `TRACE`, `HEAD`, any token) and every unrouted `/o01/` path, answered with the route family's Problem and wire headers;
 - the 503 path;
+- request text in the server's log: the method only when it is a plain upper-case token, the path and an error's traceback escaped and bounded, so a client cannot forge a log line;
 - the two-process fence, with the overlap forced, on the key ledger only (BE-08);
 - a second server unable to bind the same port;
 - every vendored adopted file against its sealed pin.
@@ -199,7 +200,7 @@ Before running against the server, the driver's self-test passed on this machine
 ## 5. The four push-back points: what actually happened
 
 1. **Delegation issuance** (STG02-BE-06). A grant bound to the exact intent digest is per selection, not standing. It is invalidated by any HEB epoch change, and it is never consumed: one grant admitted the same intent under every new key. Revoked and forged are one code.
-2. **The session** (STG02-BE-07). Not used for A04, which is refused `ORIGIN_NOT_ESTABLISHED`. For reads, the bearer has no issuer, and the driver sends none. The slice uses synthetic tokens plus a labelled tokenless fixture recipient.
+2. **The session** (STG02-BE-07). Not used for A04, which is refused `ORIGIN_NOT_ESTABLISHED`. For reads, the bearer has no issuer. The driver at `75d30cf` sends the config's synthetic bearer (`--driver-bearer`); the slice's tokens are synthetic, and the labelled tokenless fixture recipient is left to the response recorder.
 3. **Compare-and-fence across processes** (STG02-BE-08). No problem in the slice: one SQLite file, one `BEGIN IMMEDIATE` per submission, proved with two real processes. It holds only while the carrier's ledger and HEB share a store. With a separate HEB it becomes two commits, and only HEB-side idempotency on the carrier-derived identity closes the gap. The fence was exercised on the key ledger only: the fixture HEB's state never moves while the server runs, so the slice does not demonstrate the bound the BE-06 ruling assumes.
 4. **Retention** (STG02-BE-09). Durations chosen: receipt 900 s, stored receipt 7 days after expiry, owner records 30 days. The finding is that CS-04 forbids ever forgetting a key, so the key ledger is unbounded.
 

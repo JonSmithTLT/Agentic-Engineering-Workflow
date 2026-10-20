@@ -103,7 +103,12 @@ class Txn:
         return row is not None and bool(row["entitled"])
 
     def seed_entitlement(self, recipients: list[str]) -> None:
-        """The world's stated entitlements, once: a later withdrawal (a recorded row) is kept across restarts."""
+        """Record the world's stated entitlements at start. A grant the world no longer states is dropped (review
+        R2-M2: an earlier world's statement is not this world's); a recorded withdrawal is kept across restarts."""
+        granted = [row["recipient"] for row in self.c.execute("SELECT recipient FROM entitlement WHERE entitled = 1")]
+        for r in granted:
+            if r not in recipients:
+                self.c.execute("DELETE FROM entitlement WHERE recipient = ?", (r,))
         for r in recipients:
             self.c.execute("INSERT OR IGNORE INTO entitlement (recipient, entitled) VALUES (?, 1)", (r,))
 

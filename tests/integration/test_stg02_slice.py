@@ -681,8 +681,66 @@ def test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_en
             st, h, b = lv.get(path, stranger)
             assert st == 404 and b["code"] == "not_found_or_not_disclosable", (path, b)
         assert lv.get("/v1/read/waiting", {"Authorization": "Bearer token-other"})[0] == 200
+        st, _, _ = lv.request("POST", "/_test/read-entitlement",
+                              body={"recipient_ref": "fixture:recipient-stranger", "entitled": True})
+        assert st == 400 and lv.get("/v1/read/waiting", stranger)[0] == 404  # a test grant restores, never invents
     finally:
         lv.close()
+
+
+def test_a_grant_the_world_no_longer_states_ends_at_restart_and_a_withdrawal_survives_it(tmp_path: Path):
+    """Review R2-M2: the ledger keeps withdrawals, never an earlier world's grants."""
+    other = {"Authorization": "Bearer token-other"}
+    state = tmp_path / "state"
+    lv = Live(SV.Slice(state, tokens=TOKENS, test_routes=True, clock=lambda: T0), [T0])
+    try:
+        assert lv.get("/v1/read/waiting", other)[0] == 200
+        lv.entitle(False)  # the operator's entitlement withdrawn
+    finally:
+        lv.close()
+    from aew.stg02.world import WORLD_PATH
+
+    doc = json.loads(WORLD_PATH.read_text(encoding="utf-8"))
+    doc["read_entitled"] = ["fixture:recipient-operator"]
+    world = tmp_path / "world.json"
+    world.write_text(json.dumps(doc), encoding="utf-8")
+    lv = Live(SV.Slice(state, tokens=TOKENS, clock=lambda: T0, world=world), [T0])
+    try:
+        assert lv.get("/v1/read/waiting", other)[0] == 404  # no longer stated: no longer entitled
+        assert lv.get("/v1/read/waiting", {"Authorization": "Bearer token-operator"})[0] == 404  # still withdrawn
+    finally:
+        lv.close()
+
+
+def test_request_text_reaches_the_log_bounded_and_without_control_characters(live: Live,
+                                                                             caplog: pytest.LogCaptureFixture):
+    """Review R2-M1: a local client cannot forge a log line or drive the operator's terminal."""
+    import socket
+
+    def send(request_line: bytes) -> None:
+        with socket.create_connection(("127.0.0.1", live.port), timeout=30) as c:
+            c.sendall(request_line + f"\r\nHost: 127.0.0.1:{live.port}\r\nConnection: close\r\n\r\n".encode())
+            while c.recv(65536):
+                pass
+    with caplog.at_level("INFO", logger="aew.stg02"):
+        send(b"X\x1b[2J\x1b[31mFAKE" + b"A" * 5000 + b" /v1/read/waiting HTTP/1.1")
+        send(b"GET /v1/read/\x1b[31mX HTTP/1.1")
+    lines = [r.getMessage() for r in caplog.records if r.name == "aew.stg02"]
+    assert len(lines) == 2 and lines[0].startswith("<other> /v1/read/waiting 400")
+    assert lines[1].startswith("GET /v1/read/\\x1b[31mX ")
+    assert all(len(x) < 400 and not any(ord(ch) < 32 or ord(ch) == 127 for ch in x) for x in lines)
+
+
+def test_an_unexpected_errors_log_entry_escapes_what_the_request_put_in_it(live: Live,
+                                                                          monkeypatch: pytest.MonkeyPatch,
+                                                                          caplog: pytest.LogCaptureFixture):
+    def boom(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("from the request: \x1b[2J")
+    monkeypatch.setattr(live.s.reads, "waiting", boom)
+    with caplog.at_level("INFO", logger="aew.stg02"):
+        assert live.get("/v1/read/waiting")[0] == 503
+    (err,) = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert "RuntimeError" in err and "\\x1b[2J" in err and "\x1b" not in err and r"Traceback" in err
 
 
 def test_real_aew_records_are_disclosed_to_the_one_real_recipient_and_to_nobody_else(live: Live,

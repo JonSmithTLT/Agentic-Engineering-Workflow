@@ -338,10 +338,10 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             LOG.info("%s %s %d %.0fms", method, urlsplit(self.path).path[:256], a.status, (time.monotonic() - t0) * 1e3)
 
         def __getattr__(self, name: str) -> Any:
-            """Every method the request line names (GET, POST, OPTIONS, HEAD, PATCH, TRACE, any token) reaches
+            """Every method the request line names (GET, POST, OPTIONS, HEAD, PATCH, TRACE, ``get``, any token) reaches
             :meth:`_do`, so an unhandled one is the route family's refusal with its wire headers, never the stdlib's
-            bare 501."""
-            if name.startswith("do_") and name[3:].isupper():
+            bare 501. Nothing else looks up a missing ``do_*`` attribute."""
+            if name.startswith("do_"):
                 return lambda: self._do(name[3:])
             raise AttributeError(name)
 

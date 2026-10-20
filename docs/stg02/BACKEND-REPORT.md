@@ -2,7 +2,7 @@
 
 **For:** the lead designer, who copies this into the architecture workspace (the handoff says not to edit it).
 **Contract:** the adopted STG-01 v0.5.4 ZIP, SHA-256 `64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f`: D-01 0.3.4, O-01 `o01-command-0.2-review-candidate`, the selection profile and the owner pins.
-**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (53), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
+**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (55), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
 **Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-16.
 **Date:** 2026-10-19 (UTC 2026-10-20).
 
@@ -22,9 +22,19 @@ So every read is `partial`/`unknown`, every continuation axis is `unknown`, ever
 
 ## How to run it
 
+The server the driver runs against (it authenticates with the config's synthetic bearer):
+
+```bash
+python -m aew.stg02.server --port 4261 --state-dir <dir> --project <AEW repo root> --tokens <synthetic tokens file> --test-routes
+```
+
+The server the response recorder runs against (`tools/stg02/record_responses.py` sends no bearer for the operator):
+
 ```bash
 python -m aew.stg02.server --port 4261 --state-dir <dir> --project <AEW repo root> --tokens <synthetic tokens file> --fixture-recipient --test-routes
 ```
+
+The driver config:
 
 ```bash
 python -m aew.stg02.server --state-dir <dir> --tokens <synthetic tokens file> --test-routes --driver-bearer token-operator-synthetic --write-driver-config docs/stg02/driver-config.json

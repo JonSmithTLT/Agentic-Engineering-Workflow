@@ -729,7 +729,7 @@ def test_a_repeated_selecting_header_is_refused_in_either_order_never_last_wins(
                "not_found_or_not_disclosable")
 
 
-@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH", "TRACE", "HEAD", "PROPFIND"])
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH", "TRACE", "HEAD", "PROPFIND", "get", "Post"])
 def test_every_method_and_every_unrouted_o01_path_answers_the_familys_problem_with_its_headers(live: Live,
                                                                                               method: str):
     """Review M6: no method reaches the stdlib's bare 501, and no O-01 path its plain 404."""

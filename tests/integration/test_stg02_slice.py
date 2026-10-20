@@ -634,6 +634,20 @@ def test_the_driver_config_is_written_from_the_world_its_delegations_are_bound_t
     assert not A.o01_errors("CommandSet", cfg["command"]["continue_eligible_work"])
     assert all(not A.o01_errors("CommandSet", c["request"]) for c in cfg["c17_cases"].values())
     assert not any("matches_fixture" in r for r in cfg["reads"])  # every fact unqualified: no recorded envelope fits
+    assert "headers" not in cfg
+
+
+def test_the_driver_config_carries_only_a_bearer_this_server_maps_to_the_worlds_recipient(tmp_path: Path):
+    tokens = tmp_path / "tokens.json"
+    tokens.write_text(json.dumps(TOKENS), encoding="utf-8")
+    out = tmp_path / "driver-config.json"
+    base = ["--state-dir", str(tmp_path / "state"), "--tokens", str(tokens), "--write-driver-config", str(out)]
+    assert SV.main([*base, "--driver-bearer", "token-operator"]) == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["headers"] == {"Authorization": "Bearer token-operator"}
+    out.unlink()
+    assert SV.main([*base, "--driver-bearer", "token-other"]) == 2  # another recipient's token
+    assert SV.main([*base, "--driver-bearer", "token-never-issued"]) == 2
+    assert not out.exists()
 
 
 # ------------------------------------------------------------------------------------------------- review fixes

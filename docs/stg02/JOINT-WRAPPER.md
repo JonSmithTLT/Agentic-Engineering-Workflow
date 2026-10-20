@@ -20,9 +20,18 @@ Run standalone, without importing Engine code:
 python -I -B docs/stg02/test_joint_wrapper.py
 ```
 
-Eight tests use only ephemeral, owned loopback stub servers, not port 4261: all API routes including waiting/run, raw body/query/status/header preservation, all forwarded methods and HEAD framing, no credential forwarding, no header repair or redirect following, static startup with zero upstream requests, unavailable upstream as transport failure, non-API rejection, and default fixture-mode regression. The local waiting helper is poisoned in joint-mode checks so a hidden fixture substitution fails.
+Eleven tests use only ephemeral, owned loopback stub servers, not port 4261: all API routes including waiting/run, raw body/query/status/header preservation, all forwarded methods and HEAD framing, no credential forwarding, no header repair or redirect following, static startup with zero upstream requests, unavailable upstream as transport failure, non-API rejection, default fixture-mode regression, truncated/invalid/duplicate upstream length rejection and exclusive listener ownership. The local waiting helper is poisoned in joint-mode checks so a hidden fixture substitution fails.
 
-Before implementation, the six original tests failed because the server factory/joint interface did not exist. That is missing-interface evidence, not a claim that all proxy semantics were independently exercised on the old host. Initial sandbox temp/socket restrictions are preserved separately. The first unreachable-upstream trial had a two-second client deadline shorter than the wrapper's ten-second deadline; the client bound was corrected to twelve seconds. Final author result: **8 tests PASS**. No dependency, lock, app source or build output changed.
+Before implementation, the six original tests failed because the server factory/joint interface did not exist. That is missing-interface evidence, not a claim that all proxy semantics were independently exercised on the old host. Initial sandbox temp/socket restrictions are preserved separately. The first unreachable-upstream trial had a two-second client deadline shorter than the wrapper's ten-second deadline; the client bound was corrected to twelve seconds. The initial eight-test suite passed, but independent review found two gaps below. No dependency, lock, app source or build output changed.
+
+### Independent review corrections
+
+`reviews/review-joint-wrapper-041595cf.md` records FINDINGS at the initial tool commit:
+
+- JWR-01, minor: a short upstream body could be relayed with a repaired length as a successful response. The wrapper now validates upstream length before publishing any headers/body, rejecting truncation and invalid/duplicate/conflicting framing as a transport failure. HEAD retains the supplied representation length without expecting a body. It does not manufacture a qualified response.
+- JWR-02, major: Windows `SO_REUSEADDR` could allow a second listener on the same port, undermining exact-source attribution. The wrapper now sets `SO_EXCLUSIVEADDRUSE` before bind on Windows and disables reuse there. POSIX keeps its ordinary restart behavior without enabling `SO_REUSEPORT`. Competing wrapper and unrelated reuse-enabled listeners must both fail.
+
+New regression checks reproduced all three pre-fix failures (truncation plus both competing binds). Their passing repaired result and the further malformed-length controls must be rechecked from the corrective commit. Ruff check/format issues were also corrected; the fixture-only fixed-loopback urllib call has an explicit audited S310 annotation. Fresh independent review is required before the wrapper starts on 4252. These are test-tool findings, not changes to backend semantics.
 
 The app assets remain the frozen runtime `af77308aa48cbc73a73791b58b807c0a9ebdbe55`, manifest SHA-256 `d6ec95cf93b42beb4a3902039a104734e3c3d1289f023f0be7fd55659b0608a1`, documented in `CORRECTION-HANDOFF.md`. Wrapper source has its own reviewed commit and clean-checkout tests; app evidence is not relabelled as a new app build.
 

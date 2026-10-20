@@ -1,4 +1,5 @@
 """Standalone wrapper tests: synthetic upstream only, no Engine imports/state."""
+
 import http.client
 import importlib.util
 import tempfile
@@ -26,15 +27,31 @@ class JointWrapperTests(unittest.TestCase):
                 body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 seen.append((self.command, self.path, dict(self.headers), body))
                 status = 409 if "problem" in self.path else 307 if "redirect" in self.path else 200
-                payload = b'{ "upstream_only": true, "stamp": "not interpreted", "value": 1, "value": 2 }\n'
+                payload = (
+                    b"{}"
+                    if "truncated" in self.path
+                    else b'{ "upstream_only": true, "stamp": "not interpreted", "value": 1, "value": 2 }\n'
+                )
                 self.send_response(status)
                 if "missing-headers" not in self.path:
-                    self.send_header("Content-Type", "application/problem+json" if status == 409 else "application/json; charset=utf-8")
+                    self.send_header(
+                        "Content-Type",
+                        "application/problem+json" if status == 409 else "application/json; charset=utf-8",
+                    )
                     self.send_header("Cache-Control", "private, no-store")
                     self.send_header("X-AEW-Wire-Version", "backend-supplied-value")
                 if status == 307:
                     self.send_header("Location", "/v1/read/should-not-follow")
-                self.send_header("Content-Length", str(len(payload)))
+                declared_length = (
+                    "invalid"
+                    if "invalid-length" in self.path
+                    else "100"
+                    if "truncated" in self.path
+                    else str(len(payload))
+                )
+                self.send_header("Content-Length", declared_length)
+                if "duplicate-length" in self.path:
+                    self.send_header("Content-Length", "100")
                 self.end_headers()
                 if self.command != "HEAD":
                     self.wfile.write(payload)
@@ -42,12 +59,16 @@ class JointWrapperTests(unittest.TestCase):
             do_GET = do_POST = do_HEAD = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = handle_request
 
         self.upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
-        self.upstream_thread = threading.Thread(target=self.upstream.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        self.upstream_thread = threading.Thread(
+            target=self.upstream.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        )
         self.upstream_thread.start()
         self.temp = tempfile.TemporaryDirectory()
         self.static = Path(self.temp.name)
         (self.static / "stg02.html").write_bytes(b"<title>exact frozen fixture build</title>")
-        self.local_fixture = patch.object(wrapper, "waiting", side_effect=AssertionError("joint mode read a local fixture"))
+        self.local_fixture = patch.object(
+            wrapper, "waiting", side_effect=AssertionError("joint mode read a local fixture")
+        )
         self.local_fixture.start()
         self.server = None
 
@@ -86,11 +107,22 @@ class JointWrapperTests(unittest.TestCase):
 
     def test_all_api_paths_preserve_raw_body_query_status_and_source_headers(self):
         self.start()
-        for path in ["/v1/read/waiting?limit=25&cursor=opaque%3Aa%2Fb", "/v1/read/runs/ZXhhY3Q", "/v1/read/continuation-state/ZXhhY3Q", "/v1/read/owner-operations", "/o01/v0/owner-operations/HEB/op%3Aone", "/v1/read/future-route/problem"]:
+        for path in [
+            "/v1/read/waiting?limit=25&cursor=opaque%3Aa%2Fb",
+            "/v1/read/runs/ZXhhY3Q",
+            "/v1/read/continuation-state/ZXhhY3Q",
+            "/v1/read/owner-operations",
+            "/o01/v0/owner-operations/HEB/op%3Aone",
+            "/v1/read/future-route/problem",
+        ]:
             with self.subTest(path=path):
-                status, headers, body = self.request("GET", path, headers={"X-AEW-Wire-Version": "exact-request-version"})
+                status, headers, body = self.request(
+                    "GET", path, headers={"X-AEW-Wire-Version": "exact-request-version"}
+                )
                 self.assertEqual(status, 409 if "problem" in path else 200)
-                self.assertEqual(body, b'{ "upstream_only": true, "stamp": "not interpreted", "value": 1, "value": 2 }\n')
+                self.assertEqual(
+                    body, b'{ "upstream_only": true, "stamp": "not interpreted", "value": 1, "value": 2 }\n'
+                )
                 self.assertEqual(headers["X-AEW-Wire-Version"], "backend-supplied-value")
                 self.assertEqual(headers["Cache-Control"], "private, no-store")
                 self.assertEqual(self.seen[-1][1], path)
@@ -101,7 +133,17 @@ class JointWrapperTests(unittest.TestCase):
         body = b' { "client_request_key": "key:exact", "intents": [] }\n'
         for method in ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]:
             with self.subTest(method=method):
-                self.request(method, "/o01/v0/command-sets?opaque=%2F", body, {"Content-Type": "application/json", "X-AEW-O01-Wire": "exact-o01", "Authorization": "synthetic-not-a-credential", "Cookie": "synthetic=not-a-session"})
+                self.request(
+                    method,
+                    "/o01/v0/command-sets?opaque=%2F",
+                    body,
+                    {
+                        "Content-Type": "application/json",
+                        "X-AEW-O01-Wire": "exact-o01",
+                        "Authorization": "synthetic-not-a-credential",
+                        "Cookie": "synthetic=not-a-session",
+                    },
+                )
                 received = self.seen[-1]
                 self.assertEqual(received[:2], (method, "/o01/v0/command-sets?opaque=%2F"))
                 self.assertEqual(received[3], body)
@@ -154,6 +196,36 @@ class JointWrapperTests(unittest.TestCase):
         self.assertIn(b"fixture:CNI:fact:01", body)
         self.assertNotIn(b"upstream_only", body)
         self.assertEqual(self.seen, [])
+
+    def test_truncated_upstream_is_not_repaired_into_a_valid_representation(self):
+        self.start()
+        status, headers, body = self.request("GET", "/v1/read/truncated")
+        self.assertEqual(status, 502)
+        self.assertNotIn("X-AEW-Wire-Version", headers)
+        self.assertIn(b"no backend representation", body)
+
+    def test_invalid_or_duplicate_upstream_length_is_not_repaired(self):
+        self.start()
+        for case in ["invalid-length", "duplicate-length"]:
+            with self.subTest(case=case):
+                status, headers, _ = self.request("GET", f"/v1/read/{case}")
+                self.assertEqual(status, 502)
+                self.assertNotIn("X-AEW-Wire-Version", headers)
+
+    def test_listener_ownership_is_exclusive_even_against_a_reuse_enabled_listener(self):
+        self.start()
+
+        def duplicate_wrapper():
+            duplicate = wrapper.create_server(self.server.server_port, self.upstream.server_port, mode="joint")
+            duplicate.server_close()
+
+        def unrelated_listener():
+            duplicate = ThreadingHTTPServer(("127.0.0.1", self.server.server_port), self.upstream.RequestHandlerClass)
+            duplicate.server_close()
+
+        for attempt in [duplicate_wrapper, unrelated_listener]:
+            with self.subTest(attempt=attempt.__name__), self.assertRaises(OSError):
+                attempt()
 
 
 if __name__ == "__main__":

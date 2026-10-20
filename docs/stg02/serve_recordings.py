@@ -6,12 +6,14 @@ targets an operator session. Fixture mode validates all local records first.
 Explicit joint mode serves static web assets but forwards every API route to the
 separately started synthetic joint backend, without fixture substitution.
 """
+
 import argparse
 import base64
 import copy
 import http.client
 import json
 import mimetypes
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,6 +24,16 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "web/tests/fixtures/stg02"
 VERSION = "0.3.4"
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    # SO_REUSEADDR on Windows permits competing listeners, unlike POSIX.
+    allow_reuse_address = not hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def load(name):
@@ -36,8 +48,13 @@ def unqualify(value):
         return value
     value = {key: unqualify(child) for key, child in value.items()}
     if {"fact_ref", "observation_state", "qualification"}.issubset(value):
-        value.update(fact_ref="fixture:" + value["fact_ref"], qualification="unqualified",
-                     observation_state="unknown", governing_owner=None, authority_class="unqualified_report")
+        value.update(
+            fact_ref="fixture:" + value["fact_ref"],
+            qualification="unqualified",
+            observation_state="unknown",
+            governing_owner=None,
+            authority_class="unqualified_report",
+        )
     return value
 
 
@@ -51,9 +68,19 @@ def waiting():
     item = body["items"][0]
     item["data"]["work"]["id"] = "ticket:one"
     item["data"]["work"]["revision"] = "revision:one"
-    item["links"].append({"relation": "source", "availability": "navigable", "target": {
-        "kind": "execution_activity", "id": "invocation:demo-1", "revision": None,
-        "generation": None, "package_digest": None}})
+    item["links"].append(
+        {
+            "relation": "source",
+            "availability": "navigable",
+            "target": {
+                "kind": "execution_activity",
+                "id": "invocation:demo-1",
+                "revision": None,
+                "generation": None,
+                "package_digest": None,
+            },
+        }
+    )
     return body
 
 
@@ -63,8 +90,12 @@ def run():
     body["continuity"] = "unknown"
     body["limitations"] = ["source_unqualified"]
     body["items"][0]["data"]["work_ref"] = {
-        "kind": "ticket", "id": "ticket:one", "revision": "revision:one",
-        "generation": None, "package_digest": None}
+        "kind": "ticket",
+        "id": "ticket:one",
+        "revision": "revision:one",
+        "generation": None,
+        "package_digest": None,
+    }
     return body
 
 
@@ -78,9 +109,12 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
     # data against the ORIGINAL 2020-12 schema independently before serving.
     if mode == "fixture":
         from jsonschema import Draft202012Validator, FormatChecker
+
         schema = load("../../../src/stg02/contracts/d01.json")
         for name, value in [("ReadWaiting", waiting()), ("ReadRunDetail", run())]:
-            Draft202012Validator({"$defs": schema["$defs"], "$ref": "#/$defs/" + name}, format_checker=FormatChecker()).validate(value)
+            Draft202012Validator(
+                {"$defs": schema["$defs"], "$ref": "#/$defs/" + name}, format_checker=FormatChecker()
+            ).validate(value)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -89,7 +123,11 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
         def emit(self, status, body, headers=None):
             payload = json.dumps(body).encode()
             self.send_response(status)
-            selected = headers or {"Content-Type": "application/json", "X-AEW-Wire-Version": VERSION, "Cache-Control": "private, no-store"}
+            selected = headers or {
+                "Content-Type": "application/json",
+                "X-AEW-Wire-Version": VERSION,
+                "Cache-Control": "private, no-store",
+            }
             for key, value in selected.items():
                 if key.lower() not in {"content-length", "connection", "server", "date", "transfer-encoding"}:
                     self.send_header(key, value)
@@ -101,14 +139,22 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
             path = urlsplit(self.path).path
             if args.web_root and (path in {"/", "/stg02", "/stg02.html"} or path.startswith("/assets/")):
                 static_root = args.web_root.resolve()
-                target = (static_root / ("stg02.html" if path in {"/", "/stg02", "/stg02.html"} else unquote(path).lstrip("/"))).resolve()
+                target = (
+                    static_root
+                    / ("stg02.html" if path in {"/", "/stg02", "/stg02.html"} else unquote(path).lstrip("/"))
+                ).resolve()
                 if not target.is_relative_to(static_root) or not target.is_file():
                     return self.problem(404, "not_found_or_not_disclosable")
                 payload = target.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", mimetypes.guess_type(target)[0] or "application/octet-stream")
                 self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+                    "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+                    "frame-ancestors 'none'; form-action 'self'",
+                )
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 if self.command != "HEAD":
@@ -127,13 +173,28 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
                     return self.emit(200, waiting())
                 encoded = unquote(path.rsplit("/", 1)[-1])
                 expected = base64.urlsafe_b64encode(b"invocation:demo-1").decode().rstrip("=")
-                return self.emit(200, run()) if encoded == expected else self.problem(404, "not_found_or_not_disclosable")
+                return (
+                    self.emit(200, run()) if encoded == expected else self.problem(404, "not_found_or_not_disclosable")
+                )
             self.forward()
 
         def problem(self, status, code):
-            return self.emit(status, {"type": "about:blank", "title": "Request could not be completed", "status": status,
-                                      "code": code, "correlation_id": "fixture:web-stg02", "retry": "never"},
-                             {"Content-Type": "application/problem+json", "X-AEW-Wire-Version": VERSION, "Cache-Control": "private, no-store"})
+            return self.emit(
+                status,
+                {
+                    "type": "about:blank",
+                    "title": "Request could not be completed",
+                    "status": status,
+                    "code": code,
+                    "correlation_id": "fixture:web-stg02",
+                    "retry": "never",
+                },
+                {
+                    "Content-Type": "application/problem+json",
+                    "X-AEW-Wire-Version": VERSION,
+                    "Cache-Control": "private, no-store",
+                },
+            )
 
         def do_POST(self):
             if mode == "joint":
@@ -180,21 +241,49 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
             if len(body) != int(length):
                 return self.transport_error(400, "Incomplete request body")
             # The joint brief explicitly excludes Authorization and Cookie.
-            headers = {key: value for key, value in self.headers.items()
-                       if key.lower() in {"x-aew-wire-version", "x-aew-o01-wire", "content-type", "accept"}}
+            headers = {
+                key: value
+                for key, value in self.headers.items()
+                if key.lower() in {"x-aew-wire-version", "x-aew-o01-wire", "content-type", "accept"}
+            }
             connection = http.client.HTTPConnection("127.0.0.1", args.upstream_port, timeout=10)
             try:
                 connection.request(self.command, self.path, body=body or None, headers=headers)
                 response = connection.getresponse()
                 status, reason, received_headers = response.status, response.reason, response.getheaders()
+                lengths = [value for key, value in received_headers if key.lower() == "content-length"]
+                if (
+                    len(lengths) > 1
+                    or (lengths and not lengths[0].isascii())
+                    or (lengths and not lengths[0].isdecimal())
+                ):
+                    raise ValueError("Invalid upstream response framing")
+                if lengths and response.getheader("Transfer-Encoding"):
+                    raise ValueError("Conflicting upstream response framing")
                 payload = response.read(4 * 1024 * 1024 + 1)
                 if len(payload) > 4 * 1024 * 1024:
                     raise ValueError("Response exceeds test-tool transport bound")
+                if lengths and self.command != "HEAD" and status not in {204, 304} and len(payload) != int(lengths[0]):
+                    raise ValueError("Truncated upstream response")
             except (OSError, http.client.HTTPException, ValueError):
-                return self.transport_error(502, "Upstream transport failed; no backend representation is established. A command outcome may be unknown. No fixture was substituted.")
+                return self.transport_error(
+                    502,
+                    "Upstream transport failed; no backend representation is established. "
+                    "A command outcome may be unknown. No fixture was substituted.",
+                )
             finally:
                 connection.close()
-            hop = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length"}
+            hop = {
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "transfer-encoding",
+                "upgrade",
+                "content-length",
+            }
             for key, value in received_headers:
                 if key.lower() == "connection":
                     hop.update(part.strip().lower() for part in value.split(","))
@@ -203,7 +292,12 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
                 if key.lower() not in hop:
                     self.send_header(key, value)
             head_length = next((value for key, value in received_headers if key.lower() == "content-length"), None)
-            self.send_header("Content-Length", head_length if self.command == "HEAD" and head_length and head_length.isdecimal() else str(len(payload)))
+            self.send_header(
+                "Content-Length",
+                head_length
+                if self.command == "HEAD" and head_length and head_length.isdecimal()
+                else str(len(payload)),
+            )
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(payload)
@@ -215,16 +309,22 @@ def create_server(port, upstream_port, web_root=None, *, mode="fixture"):
             if length < 0 or length > 65536:
                 return self.problem(400, "invalid_request")
             body = self.rfile.read(length) if self.command == "POST" else None
-            headers = {key: value for key, value in self.headers.items()
-                       if key.lower() in {"x-aew-wire-version", "x-aew-o01-wire", "content-type", "accept"}}
-            request = Request(f"http://127.0.0.1:{args.upstream_port}" + self.path, data=body, headers=headers, method=self.command)
+            headers = {
+                key: value
+                for key, value in self.headers.items()
+                if key.lower() in {"x-aew-wire-version", "x-aew-o01-wire", "content-type", "accept"}
+            }
+            request = Request(
+                f"http://127.0.0.1:{args.upstream_port}" + self.path, data=body, headers=headers, method=self.command
+            )
             try:
-                with urlopen(request, timeout=10) as response:
+                # Fixture-only URL above has a fixed HTTP loopback host and numeric port.
+                with urlopen(request, timeout=10) as response:  # noqa: S310
                     self.emit(response.status, json.load(response), dict(response.headers))
             except HTTPError as failure:
                 self.emit(failure.code, json.load(failure), dict(failure.headers))
 
-    return ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    return LoopbackHTTPServer(("127.0.0.1", args.port), Handler)
 
 
 def main():
@@ -247,7 +347,12 @@ def main():
     timer = threading.Timer(args.lifetime, server.shutdown)
     timer.daemon = True
     timer.start()
-    print(f"STG-02 {args.mode} wrapper listening on {args.port}; upstream loopback port {args.upstream_port or 4254}; expires after {args.lifetime}s; no startup upstream requests", flush=True)
+    print(
+        f"STG-02 {args.mode} wrapper listening on {args.port}; "
+        f"upstream loopback port {args.upstream_port or 4254}; "
+        f"expires after {args.lifetime}s; no startup upstream requests",
+        flush=True,
+    )
     try:
         server.serve_forever()
     finally:

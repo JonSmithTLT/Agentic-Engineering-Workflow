@@ -327,8 +327,10 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             try:
                 answer = handle(s, method, self.path, h, body)
             except Exception as exc:  # never a traceback to the client, and never an answer without the wire headers
-                LOG.error("aew stg02: request failed\n%s", "\n".join(
-                    log_text(line, 1000) for line in "".join(traceback.format_exception(exc)).splitlines()[-40:]))
+                # one physical line, its newlines escaped too: a message cannot start a line of its own (review R3-M1);
+                # the tail is kept, where the exception and its innermost frames are
+                tb = log_text("".join(traceback.format_exception(exc)), 1 << 20)
+                LOG.error("aew stg02: request failed: %s", tb[-8000:])
                 answer = failure(self.path)
             self._send(answer, method, t0)
 

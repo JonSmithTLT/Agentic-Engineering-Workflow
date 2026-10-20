@@ -735,12 +735,14 @@ def test_an_unexpected_errors_log_entry_escapes_what_the_request_put_in_it(live:
                                                                           monkeypatch: pytest.MonkeyPatch,
                                                                           caplog: pytest.LogCaptureFixture):
     def boom(*a: Any, **k: Any) -> Any:
-        raise RuntimeError("from the request: \x1b[2J")
+        raise RuntimeError("from the request: \x1b[2J\nGET /v1/read/owner-operations 200 3ms")
     monkeypatch.setattr(live.s.reads, "waiting", boom)
     with caplog.at_level("INFO", logger="aew.stg02"):
         assert live.get("/v1/read/waiting")[0] == 503
     (err,) = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
     assert "RuntimeError" in err and "\\x1b[2J" in err and "\x1b" not in err and r"Traceback" in err
+    # review R3-M1: one physical line, so no part of the message can pass for a request-log line
+    assert "\n" not in err and "\\nGET /v1/read/owner-operations" in err and len(err) < 9000
 
 
 def test_real_aew_records_are_disclosed_to_the_one_real_recipient_and_to_nobody_else(live: Live,

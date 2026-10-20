@@ -192,7 +192,7 @@ Before running against the server, the driver's self-test passed on this machine
 - a repeated `X-AEW-Wire-Version`, `X-AEW-O01-Wire`, `Authorization`, `Host`, `Origin` or `Content-Length`, refused in either order;
 - every other method (`PUT`, `DELETE`, `PATCH`, `TRACE`, `HEAD`, any token) and every unrouted `/o01/` path, answered with the route family's Problem and wire headers;
 - the 503 path;
-- request text in the server's log: the method only when it is a plain upper-case token, the path and an error's traceback escaped and bounded, so a client cannot forge a log line;
+- request text in the server's log: the method only when it is a plain upper-case token, the path and an error's traceback (as one line) escaped and bounded, so a client cannot forge a log line;
 - the two-process fence, with the overlap forced, on the key ledger only (BE-08);
 - a second server unable to bind the same port;
 - every vendored adopted file against its sealed pin.

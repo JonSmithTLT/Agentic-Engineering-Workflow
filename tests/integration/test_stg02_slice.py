@@ -299,9 +299,14 @@ def test_identifiers_are_canonical_base64url_and_anything_else_is_400(live: Live
 
 
 def test_authentication_401_and_the_owner_get_nondisclosing_404(live: Live):
-    for hdr in ({"Authorization": "Bearer nope"}, {"Authorization": "Basic abc"}):
-        st, h, b = live.get("/v1/read/waiting", hdr)
-        problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "authentication_unqualified")
+    for route, path in (("/v1/read/waiting", "/v1/read/waiting"),
+                        ("/v1/read/runs/{execution_id}", f"/v1/read/runs/{b64('fixture:run-continue-1')}"),
+                        ("/v1/read/continuation-state/{work_id}",
+                         f"/v1/read/continuation-state/{b64('fixture:ticket-continue')}"),
+                        ("/v1/read/owner-operations", "/v1/read/owner-operations")):
+        for hdr in ({"Authorization": "Bearer nope"}, {"Authorization": "Basic abc"}):
+            st, h, b = live.get(path, hdr)
+            problem_ok("D01", "get", route, st, h, b, "authentication_unqualified")
     st, h, b = live.owner_get("HEB", "op:abc123", {"Authorization": "Bearer nope"})
     problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b,
                "not_found_or_not_disclosable")
@@ -509,3 +514,121 @@ def test_owner_get_is_one_nondisclosing_404_for_unknown_foreign_and_malformed(li
 def test_a_second_server_cannot_take_a_port_the_first_one_holds(live: Live, tmp_path: Path):
     with pytest.raises(OSError):
         SV.make_server(SV.Slice(tmp_path / "other", fixture_recipient=True), live.port)
+
+
+# ------------------------------------------------------------------------------------------------- transport edges
+
+def raw(port: int, method: str, path: str, headers: dict[str, str]) -> tuple[int, dict[str, str], Any]:
+    """A request whose Host this test writes itself (http.client would set the right one)."""
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+    try:
+        c.putrequest(method, path, skip_host=True)
+        for k, v in headers.items():
+            c.putheader(k, v)
+        c.endheaders()
+        r = c.getresponse()
+        data = r.read()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, json.loads(data) if data else None
+    finally:
+        c.close()
+
+
+def test_a_foreign_host_or_origin_is_refused_with_the_route_familys_own_problem(live: Live):
+    host = f"127.0.0.1:{live.port}"
+    for hdr in ({"Host": "evil.example:80", **D01}, {"Host": host, "Origin": "http://evil.example", **D01}):
+        st, h, b = raw(live.port, "GET", "/v1/read/waiting", hdr)
+        problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "invalid_request")
+    st, h, b = raw(live.port, "GET", "/o01/v0/owner-operations/HEB/op:abc", {"Host": "evil.example", **O01})
+    problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b,
+               "not_found_or_not_disclosable")
+    st, h, b = raw(live.port, "OPTIONS", "/v1/read/waiting", {"Host": host})  # a preflight with no origin
+    assert st == 400 and "access-control-allow-origin" not in h
+
+
+def test_cors_is_offered_only_to_an_exactly_allowed_origin(project: dict[str, Any], tmp_path: Path):
+    site = "http://127.0.0.1:4251"
+    lv = Live(SV.Slice(tmp_path / "state", fixture_recipient=True, allow_origins=(site,)), [T0])
+    try:
+        host = f"127.0.0.1:{lv.port}"
+        st, h, _ = raw(lv.port, "OPTIONS", "/o01/v0/command-sets", {"Host": host, "Origin": site})
+        assert st == 204 and h["access-control-allow-origin"] == site
+        assert "X-AEW-O01-Wire" in h["access-control-allow-headers"]
+        st, h, b = raw(lv.port, "GET", "/v1/read/waiting", {"Host": host, "Origin": site, **D01})
+        assert st == 200 and h["access-control-allow-origin"] == site and "X-AEW-Wire-Version" in \
+            h["access-control-expose-headers"]
+        st, h, b = raw(lv.port, "GET", "/v1/read/waiting", {"Host": host, "Origin": "http://127.0.0.1:9999", **D01})
+        assert st == 400 and "access-control-allow-origin" not in h
+    finally:
+        lv.close()
+
+
+def test_an_unexpected_error_is_the_familys_declared_503_with_its_wire_headers(live: Live, cfg: dict[str, Any],
+                                                                              monkeypatch: pytest.MonkeyPatch):
+    def boom(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("unexpected")
+    monkeypatch.setattr(live.s.reads, "waiting", boom)
+    monkeypatch.setattr(live.s.carrier, "submit", boom)
+    monkeypatch.setattr(live.s.carrier, "owner_get", boom)
+    st, h, b = live.get("/v1/read/waiting")
+    problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "owner_unavailable")
+    st, h, b = live.post(fresh(cfg["command"]["continue_eligible_work"], "boom"))
+    problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, "owner_unavailable")
+    st, h, b = live.owner_get("HEB", "op:abc123")
+    problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b, "owner_unavailable")
+
+
+def test_a_ledger_lock_not_granted_in_time_is_503_and_never_a_dispatch(live: Live, cfg: dict[str, Any],
+                                                                       monkeypatch: pytest.MonkeyPatch):
+    import contextlib
+
+    @contextlib.contextmanager
+    def busy(*a: Any, **k: Any) -> Any:
+        raise L.LedgerBusy("database is locked")
+        yield
+    monkeypatch.setattr(live.s.ledger, "transaction", busy)
+    monkeypatch.setattr(live.s.ledger, "reading", busy)
+    st, h, b = live.post(fresh(cfg["command"]["continue_eligible_work"], "busy"))
+    problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, "owner_unavailable")
+    st, h, b = live.get("/v1/read/waiting")
+    problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "owner_unavailable")
+    st, h, b = live.get("/v1/read/owner-operations")
+    problem_ok("D01", "get", "/v1/read/owner-operations", st, h, b, "owner_unavailable")
+    st, h, b = live.owner_get("HEB", "op:abc123")
+    problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b, "owner_unavailable")
+
+
+@pytest.mark.parametrize("observed,phase", [("running", "REPORTED_ACTIVE"),
+                                            ("ended_with_evidence", "REPORTED_FINISHED"),
+                                            ("lost", "UNKNOWN")])
+def test_a_real_runs_phase_is_its_supervisors_reported_status(live: Live, project: dict[str, Any],
+                                                              monkeypatch: pytest.MonkeyPatch, observed: str,
+                                                              phase: str):
+    import dataclasses
+
+    eng = live.s.engine
+    assert eng is not None
+    snap = eng.snapshot()
+    inv = invocation_id(project)
+    state = copy.deepcopy(snap.state)
+    state["invocations"][inv]["runs"] = [{"run": "run-x1", "launched_at": "2026-10-19T11:00:00Z", "harness": "fake"}]
+    monkeypatch.setattr(eng, "snapshot", lambda: dataclasses.replace(snap, state=state))
+    monkeypatch.setattr(eng, "observed", lambda run: observed)
+    st, _, b = live.get(f"/v1/read/runs/{b64(inv)}")
+    schema_ok("/v1/read/runs/{execution_id}", b)
+    d = b["items"][0]["data"]
+    assert d["phase"] == phase and d["started_at"] == "2026-10-19T11:00:00Z"
+    assert d["phase_basis_ref"] == ("aew:run:run-x1" if phase != "UNKNOWN" else None)
+
+
+def test_the_driver_config_is_written_from_the_world_its_delegations_are_bound_to(tmp_path: Path):
+    out = tmp_path / "driver-config.json"
+    argv = ["--state-dir", str(tmp_path / "state"), "--fixture-recipient", "--write-driver-config", str(out)]
+    assert SV.main(argv) == 0
+    cfg = json.loads(out.read_text(encoding="utf-8"))
+    fx = SV.Slice(tmp_path / "state2", fixture_recipient=True).fx
+    (intent,) = cfg["command"]["continue_eligible_work"]["intents"]
+    proof = fx.delegations[intent["delegated_grant_proof_ref"]]
+    assert proof["intent_digest"] == W.intent_digest(intent) and proof["status"] == "CURRENT"
+    assert not A.o01_errors("CommandSet", cfg["command"]["continue_eligible_work"])
+    assert all(not A.o01_errors("CommandSet", c["request"]) for c in cfg["c17_cases"].values())
+    assert not any("matches_fixture" in r for r in cfg["reads"])  # every fact unqualified: no recorded envelope fits

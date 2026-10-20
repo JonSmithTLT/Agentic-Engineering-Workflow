@@ -1,6 +1,6 @@
 # STG-02 gap entries: backend (lead AEW developer)
 
-**For:** the lead designer, who copies these into the architecture workspace's `30-stages/STG-02-first-vertical-slice/GAP-REGISTER.md` and triages them. The format and the five classes are the field map's (`handoff/SLICE-FIELD-MAP.md`, "The gap register").
+**For:** the lead designer, who copies these into the architecture workspace's `30-stages/STG-02-first-vertical-slice/GAP-REGISTER.md` and triages them (STG02-BE-01 to BE-15). The format and the five classes are the field map's (`handoff/SLICE-FIELD-MAP.md`, "The gap register").
 **Adopted bytes:** `STG-01-v0.5.4.zip`, SHA-256 `64e65578…f299f`. Paths such as `02-WIRE/…`, `00-DESIGN/…` and `05-INTEGRATED-FIXTURES/…` are inside it.
 **Written:** 2026-10-19 (UTC 2026-10-20), from the backend in [`src/aew/stg02/`](../../src/aew/stg02/); the report is [`BACKEND-REPORT.md`](BACKEND-REPORT.md).
 **Independence:** nothing here was agreed with the web developer; each interim choice is this backend's own.
@@ -21,6 +21,7 @@
 | [STG02-BE-12](#stg02-be-12) | wire defect | `owner-operations` declares a 404 the contract gives no cause for |
 | [STG02-BE-13](#stg02-be-13) | wire defect | A deployment serving a subset of the 20 reads has no defined answer for the rest |
 | [STG02-BE-14](#stg02-be-14) | new feature or scope request | The provisional dashboard API, the browser origin, and where the adopted wire runs |
+| [STG02-BE-15](#stg02-be-15) | wire defect | Read entitlement is defined for lookups; what a withdrawn entitlement does to a D-01 read is not |
 
 ---
 
@@ -286,8 +287,23 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
   - The slice therefore runs as its own process (`python -m aew.stg02.server`, port 4261). It reuses only the engine's lock-free state reader (`aew.dashboard.reader.StateReader`), and none of the provisional envelope, routes or projections.
   - Values that both contracts compute come from the same engine records: work state, blockers and invocation status.
   - The operator decides later whether the adopted wire is mounted in the dashboard process, replaces `/api/v1`, or the two coexist.
-- **The browser origin.** The website runs on another origin (port 4251). The adopted wire says nothing about CORS or a same-origin proxy. Interim: `--allow-origin <origin>` (exact match) adds CORS for named origins only; by default every request carrying another `Origin` is refused `403`.
+- **The browser origin.** The website runs on another origin (port 4251). The adopted wire says nothing about CORS or a same-origin proxy. Interim: `--allow-origin <origin>` (exact match) adds CORS for named origins only; by default every request carrying another `Origin`, or a `Host` other than the bound loopback address, is refused with the route family's own Problem (`400 invalid_request`; the owner GET's `404`), wire headers included.
 - **No `aew` command.** The slice adds no `aew` command (so no surface-map entry). It is started with `python -m aew.stg02.server`. A supported command, and its surface-map entry, are part of the same decision.
+
+## STG02-BE-15
+
+**Class:** wire defect.
+
+**Clause.**
+- CS-04 (line 64): current read entitlement qualifies **lookups**: an identical retry and the owner GET (SW-07, SW-08).
+- D-01: every read "is qualified for the authenticated recipient", and the 404 means "not found or not disclosable".
+- No clause says what a recipient whose read entitlement is withdrawn gets from a D-01 read.
+
+**Two readings.**
+- (a) Entitlement is the recipient's read right everywhere: every D-01 read answers the nondisclosing `404`, as the lookups do.
+- (b) Entitlement is an O-01 reconciliation fact only. D-01 reads stay governed by their own disclosure policy, and keep answering.
+
+**Interim choice.** (a). While the entitlement is withdrawn, every D-01 read, the owner GET and every lookup answer `404 not_found_or_not_disclosable`. A submission under an unused key is still decided by its origin (the profile's accepted residual LEAD-F21). Test: `test_a_lookup_after_read_entitlement_is_withdrawn_is_one_nondisclosing_404`.
 
 ---
 

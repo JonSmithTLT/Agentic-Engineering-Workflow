@@ -120,6 +120,40 @@ def o01_problem(code: str, correlation: str) -> Answer:
     return _o01(status, body, problem=True)
 
 
+def _family(raw_path: str) -> str | None:
+    path = urlsplit(raw_path).path
+    if path.startswith("/v1/read/"):
+        return "D01"
+    if path.startswith("/o01/v0/owner-operations/"):
+        return "OWNER_GET"
+    if path.startswith("/o01/"):
+        return "O01"
+    return None
+
+
+def refusal(raw_path: str) -> Answer:
+    """A request refused before routing (a foreign Host or Origin, an oversize request), as its route family's own
+    Problem with its wire headers: invalid_request, or the owner GET's one nondisclosing 404 (it declares no 400)."""
+    corr, fam = W.correlation_id(), _family(raw_path)
+    if fam == "D01":
+        return d01_problem("invalid_request", corr)
+    if fam == "O01":
+        return o01_problem("invalid_request", corr)
+    if fam == "OWNER_GET":
+        return o01_problem("not_found_or_not_disclosable", corr)
+    return Answer(400, None, {"Content-Type": "text/plain"})
+
+
+def failure(raw_path: str) -> Answer:
+    """An unexpected error: the declared 503 of the route's family, never a bare 500 (profile cutover rule 1)."""
+    corr, fam = W.correlation_id(), _family(raw_path)
+    if fam == "D01":
+        return d01_problem("owner_unavailable", corr)
+    if fam in ("O01", "OWNER_GET"):
+        return o01_problem("owner_unavailable", corr)
+    return Answer(500, None, {"Content-Type": "text/plain"})
+
+
 def handle(s: Slice, method: str, raw_path: str, headers: dict[str, str], body: bytes | None) -> Answer:
     """One request, routed and answered. ``headers`` are lower-cased."""
     corr = W.correlation_id()
@@ -248,27 +282,28 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             bound = cast(Any, self.server).server_port
             origin = h.get("origin")
             if h.get("host") not in (f"{HOST}:{bound}", f"localhost:{bound}") or len(self.path) > MAX_PATH:
-                self._send(Answer(400, None, {"Content-Type": "text/plain"}), method, t0)  # DNS rebinding, oversize
+                self._send(refusal(self.path), method, t0)  # DNS rebinding, oversize
                 return
             if origin is not None and origin not in s.allow_origins:
-                self._send(Answer(403, None, {"Content-Type": "text/plain"}), method, t0)
+                self._send(refusal(self.path), method, t0)  # a page on another origin, not allowed by CORS
                 return
-            if method == "OPTIONS":  # a CORS preflight, only from an allowed origin
-                self._send(Answer(204, None, {}), method, t0, preflight=True)
+            if method == "OPTIONS":
+                # a CORS preflight, only from an allowed origin: it carries no data and needs no wire header
+                self._send(Answer(204, None, {}) if origin else refusal(self.path), method, t0, preflight=True)
                 return
             try:
                 n = int(h.get("content-length") or 0)
             except ValueError:
                 n = -1
             if n < 0 or n > MAX_BODY:
-                self._send(Answer(400, None, {"Content-Type": "text/plain"}), method, t0)
+                self._send(refusal(self.path), method, t0)
                 return
             body = self.rfile.read(n) if n else None
             try:
                 answer = handle(s, method, self.path, h, body)
-            except Exception:  # never a traceback to the client
+            except Exception:  # never a traceback to the client, and never an answer without the wire headers
                 LOG.exception("aew stg02: request failed")
-                answer = Answer(500, None, {"Content-Type": "text/plain"})
+                answer = failure(self.path)
             self._send(answer, method, t0)
 
         def _send(self, a: Answer, method: str, t0: float, *, preflight: bool = False) -> None:

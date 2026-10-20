@@ -1,0 +1,103 @@
+{
+ "schema": "aew/stg02-fixture-world/v1",
+ "_label": "FIXTURE WORLD (STG-02 slice). Every identifier, fact, epoch and proof in this file starts with 'fixture:' and is served unqualified. It stands in for owners AEW does not have yet: HEB, ADC, AEV, IF10, the delegation issuer and the slice's recipient. Times are offsets in seconds from the server's start, so a fact is never stale merely because the file is old.",
+ "installation_ref": "fixture:installation-slice",
+ "recipient_ref": "fixture:recipient-operator",
+ "project_ref": "fixture:project-slice",
+ "scope_ref": "fixture:scope-slice",
+ "policy_ref": "fixture:policy-slice",
+ "issuers": {
+  "HEB": "fixture:issuer-heb", "ADC": "fixture:issuer-adc", "WIS": "fixture:issuer-wis", "AEV": "fixture:issuer-aev",
+  "R01": "fixture:issuer-r01", "IF10": "fixture:issuer-if10", "CNI": "fixture:issuer-cni"
+ },
+ "delegation_issuer": "delegation:fixture",
+ "heb": {
+  "epoch": "fixture:heb-epoch-1", "version": "fixture:heb-v1",
+  "attachment_ref": "fixture:attachment-lead-1", "generation_ref": "fixture:generation-1",
+  "binding_ref": "fixture:binding-1", "lead_ref": "fixture:lead-1"
+ },
+ "work": [
+  {
+   "work_ref": "fixture:ticket-continue", "work_revision": "fixture:revision-1", "kind": "ticket",
+   "recipients": ["fixture:recipient-operator"],
+   "waiting": {"cause": "operator_need", "responsible_owner": "HEB", "progress": "blocked",
+               "narrative": "Waiting for the operator to select it to continue."},
+   "heb_eligibility": {"eligible": true, "basis_ref": "fixture:basis-eligible-continue"},
+   "axes": {
+    "HEB": {"basis_ref": "fixture:heb-basis-continue"}, "ADC": {"basis_ref": "fixture:adc-grant-continue"},
+    "WIS": {"basis_ref": "fixture:wis-revision-continue"}, "AEV": null,
+    "R01": {"basis_ref": "fixture:r01-budget-continue"}, "IF10": {"basis_ref": "fixture:if10-account-continue"}
+   }
+  },
+  {
+   "work_ref": "fixture:ticket-held", "work_revision": "fixture:revision-1", "kind": "ticket",
+   "recipients": ["fixture:recipient-operator"],
+   "waiting": {"cause": "qualified_hold", "responsible_owner": "AEV", "progress": "blocked",
+               "narrative": "Held by an assurance hold; HEB does not hold it eligible to continue."},
+   "heb_eligibility": {"eligible": false, "basis_ref": "fixture:basis-not-eligible-held"},
+   "axes": {
+    "HEB": {"basis_ref": "fixture:heb-basis-held"}, "ADC": {"basis_ref": "fixture:adc-grant-held"},
+    "WIS": {"basis_ref": "fixture:wis-revision-held"}, "AEV": {"basis_ref": "fixture:aev-hold-held"},
+    "R01": null, "IF10": null
+   }
+  },
+  {
+   "work_ref": "fixture:ticket-retry", "work_revision": "fixture:revision-1", "kind": "ticket",
+   "recipients": ["fixture:recipient-operator"],
+   "waiting": null,
+   "heb_eligibility": {"eligible": true, "basis_ref": "fixture:basis-eligible-retry"},
+   "axes": {"HEB": {"basis_ref": "fixture:heb-basis-retry"}, "ADC": null, "WIS": null, "AEV": null, "R01": null,
+            "IF10": null}
+  },
+  {
+   "work_ref": "fixture:ticket-hidden", "work_revision": "fixture:revision-1", "kind": "ticket",
+   "recipients": ["fixture:recipient-other"],
+   "waiting": {"cause": "dependency", "responsible_owner": "WIS", "progress": "blocked", "narrative": null},
+   "heb_eligibility": {"eligible": true, "basis_ref": "fixture:basis-eligible-hidden"},
+   "axes": {"HEB": {"basis_ref": "fixture:heb-basis-hidden"}, "ADC": null, "WIS": null, "AEV": null, "R01": null,
+            "IF10": null}
+  }
+ ],
+ "runs": [
+  {
+   "execution_id": "fixture:run-continue-1", "work_ref": "fixture:ticket-continue",
+   "recipients": ["fixture:recipient-operator"],
+   "phase": "REPORTED_IDLE", "phase_basis_ref": "fixture:r01-report-continue-1",
+   "started_offset_s": -3600, "last_progress_offset_s": -900,
+   "remote_effect": {"state": "UNKNOWN_EFFECT", "basis_ref": "fixture:if12-provider-timeout-continue-1",
+                     "observed_offset_s": -900},
+   "stall": {"assessment": "POSSIBLE_STALL", "basis_ref": "fixture:r01-stall-continue-1"}
+  },
+  {
+   "execution_id": "fixture:run-hidden-1", "work_ref": "fixture:ticket-hidden",
+   "recipients": ["fixture:recipient-other"],
+   "phase": "REPORTED_ACTIVE", "phase_basis_ref": "fixture:r01-report-hidden-1",
+   "started_offset_s": -600, "last_progress_offset_s": -60,
+   "remote_effect": null, "stall": null
+  }
+ ],
+ "delegations": [
+  {"proof_ref": "fixture:delegation-continue-current", "status": "CURRENT", "valid_for_s": 86400,
+   "intent": "continue"},
+  {"proof_ref": "fixture:delegation-held-current", "status": "CURRENT", "valid_for_s": 86400, "intent": "held"},
+  {"proof_ref": "fixture:delegation-retry-current", "status": "CURRENT", "valid_for_s": 86400, "intent": "retry"},
+  {"proof_ref": "fixture:delegation-continue-expired", "status": "CURRENT", "valid_for_s": -3600,
+   "intent": "continue-expired"},
+  {"proof_ref": "fixture:delegation-continue-revoked", "status": "REVOKED", "valid_for_s": 86400,
+   "intent": "continue-revoked"}
+ ],
+ "intents": {
+  "continue": {"intent_ref": "fixture:intent-continue", "work_ref": "fixture:ticket-continue",
+               "work_revision": "fixture:revision-1", "proof_ref": "fixture:delegation-continue-current"},
+  "held": {"intent_ref": "fixture:intent-continue-held", "work_ref": "fixture:ticket-held",
+           "work_revision": "fixture:revision-1", "proof_ref": "fixture:delegation-held-current"},
+  "retry": {"intent_ref": "fixture:intent-continue-retry", "work_ref": "fixture:ticket-retry",
+            "work_revision": "fixture:revision-1", "proof_ref": "fixture:delegation-retry-current"},
+  "continue-expired": {"intent_ref": "fixture:intent-continue-expired", "work_ref": "fixture:ticket-continue",
+                       "work_revision": "fixture:revision-1", "proof_ref": "fixture:delegation-continue-expired"},
+  "continue-revoked": {"intent_ref": "fixture:intent-continue-revoked", "work_ref": "fixture:ticket-continue",
+                       "work_revision": "fixture:revision-1", "proof_ref": "fixture:delegation-continue-revoked"}
+ },
+ "receipt_valid_s": 900,
+ "owner_observation_valid_s": 900
+}

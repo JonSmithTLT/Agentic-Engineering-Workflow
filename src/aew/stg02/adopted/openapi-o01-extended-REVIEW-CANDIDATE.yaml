@@ -1,0 +1,1479 @@
+openapi: 3.1.0
+info:
+  title: AEW O-01 first release 10-action REVIEW CANDIDATE (not adopted)
+  version: 0.2-review-candidate
+  description: Proposed O-01 exact-match 0.2 successor with 10 actions, preserving
+    separately supported A-24 0.1 and no silent upgrade.
+paths:
+  /o01/v0/command-sets:
+    post:
+      summary: Submit exact typed atomic intents; 202 is carrier receipt, not effect
+        acceptance
+      parameters:
+      - name: X-AEW-O01-Wire
+        in: header
+        required: true
+        schema:
+          const: o01-command-0.2-review-candidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandSet'
+      responses:
+        '202':
+          description: Carrier accepted request envelope; no owner effect implied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '400':
+          description: Invalid canonical request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '409':
+          description: Changed request set/predecessor/duplicate-key conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '401':
+          description: O-01 shared problem extension response; confidentiality maintained
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '404':
+          description: O-01 shared problem extension response; confidentiality maintained
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '503':
+          description: O-01 shared problem extension response; confidentiality maintained
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+  /o01/v0/owner-operations/{owner}/{operation_ref}:
+    get:
+      summary: Separately authorized read-only owner-operation reconciliation, not
+        a D-01 route
+      parameters:
+      - name: owner
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+      - name: operation_ref
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9:._-]{2,127}$
+      - in: header
+        name: X-AEW-O01-Wire
+        required: true
+        schema:
+          const: o01-command-0.2-review-candidate
+      responses:
+        '200':
+          description: Qualified original owner-operation read; owner, operation_ref,
+            original request set, intent, recipient and installation must be joined
+            at GET semantic boundary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerOperationRead'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '404':
+          description: Non-disclosing refusal / stale or unavailable original ledger
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '409':
+          description: Non-disclosing refusal / stale or unavailable original ledger
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+        '503':
+          description: Non-disclosing refusal / stale or unavailable original ledger
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+          headers:
+            X-AEW-O01-Wire:
+              required: true
+              schema:
+                const: o01-command-0.2-review-candidate
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+      description: A 200 is valid only after the competent owner qualifies the canonical
+        request path (owner, operation_ref), response envelope, nested result and
+        original owner record as the same immutable operation under present recipient/installation
+        read entitlement; no redispatch, no renewed G3 consumption. A slash in operation_ref
+        is forbidden, including percent-encoded slash after single decoding; ambiguous/double-encoded
+        paths are rejected before lookup. A structurally valid envelope alone is not
+        qualified proof.
+components:
+  schemas:
+    CommandSet:
+      additionalProperties: false
+      properties:
+        client_request_key:
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$
+          type: string
+        consent_set_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+            type: string
+          - type: 'null'
+        installation_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        intents:
+          items:
+            $ref: '#/components/schemas/Intent'
+          maxItems: 8
+          minItems: 1
+          type: array
+        recipient_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        request_set_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        wire_version:
+          const: o01-command-0.2-review-candidate
+      required:
+      - wire_version
+      - request_set_ref
+      - client_request_key
+      - recipient_ref
+      - installation_ref
+      - consent_set_ref
+      - intents
+      type: object
+    Receipt:
+      additionalProperties: false
+      properties:
+        carrier_state:
+          enum:
+          - RECEIVED
+          - HELD
+          - RECONCILING
+          - COMPLETE_WITH_PER_INTENT_RESULTS
+        observed_at:
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+          type: string
+        recipient_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        request_set_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        results:
+          items:
+            additionalProperties: false
+            properties:
+              admission_state:
+                enum:
+                - RECEIVED
+                - ORIGIN_PENDING
+                - HELD
+                - ADMITTED
+                - REJECTED
+                - SUPERSEDED
+              cancellation_state:
+                enum:
+                - NONE
+                - CANCEL_REQUESTED
+                - CANCEL_CONFIRMED
+                - CANCEL_UNCERTAIN
+              effect_state:
+                enum:
+                - NOT_OBSERVED
+                - EXECUTING
+                - EFFECT_CONFIRMED
+                - UNKNOWN_EFFECT
+                - RECONCILING
+                - FAILED_CONFIRMED_NO_EFFECT
+                - PARTIAL
+              intent_ref:
+                pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                type: string
+              operation_ref:
+                oneOf:
+                - pattern: ^[A-Za-z][A-Za-z0-9:._-]{2,127}$
+                  type: string
+                - type: 'null'
+              owner:
+                enum:
+                - ADC
+                - HEB
+                - IF13
+                - RESOURCE_POLICY_ISSUER
+              owner_evidence_ref:
+                oneOf:
+                - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                - type: 'null'
+              reason_code:
+                oneOf:
+                - enum:
+                  - AUTHORITY_REFUSED
+                  - CONSENT_ALREADY_USED_OR_MISSING
+                  - CURRENTNESS_EXPIRED
+                  - DELEGATED_GRANT_UNVERIFIED
+                  - ORIGIN_NOT_ESTABLISHED
+                  - ORIGIN_UNQUALIFIED
+                  - POLICY_INVALID
+                  - PRECONDITION_STALE
+                  - PROTECTIVE_SCOPE_CHANGED
+                  - SOURCE_UNAVAILABLE
+                  - UNRESOLVED_NO_REDISPATCH
+                  - UNSUPPORTED_ACTION
+                  type: string
+                - type: 'null'
+              residual_remote_effect:
+                enum:
+                - NOT_ESTABLISHED
+                - NONE_QUALIFIED
+                - POSSIBLE
+                - UNKNOWN
+            required:
+            - intent_ref
+            - owner
+            - operation_ref
+            - admission_state
+            - effect_state
+            - cancellation_state
+            - residual_remote_effect
+            - owner_evidence_ref
+            - reason_code
+            type: object
+          maxItems: 8
+          minItems: 1
+          type: array
+        source_valid_until:
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+          type: string
+        wire_version:
+          const: o01-command-0.2-review-candidate
+      required:
+      - wire_version
+      - request_set_ref
+      - recipient_ref
+      - carrier_state
+      - results
+      - observed_at
+      - source_valid_until
+      type: object
+    Intent:
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            action:
+              const: CLOSE_ATTACHMENT
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: HEB
+            target:
+              additionalProperties: false
+              properties:
+                attachment_generation:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                attachment_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - attachment_ref
+              - attachment_generation
+              type: object
+      - if:
+          properties:
+            action:
+              const: SUSPEND_GRANT
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: ADC
+            target:
+              additionalProperties: false
+              properties:
+                grant_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                grant_version:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                protection_scope:
+                  enum:
+                  - EXACT_GRANT
+                  - STABLE_ROOT_DESCENDANTS
+                reason_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - grant_ref
+              - grant_version
+              - protection_scope
+              - reason_ref
+              type: object
+      - if:
+          properties:
+            action:
+              const: LIFT_OPERATOR_SUSPENSION
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: ADC
+            target:
+              additionalProperties: false
+              properties:
+                imposing_owner:
+                  const: OPERATOR_VIA_ADC
+                resolution_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                suspension_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                suspension_version:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - suspension_ref
+              - suspension_version
+              - imposing_owner
+              - resolution_ref
+              type: object
+      - if:
+          properties:
+            action:
+              const: ISSUE_STANDING_POLICY
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: RESOURCE_POLICY_ISSUER
+            target:
+              additionalProperties: false
+              properties:
+                account_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                ceiling_units:
+                  maximum: 9007199254740991
+                  minimum: 0
+                  type: integer
+                cooperative_limit_ack:
+                  type: boolean
+                currency_or_unit:
+                  pattern: ^[A-Z][A-Z0-9_-]{1,15}$
+                  type: string
+                effective_from:
+                  format: date-time
+                  pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+                  type: string
+                enforcement:
+                  enum:
+                  - MANDATORY_HARD
+                  - COOPERATIVE
+                expires_at:
+                  format: date-time
+                  pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+                  type: string
+                policy_body_sha256:
+                  pattern: ^[0-9a-f]{64}$
+                  type: string
+                policy_decision_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                policy_issuer_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                policy_revision:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                provider_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                recipient_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                resource_scope_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - policy_decision_ref
+              - policy_revision
+              - policy_body_sha256
+              - policy_issuer_ref
+              - resource_scope_ref
+              - provider_ref
+              - account_ref
+              - recipient_ref
+              - ceiling_units
+              - enforcement
+              - effective_from
+              - expires_at
+              - cooperative_limit_ack
+              - currency_or_unit
+              type: object
+      - if:
+          properties:
+            action:
+              const: REQUEST_PROFILE_CHANGE
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: IF13
+            target:
+              additionalProperties: false
+              properties:
+                expected_functional_snapshot:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                installation_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                profile_definition_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                profile_revision:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - installation_ref
+              - profile_definition_ref
+              - profile_revision
+              - expected_functional_snapshot
+              type: object
+      - if:
+          properties:
+            action:
+              const: DELEGATED_CANCEL
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: CURRENT_DELEGATED_GRANT
+            owner_hint:
+              const: HEB
+            target:
+              additionalProperties: false
+              properties:
+                cancel_scope:
+                  const: OWN_DELEGATED_INVOCATION
+                grant_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                handoff_ref:
+                  oneOf:
+                  - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                    type: string
+                  - type: 'null'
+                invocation_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                work_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                work_revision:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - invocation_ref
+              - grant_ref
+              - work_ref
+              - work_revision
+              - cancel_scope
+              - handoff_ref
+              type: object
+      - if:
+          properties:
+            action:
+              const: CONTINUE_ELIGIBLE_WORK
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: CURRENT_DELEGATED_GRANT
+            owner_hint:
+              const: HEB
+            target:
+              additionalProperties: false
+              properties:
+                eligible_basis_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                grant_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                selection_mode:
+                  const: DELIBERATE_SELECTED_WORK
+                work_ref:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+                work_revision:
+                  pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                  type: string
+              required:
+              - work_ref
+              - work_revision
+              - grant_ref
+              - eligible_basis_ref
+              - selection_mode
+              type: object
+      - if:
+          properties:
+            action:
+              const: ATTACH_LEAD
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: HEB
+            target:
+              $ref: '#/components/schemas/ATTACH_LEADTarget'
+      - if:
+          properties:
+            action:
+              const: REATTACH_LEAD
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: OPERATOR_RESERVED
+            owner_hint:
+              const: HEB
+            target:
+              $ref: '#/components/schemas/REATTACH_LEADTarget'
+      - if:
+          properties:
+            action:
+              const: REAFFIRM_ELIGIBLE_CHILD_GRANTS
+          required:
+          - action
+        then:
+          properties:
+            authority_class:
+              const: CURRENT_SUCCESSOR_GENERATION
+            owner_hint:
+              const: ADC
+            target:
+              $ref: '#/components/schemas/REAFFIRM_ELIGIBLE_CHILD_GRANTSTarget'
+            origin_proof_ref:
+              type: 'null'
+            delegated_grant_proof_ref:
+              type: 'null'
+      properties:
+        action:
+          enum:
+          - CLOSE_ATTACHMENT
+          - SUSPEND_GRANT
+          - LIFT_OPERATOR_SUSPENSION
+          - ISSUE_STANDING_POLICY
+          - REQUEST_PROFILE_CHANGE
+          - DELEGATED_CANCEL
+          - CONTINUE_ELIGIBLE_WORK
+          - ATTACH_LEAD
+          - REATTACH_LEAD
+          - REAFFIRM_ELIGIBLE_CHILD_GRANTS
+        actor_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        authority_class:
+          enum:
+          - OPERATOR_RESERVED
+          - CURRENT_DELEGATED_GRANT
+          - CURRENT_SUCCESSOR_GENERATION
+        delegated_grant_proof_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+            type: string
+          - type: 'null'
+        intent_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        origin_proof_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+            type: string
+          - type: 'null'
+        owner_hint:
+          enum:
+          - ADC
+          - HEB
+          - IF13
+          - RESOURCE_POLICY_ISSUER
+        predecessor:
+          additionalProperties: false
+          properties:
+            basis_ref:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            basis_version:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            source_epoch:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+          required:
+          - basis_ref
+          - basis_version
+          - source_epoch
+          type: object
+        subject:
+          additionalProperties: false
+          properties:
+            attachment_ref:
+              oneOf:
+              - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                type: string
+              - type: 'null'
+            generation_ref:
+              oneOf:
+              - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+                type: string
+              - type: 'null'
+            installation_ref:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            project_ref:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+          required:
+          - project_ref
+          - installation_ref
+          - attachment_ref
+          - generation_ref
+          type: object
+        target:
+          type: object
+      required:
+      - intent_ref
+      - action
+      - actor_ref
+      - authority_class
+      - owner_hint
+      - subject
+      - predecessor
+      - target
+      - origin_proof_ref
+      - delegated_grant_proof_ref
+      type: object
+    IntentResult:
+      additionalProperties: false
+      properties:
+        admission_state:
+          enum:
+          - RECEIVED
+          - ORIGIN_PENDING
+          - HELD
+          - ADMITTED
+          - REJECTED
+          - SUPERSEDED
+        cancellation_state:
+          enum:
+          - NONE
+          - CANCEL_REQUESTED
+          - CANCEL_CONFIRMED
+          - CANCEL_UNCERTAIN
+        effect_state:
+          enum:
+          - NOT_OBSERVED
+          - EXECUTING
+          - EFFECT_CONFIRMED
+          - UNKNOWN_EFFECT
+          - RECONCILING
+          - FAILED_CONFIRMED_NO_EFFECT
+          - PARTIAL
+        intent_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        operation_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._-]{2,127}$
+            type: string
+          - type: 'null'
+        owner:
+          enum:
+          - ADC
+          - HEB
+          - IF13
+          - RESOURCE_POLICY_ISSUER
+        owner_evidence_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+            type: string
+          - type: 'null'
+        reason_code:
+          oneOf:
+          - enum:
+            - AUTHORITY_REFUSED
+            - CONSENT_ALREADY_USED_OR_MISSING
+            - CURRENTNESS_EXPIRED
+            - DELEGATED_GRANT_UNVERIFIED
+            - ORIGIN_NOT_ESTABLISHED
+            - ORIGIN_UNQUALIFIED
+            - POLICY_INVALID
+            - PRECONDITION_STALE
+            - PROTECTIVE_SCOPE_CHANGED
+            - SOURCE_UNAVAILABLE
+            - UNRESOLVED_NO_REDISPATCH
+            - UNSUPPORTED_ACTION
+            type: string
+          - type: 'null'
+        residual_remote_effect:
+          enum:
+          - NOT_ESTABLISHED
+          - NONE_QUALIFIED
+          - POSSIBLE
+          - UNKNOWN
+      required:
+      - intent_ref
+      - owner
+      - operation_ref
+      - admission_state
+      - effect_state
+      - cancellation_state
+      - residual_remote_effect
+      - owner_evidence_ref
+      - reason_code
+      type: object
+    Problem:
+      type: object
+      properties:
+        type:
+          const: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          enum:
+          - 400
+          - 401
+          - 404
+          - 409
+          - 503
+        code:
+          type: string
+          enum:
+          - invalid_request
+          - authentication_unqualified
+          - not_found_or_not_disclosable
+          - cursor_stale_or_unauthorized
+          - owner_unavailable
+          - operator_origin_not_established
+          - operator_origin_unqualified
+          - precondition_changed
+          - request_key_conflict
+          - unsupported_action
+          - unresolved_no_redispatch
+        retry:
+          type: string
+          enum:
+          - never
+          - reauthenticate
+          - refresh_read
+          - when_source_recovers
+          - not_established
+        correlation_id:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+      required:
+      - type
+      - title
+      - status
+      - code
+      - retry
+      - correlation_id
+      additionalProperties: false
+      description: No hidden fact IDs, reason classes or counts in error details.
+        404 used for both hidden and nonexistent.
+      allOf:
+      - if:
+          properties:
+            code:
+              const: invalid_request
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 400
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: authentication_unqualified
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 401
+            retry:
+              const: reauthenticate
+      - if:
+          properties:
+            code:
+              const: not_found_or_not_disclosable
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 404
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: cursor_stale_or_unauthorized
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            retry:
+              const: refresh_read
+      - if:
+          properties:
+            code:
+              const: owner_unavailable
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 503
+            retry:
+              const: when_source_recovers
+      - if:
+          properties:
+            code:
+              const: operator_origin_not_established
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 401
+            retry:
+              const: not_established
+      - if:
+          properties:
+            code:
+              const: operator_origin_unqualified
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 401
+            retry:
+              const: reauthenticate
+      - if:
+          properties:
+            code:
+              const: precondition_changed
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            retry:
+              const: refresh_read
+      - if:
+          properties:
+            code:
+              const: request_key_conflict
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: unsupported_action
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 400
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: unresolved_no_redispatch
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            retry:
+              const: never
+    OwnerOperationRead:
+      type: object
+      additionalProperties: false
+      required:
+      - owner
+      - operation_ref
+      - request_set_ref
+      - intent_ref
+      - recipient_ref
+      - installation_ref
+      - source_epoch
+      - observed_at
+      - source_valid_until
+      - result
+      - wire_version
+      properties:
+        owner:
+          enum:
+          - HEB
+          - ADC
+          - IF13
+          - RESOURCE_POLICY_ISSUER
+        operation_ref:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9:._-]{2,127}$
+        request_set_ref:
+          type: string
+        intent_ref:
+          type: string
+        recipient_ref:
+          type: string
+        installation_ref:
+          type: string
+        source_epoch:
+          type: string
+        observed_at:
+          $ref: '#/components/schemas/RFC3339Offset'
+        source_valid_until:
+          $ref: '#/components/schemas/RFC3339Offset'
+        result:
+          $ref: '#/components/schemas/IntentResult'
+        wire_version:
+          const: o01-command-0.2-review-candidate
+    RFC3339Offset:
+      format: date-time
+      pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+      type: string
+    ATTACH_LEADTarget:
+      additionalProperties: false
+      properties:
+        profile_binding_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        project_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        requested_lead_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        seat_class:
+          const: LEAD
+      required:
+      - project_ref
+      - profile_binding_ref
+      - requested_lead_ref
+      - seat_class
+      type: object
+    CLOSE_ATTACHMENTTarget:
+      additionalProperties: false
+      properties:
+        attachment_generation:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        attachment_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - attachment_ref
+      - attachment_generation
+      type: object
+    CONTINUE_ELIGIBLE_WORKTarget:
+      additionalProperties: false
+      properties:
+        eligible_basis_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        grant_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        selection_mode:
+          const: DELIBERATE_SELECTED_WORK
+        work_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        work_revision:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - work_ref
+      - work_revision
+      - grant_ref
+      - eligible_basis_ref
+      - selection_mode
+      type: object
+    DELEGATED_CANCELTarget:
+      additionalProperties: false
+      properties:
+        cancel_scope:
+          const: OWN_DELEGATED_INVOCATION
+        grant_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        handoff_ref:
+          oneOf:
+          - pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+            type: string
+          - type: 'null'
+        invocation_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        work_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        work_revision:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - invocation_ref
+      - grant_ref
+      - work_ref
+      - work_revision
+      - cancel_scope
+      - handoff_ref
+      type: object
+    ISSUE_STANDING_POLICYTarget:
+      additionalProperties: false
+      properties:
+        account_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        ceiling_units:
+          maximum: 9007199254740991
+          minimum: 0
+          type: integer
+        cooperative_limit_ack:
+          type: boolean
+        currency_or_unit:
+          pattern: ^[A-Z][A-Z0-9_-]{1,15}$
+          type: string
+        effective_from:
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+          type: string
+        enforcement:
+          enum:
+          - MANDATORY_HARD
+          - COOPERATIVE
+        expires_at:
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$
+          type: string
+        policy_body_sha256:
+          pattern: ^[0-9a-f]{64}$
+          type: string
+        policy_decision_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        policy_issuer_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        policy_revision:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        provider_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        recipient_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        resource_scope_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - policy_decision_ref
+      - policy_revision
+      - policy_body_sha256
+      - policy_issuer_ref
+      - resource_scope_ref
+      - provider_ref
+      - account_ref
+      - recipient_ref
+      - ceiling_units
+      - enforcement
+      - effective_from
+      - expires_at
+      - cooperative_limit_ack
+      - currency_or_unit
+      type: object
+    LIFT_OPERATOR_SUSPENSIONTarget:
+      additionalProperties: false
+      properties:
+        imposing_owner:
+          const: OPERATOR_VIA_ADC
+        resolution_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        suspension_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        suspension_version:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - suspension_ref
+      - suspension_version
+      - imposing_owner
+      - resolution_ref
+      type: object
+    REAFFIRM_ELIGIBLE_CHILD_GRANTSTarget:
+      additionalProperties: false
+      properties:
+        child:
+          additionalProperties: false
+          properties:
+            child_ref:
+              maxLength: 128
+              minLength: 3
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            constraints_digest:
+              pattern: ^sha256:[0-9a-f]{64}$
+              type: string
+            predecessor_generation:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            prior_grant_expiry:
+              format: date-time
+              type: string
+            prior_grant_ref:
+              maxLength: 128
+              minLength: 3
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            prior_grant_version:
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            scope_digest:
+              pattern: ^sha256:[0-9a-f]{64}$
+              type: string
+            work_ref:
+              maxLength: 128
+              minLength: 3
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+            work_revision:
+              maxLength: 128
+              minLength: 3
+              pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+              type: string
+          required:
+          - child_ref
+          - prior_grant_ref
+          - work_ref
+          - work_revision
+          - prior_grant_version
+          - predecessor_generation
+          - scope_digest
+          - constraints_digest
+          - prior_grant_expiry
+          type: object
+        recovery_classification_issuer_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        recovery_classification_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        recovery_classification_version:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_attachment_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_generation:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_generation_basis_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_generation_version:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_lead_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_seat_epoch:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - successor_attachment_ref
+      - successor_generation
+      - successor_lead_ref
+      - recovery_classification_ref
+      - child
+      - successor_generation_basis_ref
+      - successor_generation_version
+      - successor_seat_epoch
+      - recovery_classification_version
+      - recovery_classification_issuer_ref
+      type: object
+    REATTACH_LEADTarget:
+      additionalProperties: false
+      properties:
+        expected_binding_epoch:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        predecessor_attachment_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        predecessor_fence_epoch:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        predecessor_generation:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        predecessor_seat_version:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        profile_binding_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        recovery_basis_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        recovery_classification_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        successor_lead_ref:
+          maxLength: 128
+          minLength: 3
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - predecessor_attachment_ref
+      - predecessor_generation
+      - successor_lead_ref
+      - profile_binding_ref
+      - recovery_basis_ref
+      - predecessor_seat_version
+      - predecessor_fence_epoch
+      - expected_binding_epoch
+      - recovery_classification_ref
+      type: object
+    REQUEST_PROFILE_CHANGETarget:
+      additionalProperties: false
+      properties:
+        expected_functional_snapshot:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        installation_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        profile_definition_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        profile_revision:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - installation_ref
+      - profile_definition_ref
+      - profile_revision
+      - expected_functional_snapshot
+      type: object
+    ReasonCode:
+      enum:
+      - AUTHORITY_REFUSED
+      - CONSENT_ALREADY_USED_OR_MISSING
+      - CURRENTNESS_EXPIRED
+      - DELEGATED_GRANT_UNVERIFIED
+      - ORIGIN_NOT_ESTABLISHED
+      - ORIGIN_UNQUALIFIED
+      - POLICY_INVALID
+      - PRECONDITION_STALE
+      - PROTECTIVE_SCOPE_CHANGED
+      - SOURCE_UNAVAILABLE
+      - UNRESOLVED_NO_REDISPATCH
+      - UNSUPPORTED_ACTION
+      type: string
+    SUSPEND_GRANTTarget:
+      additionalProperties: false
+      properties:
+        grant_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        grant_version:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+        protection_scope:
+          enum:
+          - EXACT_GRANT
+          - STABLE_ROOT_DESCENDANTS
+        reason_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._/-]{2,127}$
+          type: string
+      required:
+      - grant_ref
+      - grant_version
+      - protection_scope
+      - reason_ref
+      type: object

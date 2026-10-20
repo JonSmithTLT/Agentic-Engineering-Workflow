@@ -192,6 +192,15 @@ Two amendments of 2026-10-05 are designed, not built, and the register tracks th
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.3, which adds the maps and raw-history search routes to 0.1.2 and changes nothing 0.1.2 returns; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
 
+## The STG-02 slice ([`stg02/`](stg02/))
+
+The first vertical slice against the architecture workspace's adopted STG-01 v0.5.4 wire (D-01 0.3.4 reads, the O-01 0.2 command route), built in `src/aew/stg02/` beside the provisional dashboard API, which it does not change.
+
+| Document | What it is |
+|---|---|
+| [`BACKEND-REPORT.md`](stg02/BACKEND-REPORT.md) | The backend report: each field's owner and whether it is real or a labelled fixture, what cannot be produced yet, the recorded HTTP responses, the conformance driver's result, the four push-back points and context feedback |
+| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | The backend's classified gap entries (STG02-BE-01 to BE-14), for the designer's gap register |
+
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 
 A proposal's adoption state is in its status line and here. "Design frozen, proposed" means the designer has settled its

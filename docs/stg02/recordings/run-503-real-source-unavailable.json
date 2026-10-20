@@ -1,0 +1,26 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/runs/SU5WLTAwMDE",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 503,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "owner_unavailable",
+   "correlation_id": "corr:0cc2de63870142dbbad31bf0a0ba2830",
+   "retry": "when_source_recovers",
+   "status": 503,
+   "title": "The owner projection is unavailable",
+   "type": "about:blank"
+  }
+ }
+}

@@ -1,0 +1,57 @@
+{
+  "CONFLICT_CHANGED_SET": {
+    "code": "request_key_conflict",
+    "retry": "never",
+    "status": 409
+  },
+  "DELEGATED_CANNOT_MINT_CONSENT_SET": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "INSTALLATION_NOT_THIS_DEPLOYMENT": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "INTENT_ORDER_OR_DUPLICATE": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "MEMBER_INSTALLATION_MISMATCH": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "MIXED_AUTHORITY_SET_UNSELECTED": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "PROTECTED_NO_CONSENT_SET": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "RECIPIENT_NOT_AUTHENTICATED": {
+    "code": "authentication_unqualified",
+    "retry": "reauthenticate",
+    "status": 401
+  },
+  "RECONCILIATION_NOT_ENTITLED": {
+    "code": "not_found_or_not_disclosable",
+    "retry": "never",
+    "status": 404
+  },
+  "STRUCTURAL": {
+    "code": "invalid_request",
+    "retry": "never",
+    "status": 400
+  },
+  "UNRESOLVED_NO_REDISPATCH": {
+    "code": "unresolved_no_redispatch",
+    "retry": "never",
+    "status": 409
+  }
+}

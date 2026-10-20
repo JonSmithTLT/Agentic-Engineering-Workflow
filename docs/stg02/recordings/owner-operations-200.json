@@ -1,0 +1,402 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/owner-operations?scope_ref=fixture:scope-slice",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "collection_basis": {
+    "authority_class": "unqualified_report",
+    "closures": [],
+    "coverage_ref": "fixture:scope-slice",
+    "fact_ref": "fixture:cni-owner-operation-roster",
+    "governing_owner": null,
+    "issuer_ref": "fixture:issuer-cni",
+    "observation_state": "unknown",
+    "observed_at": "2026-10-20T01:06:27Z",
+    "owner": "CNI",
+    "owner_coverage_class": "not_established",
+    "qualification": "unqualified",
+    "renewal": {
+     "checked_at": null,
+     "coverage_ref": null,
+     "invalidation": "none",
+     "kind": "none",
+     "qualified_owner": null,
+     "source_epoch": null,
+     "source_proof_ref": null,
+     "valid_until": null,
+     "verification_method": "none"
+    },
+    "source_epoch": "fixture:cni-epoch-1",
+    "source_version": "fixture:cni-v1"
+   },
+   "continuity": "unknown",
+   "correlation_id": "corr:7a832c28e6e4490b87167c55c2cc7a56",
+   "effective_recipient_ref": "fixture:recipient-operator",
+   "items": [
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:1dc991bae19e23d2123720686971554a",
+      "issued_at": "2026-10-20T01:06:39Z",
+      "operation_ref": "op:1dc991bae19e23d2123720686971554a",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-retry"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:1dc991bae19e23d2123720686971554a",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:1dc991bae19e23d2123720686971554a",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:39Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    },
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:406e0b6d8e208709df64561cac0726bf",
+      "issued_at": "2026-10-20T01:06:39Z",
+      "operation_ref": "op:406e0b6d8e208709df64561cac0726bf",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-continue"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:406e0b6d8e208709df64561cac0726bf",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:406e0b6d8e208709df64561cac0726bf",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:39Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    },
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:781be743082dd8b80dd6e4ccfba0c74b",
+      "issued_at": "2026-10-20T01:06:38Z",
+      "operation_ref": "op:781be743082dd8b80dd6e4ccfba0c74b",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-retry"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:781be743082dd8b80dd6e4ccfba0c74b",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:781be743082dd8b80dd6e4ccfba0c74b",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:38Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    },
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:a546845ecf1704a7a40587759f56e012",
+      "issued_at": "2026-10-20T01:06:40Z",
+      "operation_ref": "op:a546845ecf1704a7a40587759f56e012",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-held"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:a546845ecf1704a7a40587759f56e012",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:a546845ecf1704a7a40587759f56e012",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:40Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    },
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:a87792b00ccaadfd1580e1aa6c4a54a5",
+      "issued_at": "2026-10-20T01:06:38Z",
+      "operation_ref": "op:a87792b00ccaadfd1580e1aa6c4a54a5",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-continue"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:a87792b00ccaadfd1580e1aa6c4a54a5",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:a87792b00ccaadfd1580e1aa6c4a54a5",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:38Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    },
+    {
+     "data": {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "attachment_generation": "fixture:generation-1",
+      "detail_path": "/o01/v0/owner-operations/HEB/op:f9d825653baee3d2e73237a6578a069a",
+      "issued_at": "2026-10-20T01:06:40Z",
+      "operation_ref": "op:f9d825653baee3d2e73237a6578a069a",
+      "owner": "HEB",
+      "owner_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1",
+      "subject_ref": "fixture:ticket-continue"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "ownerop:HEB:op:f9d825653baee3d2e73237a6578a069a",
+      "kind": "owner_operation_index",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "owner_operation_index",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "op-record:op:f9d825653baee3d2e73237a6578a069a",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-heb",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T01:06:40Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:heb-epoch-1",
+      "source_version": "fixture:heb-v1"
+     }
+    }
+   ],
+   "limitations": [
+    "G3_unqualified",
+    "source_unqualified"
+   ],
+   "mode": "list",
+   "outcome": "partial",
+   "page": {
+    "has_more": false,
+    "membership": "unknown",
+    "next_cursor": null,
+    "page_size": 25,
+    "scope": "effective_recipient_view"
+   },
+   "projection_as_of": "2026-10-20T01:06:40Z",
+   "wire_version": "0.3.4"
+  }
+ }
+}

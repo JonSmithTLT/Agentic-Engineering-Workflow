@@ -1,0 +1,26 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/o01/v0/owner-operations/HEB/op:unknown",
+  "headers": {
+   "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 404,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-o01-wire": "o01-command-0.2-review-candidate"
+  },
+  "body": {
+   "code": "not_found_or_not_disclosable",
+   "correlation_id": "corr:dc8cc3fada104301bf8655c5b935c08c",
+   "retry": "never",
+   "status": 404,
+   "title": "Not found or not disclosable",
+   "type": "about:blank"
+  }
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/waiting",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4",
+   "Authorization": "Bearer not-issued"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 401,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "authentication_unqualified",
+   "correlation_id": "corr:c73dc4a9da6347e8b930b5fd07861b50",
+   "retry": "reauthenticate",
+   "status": 401,
+   "title": "The request is not authenticated",
+   "type": "about:blank"
+  }
+ }
+}

@@ -1,0 +1,76 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/o01/v0/command-sets",
+  "headers": {
+   "X-AEW-O01-Wire": "o01-command-0.2-review-candidate",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "wire_version": "o01-command-0.2-review-candidate",
+   "request_set_ref": "fixture:request-continue.rec20261020T010640.n21",
+   "client_request_key": "fixture:key-continue.rec20261020T010640.n21",
+   "recipient_ref": "fixture:recipient-operator",
+   "installation_ref": "fixture:installation-slice",
+   "consent_set_ref": null,
+   "intents": [
+    {
+     "intent_ref": "fixture:intent-continue-held",
+     "action": "CONTINUE_ELIGIBLE_WORK",
+     "actor_ref": "fixture:lead-1",
+     "authority_class": "CURRENT_DELEGATED_GRANT",
+     "owner_hint": "HEB",
+     "subject": {
+      "project_ref": "fixture:project-slice",
+      "installation_ref": "fixture:installation-slice",
+      "attachment_ref": "fixture:attachment-lead-1",
+      "generation_ref": "fixture:generation-1"
+     },
+     "predecessor": {
+      "basis_ref": "fixture:basis-not-eligible-held",
+      "basis_version": "fixture:revision-1",
+      "source_epoch": "fixture:heb-epoch-1"
+     },
+     "target": {
+      "work_ref": "fixture:ticket-held",
+      "work_revision": "fixture:revision-1",
+      "grant_ref": "fixture:grant-ticket-held",
+      "eligible_basis_ref": "fixture:basis-not-eligible-held",
+      "selection_mode": "DELIBERATE_SELECTED_WORK"
+     },
+     "origin_proof_ref": null,
+     "delegated_grant_proof_ref": "fixture:delegation-held-current"
+    }
+   ]
+  }
+ },
+ "response": {
+  "status": 202,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-o01-wire": "o01-command-0.2-review-candidate"
+  },
+  "body": {
+   "carrier_state": "COMPLETE_WITH_PER_INTENT_RESULTS",
+   "observed_at": "2026-10-20T01:06:40Z",
+   "recipient_ref": "fixture:recipient-operator",
+   "request_set_ref": "fixture:request-continue.rec20261020T010640.n21",
+   "results": [
+    {
+     "admission_state": "REJECTED",
+     "cancellation_state": "NONE",
+     "effect_state": "FAILED_CONFIRMED_NO_EFFECT",
+     "intent_ref": "fixture:intent-continue-held",
+     "operation_ref": "op:a546845ecf1704a7a40587759f56e012",
+     "owner": "HEB",
+     "owner_evidence_ref": "fixture:heb-evidence-a546845ecf1704a7a40587759f56e012",
+     "reason_code": "PRECONDITION_STALE",
+     "residual_remote_effect": "NONE_QUALIFIED"
+    }
+   ],
+   "source_valid_until": "2026-10-20T01:21:40Z",
+   "wire_version": "o01-command-0.2-review-candidate"
+  }
+ }
+}

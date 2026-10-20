@@ -1,0 +1,26 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/runs/Zml4dHVyZTpydW4tdW5rbm93bg",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 404,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "not_found_or_not_disclosable",
+   "correlation_id": "corr:c82ab9b14e4643c49bbc109324f63843",
+   "retry": "never",
+   "status": 404,
+   "title": "Not found or not disclosable",
+   "type": "about:blank"
+  }
+ }
+}

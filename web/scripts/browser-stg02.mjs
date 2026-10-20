@@ -101,7 +101,8 @@ try {
       await page.getByRole('heading', { name: `Read outcome: ${recording.body.outcome}`, exact: true }).waitFor();
       assert.ok((await page.locator('main').innerText()).includes(phrase));
       await page.getByRole('heading', { name: 'Collection basis — aggregation only', exact: true }).waitFor();
-      assert.ok((await page.locator('main').innerText()).includes(recording.body.collection_basis.fact_ref));
+      const basisText = await page.getByRole('heading', { name: 'Collection basis — aggregation only', exact: true }).locator('..').innerText();
+      assert.ok(basisText.includes(recording.body.collection_basis?.fact_ref ?? 'Not supplied'));
       if (name === 'index-first') assert.equal(await page.getByRole('link', { name: 'Next supplied page' }).count(), 1);
       await page.screenshot({ path: `${output}/${width}-${name}.png`, fullPage: true });
       await page.unroute('**/v1/read/owner-operations*');

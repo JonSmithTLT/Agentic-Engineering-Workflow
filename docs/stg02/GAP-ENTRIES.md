@@ -1,6 +1,6 @@
 # STG-02 gap entries: backend (lead AEW developer)
 
-**For:** the lead designer, who copies these into the architecture workspace's `30-stages/STG-02-first-vertical-slice/GAP-REGISTER.md` and triages them (STG02-BE-01 to BE-15). The format and the five classes are the field map's (`handoff/SLICE-FIELD-MAP.md`, "The gap register").
+**For:** the lead designer, who copies these into the architecture workspace's `30-stages/STG-02-first-vertical-slice/GAP-REGISTER.md` and triages them (STG02-BE-01 to BE-16). The format and the five classes are the field map's (`handoff/SLICE-FIELD-MAP.md`, "The gap register").
 **Adopted bytes:** `STG-01-v0.5.4.zip`, SHA-256 `64e65578…f299f`. Paths such as `02-WIRE/…`, `00-DESIGN/…` and `05-INTEGRATED-FIXTURES/…` are inside it.
 **Written:** 2026-10-19 (UTC 2026-10-20), from the backend in [`src/aew/stg02/`](../../src/aew/stg02/); the report is [`BACKEND-REPORT.md`](BACKEND-REPORT.md).
 **Independence:** nothing here was agreed with the web developer; each interim choice is this backend's own.
@@ -22,6 +22,7 @@
 | [STG02-BE-13](#stg02-be-13) | wire defect | A deployment serving a subset of the 20 reads has no defined answer for the rest |
 | [STG02-BE-14](#stg02-be-14) | new feature or scope request | The provisional dashboard API, the browser origin, and where the adopted wire runs |
 | [STG02-BE-15](#stg02-be-15) | wire defect | Read entitlement is defined for lookups; what a withdrawn entitlement does to a D-01 read is not |
+| [STG02-BE-16](#stg02-be-16) | host or profile qualification deficit | AEW's engine has no per-recipient visibility, so its real records can be disclosed to one recipient only |
 
 ---
 
@@ -181,7 +182,9 @@ What the website gets is all-unknown. The directives `no_unknown_owners`, `list_
 
 **What happened.** No problem *within the slice*. Each submission is one SQLite `BEGIN IMMEDIATE` transaction over one file that holds the key ledger, HEB's operation records and read entitlement (`src/aew/stg02/ledger.py`). The write lock is taken before the first read.
 
-`tests/integration/test_stg02_fence.py` (serial lane) starts two real processes with the same key at the same instant. Exactly one dispatches, the other replays the identical receipt, and HEB holds one operation.
+`tests/integration/test_stg02_fence.py` (serial lane) starts two real processes with the same key at the same instant, and holds each one's transaction open for 0.5 s after its key lookup, so the two lookups always overlap. Exactly one dispatches, the other replays the identical receipt, and HEB holds one operation. With the lock removed (a plain `BEGIN`), the test fails.
+
+**What this does not show.** The fence was exercised on the **key ledger** only. The fixture HEB's state (its epoch, the work's eligibility) never moves while the server runs, so no test races a submission against a change in HEB's state: the slice does not demonstrate the bound that the BE-06 ruling assumes (an HEB epoch change invalidating outstanding grants at the moment of admission). The HEB outcomes are each tested from a fixed state: `HEB_STALE_PREDECESSOR` (an epoch changed before the submission) is an allocated `PRECONDITION_STALE`, and `HEB_STATE_UNKNOWN` (no eligibility for the work) is `HELD`, nothing allocated.
 
 The atomicity depends on the carrier's ledger and HEB's state being **one store**. Once HEB is its own process or service, the model's single step becomes two commits, carrier and owner. A crash between them leaves either an owner effect with no stored receipt, or a receipt with no effect. The profile's lost-response path (`UNKNOWN_EFFECT`, reconcile by `(owner, operation_ref)`) covers only the first case, and only if HEB can be asked for an operation by the identity the carrier derived.
 
@@ -207,7 +210,7 @@ The atomicity depends on the carrier's ledger and HEB's state being **one store*
 | Receipt validity (`source_valid_until`) | 900 s after issue (`receipt_valid_s` in the world) | An identical retry is `409 unresolved_no_redispatch` |
 | Stored receipt and member outcomes | 7 days after expiry | Dropped |
 | The key and its request digest | **Never dropped** | A key whose receipt was dropped is `409 unresolved_no_redispatch` |
-| HEB operation record | 30 days after issue | The owner GET is the nondisclosing 404 |
+| HEB operation record | 30 days after issue | The owner GET is the nondisclosing 404, and the record leaves the `owner-operations` list. Enforced on every read, so it holds before the purge runs (the purge runs only on a submission) |
 | Owner GET observation | 900 s (`owner_observation_valid_s`) | HEB re-observes its own record on each GET |
 
 Under CS-04, a key can never be forgotten. If a dropped key came back as unused, a lost response's retry would dispatch a second time. The key ledger therefore grows without bound: one row per key per `(installation, recipient)`, forever.
@@ -216,7 +219,7 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 - (a) Keys are kept forever, so the contract should say the ledger is unbounded.
 - (b) Keys may expire after a bound the contract states. Clients must then never retry past it, and the contract should name that bound.
 
-**Interim choice.** (a): tombstones are kept forever. The test is `test_an_expired_entry_is_unresolved_and_a_dropped_receipt_never_makes_the_key_new`.
+**Interim choice.** (a): tombstones are kept forever. The tests are `test_an_expired_entry_is_unresolved_and_a_dropped_receipt_never_makes_the_key_new` and `test_an_owner_record_past_its_retention_is_never_disclosed_even_before_any_purge`.
 
 ## STG02-BE-10
 
@@ -305,6 +308,24 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 - (b) Entitlement is an O-01 reconciliation fact only. D-01 reads stay governed by their own disclosure policy, and keep answering.
 
 **Interim choice.** (a). While the entitlement is withdrawn, every D-01 read, the owner GET and every lookup answer `404 not_found_or_not_disclosable`. A submission under an unused key is still decided by its origin (the profile's accepted residual LEAD-F21). Test: `test_a_lookup_after_read_entitlement_is_withdrawn_is_one_nondisclosing_404`.
+
+**Entitlement is stated, never presumed.** CS-04 step 1 refuses a lookup when the recipient lacks current read entitlement "or the world does not state it". The fixture world states it (`read_entitled`: the operator and the other recipient), and the server records it at start; a withdrawal is recorded and kept across restarts. A recipient the world does not name, even with a valid token, is not entitled: every read is the nondisclosing `404`. Test: `test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled`.
+
+## STG02-BE-16
+
+**Class:** host or profile qualification deficit.
+
+**Clause.**
+- D-01: every read "is qualified for the authenticated recipient", and a hidden member changes nothing the recipient sees.
+- `handoff/SLICE-FIELD-MAP.md`, rule 2: real owner facts where AEW has them.
+
+**What happened.** AEW's engine records (its work units, invocations and runs) have no recipient. Any recipient the server authenticates would see all of them, which the fixture world's other recipient must not: for that recipient, real records would be a disclosure the engine never decided.
+
+**Two readings.**
+- (a) AEW's records belong to the installation's one operator. Disclose them to one named recipient, and to everyone else they do not exist.
+- (b) The engine gains per-recipient visibility (a disclosure policy over work and runs) before real records are served to more than one recipient.
+
+**Interim choice.** (a). `--real-recipient` names the one recipient AEW's records are disclosed to (default: the fixture world's operator). Every other recipient gets no `aew:` item in a list, and the nondisclosing `404` for a real run or work id, the same answer as for an id that does not exist. Test: `test_real_aew_records_are_disclosed_to_the_one_real_recipient_and_to_nobody_else`.
 
 ---
 

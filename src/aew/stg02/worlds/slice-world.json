@@ -3,6 +3,7 @@
  "_label": "FIXTURE WORLD (STG-02 slice). Every identifier, fact, epoch and proof in this file starts with 'fixture:' and is served unqualified. It stands in for owners AEW does not have yet: HEB, ADC, AEV, IF10, the delegation issuer and the slice's recipient. Times are offsets in seconds from the server's start, so a fact is never stale merely because the file is old.",
  "installation_ref": "fixture:installation-slice",
  "recipient_ref": "fixture:recipient-operator",
+ "read_entitled": ["fixture:recipient-operator", "fixture:recipient-other"],
  "project_ref": "fixture:project-slice",
  "scope_ref": "fixture:scope-slice",
  "policy_ref": "fixture:policy-slice",

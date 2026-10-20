@@ -35,10 +35,13 @@ class ReadProblem(Exception):
 
 
 class Reads:
-    def __init__(self, fx: Fixture, engine: EngineSource | None, ledger: Ledger) -> None:
+    def __init__(self, fx: Fixture, engine: EngineSource | None, ledger: Ledger, *, real_recipient: str) -> None:
         self.fx = fx
         self.engine = engine
         self.ledger = ledger
+        # AEW's engine has no per-recipient visibility (gap STG02-BE-16): its records are disclosed to this one
+        # recipient only, and to every other recipient they do not exist (no item, a nondisclosing 404 for their ids).
+        self.real_recipient = real_recipient
         self._cursor_key = secrets.token_bytes(32)  # cursors are this process's; a restart makes them stale (409)
 
     # ------------------------------------------------------------------ shared
@@ -48,9 +51,12 @@ class Reads:
             if not t.entitled(recipient):
                 raise ReadProblem("not_found_or_not_disclosable")
 
-    def _snapshot(self) -> Any | None:
-        """The engine snapshot, ``None`` when no project is configured; raises :class:`SourceUnavailable`."""
-        return self.engine.snapshot() if self.engine is not None else None
+    def _snapshot(self, recipient: str) -> Any | None:
+        """The engine snapshot, ``None`` when no project is configured or the recipient is not the one AEW's records
+        are disclosed to; raises :class:`SourceUnavailable`."""
+        if self.engine is None or recipient != self.real_recipient:
+            return None
+        return self.engine.snapshot()
 
     def _result(self, mode: str, items: list[dict[str, Any]], page: dict[str, Any] | None, limitations: list[str],
                 recipient: str, now: datetime, correlation: str, basis: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -114,7 +120,7 @@ class Reads:
         items = [self._fx_waiting(w, recipient) for w in self.fx.visible_work(recipient) if w.get("waiting")]
         limitations = ["source_unqualified"]
         try:
-            snap = self._snapshot()
+            snap = self._snapshot(recipient)
         except SourceUnavailable:
             snap, limitations = None, limitations + ["source_unavailable", "partial_source"]
         if snap is not None:
@@ -174,12 +180,12 @@ class Reads:
                 raise ReadProblem("not_found_or_not_disclosable")
             item, lim = self._fx_run(r, recipient, now)
         else:
-            if self.engine is None:
-                raise ReadProblem("not_found_or_not_disclosable")
             try:
-                snap: Any = self._snapshot()
+                snap: Any = self._snapshot(recipient)
             except SourceUnavailable as exc:  # we cannot even say whether it exists: no honest limited answer
                 raise ReadProblem("owner_unavailable") from exc
+            if snap is None:
+                raise ReadProblem("not_found_or_not_disclosable")
             inv = snap.state["invocations"].get(execution_id)
             if inv is None or inv.get("kind") == "integration_attempt":  # custody, not a run (as the dashboard)
                 raise ReadProblem("not_found_or_not_disclosable")
@@ -281,12 +287,12 @@ class Reads:
                 raise ReadProblem("not_found_or_not_disclosable")
             item = self._fx_continuation(w, recipient, now)
         else:
-            if self.engine is None:
-                raise ReadProblem("not_found_or_not_disclosable")
             try:
-                snap: Any = self._snapshot()
+                snap: Any = self._snapshot(recipient)
             except SourceUnavailable as exc:
                 raise ReadProblem("owner_unavailable") from exc
+            if snap is None:
+                raise ReadProblem("not_found_or_not_disclosable")
             u = snap.state["work"].get(work_ref)
             if u is None:
                 raise ReadProblem("not_found_or_not_disclosable")
@@ -362,7 +368,7 @@ class Reads:
         if scope_ref is not None and scope_ref != self.fx.doc["scope_ref"]:
             raise ReadProblem("not_found_or_not_disclosable")  # a scope not disclosed to this recipient
         with self.ledger.reading() as t:
-            ops = t.owner_ops(self.fx.installation, recipient)
+            ops = t.owner_ops(self.fx.installation, recipient, now)
         ops = [o for o in ops if (owner is None or o["owner"] == owner)
                and (attachment_ref is None or o["attachment_ref"] == attachment_ref)]
         items = [self._index_item(o, recipient) for o in ops]  # already in (owner, operation_ref) order

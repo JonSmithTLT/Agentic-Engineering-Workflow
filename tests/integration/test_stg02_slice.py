@@ -288,7 +288,7 @@ def test_version_cutover_refuses_before_any_data_on_every_route(live: Live, cfg:
                                                                            "hdr"))
         problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, "invalid_request")
     with live.s.ledger.reading() as t:
-        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient) == []  # nothing dispatched
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []  # nothing dispatched
 
 
 def test_identifiers_are_canonical_base64url_and_anything_else_is_400(live: Live):
@@ -406,7 +406,7 @@ def test_an_unqualified_delegation_is_refused_before_any_owner_state_and_allocat
     assert (x["admission_state"], x["effect_state"], x["operation_ref"], x["reason_code"]) == (
         "REJECTED", "NOT_OBSERVED", None, reason)
     with live.s.ledger.reading() as t:
-        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient) == []
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
 
 
 def test_protected_and_session_actions_are_held_or_refused_with_no_owner_operation(live: Live, cfg: dict[str, Any]):
@@ -432,7 +432,7 @@ def test_protected_and_session_actions_are_held_or_refused_with_no_owner_operati
     st, h, b = live.post(mixed)
     problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, "invalid_request")
     with live.s.ledger.reading() as t:
-        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient) == []
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
 
 
 def test_an_identical_retry_is_a_lookup_returning_the_stored_receipt_and_never_dispatches(live: Live,
@@ -443,7 +443,7 @@ def test_an_identical_retry_is_a_lookup_returning_the_stored_receipt_and_never_d
     st, _, again = live.post(req)
     assert st == 202 and again == first
     with live.s.ledger.reading() as t:
-        assert len(t.owner_ops(live.s.fx.installation, live.s.fx.recipient)) == 1
+        assert len(t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0])) == 1
     for change in ({"request_set_ref": req["request_set_ref"] + "-x"}, {"intents": [live.s.fx.intents["retry"]]}):
         st, h, b = live.post({**req, **change})
         problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, "request_key_conflict")
@@ -498,7 +498,7 @@ def test_set_level_refusals_allocate_nothing(live: Live, cfg: dict[str, Any]):
         assert st == st_want
         problem_ok("O01", "post", "/o01/v0/command-sets", st, h, b, code)
     with live.s.ledger.reading() as t:
-        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient) == []
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
 
 
 def test_owner_get_is_one_nondisclosing_404_for_unknown_foreign_and_malformed(live: Live, cfg: dict[str, Any]):
@@ -518,12 +518,14 @@ def test_a_second_server_cannot_take_a_port_the_first_one_holds(live: Live, tmp_
 
 # ------------------------------------------------------------------------------------------------- transport edges
 
-def raw(port: int, method: str, path: str, headers: dict[str, str]) -> tuple[int, dict[str, str], Any]:
-    """A request whose Host this test writes itself (http.client would set the right one)."""
+def raw(port: int, method: str, path: str, headers: dict[str, str] | list[tuple[str, str]],
+        ) -> tuple[int, dict[str, str], Any]:
+    """A request whose headers this test writes itself, Host included (http.client would set the right one); a list
+    of pairs may repeat a header."""
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
     try:
         c.putrequest(method, path, skip_host=True)
-        for k, v in headers.items():
+        for k, v in (headers.items() if isinstance(headers, dict) else headers):
             c.putheader(k, v)
         c.endheaders()
         r = c.getresponse()
@@ -632,3 +634,207 @@ def test_the_driver_config_is_written_from_the_world_its_delegations_are_bound_t
     assert not A.o01_errors("CommandSet", cfg["command"]["continue_eligible_work"])
     assert all(not A.o01_errors("CommandSet", c["request"]) for c in cfg["c17_cases"].values())
     assert not any("matches_fixture" in r for r in cfg["reads"])  # every fact unqualified: no recorded envelope fits
+
+
+# ------------------------------------------------------------------------------------------------- review fixes
+
+def test_an_owner_record_past_its_retention_is_never_disclosed_even_before_any_purge(live: Live,
+                                                                                    cfg: dict[str, Any]):
+    """Review M2: retention is enforced on the read, not only by the purge a later submission runs."""
+    op = live.post(fresh(cfg["command"]["continue_eligible_work"], "retain"))[2]["results"][0]["operation_ref"]
+    assert live.owner_get("HEB", op)[0] == 200
+    live.clock[0] = T0 + timedelta(seconds=L.OWNER_RECORD_RETAIN_S + 1)  # no submission since: nothing purged
+    with live.s.ledger.reading() as t:
+        assert t.c.execute("SELECT COUNT(*) FROM owner_ops").fetchone()[0] == 1
+    st, h, b = live.owner_get("HEB", op)
+    problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b,
+               "not_found_or_not_disclosable")
+    st, _, idx = live.get("/v1/read/owner-operations")
+    assert st == 200 and not [i for i in idx["items"] if i["data"]["operation_ref"] == op]
+
+
+def test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled(project: dict[str, Any],
+                                                                                       tmp_path: Path):
+    """Review M3: entitlement is stated (the world's ``read_entitled``), never presumed for an unknown recipient."""
+    s = SV.Slice(tmp_path / "state", project=project["root"],
+                 tokens={**TOKENS, "token-stranger": "fixture:recipient-stranger"}, test_routes=True,
+                 clock=lambda: T0)
+    lv = Live(s, [T0])
+    try:
+        stranger = {"Authorization": "Bearer token-stranger"}
+        for path in ("/v1/read/waiting", "/v1/read/owner-operations",
+                     f"/v1/read/continuation-state/{b64('fixture:ticket-continue')}"):
+            st, h, b = lv.get(path, stranger)
+            assert st == 404 and b["code"] == "not_found_or_not_disclosable", (path, b)
+        assert lv.get("/v1/read/waiting", {"Authorization": "Bearer token-other"})[0] == 200
+    finally:
+        lv.close()
+
+
+def test_real_aew_records_are_disclosed_to_the_one_real_recipient_and_to_nobody_else(live: Live,
+                                                                                     project: dict[str, Any],
+                                                                                     tmp_path: Path):
+    """Review M4: AEW's engine has no per-recipient visibility (gap STG02-BE-16), so its records go to one recipient
+    (``--real-recipient``, default the fixture operator). To any other they do not exist."""
+    inv = invocation_id(project)
+    other = {"Authorization": "Bearer token-other"}
+    st, _, b = live.get("/v1/read/waiting", other)
+    assert st == 200 and not [i for i in b["items"] if not i["data"]["work"]["id"].startswith("fixture:")]
+    hidden = [live.get(f"/v1/read/runs/{b64(inv)}", other),
+              live.get(f"/v1/read/continuation-state/{b64(project['blocked'])}", other)]
+    assert [x[0] for x in hidden] == [404, 404]
+    assert live.get(f"/v1/read/runs/{b64(inv)}")[0] == 200  # the operator still sees them
+    lv = Live(SV.Slice(tmp_path / "state", project=project["root"], tokens=TOKENS, fixture_recipient=True,
+                       clock=lambda: T0, real_recipient=OTHER), [T0])
+    try:
+        st, _, b = lv.get("/v1/read/waiting")
+        assert not [i for i in b["items"] if not i["data"]["work"]["id"].startswith("fixture:")]
+        assert lv.get(f"/v1/read/runs/{b64(inv)}")[0] == 404
+        assert lv.get(f"/v1/read/runs/{b64(inv)}", other)[0] == 200
+    finally:
+        lv.close()
+
+
+@pytest.mark.parametrize("name", ["X-AEW-Wire-Version", "Authorization", "Host", "Origin", "Content-Length"])
+def test_a_repeated_selecting_header_is_refused_in_either_order_never_last_wins(live: Live, name: str):
+    """Review M5: the stdlib would answer with the first (or the last) of a repeated header."""
+    host = f"127.0.0.1:{live.port}"
+    values = {"X-AEW-Wire-Version": ["0.3.4", "0.3.3"],
+              "Authorization": ["Bearer token-operator", "Bearer token-other"],
+              "Host": [host, f"localhost:{live.port}"], "Origin": ["http://127.0.0.1:4251", "http://127.0.0.1:4252"],
+              "Content-Length": ["0", "0"]}[name]
+    live.s.allow_origins = ("http://127.0.0.1:4251", "http://127.0.0.1:4252")  # each one alone would be admitted
+    for vs in (values, values[::-1]):
+        base = [("Host", host), (W.D01_HEADER, W.D01_VERSION)]
+        hdrs = [*[(k, v) for k, v in base if k != name], *[(name, v) for v in vs]]
+        st, h, b = raw(live.port, "GET", "/v1/read/waiting", hdrs)
+        problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "invalid_request")
+    o01 = [("Host", host), (W.O01_HEADER, W.O01_VERSION), (W.O01_HEADER, W.O01_VERSION)]
+    st, h, b = raw(live.port, "GET", "/o01/v0/owner-operations/HEB/op:abc", o01)
+    problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b,
+               "not_found_or_not_disclosable")
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH", "TRACE", "HEAD", "PROPFIND"])
+def test_every_method_and_every_unrouted_o01_path_answers_the_familys_problem_with_its_headers(live: Live,
+                                                                                              method: str):
+    """Review M6: no method reaches the stdlib's bare 501, and no O-01 path its plain 404."""
+    host = f"127.0.0.1:{live.port}"
+    cases = [("D01", "get", "/v1/read/waiting", "/v1/read/waiting", D01, "invalid_request"),
+             ("O01", "post", "/o01/v0/command-sets", "/o01/v0/command-sets", O01, "invalid_request"),
+             ("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", "/o01/v0/owner-operations/HEB/op:abc",
+              O01, "not_found_or_not_disclosable")]
+    for api, route_method, route, path, hdr, code in cases:
+        st, h, b = raw(live.port, method, path, {"Host": host, **hdr})
+        if method == "HEAD":  # the headers of the answer, and no body
+            assert b is None and h["content-type"] == "application/problem+json" and st in (400, 404)
+            wire = W.D01_HEADER if api == "D01" else W.O01_HEADER
+            assert wire.lower() in h and h["cache-control"] == "private, no-store"
+        else:
+            problem_ok(api, route_method, route, st, h, b, code)
+    st, h, b = raw(live.port, method, "/o01/v0/nothing-here", {"Host": host, **O01})
+    if method != "HEAD":
+        assert st == 400 and not A.o01_openapi_errors("Problem", b) and b["code"] == "invalid_request"
+    assert h[W.O01_HEADER.lower()] == W.O01_VERSION and h["cache-control"] == "private, no-store"
+
+
+def test_heb_with_no_eligibility_for_the_work_holds_it_and_allocates_nothing(live: Live, cfg: dict[str, Any]):
+    """Review M7: HEB_STATE_UNKNOWN is a hold (SOURCE_UNAVAILABLE), never an operation."""
+    work = live.s.fx.work("fixture:ticket-retry")
+    assert work is not None
+    work["heb_eligibility"] = None
+    req = dict(fresh(cfg["command"]["continue_eligible_work"], "heb-unknown"), intents=[live.s.fx.intents["retry"]])
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    (x,) = r["results"]
+    assert (x["admission_state"], x["effect_state"], x["operation_ref"], x["reason_code"]) == (
+        "HELD", "NOT_OBSERVED", None, "SOURCE_UNAVAILABLE")
+    with live.s.ledger.reading() as t:
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
+
+
+def test_a_predecessor_from_an_earlier_heb_epoch_is_an_allocated_stale_refusal(live: Live, cfg: dict[str, Any]):
+    """Review M7: HEB's state moved after the intent was written (a new epoch): HEB_STALE_PREDECESSOR, which HEB
+    decides, so it is allocated."""
+    live.s.fx.doc["heb"]["epoch"] = "fixture:heb-epoch-2"
+    req = fresh(cfg["command"]["continue_eligible_work"], "heb-stale")
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    (x,) = r["results"]
+    assert (x["admission_state"], x["effect_state"], x["reason_code"]) == ("REJECTED", "FAILED_CONFIRMED_NO_EFFECT",
+                                                                          "PRECONDITION_STALE")
+    st, _, g = live.owner_get("HEB", x["operation_ref"])
+    assert st == 200 and g["result"] == x
+    with live.s.ledger.reading() as t:
+        (rec,) = t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0])
+    assert rec["owner_reason"] == "HEB_STALE_PREDECESSOR"
+
+
+def test_a_delegated_cancel_with_a_current_bound_delegation_is_held_and_allocates_nothing(live: Live,
+                                                                                         cfg: dict[str, Any]):
+    """Review M8: its origin is established, but its HEB effect is not in the slice (NOT_MODELLED): a hold."""
+    cancel = copy.deepcopy(live.s.fx.intents["continue"])
+    cancel.update(action="DELEGATED_CANCEL", intent_ref="fixture:intent-cancel",
+                  delegated_grant_proof_ref="fixture:delegation-cancel-current",
+                  target={"invocation_ref": "fixture:run-continue-1", "grant_ref": "fixture:grant-ticket-continue",
+                          "work_ref": "fixture:ticket-continue", "work_revision": "fixture:revision-1",
+                          "cancel_scope": "OWN_DELEGATED_INVOCATION", "handoff_ref": None})
+    live.s.fx.delegations["fixture:delegation-cancel-current"] = {
+        "issuer_ref": "delegation:fixture", "status": "CURRENT", "intent_ref": cancel["intent_ref"],
+        "actor_ref": cancel["actor_ref"], "installation_ref": live.s.fx.installation,
+        "recipient_ref": live.s.fx.recipient, "intent_digest": W.intent_digest(cancel),
+        "valid_until": W.utc(T0 + timedelta(hours=1))}
+    req = dict(fresh(cfg["command"]["continue_eligible_work"], "cancel-held"), intents=[cancel])
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    (x,) = r["results"]
+    assert (x["admission_state"], x["effect_state"], x["operation_ref"], x["reason_code"]) == (
+        "HELD", "NOT_OBSERVED", None, "SOURCE_UNAVAILABLE")
+    with live.s.ledger.reading() as t:
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
+
+
+def test_a_successor_generation_reaffirm_has_no_origin_in_the_slice_and_allocates_nothing(live: Live,
+                                                                                         cfg: dict[str, Any]):
+    """Review M8: A04, REAFFIRM_ELIGIBLE_CHILD_GRANTS. No authenticated successor session exists in the slice."""
+    base = live.s.fx.intents["continue"]
+    digest = "sha256:" + "0" * 64
+    reaffirm = {
+        "intent_ref": "fixture:intent-reaffirm", "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "actor_ref": base["actor_ref"], "authority_class": "CURRENT_SUCCESSOR_GENERATION", "owner_hint": "ADC",
+        "subject": copy.deepcopy(base["subject"]), "predecessor": copy.deepcopy(base["predecessor"]),
+        "origin_proof_ref": None, "delegated_grant_proof_ref": None,
+        "target": {"child": {"child_ref": "fixture:child-1", "prior_grant_ref": "fixture:grant-child-1",
+                             "work_ref": "fixture:ticket-continue", "work_revision": "fixture:revision-1",
+                             "prior_grant_version": "fixture:grant-v1",
+                             "predecessor_generation": "fixture:generation-1",
+                             "scope_digest": digest, "constraints_digest": digest,
+                             "prior_grant_expiry": "2026-10-19T13:00:00Z"},
+                   "successor_attachment_ref": "fixture:attachment-lead-2",
+                   "successor_generation": "fixture:generation-2", "successor_lead_ref": "fixture:lead-2",
+                   "recovery_classification_ref": "fixture:recovery-1",
+                   "recovery_classification_version": "fixture:recovery-v1",
+                   "recovery_classification_issuer_ref": "fixture:recovery-issuer",
+                   "successor_generation_basis_ref": "fixture:generation-basis-2",
+                   "successor_generation_version": "fixture:generation-v2",
+                   "successor_seat_epoch": "fixture:seat-epoch-2"}}
+    req = dict(fresh(cfg["command"]["continue_eligible_work"], "reaffirm"), intents=[reaffirm], consent_set_ref=None)
+    assert not A.o01_errors("CommandSet", req)
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    (x,) = r["results"]
+    assert (x["owner"], x["admission_state"], x["operation_ref"], x["reason_code"]) == (
+        "ADC", "REJECTED", None, "ORIGIN_NOT_ESTABLISHED")
+    with live.s.ledger.reading() as t:
+        assert t.owner_ops(live.s.fx.installation, live.s.fx.recipient, live.clock[0]) == []
+
+
+def test_a_cursor_is_refused_once_the_visible_set_it_was_issued_for_has_changed(live: Live):
+    """Review M8: the cursor binds the visible set, not only the recipient and the page size."""
+    st, _, first = live.get("/v1/read/waiting?limit=1")
+    cur = first["page"]["next_cursor"]
+    work = live.s.fx.work("fixture:ticket-retry")
+    assert work is not None and work["waiting"] is None
+    work["waiting"] = {"cause": "dependency", "responsible_owner": "WIS", "progress": "blocked", "narrative": None}
+    st, h, b = live.get(f"/v1/read/waiting?limit=1&cursor={cur}")
+    problem_ok("D01", "get", "/v1/read/waiting", st, h, b, "cursor_stale_or_unauthorized")

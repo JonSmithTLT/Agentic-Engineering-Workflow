@@ -199,7 +199,7 @@ The first vertical slice against the architecture workspace's adopted STG-01 v0.
 | Document | What it is |
 |---|---|
 | [`BACKEND-REPORT.md`](stg02/BACKEND-REPORT.md) | The backend report: each field's owner and whether it is real or a labelled fixture, what cannot be produced yet, the recorded HTTP responses, the conformance driver's result, the four push-back points and context feedback |
-| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | The backend's classified gap entries (STG02-BE-01 to BE-14), for the designer's gap register |
+| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | The backend's classified gap entries (STG02-BE-01 to BE-16), for the designer's gap register |
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 

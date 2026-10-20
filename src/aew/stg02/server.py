@@ -66,6 +66,9 @@ COMMANDS = "/o01/v0/command-sets"
 OWNER_GET = re.compile(r"/o01/v0/owner-operations/([^/]*)/([^/]*)")
 OWNER_RE = re.compile(r"[A-Za-z][A-Za-z0-9:._/-]{2,127}")
 OPREF_RE = re.compile(r"[A-Za-z][A-Za-z0-9:._-]{2,127}")
+# Headers that decide the version, the recipient, the origin or the body: each must occur at most once (a repeated
+# one is refused, never resolved last-wins; review of the slice, M5).
+SINGLE_HEADERS = (W.D01_HEADER, W.O01_HEADER, "Authorization", "Host", "Origin", "Content-Length")
 Clock = Callable[[], datetime]
 
 
@@ -74,12 +77,14 @@ class Slice:
 
     def __init__(self, state_dir: Path, *, project: Path | None = None, tokens: dict[str, str] | None = None,
                  fixture_recipient: bool = False, test_routes: bool = False, allow_origins: tuple[str, ...] = (),
-                 clock: Clock | None = None, world: Path | None = None) -> None:
+                 clock: Clock | None = None, world: Path | None = None, real_recipient: str | None = None) -> None:
         self.clock = clock or (lambda: datetime.now(UTC))
         self.fx = Fixture.load(self.clock(), world) if world else Fixture.load(self.clock())
         self.engine = EngineSource(project) if project else None
         self.ledger = Ledger(state_dir / "stg02-ledger.sqlite3")
-        self.reads = Reads(self.fx, self.engine, self.ledger)
+        with self.ledger.transaction() as t:
+            t.seed_entitlement(list(self.fx.doc["read_entitled"]))
+        self.reads = Reads(self.fx, self.engine, self.ledger, real_recipient=real_recipient or self.fx.recipient)
         self.carrier = Carrier(self.fx, self.ledger)
         self.tokens = dict(tokens or {})
         self.fixture_recipient = fixture_recipient
@@ -167,6 +172,8 @@ def handle(s: Slice, method: str, raw_path: str, headers: dict[str, str], body: 
         return _owner_get(s, method, path, headers, corr)
     if s.test_routes and method == "POST" and path in ("/_test/read-entitlement", "/_test/engine-outage"):
         return _test_route(s, path, body)
+    if path.startswith("/o01/"):  # an O-01 path no route matches: the family's refusal, with its wire headers
+        return refusal(raw_path)
     return Answer(404, None, {"Content-Type": "text/plain"})
 
 
@@ -281,6 +288,9 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             h = {k.lower(): v for k, v in self.headers.items()}
             bound = cast(Any, self.server).server_port
             origin = h.get("origin")
+            if any(len(self.headers.get_all(name) or []) > 1 for name in SINGLE_HEADERS):
+                self._send(refusal(self.path), method, t0)  # an ambiguous selection is refused, never last-wins
+                return
             if h.get("host") not in (f"{HOST}:{bound}", f"localhost:{bound}") or len(self.path) > MAX_PATH:
                 self._send(refusal(self.path), method, t0)  # DNS rebinding, oversize
                 return
@@ -322,23 +332,17 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
                                      f"{W.D01_HEADER}, {W.O01_HEADER}, Authorization, Content-Type")
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
-            self.wfile.write(raw)
+            if method != "HEAD":  # a HEAD answer has the headers of the GET it stands for, and no body
+                self.wfile.write(raw)
             LOG.info("%s %s %d %.0fms", method, urlsplit(self.path).path[:256], a.status, (time.monotonic() - t0) * 1e3)
 
-        def do_GET(self) -> None:  # noqa: N802 (stdlib names)
-            self._do("GET")
-
-        def do_POST(self) -> None:  # noqa: N802
-            self._do("POST")
-
-        def do_OPTIONS(self) -> None:  # noqa: N802
-            self._do("OPTIONS")
-
-        def do_PUT(self) -> None:  # noqa: N802
-            self._do("PUT")
-
-        def do_DELETE(self) -> None:  # noqa: N802
-            self._do("DELETE")
+        def __getattr__(self, name: str) -> Any:
+            """Every method the request line names (GET, POST, OPTIONS, HEAD, PATCH, TRACE, any token) reaches
+            :meth:`_do`, so an unhandled one is the route family's refusal with its wire headers, never the stdlib's
+            bare 501."""
+            if name.startswith("do_") and name[3:].isupper():
+                return lambda: self._do(name[3:])
+            raise AttributeError(name)
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 (stdlib signature)
             pass  # the request log is _send's line: no query, no header
@@ -411,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-dir", type=Path, required=True, help="where the key ledger and owner records live")
     ap.add_argument("--project", type=Path, help="an AEW project's repository root: the real source of work and runs")
     ap.add_argument("--tokens", type=Path, help='a JSON file of synthetic bearer tokens {"<token>": "<recipient_ref>"}')
+    ap.add_argument("--real-recipient", help="the one recipient AEW's own records are disclosed to "
+                                             "(default: the fixture world's recipient)")
     ap.add_argument("--fixture-recipient", action="store_true",
                     help="a request without Authorization acts as the fixture world's recipient (slice only)")
     ap.add_argument("--test-routes", action="store_true", help="serve the test-only /_test/ routes")
@@ -419,12 +425,15 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     tokens = json.loads(a.tokens.read_text(encoding="utf-8")) if a.tokens else None
     s = Slice(a.state_dir, project=a.project, tokens=tokens, fixture_recipient=a.fixture_recipient,
-              test_routes=a.test_routes, allow_origins=tuple(a.allow_origin))
+              test_routes=a.test_routes, allow_origins=tuple(a.allow_origin), real_recipient=a.real_recipient)
     if a.write_driver_config:
         a.write_driver_config.write_text(json.dumps(driver_config(s), indent=1) + "\n", encoding="utf-8", newline="\n")
         return 0
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(message)s")
     srv = make_server(s, a.port)
+    if a.fixture_recipient and a.project:
+        print("aew stg02: --fixture-recipient with --project: any local process can read this project's engine state "
+              "through the server without a token", file=sys.stderr, flush=True)
     print(f"aew stg02 slice producer on http://{HOST}:{srv.server_port}", file=sys.stderr, flush=True)
     try:
         srv.serve_forever()

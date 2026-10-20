@@ -97,8 +97,15 @@ class Txn:
     # ------------------------------------------------------------------ read entitlement (SW-07, SW-08)
 
     def entitled(self, recipient: str) -> bool:
+        """Only a stated entitlement counts: a recipient with no row is not entitled (CS-04 step 1, "or the world does
+        not state it"). The fixture world states its recipients' entitlement; :meth:`seed_entitlement` records it."""
         row = self.c.execute("SELECT entitled FROM entitlement WHERE recipient = ?", (recipient,)).fetchone()
-        return True if row is None else bool(row["entitled"])
+        return row is not None and bool(row["entitled"])
+
+    def seed_entitlement(self, recipients: list[str]) -> None:
+        """The world's stated entitlements, once: a later withdrawal (a recorded row) is kept across restarts."""
+        for r in recipients:
+            self.c.execute("INSERT OR IGNORE INTO entitlement (recipient, entitled) VALUES (?, 1)", (r,))
 
     def set_entitled(self, recipient: str, entitled: bool) -> None:
         self.c.execute("INSERT INTO entitlement (recipient, entitled) VALUES (?, ?) "
@@ -133,14 +140,16 @@ class Txn:
                         json.dumps(record, sort_keys=True), W.utc(issued_at),
                         W.utc(W.later(issued_at, OWNER_RECORD_RETAIN_S))))
 
-    def owner_op(self, owner: str, operation_ref: str) -> dict[str, Any] | None:
-        row = self.c.execute("SELECT record FROM owner_ops WHERE owner = ? AND operation_ref = ?",
-                             (owner, operation_ref)).fetchone()
+    def owner_op(self, owner: str, operation_ref: str, now: datetime) -> dict[str, Any] | None:
+        """The record while retention keeps it (never one past its retain_until, purged or not)."""
+        row = self.c.execute("SELECT record FROM owner_ops WHERE owner = ? AND operation_ref = ? AND retain_until > ?",
+                             (owner, operation_ref, W.utc(now))).fetchone()
         return json.loads(row["record"]) if row else None
 
-    def owner_ops(self, installation: str, recipient: str) -> list[dict[str, Any]]:
+    def owner_ops(self, installation: str, recipient: str, now: datetime) -> list[dict[str, Any]]:
         rows = self.c.execute("SELECT record FROM owner_ops WHERE installation = ? AND recipient = ? "
-                              "ORDER BY owner, operation_ref", (installation, recipient)).fetchall()
+                              "AND retain_until > ? ORDER BY owner, operation_ref",
+                              (installation, recipient, W.utc(now))).fetchall()
         return [json.loads(r["record"]) for r in rows]
 
     # ------------------------------------------------------------------ retention

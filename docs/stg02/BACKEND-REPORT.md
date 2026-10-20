@@ -2,8 +2,8 @@
 
 **For:** the lead designer, who copies this into the architecture workspace (the handoff says not to edit it).
 **Contract:** the adopted STG-01 v0.5.4 ZIP, SHA-256 `64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f`: D-01 0.3.4, O-01 `o01-command-0.2-review-candidate`, the selection profile and the owner pins.
-**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (33), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
-**Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-15.
+**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (52), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
+**Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-16.
 **Date:** 2026-10-19 (UTC 2026-10-20).
 
 ## In one paragraph
@@ -31,7 +31,8 @@ python -m aew.stg02.server --state-dir <dir> --fixture-recipient --test-routes -
 ```
 
 - `--project` is optional: without it, only the fixture world is served.
-- `--fixture-recipient` and `--test-routes` exist for the driver (STG02-BE-07, and case C17-N03).
+- `--fixture-recipient` and `--test-routes` exist for the driver (STG02-BE-07, and case C17-N03). With `--project`, `--fixture-recipient` lets any local process read that project's engine state without a token; the server warns at start.
+- `--real-recipient` names the one recipient AEW's own records are disclosed to (default: the fixture world's operator; STG02-BE-16).
 - The recordings and driver runs below used a scratch AEW project built with the test suite's own helpers:
   - `T-0001` is RUNNING, with implementer invocation `INV-0001`;
   - `T-0002` is BLOCKED on `T-0001`.
@@ -39,6 +40,8 @@ python -m aew.stg02.server --state-dir <dir> --fixture-recipient --test-routes -
 ## 1. Each displayed consequential field: its owner, real or labelled fixture
 
 **Real** means the value is read from AEW's committed engine state (`aew:` identities). **Fixture** means it is served from `src/aew/stg02/worlds/slice-world.json` (`fixture:` identities). **None** means the slice has no source, so the stamp is `not_established` / `unavailable`. **Nothing is qualified** (STG02-BE-03, BE-04).
+
+**Who sees the real records.** AEW's engine records have no recipient (STG02-BE-16). They are disclosed to one recipient, `--real-recipient`, by default the fixture world's operator. To every other recipient they do not exist: no `aew:` item in a list, and the nondisclosing `404` for a real run or work id. Read entitlement is stated by the world (`read_entitled`), never presumed: a recipient it does not name is not entitled (BE-15).
 
 ### Step 1: `GET /v1/read/waiting`
 
@@ -167,13 +170,19 @@ Before running against the server, the driver's self-test passed on this machine
 - N21, the HEB owner refusal;
 - the revoked delegation, an unknown proof and another actor;
 - mixed sets, consent on a delegated set, and member order;
-- `DELEGATED_CANCEL` held;
+- `DELEGATED_CANCEL` with a current, bound delegation: held `SOURCE_UNAVAILABLE`, nothing allocated;
+- A04 `REAFFIRM_ELIGIBLE_CHILD_GRANTS`: `ORIGIN_NOT_ESTABLISHED`, nothing allocated;
+- HEB's own outcomes from a fixed state: no eligibility for the work (`HEB_STATE_UNKNOWN`) is held, nothing allocated; a predecessor from an earlier HEB epoch (`HEB_STALE_PREDECESSOR`) is an allocated `PRECONDITION_STALE`;
 - an expired entry and a dropped receipt (`409 unresolved_no_redispatch`);
+- an owner record past its retention, never disclosed, before any purge has run;
+- read entitlement stated, never presumed;
 - every identifier encoding rule;
-- cursors bound to recipient, page size and visible set;
-- a hidden member changing nothing. This is proven for fixture members only: AEW's engine has no per-recipient visibility, so every entitled recipient sees every real work unit and run;
+- cursors bound to recipient, page size and visible set (a cursor replayed after the visible set changed is `409`);
+- a hidden member changing nothing, for fixture members; AEW's real records reach one recipient only (BE-16);
+- a repeated `X-AEW-Wire-Version`, `X-AEW-O01-Wire`, `Authorization`, `Host`, `Origin` or `Content-Length`, refused in either order;
+- every other method (`PUT`, `DELETE`, `PATCH`, `TRACE`, `HEAD`, any token) and every unrouted `/o01/` path, answered with the route family's Problem and wire headers;
 - the 503 path;
-- the two-process fence;
+- the two-process fence, with the overlap forced, on the key ledger only (BE-08);
 - a second server unable to bind the same port;
 - every vendored adopted file against its sealed pin.
 
@@ -181,7 +190,7 @@ Before running against the server, the driver's self-test passed on this machine
 
 1. **Delegation issuance** (STG02-BE-06). A grant bound to the exact intent digest is per selection, not standing. It is invalidated by any HEB epoch change, and it is never consumed: one grant admitted the same intent under every new key. Revoked and forged are one code.
 2. **The session** (STG02-BE-07). Not used for A04, which is refused `ORIGIN_NOT_ESTABLISHED`. For reads, the bearer has no issuer, and the driver sends none. The slice uses synthetic tokens plus a labelled tokenless fixture recipient.
-3. **Compare-and-fence across processes** (STG02-BE-08). No problem in the slice: one SQLite file, one `BEGIN IMMEDIATE` per submission, proved with two real processes. It holds only while the carrier's ledger and HEB share a store. With a separate HEB it becomes two commits, and only HEB-side idempotency on the carrier-derived identity closes the gap.
+3. **Compare-and-fence across processes** (STG02-BE-08). No problem in the slice: one SQLite file, one `BEGIN IMMEDIATE` per submission, proved with two real processes. It holds only while the carrier's ledger and HEB share a store. With a separate HEB it becomes two commits, and only HEB-side idempotency on the carrier-derived identity closes the gap. The fence was exercised on the key ledger only: the fixture HEB's state never moves while the server runs, so the slice does not demonstrate the bound the BE-06 ruling assumes.
 4. **Retention** (STG02-BE-09). Durations chosen: receipt 900 s, stored receipt 7 days after expiry, owner records 30 days. The finding is that CS-04 forbids ever forgetting a key, so the key ledger is unbounded.
 
 ## 6. Context feedback on the handoff

@@ -124,7 +124,7 @@ class Carrier:
                 members.append(m)
             receipt = {"wire_version": W.O01_VERSION, "request_set_ref": req["request_set_ref"],
                        "recipient_ref": req["recipient_ref"], "carrier_state": "COMPLETE_WITH_PER_INTENT_RESULTS",
-                       "results": [self._result(i, m, t) for i, m in zip(req["intents"], members, strict=True)],
+                       "results": [self._result(i, m, t, now) for i, m in zip(req["intents"], members, strict=True)],
                        "observed_at": W.utc(now), "source_valid_until": W.utc(W.later(now, self.receipt_valid_s))}
             t.store_key(req["installation_ref"], recipient, req["client_request_key"], W.full_digest(req), receipt,
                         members, now)
@@ -197,10 +197,10 @@ class Carrier:
         t.add_owner_op(record, now)
         return op
 
-    def _result(self, i: dict[str, Any], m: dict[str, Any], t: Any) -> dict[str, Any]:
+    def _result(self, i: dict[str, Any], m: dict[str, Any], t: Any, now: datetime) -> dict[str, Any]:
         owner = REGISTRY[i["action"]]["sole_admitting_owner"]
         if m.get("operation_ref"):
-            return copy.deepcopy(t.owner_op(owner, m["operation_ref"])["result"])
+            return copy.deepcopy(t.owner_op(owner, m["operation_ref"], now)["result"])
         a, e, r = RESULT[m["outcome"]]
         return {"intent_ref": i["intent_ref"], "owner": owner, "operation_ref": None, "admission_state": a,
                 "effect_state": e, "cancellation_state": "NONE", "residual_remote_effect": r,
@@ -215,7 +215,7 @@ class Carrier:
         with self.ledger.reading() as t:
             if not t.entitled(recipient):
                 return None
-            rec = t.owner_op(owner, operation_ref)
+            rec = t.owner_op(owner, operation_ref, now)
         if rec is None or rec["recipient_ref"] != recipient or rec["installation_ref"] != self.fx.installation:
             return None
         return {"wire_version": W.O01_VERSION, "owner": rec["owner"], "operation_ref": rec["operation_ref"],

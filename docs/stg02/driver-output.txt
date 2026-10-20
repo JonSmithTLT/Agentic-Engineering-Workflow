@@ -1,6 +1,6 @@
-# command: python -I -B slice_driver.py --base http://127.0.0.1:4261 --config docs/stg02/driver-config.json --now 2026-10-20T01:28:28Z   (run start + 120 s; gap STG02-BE-02)
-# driver: architecture workspace commit 6109e0a; server: aew.stg02 at commit d09f5096, as in driver-output-default-now.txt
-STG-02 driver (non-normative) against http://127.0.0.1:4261; adopted bytes STG-01-v0.5.4.zip; receipts current at 2026-10-20T01:28:28Z; keys suffixed .r20261020T012629001729
+# command: python -I -B slice_driver.py --base http://127.0.0.1:4261 --config docs/stg02/driver-config.json   (default clock: each receipt checked when its answer arrives)
+# driver: architecture workspace commit 006f45b (BE-02 fixed there); server: aew.stg02 at commit b73021b1, --project <scratch AEW project> --tokens <synthetic> --fixture-recipient --test-routes
+STG-02 driver (non-normative) against http://127.0.0.1:4261; adopted bytes STG-01-v0.5.4.zip; receipts current at arrival; keys suffixed .r20261020T015508728251
 PASS R1 waiting 200 headers
 PASS R1 waiting 200 body is valid against the 0.3.4 schema
 PASS R4 waiting fixture-backed stamps are not qualified
@@ -37,7 +37,7 @@ PASS C3 same key, changed set: 409 request_key_conflict (CS-03)
 PASS C4 no O-01 header: 400 before any owner step
 PASS C4 0.1 header: 400 before any owner step
 PASS C5 protected set without G3: no operation allocated, no effect confirmed (O01-10)
-PASS C6 owner GET HEB/op:e9a765372b6cfd9bd4d4cfde6b2e0c91: same identity as the receipt
+PASS C6 owner GET HEB/op:7a0c8e4c16a915c8a40d8ebb68925f79: same identity as the receipt
 PASS C6 unknown operation: 404 not_found_or_not_disclosable
 PASS C17-N01 expired or revoked delegation: refused, nothing allocated
 PASS C17-N02 intent the delegation does not name: refused, nothing allocated

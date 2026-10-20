@@ -11,8 +11,8 @@
 The six routes run over real HTTP on 127.0.0.1:4261, in a process of their own beside the provisional dashboard API, which is unchanged.
 - `CONTINUE_ELIGIBLE_WORK` is admitted by a fixture HEB under the fixture delegation issuer `delegation:fixture`.
 - Every other action is refused or held, and protected actions allocate nothing.
-- With `--now` set past the run's start, the conformance driver gives **35 passed, 0 failed, 6 skipped**.
-- With its default `--now`, it gives 30 passed, 5 failed, 6 skipped. All 5 failures are the driver's clock (STG02-BE-02).
+- The conformance driver, on its default clock, gives **35 passed, 0 failed, 6 skipped**.
+- That run used the driver as fixed by the designer in workspace commit `006f45b`. Before that fix, the driver's default clock gave 5 FAILs, all the driver's own (STG02-BE-02); this server and the contract were not changed for them.
 
 The result that matters most for the design is STG02-BE-03. No fact this backend serves is qualified:
 - labelled fixture facts may not be;
@@ -144,14 +144,13 @@ The 503s were made with the test-only outage switch (`POST /_test/engine-outage`
 
 ## 4. The driver's result
 
-The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `6109e0a` (its driver files last changed in `6b10073`), run against this server at commit `d09f5096` with the scratch project. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config`).
+The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `006f45b`, which fixed STG02-BE-02: without `--now`, each receipt is checked at the instant its answer arrives. It ran on its default clock against this server at commit `b73021b1` with the scratch project. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config`).
 
 | Run | Output | Result |
 |---|---|---|
-| `--now` = run start + 120 s | [`driver-output.txt`](driver-output.txt) | **PASS: 35 passed, 0 failed, 6 skipped** |
-| default `--now` | [`driver-output-default-now.txt`](driver-output-default-now.txt) | FAIL: 30 passed, 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), 6 skipped |
+| default clock, driver at `006f45b` | [`driver-output.txt`](driver-output.txt) | **PASS: 35 passed, 0 failed, 6 skipped** |
 
-Before running against the server, the driver's self-test passed on this machine (clean run, 10 of 10 mutations killed). The default run's 5 FAILs were classified before anything changed. They are the driver fixing "now" at its start (STG02-BE-02). Neither the server nor the contract changed for them.
+Before running against the server, the driver's self-test passed on this machine (clean run, 10 of 10 mutations killed). Earlier, the driver at `6b10073` fixed "now" once at its start: its default clock gave 30 passed and 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), and 35 passed with `--now` set past the run's start. Those 5 FAILs were classified before anything changed, as the driver's own (STG02-BE-02). Neither this server nor the contract changed for them; the designer fixed the driver.
 
 **Why each SKIP remains (a SKIP is not a pass):**
 
@@ -195,7 +194,7 @@ Before running against the server, the driver's self-test passed on this machine
 
 **Wrong or unclear.**
 - The field map says the backend should set `matches_fixture` "when your world matches a recording". For a backend following rule 2, that can never happen.
-- The default `--now` makes the driver fail against any real clock (BE-02).
+- The driver's default `--now` failed against any real clock (BE-02; fixed by the designer in `006f45b`).
 
 **Unused.** The oracle's `OwnerMachine`. It was read to cross-check the CS-04 order and the receipt rules, never run or imported.
 

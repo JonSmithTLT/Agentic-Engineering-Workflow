@@ -8,7 +8,7 @@
 | ID | Class | One line |
 |---|---|---|
 | [STG02-BE-01](#stg02-be-01) | wire defect | `CONTINUE_ELIGIBLE_WORK` has no reason code for HEB's own refusals (A-24 N21) |
-| [STG02-BE-02](#stg02-be-02) | implementation defect (driver) | The driver's default `--now` fails every receipt a real clock issues a second later |
+| [STG02-BE-02](#stg02-be-02) | implementation defect (driver) | The driver's default `--now` failed every receipt a real clock issued a second later (fixed in `006f45b`) |
 | [STG02-BE-03](#stg02-be-03) | architecture gap | A labelled fixture fact can never be shown as a positive state, so the slice cannot exercise any positive website state |
 | [STG02-BE-04](#stg02-be-04) | host or profile qualification deficit | No AEW owner issues a renewal, so even real AEW facts are unqualified |
 | [STG02-BE-05](#stg02-be-05) | wire defect | An owner axis that is available but unqualified has no permitted reason code |
@@ -58,6 +58,8 @@ The adopted map is consulted first. The slice map is labelled interim and applie
 
 ## STG02-BE-02
 
+**Status:** fixed by the designer in workspace commit `006f45b`: without `--now`, the driver checks each receipt at the instant its answer arrives. On the fixed driver's default clock this backend gives 35 passed, 0 failed, 6 skipped ([`driver-output.txt`](driver-output.txt)). The text below is the entry as raised.
+
 **Class:** implementation defect, in the conformance driver (non-normative tooling; neither this server nor the contract).
 
 **Clause.**
@@ -65,8 +67,7 @@ The adopted map is consulted first. The slice map is labelled interim and applie
 - Every 202 is then checked by `receipt_errors(request, b, now)`, which needs `observed_at ≤ now` (`03-ORACLE/command_admission.py` line 158).
 
 **What happened.** A backend that stamps a receipt with its real admission time fails C1, C5 and C17-N01..N03 with `RECEIPT_INVALID_CURRENTNESS` whenever the receipt is issued a second or more after the driver started. That is nearly every receipt after the first. The fixture server passes only because its world clock is frozen.
-- Full output of the default run: [`driver-output-default-now.txt`](driver-output-default-now.txt), 30 passed, 5 failed, 6 skipped.
-- With `--now` set to the run's start plus 120 s: [`driver-output.txt`](driver-output.txt), 35 passed, 0 failed, 6 skipped.
+- The default run gave 30 passed, 5 failed, 6 skipped; with `--now` set to the run's start plus 120 s, 35 passed, 0 failed, 6 skipped. Those outputs were committed at `b73021b1` and replaced after the fix (git history keeps them).
 
 **Two readings.**
 - (a) The driver should take "now" when it receives each answer.

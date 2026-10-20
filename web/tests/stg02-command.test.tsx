@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContinueControl } from '../src/stg02/App';
 import request from '../src/stg02/contracts/fixture-continue-request.json';
 import problems from './fixtures/stg02/problems.json';
-import { O01_VERSION } from '../src/stg02/wire';
+import { O01_VERSION, validated } from '../src/stg02/wire';
 
 beforeEach(() => { sessionStorage.clear(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); sessionStorage.clear(); });
@@ -24,7 +24,7 @@ describe('STG-02 independent operator command flow', () => {
     const bodies: string[] = [];
     const fetcher = vi.fn((_path: RequestInfo | URL, init?: RequestInit) => {
       const body = String(init?.body); bodies.push(body);
-      expect(sessionStorage.getItem(sessionStorage.key(0)!)).toBe(body);
+      expect(JSON.parse(sessionStorage.getItem(sessionStorage.key(0)!)!).body).toBe(body);
       return bodies.length === 1 ? new Promise<Response>((_resolve, fail) => { reject = fail; }) : Promise.resolve(receipt());
     });
     vi.stubGlobal('fetch', fetcher);
@@ -55,6 +55,44 @@ describe('STG-02 independent operator command flow', () => {
     expect(screen.getByRole('button', { name: 'Reconcile using the same key and exact body' }).hasAttribute('disabled')).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['invalid_request', 400], ['not_found_or_not_disclosable', 404],
+    ['request_key_conflict', 409], ['unsupported_action', 400], ['unresolved_no_redispatch', 409],
+  ] as const)('preserves terminal %s across reload and forbids another POST', async (code, status) => {
+    const body = { code, status, retry: 'never', type: 'about:blank', title: 'Request could not be completed', correlation_id: 'correlation:one' };
+    expect(validated('o01Problem', body)).toEqual(body);
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(body), { status, headers: {
+      'Content-Type': 'application/problem+json', 'Cache-Control': 'private, no-store', 'X-AEW-O01-Wire': O01_VERSION,
+    } }));
+    vi.stubGlobal('fetch', fetcher);
+    const mount = render(<ContinueControl />); select();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit selected work to HEB' }));
+    await screen.findByRole('alert');
+    const reconcile = () => screen.getByRole('button', { name: 'Reconcile using the same key and exact body' });
+    expect(reconcile().hasAttribute('disabled')).toBe(true);
+    fireEvent.click(reconcile());
+    mount.unmount(); render(<ContinueControl />);
+    await screen.findByText(/Retry guidance: never/);
+    expect(reconcile().hasAttribute('disabled')).toBe(true);
+    fireEvent.click(reconcile());
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('link', { name: 'Inspect owner-operation outcomes' })).toBeDefined();
+  });
+  it.each([
+    ['authentication_unqualified', 401, 'reauthenticate'], ['precondition_changed', 409, 'refresh_read'],
+    ['owner_unavailable', 503, 'when_source_recovers'], ['operator_origin_not_established', 401, 'not_established'],
+  ] as const)('shows and preserves the %s prerequisite without asserting it has been satisfied', async (code, status, retry) => {
+    const body = { code, status, retry, type: 'about:blank', title: 'Request could not be completed', correlation_id: 'correlation:one' };
+    expect(validated('o01Problem', body)).toEqual(body);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status, headers: {
+      'Content-Type': 'application/problem+json', 'Cache-Control': 'private, no-store', 'X-AEW-O01-Wire': O01_VERSION,
+    } })));
+    const mount = render(<ContinueControl />); select();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit selected work to HEB' }));
+    await screen.findByRole('alert'); mount.unmount(); render(<ContinueControl />);
+    await screen.findByText(new RegExp(`Retry guidance: ${retry}`));
+    expect(screen.getByRole('button', { name: 'Reconcile using the same key and exact body' }).hasAttribute('disabled')).toBe(true);
+  });
   it('reload exposes recovery and owner reads without dispatching another command', async () => {
     const fetcher = vi.fn(async () => receipt());
     vi.stubGlobal('fetch', fetcher);
@@ -73,5 +111,26 @@ describe('STG-02 independent operator command flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit selected work to HEB' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Storage unavailable'));
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('fails closed after reload when persisting a terminal response fails', async () => {
+    const original = Storage.prototype.setItem;
+    let writes = 0;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (++writes > 1) throw new Error('Storage update unavailable');
+      original.call(this, key, value);
+    });
+    const body = { code: 'unresolved_no_redispatch', status: 409, retry: 'never', type: 'about:blank', title: 'Request could not be completed', correlation_id: 'correlation:one' };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(body), { status: 409, headers: {
+      'Content-Type': 'application/problem+json', 'Cache-Control': 'private, no-store', 'X-AEW-O01-Wire': O01_VERSION,
+    } }));
+    vi.stubGlobal('fetch', fetcher);
+    const mount = render(<ContinueControl />); select();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit selected work to HEB' }));
+    await screen.findByRole('alert');
+    expect(screen.getByText(/Retry guidance: never/)).toBeDefined();
+    mount.unmount(); render(<ContinueControl />);
+    const lookup = await screen.findByRole('button', { name: 'Reconcile using the same key and exact body' });
+    expect(lookup.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(lookup); expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

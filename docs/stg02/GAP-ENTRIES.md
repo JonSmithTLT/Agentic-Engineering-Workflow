@@ -18,7 +18,7 @@ Date: 2026-10-19. Author-side entries for designer triage. No architecture-works
 - Observation: recordings describe finite validity intervals at their recorded clock. The referenced A-23 recordings expire before the date of this implementation; new recordings expire during 2026-10-19. Replaying today cannot establish current owner facts merely because HTTP just succeeded.
 - Plausible readings: replay is explicitly at the recorded fixture clock; or a current demo uses fixture-issued unqualified observations. Silently advancing timestamps is neither.
 - Interim choice: show a clear recorded-fixture identity and its as-of/last-known times; never renew or upgrade owner qualification in the browser. A current synthetic world needs separate fixture provenance and explicit unqualified stamps. Preserve immutable original recordings.
-- Status: open pending fixture-host implementation and rendered checks; no contract amendment requested.
+- Status: author fixture host and desktop/phone rendered checks completed. Designer triage and real source/currentness qualification remain pending; no contract amendment requested and no independent acceptance claimed.
 
 ## WEB-STG02-003 — retention duration remains an owner/host choice
 

@@ -1,0 +1,95 @@
+{
+  "ATTACH_LEAD": {
+    "body": {
+      "installation_ref": "installation:one",
+      "intent_ref": "intent:attach_lead",
+      "observed_at": "2026-10-18T13:00:00Z",
+      "operation_ref": "op:attach-lead",
+      "owner": "HEB",
+      "recipient_ref": "recipient:operator-1",
+      "request_set_ref": "request:attach-lead",
+      "result": {
+        "admission_state": "ADMITTED",
+        "cancellation_state": "NONE",
+        "effect_state": "UNKNOWN_EFFECT",
+        "intent_ref": "intent:attach_lead",
+        "operation_ref": "op:attach-lead",
+        "owner": "HEB",
+        "owner_evidence_ref": "evidence:owner",
+        "reason_code": null,
+        "residual_remote_effect": "UNKNOWN"
+      },
+      "source_epoch": "epoch:owner1",
+      "source_valid_until": "2026-10-19T13:00:00Z",
+      "wire_version": "o01-command-0.2-review-candidate"
+    },
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "status": 200
+  },
+  "REAFFIRM_ELIGIBLE_CHILD_GRANTS": {
+    "body": {
+      "installation_ref": "installation:one",
+      "intent_ref": "intent:reaffirm_eligible_child_grants",
+      "observed_at": "2026-10-18T13:00:00Z",
+      "operation_ref": "op:reaffirm-eligible-child-grants",
+      "owner": "ADC",
+      "recipient_ref": "recipient:operator-1",
+      "request_set_ref": "request:reaffirm-eligible-child-grants",
+      "result": {
+        "admission_state": "ADMITTED",
+        "cancellation_state": "NONE",
+        "effect_state": "UNKNOWN_EFFECT",
+        "intent_ref": "intent:reaffirm_eligible_child_grants",
+        "operation_ref": "op:reaffirm-eligible-child-grants",
+        "owner": "ADC",
+        "owner_evidence_ref": "evidence:owner",
+        "reason_code": null,
+        "residual_remote_effect": "UNKNOWN"
+      },
+      "source_epoch": "epoch:owner1",
+      "source_valid_until": "2026-10-19T13:00:00Z",
+      "wire_version": "o01-command-0.2-review-candidate"
+    },
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "status": 200
+  },
+  "REATTACH_LEAD": {
+    "body": {
+      "installation_ref": "installation:one",
+      "intent_ref": "intent:reattach_lead",
+      "observed_at": "2026-10-18T13:00:00Z",
+      "operation_ref": "op:reattach-lead",
+      "owner": "HEB",
+      "recipient_ref": "recipient:operator-1",
+      "request_set_ref": "request:reattach-lead",
+      "result": {
+        "admission_state": "ADMITTED",
+        "cancellation_state": "NONE",
+        "effect_state": "UNKNOWN_EFFECT",
+        "intent_ref": "intent:reattach_lead",
+        "operation_ref": "op:reattach-lead",
+        "owner": "HEB",
+        "owner_evidence_ref": "evidence:owner",
+        "reason_code": null,
+        "residual_remote_effect": "UNKNOWN"
+      },
+      "source_epoch": "epoch:owner1",
+      "source_valid_until": "2026-10-19T13:00:00Z",
+      "wire_version": "o01-command-0.2-review-candidate"
+    },
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "status": 200
+  }
+}

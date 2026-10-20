@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { array, exchange, object, PACKAGE_DIGEST, prepareContinue, readPath, text, validateReceiptBinding, WireProblem } from './wire';
 import type { Json, ObjectValue, ReadKind } from './wire';
 import fixtureRequest from './contracts/fixture-continue-request.json';
+import { loadRecovery, persistRecovery, validateKnownOperation } from './recovery';
+import type { Recovery } from './recovery';
 
 const kinds: ReadKind[] = ['waiting', 'run', 'continuation', 'operations', 'operation'];
-const recoveryKey = `aew-stg02-recovery:${PACKAGE_DIGEST}`;
 function Facts({ value }: { value: ObjectValue }) {
   return <dl className="stg02-facts">{Object.entries(value).map(([name, item]) => <div key={name}><dt>{name.replaceAll('_', ' ')}</dt><dd>{item !== null && typeof item === 'object' ? <details><summary>Inspect {name.replaceAll('_', ' ')}</summary>{Array.isArray(item) ? <ol>{item.map((part, i) => <li key={i}>{part !== null && typeof part === 'object' ? <Facts value={object(part)} /> : text(part)}</li>)}</ol> : <Facts value={item} />}</details> : text(item)}</dd></div>)}</dl>;
 }
@@ -24,6 +25,10 @@ function closure(data: ObjectValue) {
   if (page.membership === 'qualified_scoped') return array(data.items).length ? 'Complete for the requested recipient scope.' : 'None in the requested recipient scope. This is not global absence.';
   return 'Incomplete membership: absence here does not establish that no other items exist.';
 }
+function CollectionBasis({ value }: { value: Json | undefined }) {
+  const basis = object(value);
+  return <section><h3>Collection basis — aggregation only</h3><p>This supplied stamp supports collection coverage, not the authority of each item. Displaying qualification does not independently prove it.</p><Source item={{ source: value ?? null }} /><details><summary>Collection basis and per-owner closures</summary><Facts value={basis} /></details></section>;
+}
 function Resource({ value }: { value: Json }) {
   const item = object(value), data = object(item.data), ref = object(item.ref);
   const effectSource = object(array(item.field_sources).map(object).find(field => field.field_path === 'data.remote_effect_state')?.source);
@@ -40,52 +45,70 @@ function Resource({ value }: { value: Json }) {
 export function ContinueControl() {
   const [input, setInput] = useState('');
   const [prepared, setPrepared] = useState<string>();
-  const [recovery, setRecovery] = useState<string>();
+  const [recovery, setRecovery] = useState<Recovery>();
   const [chosen, setChosen] = useState<string[]>([]);
   const [receipt, setReceipt] = useState<ObjectValue>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [conflict, setConflict] = useState(false);
+  const [storageBlocked, setStorageBlocked] = useState(false);
+  const [storageNotice, setStorageNotice] = useState('');
   const active = useRef(true);
   const inFlight = useRef(false);
   useEffect(() => {
     active.current = true;
     try {
-      const stored = sessionStorage.getItem(recoveryKey);
-      if (stored) setRecovery(prepareContinue(JSON.parse(stored)));
-    } catch { setError('Recovery storage is unavailable or invalid. No command was sent.'); }
+      setRecovery(loadRecovery());
+    } catch { setStorageBlocked(true); setError('Recovery storage is unavailable or invalid. No command was sent.'); }
     return () => { active.current = false; };
   }, []);
   async function submit(body: string) {
-    if (inFlight.current || conflict) return;
+    if (inFlight.current || storageBlocked || (recovery && (recovery.phase !== 'lookup' || recovery.body !== body))) return;
     inFlight.current = true;
     setError(''); setReceipt(undefined); setBusy(true);
+    const pending: Recovery = { version: 1, body, phase: 'in_flight', ...(recovery?.receipt ? { receipt: recovery.receipt } : {}) };
+    function save(next: Recovery) {
+      try { persistRecovery(next); if (active.current) setRecovery(next); }
+      catch {
+        // The pre-send in_flight marker survives a failed post-response write.
+        // Reload cannot erase a refusal by restoring an apparently retryable body.
+        if (active.current) { setRecovery(next); setStorageBlocked(true); setStorageNotice('Recovery update could not be saved. Reconciliation is blocked; use owner reads.'); }
+      }
+    }
     try {
-      // Persist BEFORE dispatch; failure must not create an unrecoverable send.
-      sessionStorage.setItem(recoveryKey, body);
-      setRecovery(body);
+      // Mark non-retryable BEFORE every send, including a lookup.
+      persistRecovery(pending);
+      setRecovery(pending);
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 15000);
       try {
         const result = validateReceiptBinding(await exchange('receipt', '/o01/v0/command-sets', controller.signal, fetch, body), body);
+        save({ version: 1, body, phase: 'lookup', receipt: result });
         if (active.current) setReceipt(result);
       } finally { window.clearTimeout(timeout); }
     } catch (failure) {
-      if (!active.current) return;
-      if (failure instanceof WireProblem && failure.body.code === 'request_key_conflict') setConflict(true);
-      setError(failure instanceof Error ? failure.message : 'No validated receipt; outcome unknown.');
+      if (failure instanceof WireProblem) save({ ...pending, phase: 'problem', problem: failure.body });
+      else {
+        // Only transport loss is eligible for an identical-key lookup. A failed
+        // pre-send write must never be represented as a dispatched request.
+        try {
+          if (loadRecovery()?.body === body) save({ ...pending, phase: 'lookup' });
+          else if (active.current) setStorageBlocked(true);
+        } catch { if (active.current) setStorageBlocked(true); }
+      }
+      if (active.current) setError(failure instanceof Error ? failure.message : 'No validated receipt; outcome unknown.');
     } finally { inFlight.current = false; if (active.current) setBusy(false); }
   }
   const intents = prepared ? array(object(JSON.parse(prepared)).intents) : [];
   return <section className="panel"><h2>Deliberately select work to continue</h2><p>This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.</p>
-    <button type="button" disabled={busy || !!recovery} onClick={() => { setInput(JSON.stringify(fixtureRequest)); setPrepared(prepareContinue(fixtureRequest)); setChosen([]); setError(''); }}>Review work supplied by the fixture delegation</button>
-    <details><summary>Inspect or supply the separate request</summary><label htmlFor="stg02-request">Independently supplied command set (JSON; no credentials)</label><textarea id="stg02-request" rows={8} value={input} onChange={e => { setInput(e.target.value); setPrepared(undefined); setChosen([]); }} disabled={busy || !!recovery} />
-    <button type="button" disabled={busy || !!recovery} onClick={() => { try { setPrepared(prepareContinue(JSON.parse(input))); setChosen([]); setError(''); } catch (failure) { setPrepared(undefined); setError(failure instanceof Error ? failure.message : 'Invalid request'); } }}>Review separate request</button></details>
-    {prepared && <fieldset><legend>Select every supplied intent deliberately</legend>{intents.map(intent => { const row = object(intent), target = object(row.target), id = text(row.intent_ref); return <label key={id}><input type="checkbox" checked={chosen.includes(id)} disabled={busy || !!recovery} onChange={e => setChosen(current => e.target.checked ? [...current, id] : current.filter(x => x !== id))} />{id} · Work {text(target.work_ref)} at {text(target.work_revision)} · Delegation {text(row.delegated_grant_proof_ref)}</label>; })}<button disabled={busy || !!recovery || chosen.length !== intents.length} type="button" onClick={() => void submit(prepared)}>Submit selected work to HEB</button></fieldset>}
+    <button type="button" disabled={busy || !!recovery || storageBlocked} onClick={() => { setInput(JSON.stringify(fixtureRequest)); setPrepared(prepareContinue(fixtureRequest)); setChosen([]); setError(''); }}>Review work supplied by the fixture delegation</button>
+    <details><summary>Inspect or supply the separate request</summary><label htmlFor="stg02-request">Independently supplied command set (JSON; no credentials)</label><textarea id="stg02-request" rows={8} value={input} onChange={e => { setInput(e.target.value); setPrepared(undefined); setChosen([]); }} disabled={busy || !!recovery || storageBlocked} />
+    <button type="button" disabled={busy || !!recovery || storageBlocked} onClick={() => { try { setPrepared(prepareContinue(JSON.parse(input))); setChosen([]); setError(''); } catch (failure) { setPrepared(undefined); setError(failure instanceof Error ? failure.message : 'Invalid request'); } }}>Review separate request</button></details>
+    {prepared && <fieldset><legend>Select every supplied intent deliberately</legend>{intents.map(intent => { const row = object(intent), target = object(row.target), id = text(row.intent_ref); return <label key={id}><input type="checkbox" checked={chosen.includes(id)} disabled={busy || !!recovery || storageBlocked} onChange={e => setChosen(current => e.target.checked ? [...current, id] : current.filter(x => x !== id))} />{id} · Work {text(target.work_ref)} at {text(target.work_revision)} · Delegation {text(row.delegated_grant_proof_ref)}</label>; })}<button disabled={busy || !!recovery || storageBlocked || chosen.length !== intents.length} type="button" onClick={() => void submit(prepared)}>Submit selected work to HEB</button></fieldset>}
     {busy && <p role="status">Waiting for a receipt. An effect is not established.</p>}
     {error && <p role="alert">{error} No validated receipt from this attempt; the owner outcome is not established here.</p>}
+    {storageNotice && <p role="status">{storageNotice}</p>}
     {receipt && <section><h3>202 — received, not done</h3><p>Each result is shown in request order. Only an owner's qualified observation establishes an effect.</p><Facts value={{ carrier_state: receipt.carrier_state ?? null, request_set_ref: receipt.request_set_ref ?? null, observed_at: receipt.observed_at ?? null, source_valid_until: receipt.source_valid_until ?? null }} /><ol>{array(receipt.results).map((result, i) => { const row = object(result); return <li key={i}><h4>{text(row.intent_ref)} · {text(row.owner)}</h4><Facts value={row} />{typeof row.operation_ref === 'string' && typeof row.owner === 'string' ? <p><a href={locationFor('operation', `${row.owner}|${row.operation_ref}`)}>Inspect exact owner outcome: {row.owner} / {row.operation_ref}</a></p> : <p>No owner-operation identity supplied for {text(row.intent_ref)}. Outcome remains unestablished.</p>}</li>; })}</ol></section>}
-    {recovery && <><details><summary>Original request identity for recovery</summary><Facts value={object(JSON.parse(recovery))} /></details><p>After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.</p><a href={locationFor('operations')}>Inspect owner-operation outcomes</a><button type="button" disabled={busy || conflict} onClick={() => void submit(recovery)}>Reconcile using the same key and exact body</button><p>A retry is a lookup. No automatic retry or new key is generated. A key conflict stops reconciliation.</p></>}
+    {recovery && <><details><summary>Original request identity for recovery</summary><Facts value={object(JSON.parse(recovery.body))} /></details><p>After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.</p><a href={locationFor('operations')}>Inspect owner-operation outcomes</a><button type="button" disabled={busy || storageBlocked || recovery.phase !== 'lookup'} onClick={() => void submit(recovery.body)}>Reconcile using the same key and exact body</button><p>A retry is a lookup. No automatic retry or new key is generated.</p>{recovery.phase === 'in_flight' && <p>Dispatch completion is unresolved. Reconciliation stays blocked because no durable recovery disposition was recorded; use owner reads.</p>}{recovery.problem && <><p>Retry guidance: {text(recovery.problem.retry)} · {text(recovery.problem.code)}</p><p>{recovery.problem.retry === 'never' ? 'This request must not be retried.' : recovery.problem.retry === 'reauthenticate' ? 'Reauthentication is required.' : recovery.problem.retry === 'refresh_read' ? 'A fresh qualified read is required.' : recovery.problem.retry === 'when_source_recovers' ? 'Source recovery is required.' : 'Retry entitlement is not established.'} This slice does not establish that a prerequisite has been satisfied; reconciliation remains blocked. Owner reads remain available.</p></>}</>}
   </section>;
 }
 
@@ -108,8 +131,9 @@ export default function App() {
     try { path = readPath(kind, id, cursor); } catch (failure) { setLoading(false); setError(String(failure)); window.clearTimeout(timeout); return; }
     void exchange(kind, path, controller.signal).then(result => {
       if (retired) return;
-      const item = object(array(result.items)[0]);
-      if ((kind === 'run' && object(item.ref).id !== id) || (kind === 'continuation' && object(item.data).work_ref !== id) || (kind === 'operation' && `${text(result.owner)}|${text(result.operation_ref)}` !== id)) throw new Error('Rejected route/resource binding');
+      const items = array(result.items), item = object(items[0]);
+      if ((kind === 'run' && items.length > 0 && object(item.ref).id !== id) || (kind === 'continuation' && object(item.data).work_ref !== id) || (kind === 'operation' && `${text(result.owner)}|${text(result.operation_ref)}` !== id)) throw new Error('Rejected route/resource binding');
+      if (kind === 'operation') validateKnownOperation(result);
       setData(result);
     }).catch(failure => { if (!retired) { setData(undefined); setError(failure instanceof Error ? failure.message : 'No validated representation'); } }).finally(() => { window.clearTimeout(timeout); if (!retired) setLoading(false); });
     return () => { retired = true; controller.abort(); window.clearTimeout(timeout); };
@@ -118,7 +142,7 @@ export default function App() {
     <nav aria-label="STG-02 views"><a href={locationFor('waiting')}>Waiting work</a><a href={locationFor('operations')}>Owner operations</a></nav>
     <form method="get" action="/stg02"><label>Read view<select name="view" defaultValue={kind ?? 'waiting'}><option value="waiting">Waiting work</option><option value="run">Run detail</option><option value="continuation">Continuation information</option><option value="operations">Owner-operation index</option><option value="operation">Owner observation</option></select></label><label>Exact supplied ID (owner|operation for owner observation)<input name="id" defaultValue={id} /></label><button type="submit">Open exact read</button></form>
     {invalid ? <p role="alert">Unsupported or duplicate link parameters. No slice read made.</p> : <><button type="button" disabled={loading} onClick={() => setRevision(x => x + 1)}>Refresh this read</button>{loading && <p role="status">Loading a source-qualified read…</p>}{error && <p role="alert">{error}. No current representation is established.</p>}</>}
-    {data && <><section className="panel"><h2>Read outcome: {text(data.outcome ?? object(data.result).effect_state)}</h2><Facts value={kind === 'operation' ? data : { continuity: data.continuity ?? null, projection_as_of: data.projection_as_of ?? null, correlation_id: data.correlation_id ?? null }} />{data.limitations !== undefined && <p><strong>Limitations:</strong> {array(data.limitations).length ? array(data.limitations).map(text).join(' · ') : 'None supplied'}</p>}<p>Source observation time and validity belong to the supplied facts. Fetch time does not renew them.</p>{data.page !== null && data.page !== undefined && <><p>{closure(data)}</p>{object(data.page).has_more === true && typeof object(data.page).next_cursor === 'string' && <a href={locationFor(kind!, id, text(object(data.page).next_cursor))}>Next supplied page</a>}</>}</section>{array(data.items).map((item, index) => <Resource key={index} value={item} />)}</>}
+    {data && <><section className="panel"><h2>Read outcome: {text(data.outcome ?? object(data.result).effect_state)}</h2><Facts value={kind === 'operation' ? data : { continuity: data.continuity ?? null, projection_as_of: data.projection_as_of ?? null, correlation_id: data.correlation_id ?? null }} />{data.limitations !== undefined && <p><strong>Limitations:</strong> {array(data.limitations).length ? array(data.limitations).map(text).join(' · ') : 'None supplied'}</p>}<p>Source observation time and validity belong to the supplied facts. Fetch time does not renew them.</p>{data.page !== null && data.page !== undefined && <><p>{closure(data)}</p><CollectionBasis value={data.collection_basis} />{object(data.page).has_more === true && typeof object(data.page).next_cursor === 'string' && <a href={locationFor(kind!, id, text(object(data.page).next_cursor))}>Next supplied page</a>}</>}</section>{array(data.items).map((item, index) => <Resource key={index} value={item} />)}</>}
     <section className="panel"><h2>Protected actions — held</h2><p>Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.</p></section>
     <ContinueControl />
   </main>;

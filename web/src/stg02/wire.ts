@@ -15,7 +15,10 @@ export type ReadKind = 'waiting' | 'run' | 'continuation' | 'operations' | 'oper
 export function validated(kind: keyof typeof validators, value: unknown): ObjectValue {
   const validate = validators[kind];
   if (!validate(value)) throw new Error(`Rejected ${kind} structure: ${validate.errors?.map(error => `${error.dataPath ?? ''} ${error.message ?? ''}`).join('; ')}`);
-  return value as ObjectValue;
+  const body = value as ObjectValue;
+  if (kind === 'operation' && ['owner', 'operation_ref', 'intent_ref'].some(key => body[key] !== object(body.result)[key]))
+    throw new Error('Rejected owner-operation result binding');
+  return body;
 }
 
 export class WireProblem extends Error {

@@ -1,6 +1,6 @@
 # STG-02 website report
 
-Status: author fixture implementation and working-tree checks completed, 2026-10-19. Committed-source freeze, independent review and joint interoperability remain pending. No acceptance verdict.
+Status: first runtime checkpoint `3173362d2cc5f6dde2b49db7103092f903bd2760` built from a clean committed source; independent review returned findings. Corrections are in progress on 2026-10-20. Corrected-source freeze, fresh independent review and joint interoperability remain pending. No acceptance verdict.
 
 ## Authority and source
 
@@ -72,6 +72,20 @@ Pinned offline builder `sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5
 A preceding host-mounted WSL full run had 235 passes and one unchanged historical-graph test timing out at 5 seconds. That failure remains recorded; the pinned container passed the same test without any test or runtime correction in that area. This is not a claim that retrying fixed a defect. Earlier environment failures included old Python validators, CRLF in a local shell launcher, and cross-session loopback. A same-process-group fixture/browser harness resolved the browser reachability issue. No unsafe-eval CSP relaxation was made; validators are compiled offline.
 
 Limitations: no physical device, real browser zoom, live credential/session use, backend interoperability or independent acceptance. Remaining adversarial/retirement/header/owner-pin coverage, broader inherited browser regressions and exact committed-source evidence are still to be completed. The isolated validator bundle emits a chunk-size warning, disclosed in `IMPLEMENTATION-NOTES.md`.
+
+## Independent findings and correction checkpoint — 2026-10-20
+
+The full first review is preserved in `reviews/review-3173362.md`. Its F1–F4 are behavior findings, not nits; N1 is documentation only. The operator authorized fixing them before a joint test.
+
+- F1: persist recovery phase and validated retry guidance with the immutable serialized request. All five `never` codes remain terminal after reload; other prerequisites remain explicit and are not assumed satisfied. Persist a non-retryable marker before every POST so a failed terminal-state write cannot enable a repeat after reload. Lost transport response still permits an explicitly requested identical-key/body lookup after a durable recovery update.
+- F2: legal empty unavailable/unsupported run bodies retain their supplied outcome and limitations. A present wrong identity remains rejected; continuation cardinality is unchanged.
+- F3: reject nested owner/operation/intent contradictions. Persist receipt mappings and check known original request-set/intent/recipient/installation joins for the exact mapped owner-operation pair.
+- F4: collection closure now includes its separate supplied collection basis, source qualification/state/time/validity, and an expandable full basis with per-owner closures. This is aggregation provenance, not item authority or independent proof.
+- N1: WEB-STG02-002 now distinguishes completed author fixture/rendering work from pending designer triage and real qualification.
+
+Regression evidence is retained under ignored `web/artifacts/stg02/`: first baseline run had 17 failures and five passes; one failure was a test's invalid unsupported limitation value, and an existing storage assertion intentionally needed adapting to the new envelope. A corrected schema-valid read-only baseline reproduced all seven intended failing read cases (two controls passed). No runtime was altered to manufacture these failures. The repaired focused Node 22 run passed 34 tests. Windows-native runner setup failed on Linux-only native bindings; WSL uses the existing Node 22 executable instead, without installing or changing dependencies. Typecheck and lint corrections are author checks, not an independent verdict. Pinned full gate, frozen compiled-browser checks and fresh exact-head review still follow this checkpoint.
+
+The first clean committed-source freeze is retained at `web/artifacts/commit-freeze/run-28d4488c`: source `3173362d2cc5f6dde2b49db7103092f903bd2760`, tree `5fa27cdca3ccbee1daefeb399425659430b6fb29`, full pinned gate PASS, 236 tests. It predates these fixes and cannot qualify them. No remote CI/assurance or joint backend test has been observed for the correction checkpoint.
 
 ## Interim decisions
 

@@ -24,7 +24,7 @@ if (process.env.STG02_SPAWN_FIXTURES === '1') {
     return child;
   };
   launch([process.env.STG02_DESIGNER_DRIVER, '--port', String(port + 1)]);
-  launch(['docs/stg02/serve_recordings.py', '--port', String(port), '--upstream-port', String(port + 1), '--web-root', 'web/dist-stg02', '--lifetime', '180']);
+  launch(['docs/stg02/serve_recordings.py', '--port', String(port), '--upstream-port', String(port + 1), '--web-root', process.env.STG02_WEB_ROOT ?? 'web/dist-stg02', '--lifetime', '180']);
   const until = Date.now() + 10000;
   let ready = false;
   while (Date.now() < until) {
@@ -68,6 +68,15 @@ try {
     assert.match(await page.locator('main').innerText(), /stale · unqualified/);
     await page.screenshot({ path: `${output}/${width}-stale.png`, fullPage: true });
     await page.unroute('**/v1/read/runs/**');
+    for (const outcome of ['unavailable', 'unsupported']) {
+      const limited = { ...runRecording, outcome, continuity: 'unknown', items: [], limitations: outcome === 'unavailable' ? ['source_unavailable'] : [] };
+      await page.route('**/v1/read/runs/**', route => route.fulfill({ status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-AEW-Wire-Version': '0.3.4' }, body: JSON.stringify(limited) }));
+      await page.reload();
+      await page.getByRole('heading', { name: `Read outcome: ${outcome}`, exact: true }).waitFor();
+      assert.equal(await page.getByRole('alert').count(), 0);
+      await page.screenshot({ path: `${output}/${width}-empty-run-${outcome}.png`, fullPage: true });
+      await page.unroute('**/v1/read/runs/**');
+    }
     await page.goto(base + '/stg02?view=continuation&id=ticket%3Aone');
     await page.getByRole('heading', { name: 'AEV: unknown', exact: true }).waitFor();
     assert.match(await page.locator('main').innerText(), /SOURCE_UNAVAILABLE/);
@@ -91,6 +100,8 @@ try {
       await page.goto(base + '/stg02?view=operations');
       await page.getByRole('heading', { name: `Read outcome: ${recording.body.outcome}`, exact: true }).waitFor();
       assert.ok((await page.locator('main').innerText()).includes(phrase));
+      await page.getByRole('heading', { name: 'Collection basis — aggregation only', exact: true }).waitFor();
+      assert.ok((await page.locator('main').innerText()).includes(recording.body.collection_basis.fact_ref));
       if (name === 'index-first') assert.equal(await page.getByRole('link', { name: 'Next supplied page' }).count(), 1);
       await page.screenshot({ path: `${output}/${width}-${name}.png`, fullPage: true });
       await page.unroute('**/v1/read/owner-operations*');
@@ -118,17 +129,50 @@ try {
     await page.screenshot({ path: `${output}/${width}-received-held.png`, fullPage: true });
     const ownerLink = page.getByRole('link', { name: /^Inspect exact owner outcome:/ });
     await ownerLink.waitFor();
+    const ownerResponse = page.waitForResponse(response => response.url().includes('/o01/v0/owner-operations/'));
     await ownerLink.click();
-    await page.getByRole('heading', { name: /^Read outcome:/ }).waitFor();
+    const ownerBody = await (await ownerResponse).json();
+    await page.getByRole('heading', { name: `Read outcome: ${ownerBody.result.effect_state}`, exact: true }).waitFor();
     const ownerUrl = page.url();
     await page.reload();
     await page.getByRole('heading', { name: /^Read outcome:/ }).waitFor();
     assert.equal(page.url(), ownerUrl);
     await page.screenshot({ path: `${output}/${width}-reloaded-owner.png`, fullPage: true });
+    const contradictory = globalThis.structuredClone(ownerBody);
+    contradictory.result.operation_ref = 'op:other';
+    contradictory.result.effect_state = 'EFFECT_CONFIRMED';
+    await page.route('**/o01/v0/owner-operations/**', route => route.fulfill({ status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-AEW-O01-Wire': 'o01-command-0.2-review-candidate' }, body: JSON.stringify(contradictory) }));
+    await page.reload();
+    assert.match(await page.getByRole('alert').innerText(), /binding/);
+    assert.equal(await page.getByRole('heading', { name: 'Read outcome: EFFECT_CONFIRMED', exact: true }).count(), 0);
+    await page.screenshot({ path: `${output}/${width}-owner-binding-rejected.png`, fullPage: true });
+    await page.unroute('**/o01/v0/owner-operations/**');
+    for (const [code, status] of [['invalid_request', 400], ['not_found_or_not_disclosable', 404], ['request_key_conflict', 409], ['unsupported_action', 400], ['unresolved_no_redispatch', 409]]) {
+      await page.evaluate(() => globalThis.sessionStorage.clear());
+      let posts = 0;
+      await page.route('**/o01/v0/command-sets', route => {
+        posts++;
+        return route.fulfill({ status, headers: { 'Content-Type': 'application/problem+json', 'Cache-Control': 'private, no-store', 'X-AEW-O01-Wire': 'o01-command-0.2-review-candidate' }, body: JSON.stringify({ code, status, retry: 'never', type: 'about:blank', title: 'Request could not be completed', correlation_id: 'correlation:one' }) });
+      });
+      await page.goto(base + '/stg02');
+      await page.getByRole('button', { name: 'Review work supplied by the fixture delegation', exact: true }).click();
+      await page.getByRole('checkbox').check();
+      await page.getByRole('button', { name: 'Submit selected work to HEB', exact: true }).click();
+      await page.getByRole('alert').waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Reconcile using the same key and exact body' }).isDisabled(), true);
+      await page.reload();
+      await page.getByText(`Retry guidance: never · ${code}`, { exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Reconcile using the same key and exact body' }).isDisabled(), true);
+      assert.equal(posts, 1);
+      await page.screenshot({ path: `${output}/${width}-terminal-${code}.png`, fullPage: true });
+      await page.unroute('**/o01/v0/command-sets');
+    }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false);
     assert.deepEqual(errors, []);
     results.push({ width, waiting: true, runUnknown: true, continuation: true, nondisclosing404: true, unavailable503: true,
-      protectedControlCount: 0, separateSelection: true, receipt202: true, reloadedOwner: true, source: 'working-tree compiled build; not committed-source acceptance' });
+      protectedControlCount: 0, separateSelection: true, receipt202: true, reloadedOwner: true, emptyLimitedRuns: true,
+      terminalCodesAcrossReload: 5, rejectedContradictoryOwner: true, collectionBasis: true,
+      source: 'compiled fixture build; source/build provenance must be recorded separately' });
     await context.close();
   }
 } finally { globalThis.clearTimeout(deadline); await browser.close(); for (const child of owned) child.kill(); }

@@ -2,7 +2,7 @@
 
 **For:** the lead designer, who copies this into the architecture workspace (the handoff says not to edit it).
 **Contract:** the adopted STG-01 v0.5.4 ZIP, SHA-256 `64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f`: D-01 0.3.4, O-01 `o01-command-0.2-review-candidate`, the selection profile and the owner pins.
-**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (52), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
+**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (53), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
 **Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-16.
 **Date:** 2026-10-19 (UTC 2026-10-20).
 
@@ -11,8 +11,8 @@
 The six routes run over real HTTP on 127.0.0.1:4261, in a process of their own beside the provisional dashboard API, which is unchanged.
 - `CONTINUE_ELIGIBLE_WORK` is admitted by a fixture HEB under the fixture delegation issuer `delegation:fixture`.
 - Every other action is refused or held, and protected actions allocate nothing.
-- The conformance driver, on its default clock, gives **35 passed, 0 failed, 6 skipped**.
-- That run used the driver as fixed by the designer in workspace commit `006f45b`. Before that fix, the driver's default clock gave 5 FAILs, all the driver's own (STG02-BE-02); this server and the contract were not changed for them.
+- The conformance driver, on its default clock and authenticated by a synthetic bearer, gives **47 passed, 0 failed, 6 skipped**.
+- That run used the driver at workspace commit `75d30cf`: the clock fix of `006f45b` (STG02-BE-02) and the config headers with the A1 authentication check. Before the clock fix, the driver's default clock gave 5 FAILs, all the driver's own; this server and the contract were not changed for them.
 
 The result that matters most for the design is STG02-BE-03. No fact this backend serves is qualified:
 - labelled fixture facts may not be;
@@ -27,11 +27,11 @@ python -m aew.stg02.server --port 4261 --state-dir <dir> --project <AEW repo roo
 ```
 
 ```bash
-python -m aew.stg02.server --state-dir <dir> --fixture-recipient --test-routes --write-driver-config docs/stg02/driver-config.json
+python -m aew.stg02.server --state-dir <dir> --tokens <synthetic tokens file> --test-routes --driver-bearer token-operator-synthetic --write-driver-config docs/stg02/driver-config.json
 ```
 
 - `--project` is optional: without it, only the fixture world is served.
-- `--fixture-recipient` and `--test-routes` exist for the driver (STG02-BE-07, and case C17-N03). With `--project`, `--fixture-recipient` lets any local process read that project's engine state without a token; the server warns at start.
+- `--test-routes` exists for the driver (case C17-N03). The driver authenticates with the synthetic bearer that `--driver-bearer` writes into the config's `headers` (STG02-BE-07), so its server runs without `--fixture-recipient`; the response recorder still uses `--fixture-recipient`. With `--project`, `--fixture-recipient` lets any local process read that project's engine state without a token; the server warns at start.
 - `--real-recipient` names the one recipient AEW's own records are disclosed to (default: the fixture world's operator; STG02-BE-16).
 - The recordings and driver runs below used a scratch AEW project built with the test suite's own helpers:
   - `T-0001` is RUNNING, with implementer invocation `INV-0001`;
@@ -147,13 +147,13 @@ The 503s were made with the test-only outage switch (`POST /_test/engine-outage`
 
 ## 4. The driver's result
 
-The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `006f45b`, which fixed STG02-BE-02: without `--now`, each receipt is checked at the instant its answer arrives. It ran on its default clock against this server at commit `b73021b1` with the scratch project. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config`).
+The driver is `30-stages/STG-02-first-vertical-slice/driver/slice_driver.py` at workspace commit `75d30cf`. `006f45b` fixed STG02-BE-02 (without `--now`, each receipt is checked at the instant its answer arrives); `75d30cf` sends the config's `headers` on every request and adds A1, which checks that every read and the command route answer `401` without the bearer and with one never issued, and the owner GET its one `404`. It ran on its default clock against this server at commit `f99c9963` with the scratch project, `--tokens` and no `--fixture-recipient`. The config is [`driver-config.json`](driver-config.json), generated from the fixture world (`--write-driver-config --driver-bearer`); its bearer is a synthetic token.
 
 | Run | Output | Result |
 |---|---|---|
-| default clock, driver at `006f45b` | [`driver-output.txt`](driver-output.txt) | **PASS: 35 passed, 0 failed, 6 skipped** |
+| default clock, driver at `75d30cf`, synthetic bearer | [`driver-output.txt`](driver-output.txt) | **PASS: 47 passed, 0 failed, 6 skipped** (A1: 12 of 12) |
 
-Before running against the server, the driver's self-test passed on this machine (clean run, 10 of 10 mutations killed). Earlier, the driver at `6b10073` fixed "now" once at its start: its default clock gave 30 passed and 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), and 35 passed with `--now` set past the run's start. Those 5 FAILs were classified before anything changed, as the driver's own (STG02-BE-02). Neither this server nor the contract changed for them; the designer fixed the driver.
+Before running against the server, the driver's self-test passed on this machine (clean run, 10 of 10 mutations killed). The same driver without a bearer in the config gives 35 passed, 0 failed, 7 skipped (the seventh is A1). Earlier, the driver at `6b10073` fixed "now" once at its start: its default clock gave 30 passed and 5 failed (C1, C5, C17-N01..N03, all `RECEIPT_INVALID_CURRENTNESS`), and 35 passed with `--now` set past the run's start. Those 5 FAILs were classified before anything changed, as the driver's own (STG02-BE-02). Neither this server nor the contract changed for them; the designer fixed the driver.
 
 **Why each SKIP remains (a SKIP is not a pass):**
 
@@ -196,7 +196,7 @@ Before running against the server, the driver's self-test passed on this machine
 ## 6. Context feedback on the handoff
 
 **Missing.**
-- The handoff does not say how the driver authenticates. It sends no bearer, and the wire requires one. Needing a tokenless fixture recipient was discovered, not stated.
+- The handoff does not say how the driver authenticates. It sent no bearer, and the wire requires one. Needing a tokenless fixture recipient was discovered, not stated. (The designer's `75d30cf` closes this for the driver: config headers, and A1.)
 - It does not say that "labelled fixture ⇒ unqualified" makes every positive recording and directive unreachable. That consequence decides the R6 SKIPs and the website's experience, and is worth stating up front (BE-03).
 - The O-01 `Problem` and `OwnerOperationRead` are defined only in the O-01 OpenAPI document, not in `o01-extended-command.schema.json`. The field map's table suggests the standalone schema is enough.
 - Nothing says which of the A-24 reject cases the 0.2 refusal map can express. N21 cannot (BE-01).

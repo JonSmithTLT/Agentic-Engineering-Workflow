@@ -59,7 +59,7 @@ The adopted map is consulted first. The slice map is labelled interim and applie
 
 ## STG02-BE-02
 
-**Status:** fixed by the designer in workspace commit `006f45b`: without `--now`, the driver checks each receipt at the instant its answer arrives. On the fixed driver's default clock this backend gives 35 passed, 0 failed, 6 skipped ([`driver-output.txt`](driver-output.txt)). The text below is the entry as raised.
+**Status:** fixed by the designer in workspace commit `006f45b`: without `--now`, the driver checks each receipt at the instant its answer arrives. On the fixed driver's default clock this backend gave 35 passed, 0 failed, 6 skipped. The current output, from the driver at `75d30cf` with the config's synthetic bearer (BE-07), is 47 passed, 0 failed, 6 skipped ([`driver-output.txt`](driver-output.txt)). The text below is the entry as raised.
 
 **Class:** implementation defect, in the conformance driver (non-normative tooling; neither this server nor the contract).
 
@@ -164,13 +164,14 @@ What the website gets is all-unknown. The directives `no_unknown_owners`, `list_
 
 **Clause.**
 - `02-WIRE/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml` line 13 (`security: readSession`) and line 2391: an opaque bearer.
-- The driver's `http()` sends no credentials, and its config has no auth field except on setup and teardown steps.
+- The driver's `http()` sent no credentials, and its config had no auth field except on setup and teardown steps (the driver up to `006f45b`; `75d30cf` sends the config's `headers` on every request and adds the A1 check).
 
 **What happened.** AEW has no read-session issuer. The A04 session is not used in the slice: `REAFFIRM_ELIGIBLE_CHILD_GRANTS` is refused `ORIGIN_NOT_ESTABLISHED` and nothing is allocated.
 
 **Interim choice.**
 - `--tokens` takes a file of synthetic opaque tokens, each mapped to a recipient. An unknown or malformed `Authorization` is `401 authentication_unqualified` (recorded).
-- `--fixture-recipient` makes a request **without** `Authorization` act as `fixture:recipient-operator`. It exists only so the driver can run, and is labelled.
+- `--driver-bearer` writes one of those synthetic tokens into the driver config's `headers`, refused unless it maps to the world's recipient. The driver then authenticates like any client, and A1 passes (12 of 12).
+- `--fixture-recipient` makes a request **without** `Authorization` act as `fixture:recipient-operator`. It is labelled, now used only by the response recorder, and the server warns when it is combined with `--project`.
 
 ## STG02-BE-08
 

@@ -1,0 +1,18 @@
+[
+  {
+    "path": "favicon.svg",
+    "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08"
+  },
+  {
+    "path": "stg02.html",
+    "sha256": "fa33b588f93cef746456215c5788652d98b25d848a9f0d74b2cee4937eb67627"
+  },
+  {
+    "path": "assets/stg02-CKl7Rou1.js",
+    "sha256": "d1100dac127582863160d2b9870be25639ea50e351c0198840065469f3691f43"
+  },
+  {
+    "path": "assets/stg02-DPdi3i1H.css",
+    "sha256": "a8d256ff4adb46cc8d0c62048f7ccc7c25c82d60f9fd369f7d687dbdf582e235"
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "source_commit": "af77308aa48cbc73a73791b58b807c0a9ebdbe55",
+  "source_tree": "9c92ff8a1479fc9b13633dbf5436354ed93441ec",
+  "gate": "PASS",
+  "network": "none",
+  "builder": "sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5e5a4d9252360b8b",
+  "method": "Native Git shared clone, explicit detached commit, core.autocrlf=false; clean source before and after pinned offline gate.",
+  "stage": "web/artifacts/commit-freeze/run-ef8dde21",
+  "build_manifest_sha256": {
+    "dist-demo": "2b20749e478f63e533b0a90b99f0562197d2d2982a9be122c8b435695eac090d",
+    "dist-stg02": "d6ec95cf93b42beb4a3902039a104734e3c3d1289f023f0be7fd55659b0608a1",
+    "dist": "fcb7b25b16508cfe419528e07bca83adc188fbc4ab2b1b44148106113319dcd9"
+  }
+}

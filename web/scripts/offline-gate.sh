@@ -22,6 +22,7 @@ cp src/api/types.ts /tmp/types-before.ts
 npm run generate:types
 cmp src/api/types.ts /tmp/types-before.ts
 node scripts/generate-additive-schemas.mjs --check
+node --experimental-strip-types scripts/generate-stg02.mjs --check
 node scripts/check-contract.mjs
 npm run check:scenario
 node --experimental-strip-types scripts/journal-artifact.mjs
@@ -34,6 +35,7 @@ npm run lint
 npm test
 npm run build
 npm run build:demo
-rm -rf /evidence/dist /evidence/dist-demo
-cp -r dist dist-demo /evidence/
+node node_modules/vite/bin/vite.js build --mode stg02
+rm -rf /evidence/dist /evidence/dist-demo /evidence/dist-stg02
+cp -r dist dist-demo dist-stg02 /evidence/
 SCRIPT

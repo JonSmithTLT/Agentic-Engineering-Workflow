@@ -1,0 +1,21 @@
+{
+  "carrier_state": "COMPLETE_WITH_PER_INTENT_RESULTS",
+  "observed_at": "2026-10-17T21:00:00-04:00",
+  "recipient_ref": "recipient:operator001",
+  "request_set_ref": "set:demo001",
+  "results": [
+    {
+      "admission_state": "ADMITTED",
+      "cancellation_state": "NONE",
+      "effect_state": "EFFECT_CONFIRMED",
+      "intent_ref": "intent:demo001",
+      "operation_ref": "ownerop:demo001",
+      "owner": "HEB",
+      "owner_evidence_ref": "evidence:demo001",
+      "reason_code": null,
+      "residual_remote_effect": "NOT_ESTABLISHED"
+    }
+  ],
+  "source_valid_until": "2026-10-20T21:00:00-04:00",
+  "wire_version": "o01-command-0.2-review-candidate"
+}

@@ -1,0 +1,291 @@
+{
+  "wire_version": "0.3.4",
+  "mode": "list",
+  "outcome": "provided",
+  "projection_as_of": "2026-10-16T18:00:00-04:00",
+  "continuity": "source_qualified",
+  "items": [
+    {
+      "resource_type": "waiting",
+      "ref": {
+        "kind": "waiting_condition",
+        "id": "W-01",
+        "revision": null,
+        "generation": null,
+        "package_digest": null
+      },
+      "source": {
+        "owner": "CNI",
+        "fact_ref": "CNI:fact:01",
+        "source_epoch": "epoch1",
+        "source_version": "v1",
+        "coverage_ref": "coverage:authorised",
+        "observed_at": "2026-10-16T18:00:00-04:00",
+        "qualification": "qualified",
+        "observation_state": "present_current",
+        "renewal": {
+          "kind": "source_valid_until",
+          "source_proof_ref": "owner:renewal:v1",
+          "valid_until": "2026-10-16T19:00:00-04:00",
+          "qualified_owner": "CNI",
+          "source_epoch": "epoch1",
+          "coverage_ref": "coverage:authorised",
+          "verification_method": "source_attested_interval",
+          "checked_at": "2026-10-16T18:00:00-04:00",
+          "invalidation": "expiry_or_revalidation_failure"
+        },
+        "closures": [
+          {
+            "domain": "mandatory_obligation_roster",
+            "owner": "AEV",
+            "epoch": "epoch1",
+            "version": "B42",
+            "coverage_ref": "coverage:mandatory_obligation_roster",
+            "completeness": "qualified_complete"
+          },
+          {
+            "domain": "applicable_hold_collection",
+            "owner": "AEV",
+            "epoch": "epoch1",
+            "version": "H42",
+            "coverage_ref": "coverage:applicable_hold_collection",
+            "completeness": "qualified_complete"
+          }
+        ],
+        "authority_class": "governing_determination",
+        "governing_owner": "CNI",
+        "issuer_ref": "issuer:CNI:fixture",
+        "owner_coverage_class": "qualified_source_basis"
+      },
+      "disclosure": {
+        "form": "full",
+        "policy_ref": "policy:case1",
+        "scope_ref": "recipient:operator:T",
+        "effective_recipient_ref": "operator:fixture",
+        "qualified_release": true
+      },
+      "data": {
+        "work": {
+          "kind": "ticket",
+          "id": "T-A",
+          "revision": "r2",
+          "generation": null,
+          "package_digest": null
+        },
+        "cause": "mandatory_result",
+        "basis_refs": {
+          "visibility": "complete_visible",
+          "refs": [
+            {
+              "kind": "assurance_basis",
+              "id": "O4",
+              "revision": null,
+              "generation": null,
+              "package_digest": null
+            }
+          ]
+        },
+        "responsible_owner": "AEV",
+        "progress": "independent_work_allowed",
+        "action_status": "read_only",
+        "narrative": null
+      },
+      "links": [
+        {
+          "relation": "evidence",
+          "target": {
+            "kind": "assurance_basis",
+            "id": "O4",
+            "revision": null,
+            "generation": null,
+            "package_digest": null
+          },
+          "availability": "navigable"
+        },
+        {
+          "relation": "package",
+          "target": {
+            "kind": "package",
+            "id": "P-A",
+            "revision": null,
+            "generation": null,
+            "package_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "availability": "navigable"
+        }
+      ],
+      "field_sources": [
+        {
+          "field_path": "data.basis_refs",
+          "source": {
+            "owner": "AEV",
+            "fact_ref": "AEV:fact:01",
+            "source_epoch": "epoch1",
+            "source_version": "v1",
+            "coverage_ref": "coverage:authorised",
+            "observed_at": "2026-10-16T18:00:00-04:00",
+            "qualification": "qualified",
+            "observation_state": "present_current",
+            "renewal": {
+              "kind": "source_valid_until",
+              "source_proof_ref": "owner:renewal:v1",
+              "valid_until": "2026-10-16T19:00:00-04:00",
+              "qualified_owner": "AEV",
+              "source_epoch": "epoch1",
+              "coverage_ref": "coverage:authorised",
+              "verification_method": "source_attested_interval",
+              "checked_at": "2026-10-16T18:00:00-04:00",
+              "invalidation": "expiry_or_revalidation_failure"
+            },
+            "closures": [],
+            "authority_class": "governing_determination",
+            "governing_owner": "AEV",
+            "issuer_ref": "issuer:AEV:fixture",
+            "owner_coverage_class": "qualified_source_basis"
+          }
+        }
+      ]
+    },
+    {
+      "resource_type": "waiting",
+      "ref": {
+        "kind": "waiting_condition",
+        "id": "W-02",
+        "revision": null,
+        "generation": null,
+        "package_digest": null
+      },
+      "source": {
+        "owner": "CNI",
+        "fact_ref": "CNI:fact:01",
+        "source_epoch": "epoch1",
+        "source_version": "v1",
+        "coverage_ref": "coverage:authorised",
+        "observed_at": "2026-10-16T18:00:00-04:00",
+        "qualification": "qualified",
+        "observation_state": "present_current",
+        "renewal": {
+          "kind": "source_valid_until",
+          "source_proof_ref": "owner:renewal:v1",
+          "valid_until": "2026-10-16T19:00:00-04:00",
+          "qualified_owner": "CNI",
+          "source_epoch": "epoch1",
+          "coverage_ref": "coverage:authorised",
+          "verification_method": "source_attested_interval",
+          "checked_at": "2026-10-16T18:00:00-04:00",
+          "invalidation": "expiry_or_revalidation_failure"
+        },
+        "closures": [
+          {
+            "domain": "mandatory_obligation_roster",
+            "owner": "AEV",
+            "epoch": "epoch1",
+            "version": "B42",
+            "coverage_ref": "coverage:mandatory_obligation_roster",
+            "completeness": "qualified_complete"
+          },
+          {
+            "domain": "applicable_hold_collection",
+            "owner": "AEV",
+            "epoch": "epoch1",
+            "version": "H42",
+            "coverage_ref": "coverage:applicable_hold_collection",
+            "completeness": "qualified_complete"
+          }
+        ],
+        "authority_class": "governing_determination",
+        "governing_owner": "CNI",
+        "issuer_ref": "issuer:CNI:fixture",
+        "owner_coverage_class": "qualified_source_basis"
+      },
+      "disclosure": {
+        "form": "full",
+        "policy_ref": "policy:case1",
+        "scope_ref": "recipient:operator:T",
+        "effective_recipient_ref": "operator:fixture",
+        "qualified_release": true
+      },
+      "data": {
+        "work": {
+          "kind": "story",
+          "id": "STORY-1",
+          "revision": "r1",
+          "generation": null,
+          "package_digest": null
+        },
+        "cause": "qualified_hold",
+        "basis_refs": {
+          "visibility": "complete_visible",
+          "refs": [
+            {
+              "kind": "hold",
+              "id": "H-1",
+              "revision": null,
+              "generation": null,
+              "package_digest": null
+            }
+          ]
+        },
+        "responsible_owner": "AEV",
+        "progress": "blocked",
+        "action_status": "read_only",
+        "narrative": null
+      },
+      "links": [
+        {
+          "relation": "hold",
+          "target": {
+            "kind": "hold",
+            "id": "H-1",
+            "revision": null,
+            "generation": null,
+            "package_digest": null
+          },
+          "availability": "navigable"
+        }
+      ],
+      "field_sources": [
+        {
+          "field_path": "data.basis_refs",
+          "source": {
+            "owner": "AEV",
+            "fact_ref": "AEV:fact:01",
+            "source_epoch": "epoch1",
+            "source_version": "v1",
+            "coverage_ref": "coverage:authorised",
+            "observed_at": "2026-10-16T18:00:00-04:00",
+            "qualification": "qualified",
+            "observation_state": "present_current",
+            "renewal": {
+              "kind": "source_valid_until",
+              "source_proof_ref": "owner:renewal:v1",
+              "valid_until": "2026-10-16T19:00:00-04:00",
+              "qualified_owner": "AEV",
+              "source_epoch": "epoch1",
+              "coverage_ref": "coverage:authorised",
+              "verification_method": "source_attested_interval",
+              "checked_at": "2026-10-16T18:00:00-04:00",
+              "invalidation": "expiry_or_revalidation_failure"
+            },
+            "closures": [],
+            "authority_class": "governing_determination",
+            "governing_owner": "AEV",
+            "issuer_ref": "issuer:AEV:fixture",
+            "owner_coverage_class": "qualified_source_basis"
+          }
+        }
+      ]
+    }
+  ],
+  "page": {
+    "page_size": 25,
+    "next_cursor": null,
+    "has_more": false,
+    "scope": "effective_recipient_view",
+    "membership": "qualified_scoped"
+  },
+  "limitations": [],
+  "correlation_id": "fixture:request:1",
+  "collection_basis": null,
+  "effective_recipient_ref": "operator:fixture"
+}

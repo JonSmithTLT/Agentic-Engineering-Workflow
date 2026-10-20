@@ -1,0 +1,36 @@
+{
+  "client_request_key": "key:attach-lead",
+  "consent_set_ref": "consent:attach-lead",
+  "installation_ref": "installation:one",
+  "intents": [
+    {
+      "action": "ATTACH_LEAD",
+      "actor_ref": "operator:one",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:attach_lead",
+      "origin_proof_ref": "proof:origin",
+      "owner_hint": "HEB",
+      "predecessor": {
+        "basis_ref": "basis:one",
+        "basis_version": "version:one",
+        "source_epoch": "epoch:one"
+      },
+      "subject": {
+        "attachment_ref": null,
+        "generation_ref": null,
+        "installation_ref": "installation:one",
+        "project_ref": "project:one"
+      },
+      "target": {
+        "profile_binding_ref": "profile:one",
+        "project_ref": "project:one",
+        "requested_lead_ref": "lead:new",
+        "seat_class": "LEAD"
+      }
+    }
+  ],
+  "recipient_ref": "recipient:operator-1",
+  "request_set_ref": "request:attach-lead",
+  "wire_version": "o01-command-0.2-review-candidate"
+}

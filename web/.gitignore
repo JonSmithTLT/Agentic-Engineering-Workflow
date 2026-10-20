@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-demo/
+dist-stg02/
 artifacts/
 output/
 .playwright-cli/

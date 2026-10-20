@@ -1,0 +1,161 @@
+{
+  "archive_sha256": "64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f",
+  "manifest_files_checked": 76,
+  "checks": [
+    {
+      "fixture": "continuation-full-http-200.json",
+      "schema": "ReadContinuationVector",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "continuation-http-200.json",
+      "schema": "ReadContinuationVector",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "index-owner-filter-qualified-http-200.json",
+      "schema": "ReadOwnerOperations",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "index-paginated-first-http-200.json",
+      "schema": "ReadOwnerOperations",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "index-paginated-second-http-200.json",
+      "schema": "ReadOwnerOperations",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "index-partial-owner-http-200.json",
+      "schema": "ReadOwnerOperations",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "index-qualified-empty-http-200.json",
+      "schema": "ReadOwnerOperations",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-requests.json:ATTACH_LEAD",
+      "schema": "CommandSet",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-requests.json:REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+      "schema": "CommandSet",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-requests.json:REATTACH_LEAD",
+      "schema": "CommandSet",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-receipts.json:ATTACH_LEAD",
+      "schema": "Receipt",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-receipts.json:REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+      "schema": "Receipt",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "command-receipts.json:REATTACH_LEAD",
+      "schema": "Receipt",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "owner-operation-get.json:ATTACH_LEAD",
+      "schema": "OwnerOperationRead",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "owner-operation-get.json:REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+      "schema": "OwnerOperationRead",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "owner-operation-get.json:REATTACH_LEAD",
+      "schema": "OwnerOperationRead",
+      "derived": false,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/LEGACY/F01-waiting-positive.json [version-only derivative]",
+      "schema": "ReadWaiting",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/LEGACY/F32-empty-waiting-recipient-view-not-global-absence.json [version-only derivative]",
+      "schema": "ReadWaiting",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/NEW/F03-run-progress-limited.json [version-only derivative]",
+      "schema": "ReadRuns",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/NEW/F04-run-detail-limited.json [version-only derivative]",
+      "schema": "ReadRunDetail",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/NEW/F05-run-multiaxis-HEB-observed.json [version-only derivative]",
+      "schema": "ReadRunDetail",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    },
+    {
+      "fixture": "A23/NEW/F13-run-no-outstanding-with-IF10-closure.json [version-only derivative]",
+      "schema": "ReadRunDetail",
+      "derived": true,
+      "valid": true,
+      "errors": []
+    }
+  ],
+  "scope": "Structural/schema intake only; no owner qualification or UI acceptance."
+}

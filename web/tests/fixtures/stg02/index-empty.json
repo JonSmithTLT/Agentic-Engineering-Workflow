@@ -1,0 +1,93 @@
+{
+  "body": {
+    "collection_basis": {
+      "authority_class": "qualified_observation",
+      "closures": [
+        {
+          "completeness": "qualified_scoped",
+          "coverage_ref": "basis:roster",
+          "domain": "other_governed_set",
+          "epoch": "owner:e1",
+          "owner": "ADC",
+          "version": "roster:v1"
+        },
+        {
+          "completeness": "qualified_scoped",
+          "coverage_ref": "basis:roster",
+          "domain": "other_governed_set",
+          "epoch": "owner:e1",
+          "owner": "HEB",
+          "version": "roster:v1"
+        },
+        {
+          "completeness": "qualified_scoped",
+          "coverage_ref": "basis:roster",
+          "domain": "other_governed_set",
+          "epoch": "owner:e1",
+          "owner": "IF13",
+          "version": "roster:v1"
+        },
+        {
+          "completeness": "qualified_scoped",
+          "coverage_ref": "basis:roster",
+          "domain": "other_governed_set",
+          "epoch": "owner:e1",
+          "owner": "RESOURCE_POLICY_ISSUER",
+          "version": "roster:v1"
+        }
+      ],
+      "coverage_ref": "sha256:5a707aae2db62b75daa63277a78fcb432dafa5e9c00c677bee557d6d1ebfe453",
+      "fact_ref": "basis:roster",
+      "governing_owner": "CNI",
+      "issuer_ref": "index:issuer",
+      "observation_state": "present_current",
+      "observed_at": "2026-10-18T13:00:00Z",
+      "owner": "CNI",
+      "owner_coverage_class": "qualified_source_basis",
+      "qualification": "qualified",
+      "renewal": {
+        "checked_at": "2026-10-18T13:00:00Z",
+        "coverage_ref": "coverage:one",
+        "invalidation": "expiry_or_revalidation_failure",
+        "kind": "source_valid_until",
+        "qualified_owner": "CNI",
+        "source_epoch": "roster:v1",
+        "source_proof_ref": "proof:one",
+        "valid_until": "2026-10-19T13:00:00Z",
+        "verification_method": "source_attested_interval"
+      },
+      "source_epoch": "roster:v1",
+      "source_version": "roster:v1"
+    },
+    "continuity": "source_qualified",
+    "correlation_id": "correlation:one",
+    "effective_recipient_ref": "recipient:operator-1",
+    "items": [],
+    "limitations": [],
+    "mode": "list",
+    "outcome": "provided",
+    "page": {
+      "has_more": false,
+      "membership": "qualified_scoped",
+      "next_cursor": null,
+      "page_size": 25,
+      "scope": "effective_recipient_view"
+    },
+    "projection_as_of": "2026-10-18T13:00:00Z",
+    "wire_version": "0.3.4"
+  },
+  "headers": {
+    "Cache-Control": "private, no-store",
+    "Content-Type": "application/json",
+    "X-AEW-Wire-Version": "0.3.4"
+  },
+  "request": {
+    "headers": {
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "query": {
+      "scope_ref": "scope:one"
+    }
+  },
+  "status": 200
+}

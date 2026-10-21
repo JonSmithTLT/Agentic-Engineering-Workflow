@@ -538,7 +538,7 @@ def test_a_d01_id_segment_with_any_percent_sequence_stays_400(live: Live):
     problem_ok("D01", "get", "/v1/read/runs/{execution_id}", st, h, b, "invalid_request")
 
 
-def test_every_server_log_line_starts_with_its_utc_time_to_the_millisecond():
+def test_the_log_formatter_puts_the_utc_time_to_the_millisecond_first():
     import logging
     import re as _re
 

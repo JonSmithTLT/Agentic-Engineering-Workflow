@@ -602,6 +602,19 @@ def test_cors_is_offered_only_to_an_exactly_allowed_origin(project: dict[str, An
         lv.close()
 
 
+@pytest.mark.parametrize("origin", ["http://127.0.0.1:4251\r\nSet-Cookie: x=1", "http://evil.example/path",
+                                    "javascript:alert(1)", "http://127.0.0.1:4251 ", ""])
+def test_an_allowed_origin_that_is_not_a_plain_origin_is_refused_at_start(tmp_path: Path, origin: str):
+    """CodeQL py/http-response-splitting: a configured origin is the only value echoed into a response header, so
+    nothing but scheme, host and port may be configured."""
+    with pytest.raises(ValueError, match="allow-origin"):
+        SV.Slice(tmp_path / "state", fixture_recipient=True, allow_origins=(origin,))
+    with pytest.raises(SystemExit) as e:
+        SV.main(["--state-dir", str(tmp_path / "state2"), "--allow-origin", origin,
+                 "--write-driver-config", str(tmp_path / "c.json")])
+    assert e.value.code == 2 and not (tmp_path / "c.json").exists()
+
+
 def test_an_unexpected_error_is_the_familys_declared_503_with_its_wire_headers(live: Live, cfg: dict[str, Any],
                                                                               monkeypatch: pytest.MonkeyPatch):
     def boom(*a: Any, **k: Any) -> Any:

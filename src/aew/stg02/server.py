@@ -91,6 +91,9 @@ class Slice:
         self.tokens = dict(tokens or {})
         self.fixture_recipient = fixture_recipient
         self.test_routes = test_routes
+        bad = [o for o in allow_origins if not ORIGIN_RE.fullmatch(o)]
+        if bad:
+            raise ValueError(f"--allow-origin: not a plain http(s) origin: {bad[0]!r}")
         self.allow_origins = allow_origins
 
     def recipient(self, authorization: str | None) -> str | None:
@@ -141,6 +144,8 @@ def _family(raw_path: str) -> str | None:
 # The request log is the operator's diagnostic record: a value taken from the request is bounded and carries no
 # control character, so a local client cannot forge a line or drive the operator's terminal (review R2-M1).
 LOG_METHOD_RE = re.compile(r"[A-Z]{1,16}")
+# A browser origin as --allow-origin may name it: scheme, host and optional port, nothing else.
+ORIGIN_RE = re.compile(r"https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?")
 
 
 def log_formatter() -> logging.Formatter:
@@ -362,9 +367,11 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
             self.send_response(a.status)
             for k, v in a.headers.items():
                 self.send_header(k, v)
-            origin = self.headers.get("Origin")
-            if origin is not None and origin in s.allow_origins:
-                self.send_header("Access-Control-Allow-Origin", origin)
+            # the configured origin is echoed, never the request's copy of it (CodeQL py/http-response-splitting):
+            # only an operator-configured string, checked by ORIGIN_RE at start, reaches a response header
+            allowed = next((o for o in s.allow_origins if o == self.headers.get("Origin")), None)
+            if allowed is not None:
+                self.send_header("Access-Control-Allow-Origin", allowed)
                 self.send_header("Vary", "Origin")
                 self.send_header("Access-Control-Expose-Headers", f"{W.D01_HEADER}, {W.O01_HEADER}")
                 if preflight:
@@ -472,8 +479,11 @@ def main(argv: list[str] | None = None) -> int:
                                             "the driver config's headers")
     a = ap.parse_args(argv)
     tokens = json.loads(a.tokens.read_text(encoding="utf-8")) if a.tokens else None
-    s = Slice(a.state_dir, project=a.project, tokens=tokens, fixture_recipient=a.fixture_recipient,
-              test_routes=a.test_routes, allow_origins=tuple(a.allow_origin), real_recipient=a.real_recipient)
+    try:
+        s = Slice(a.state_dir, project=a.project, tokens=tokens, fixture_recipient=a.fixture_recipient,
+                  test_routes=a.test_routes, allow_origins=tuple(a.allow_origin), real_recipient=a.real_recipient)
+    except ValueError as exc:
+        ap.error(str(exc))
     if a.write_driver_config:
         try:
             cfg = driver_config(s, a.driver_bearer)

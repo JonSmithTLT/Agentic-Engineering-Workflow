@@ -1,0 +1,25 @@
+{
+  "staging": "controlled browser response barrier; actual upstream response, no fixture substitution",
+  "stages": [
+    {
+      "label": "probe-lost-response-held",
+      "utc": "2026-10-21T00:57:00.083Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": []
+    },
+    {
+      "label": "probe-lost-response-unknown",
+      "utc": "2026-10-21T00:57:00.325Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": [
+        "Failed to fetch No validated receipt from this attempt; the owner outcome is not established here."
+      ]
+    },
+    {
+      "label": "probe-lost-response-reconciled",
+      "utc": "2026-10-21T00:57:24.485Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": []
+    }
+  ]
+}

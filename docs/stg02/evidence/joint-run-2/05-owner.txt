@@ -1,0 +1,61 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+Read outcome: EFFECT_CONFIRMED
+installation ref
+fixture:installation-slice
+intent ref
+fixture:intent-continue
+observed at
+2026-10-21T00:51:19Z
+operation ref
+op:c3e5f43126facd3fdd2039dc757d34b7
+owner
+HEB
+recipient ref
+fixture:recipient-operator
+request set ref
+fixture:request-continue
+result
+Inspect result
+source epoch
+fixture:heb-epoch-1
+source valid until
+2026-10-21T01:06:19Z
+wire version
+o01-command-0.2-review-candidate
+
+Source observation time and validity belong to the supplied facts. Fetch time does not renew them.
+
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request
+Original request identity for recovery
+
+After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.
+
+Inspect owner-operation outcomesReconcile using the same key and exact body
+
+A retry is a lookup. No automatic retry or new key is generated.

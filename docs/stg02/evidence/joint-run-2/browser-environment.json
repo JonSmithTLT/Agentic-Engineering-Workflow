@@ -1,0 +1,11 @@
+{
+  "physical_devices": false,
+  "service_workers": "blocked",
+  "edge_product_version": "155.0.4283.62",
+  "headed": false,
+  "node_version": "v24.19.0",
+  "layouts": [
+    "1440x1000",
+    "390x1000"
+  ]
+}

@@ -27,7 +27,31 @@ Date: 2026-10-19. Author-side entries for designer triage. No architecture-works
 - Missing: a selected operational duration for request keys, receipts and owner records; schema timestamps and expired-ledger behavior do not specify that duration.
 - Plausible readings: a host sets a documented finite retention policy; or retention is an additional selected profile requirement. The website cannot choose the owner's ledger duration.
 - Interim choice: no browser-based expiry causes redispatch. Preserve an unresolved submission's exact request identity for reconciliation and show unresolved/unknown when the owner cannot establish it. Website-local recovery uses origin-local, package-digest-keyed tab sessionStorage for this one synthetic recipient/installation; its lifetime is the tab session, not an owner-ledger promise. Storage failure prevents sending a new command. Reload never automatically resubmits.
-- Status: open design feedback; does not block fixture UI construction. Backend retention has not been inspected or negotiated.
+- Status: open design feedback; does not block fixture UI construction. Run 1's operator-relayed owner observation reports a 15-minute receipt and an operation retained until 2026-11-20. These test-host choices do not select an adopted retention policy. Backend implementation has not been inspected or retention negotiated.
+
+## WEB-STG02-004 — pre-qualification waiting-to-run navigation
+
+- Class: **host or profile qualification deficit**, for designer triage.
+- Source: shared `JOINT-TEST-BRIEF.md`, steps 1–2; actual joint-run waiting responses, all supplied `links` arrays empty.
+- Observation: waiting work cannot open its run through a supplied eligible link. A separately provided fixture run ID lets the test continue, but does not make that journey connected.
+- Interim choice: preserve the absence of a supplied link. Do not manufacture associations from work IDs, prose, timestamps or the test world's known topology.
+- Status: open; tracked as JT-01 in `JOINT-TEST-NOTES.md`. No frontend workaround or adopted wire change.
+
+## WEB-STG02-005 — interim continuation reason vocabulary
+
+- Class: **wire defect**, provisional semantic-vocabulary classification for designer triage.
+- Source: shared joint brief step 3 and its BE-05/E-2 warning; actual continuation axis `reason_code: SOURCE_UNQUALIFIED`.
+- Observation: the adopted structural schema accepts a string, while the brief explicitly identifies this value as interim rather than adopted vocabulary. Structural acceptance does not settle semantic adoption.
+- Interim choice: render the exact supplied reason with unknown/unqualified state; assign no inferred meaning, qualification or command permission.
+- Status: open; JT-02 in the website notes. This differs from the backend's JT-02 name for the encoded owner-locator defect (website JT-03).
+
+## WEB-STG02-006 — controlled response-loss staging
+
+- Class: **host or profile qualification deficit**, limited to test staging.
+- Source: shared joint brief's lost-response probe; run 1's held-response and wrapper-stop timestamps.
+- Observation: the application deadline elapsed before the wrapper was stopped. Identical-body reconciliation worked, but a wrapper-stop-only cause was not isolated.
+- Interim choice: preserve the failed staging and distinguish timeout/lost-reply recovery from the strict requested variant. A fresh-state rerun must record its actual fault mechanism and timing rather than inherit a blanket pass.
+- Status: run 1 remains limited (JT-04); run 2 is recorded separately in the joint notes. This requests no contract change.
 
 ## Clarification incorporated — unwitnessed A-23 examples
 

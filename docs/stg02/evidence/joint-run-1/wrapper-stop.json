@@ -1,0 +1,8 @@
+{
+  "stopped_utc": "2026-10-21T00:25:01.5357475Z",
+  "original_expires_utc": "2026-10-21T00:58:28.4863450Z",
+  "listener_pid": 22932,
+  "backend_response_held_utc": "2026-10-21T00:24:40.143Z",
+  "launcher_pid": 5980,
+  "reason": "authorized lost-response probe; browser response deliberately held"
+}

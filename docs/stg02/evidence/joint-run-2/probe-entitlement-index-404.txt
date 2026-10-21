@@ -1,0 +1,31 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+
+Not found or not disclosable. No current representation is established.
+
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request

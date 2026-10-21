@@ -50,7 +50,7 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from aew.stg02 import wire as W
 from aew.stg02.commands import Carrier, Refused
@@ -141,6 +141,14 @@ def _family(raw_path: str) -> str | None:
 # The request log is the operator's diagnostic record: a value taken from the request is bounded and carries no
 # control character, so a local client cannot forge a line or drive the operator's terminal (review R2-M1).
 LOG_METHOD_RE = re.compile(r"[A-Z]{1,16}")
+
+
+def log_formatter() -> logging.Formatter:
+    """Each log line starts with its UTC time to the millisecond (joint test: the request log carried no time, so a
+    POST could be ordered but not placed)."""
+    f = logging.Formatter("%(asctime)s.%(msecs)03dZ %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+    f.converter = time.gmtime
+    return f
 
 
 def log_text(text: str, limit: int) -> str:
@@ -262,14 +270,29 @@ def _command(s: Slice, method: str, headers: dict[str, str], body: bytes | None,
     return _o01(202, receipt)
 
 
+def path_segment(raw: str) -> str | None:
+    """One O-01 path segment, percent-decoded exactly once (joint test JT-02: ``op%3A...`` is the encoded form of
+    ``op:...``). ``None`` for a malformed escape, invalid UTF-8, a decoded ``%`` (a double encoding) or a decoded
+    ``/``: the O-01 owner GET rejects ambiguous and double-encoded paths before lookup, and forbids a slash in
+    ``operation_ref`` "including percent-encoded slash after single decoding"."""
+    if re.search(r"%(?![0-9A-Fa-f]{2})", raw):
+        return None
+    try:
+        text = unquote(raw, encoding="utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    return None if "%" in text or "/" in text else text
+
+
 def _owner_get(s: Slice, method: str, path: str, headers: dict[str, str], corr: str) -> Answer:
     m = OWNER_GET.fullmatch(path)
     recipient = s.recipient(headers.get("authorization"))
-    if (method != "GET" or headers.get(W.O01_HEADER.lower()) != W.O01_VERSION or recipient is None or m is None
-            or not OWNER_RE.fullmatch(m.group(1)) or not OPREF_RE.fullmatch(m.group(2))):
+    owner, op = (path_segment(m.group(1)), path_segment(m.group(2))) if m else (None, None)
+    if (method != "GET" or headers.get(W.O01_HEADER.lower()) != W.O01_VERSION or recipient is None
+            or owner is None or op is None or not OWNER_RE.fullmatch(owner) or not OPREF_RE.fullmatch(op)):
         return o01_problem("not_found_or_not_disclosable", corr)  # the route declares 404, 409 and 503 only
     try:
-        body = s.carrier.owner_get(m.group(1), m.group(2), recipient, s.clock())
+        body = s.carrier.owner_get(owner, op, recipient, s.clock())
     except LedgerBusy:
         return o01_problem("owner_unavailable", corr)
     if body is None:
@@ -459,7 +482,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         a.write_driver_config.write_text(json.dumps(cfg, indent=1) + "\n", encoding="utf-8", newline="\n")
         return 0
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(message)s")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(log_formatter())
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     srv = make_server(s, a.port)
     if a.fixture_recipient and a.project:
         print("aew stg02: --fixture-recipient with --project: any local process can read this project's engine state "

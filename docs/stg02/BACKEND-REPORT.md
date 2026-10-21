@@ -2,7 +2,7 @@
 
 **For:** the lead designer, who copies this into the architecture workspace (the handoff says not to edit it).
 **Contract:** the adopted STG-01 v0.5.4 ZIP, SHA-256 `64e65578e9774fd9425c19ceaff30f1a0018ae819baa58d9469ed0c33e8f299f`: D-01 0.3.4, O-01 `o01-command-0.2-review-candidate`, the selection profile and the owner pins.
-**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (58), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
+**Code:** [`src/aew/stg02/`](../../src/aew/stg02/). The tests are `tests/integration/test_stg02_slice.py` (61), `tests/integration/test_stg02_fence.py` (1, serial lane) and `tests/unit/test_stg02_adopted.py` (15).
 **Gap entries:** [`GAP-ENTRIES.md`](GAP-ENTRIES.md), STG02-BE-01 to BE-16.
 **Date:** 2026-10-19 (UTC 2026-10-20).
 
@@ -222,3 +222,12 @@ Before running against the server, the driver's self-test passed on this machine
 - "A fixture world's facts are always unqualified; expect `partial`/`unknown` everywhere, and expect R6 to SKIP."
 - "A dev server must refuse to start when its port is already held." A stale slice server still holding 4261 answered part of this slice's first recordings; the server now binds exclusively, and the recordings were remade against one server.
 - "Generate the driver config from the backend's own world, so delegation digests cannot drift."
+
+## 7. Joint test, run 1 (2026-10-21)
+
+Backend `7acb60f5` on 127.0.0.1:4261, a fresh state directory, the synthetic scratch project, `--fixture-recipient --test-routes`, behind the website's forwarding wrapper (the designer's `JOINT-TEST-BRIEF.md`). The website's `JOINT-TEST-NOTES.md` holds the run record; the backend side of it:
+
+- **JT-02, an implementation defect here, fixed after the run.** The website's owner GET `GET /o01/v0/owner-operations/HEB/op%3Ac3e5…` answered the nondisclosing 404 for an operation that existed and was readable; the literal-colon path answered 200. The route matched the still-encoded segment against the `operation_ref` pattern, so `%` failed it before any lookup. The adopted O-01 route decodes once ("including percent-encoded slash after single decoding; ambiguous/double-encoded paths are rejected before lookup"): each owner GET segment is now percent-decoded exactly once, and a malformed escape, invalid UTF-8, a decoded `%` (double encoding) or a decoded `/` stays the nondisclosing 404. Tests: `test_an_operation_ref_is_percent_decoded_exactly_once_before_its_pattern_is_checked`. The D-01 id segments are unchanged: the adopted D-01 rule refuses any percent sequence in a base64url segment (`400`), pinned by `test_a_d01_id_segment_with_any_percent_sequence_stays_400`.
+- **Why the driver did not find it.** Its `quote()` keeps `:` unencoded (`safe=':'`), so it never sends the encoded form. A driver case with `%3A` would have caught it (context feedback for the designer).
+- **The request log had no time.** The backend could order the run's three command POSTs (one dispatch, two stored-receipt lookups) but not place them; the website's notes supplied the times. Every log line now starts with its UTC time to the millisecond (`test_every_server_log_line_starts_with_its_utc_time_to_the_millisecond`).
+- **Probes, as the backend saw them.** Engine outage armed 00:19:31.8Z and restored 00:20:39.9Z; read entitlement withdrawn 00:22:11.7Z and restored 00:23:30.6Z. At the end, the ledger held 1 key and 1 owner operation; the receipt's `observed_at` was still that of the first submission.

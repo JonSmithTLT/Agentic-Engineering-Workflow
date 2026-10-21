@@ -511,6 +511,44 @@ def test_owner_get_is_one_nondisclosing_404_for_unknown_foreign_and_malformed(li
                    "not_found_or_not_disclosable")
 
 
+def test_an_operation_ref_is_percent_decoded_exactly_once_before_its_pattern_is_checked(live: Live,
+                                                                                         cfg: dict[str, Any]):
+    """Joint test JT-02: a client percent-encodes the reserved ``:`` of ``op:...`` in the path, as an OpenAPI path
+    parameter may; it is the same operation. A double encoding, a decoded slash or a malformed escape is not."""
+    op = live.post(fresh(cfg["command"]["continue_eligible_work"], "jt02"))[2]["results"][0]["operation_ref"]
+    plain = live.owner_get("HEB", op)
+    assert plain[0] == 200
+    for encoded in (op.replace(":", "%3A"), op.replace(":", "%3a"), "".join(f"%{ord(ch):02X}" for ch in op)):
+        st, _, b = live.owner_get("HEB", encoded)
+        assert st == 200 and {k: v for k, v in b.items() if k != "observed_at"} == \
+               {k: v for k, v in plain[2].items() if k != "observed_at"}, encoded
+    assert live.owner_get("%48EB", op)[0] == 200  # the owner segment too
+    for bad in (op.replace(":", "%253A"), op + "%2Fx", op.replace(":", "%3"), op + "%", op + "%C3%28"):
+        st, h, b = live.owner_get("HEB", bad)
+        problem_ok("O01", "get", "/o01/v0/owner-operations/{owner}/{operation_ref}", st, h, b,
+                   "not_found_or_not_disclosable")
+
+
+def test_a_d01_id_segment_with_any_percent_sequence_stays_400(live: Live):
+    """The D-01 rule is the opposite of O-01's: canonical unpadded base64url, decoded once, "never ... a percent
+    sequence in a path segment" (openapi-d01-v0.3.4). An encoded alphabet character is refused, not decoded."""
+    seg = b64("fixture:run-continue-1")
+    assert live.get(f"/v1/read/runs/{seg}")[0] == 200
+    st, h, b = live.get(f"/v1/read/runs/%{ord(seg[0]):02X}{seg[1:]}")
+    problem_ok("D01", "get", "/v1/read/runs/{execution_id}", st, h, b, "invalid_request")
+
+
+def test_every_server_log_line_starts_with_its_utc_time_to_the_millisecond():
+    import logging
+    import re as _re
+
+    rec = logging.LogRecord("aew.stg02", logging.INFO, __file__, 1, "POST /o01/v0/command-sets 202 2ms", None, None)
+    rec.created, rec.msecs = 1792541117.25, 250.0  # 2026-10-21T00:05:17.250Z
+    line = SV.log_formatter().format(rec)
+    assert _re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z POST /o01/v0/command-sets 202 2ms", line), line
+    assert line.startswith(datetime.fromtimestamp(1792541117, UTC).strftime("%Y-%m-%dT%H:%M:%S") + ".250Z")
+
+
 def test_a_second_server_cannot_take_a_port_the_first_one_holds(live: Live, tmp_path: Path):
     with pytest.raises(OSError):
         SV.make_server(SV.Slice(tmp_path / "other", fixture_recipient=True), live.port)

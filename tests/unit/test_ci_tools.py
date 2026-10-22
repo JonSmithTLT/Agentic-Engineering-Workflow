@@ -1820,7 +1820,7 @@ PRE_G3A_TIMEOUT_MIN = {
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     """Plan v7 §5 (V5-1, V6-1): fastbase needs changes, runs on the mode-independent decision, has a timeout of at
     least twice the slowest measured fast-lane step plus setup, writes its coverage outside the checkout and outside
-    the ratchet's artifacts, with exactly the fast step's flags; core is unchanged."""
+    the ratchet's artifacts, with the fast step's selection and flags but single-process; core is unchanged."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     outputs = jobs["changes"]["outputs"]
     assert outputs["decision"] == "${{ steps.tier.outputs.decision }}"

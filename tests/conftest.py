@@ -23,6 +23,7 @@ import harness_diagnostics  # noqa: E402  (a failed harness test reports and kee
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
 import session_deadline  # noqa: E402  (--session-deadline: CI keeps the evidence before a job timeout: G3 H3)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
+import worker_coverage  # noqa: E402  (an xdist worker saves its coverage before teardown can kill it)
 from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
 
@@ -44,6 +45,11 @@ def pytest_configure(config: pytest.Config) -> None:
     watchdog.configure(config)
     autopsy.configure(config)
     discovery_capture.configure(config)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    worker_coverage.save(session)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

@@ -495,6 +495,18 @@ class Worker:
                                                               f"test's autopsy: {where}"))
         os._exit(DEADLINE_EXIT)
 
+    def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
+        """``worker-gwN-exit``: what could still keep this worker from exiting once its session is over (a non-daemon
+        thread, a child process). xdist kills a worker that has not exited 10 s after teardown starts, and a killed
+        worker loses what it had not written (its coverage, 2026-10-22), so this names the holder in the evidence."""
+        worker = self.config.workerinput.get("workerid", "?")
+        threads = [f"{t.name} (target {getattr(t, '_target', None)!r})" for t in threading.enumerate()
+                   if t.is_alive() and not t.daemon and t is not threading.main_thread()]
+        children = [f"{p.pid} {p.cmdline or p.exe}" for p in proctree.table() if p.ppid == os.getpid()]
+        _write(self.dir, f"worker-{worker}-exit",
+               _stamp(f"worker {worker} finished its session (exit {exitstatus}); non-daemon threads: "
+                      f"{threads or 'none'}; child processes: {children or 'none'}"))
+
     def pytest_unconfigure(self, config: Any) -> None:
         self._done.set()
 

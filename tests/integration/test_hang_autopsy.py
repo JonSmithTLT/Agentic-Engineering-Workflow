@@ -424,6 +424,48 @@ def test_without_a_session_deadline_nothing_is_created(tmp_path):
     assert "aew session deadline" not in proc.stdout
 
 
+HELD_OPEN = '''import threading
+
+RELEASE = threading.Event()
+
+
+def test_leaves_a_thread_that_holds_its_worker_open():
+    # Non-daemon, so the worker cannot exit when its session ends: past xdist's 10 s exit wait, teardown kills it.
+    threading.Thread(target=RELEASE.wait, args=(40,), name="holder").start()
+'''
+
+SAVE_WORKER_COVERAGE = '''
+import worker_coverage
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session):
+    worker_coverage.save(session)
+'''
+
+
+def test_a_worker_killed_at_teardown_keeps_its_coverage_and_names_what_held_it(tmp_path):
+    """The 2026-10-22 gate drop: a worker that has not exited 10 s after teardown starts is killed, and its coverage
+    (saved at exit) was lost. Saved at the end of its session (``worker_coverage``), it is kept; and the worker's exit
+    note names the non-daemon thread that held it open."""
+    proj =project(tmp_path, HELD_OPEN, files={".coveragerc": "[run]\nparallel = true\npatch = subprocess\n"},
+                   conftest_extra=SAVE_WORKER_COVERAGE)
+    hangs, data = tmp_path / "hangs", tmp_path / "cov"
+    data.mkdir()
+    clean = {k: v for k, v in env().items() if not k.startswith("COVERAGE_")}  # this session's own coverage, if any
+    proc = subprocess.run([sys.executable, "-m", "coverage", "run", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                           "--hang-dir", str(hangs), "-n", "1", "--max-worker-restart", "0", "--session-deadline",
+                           "120", "tests"], cwd=proj, env={**clean, "COVERAGE_FILE": str(data / ".coverage")},
+                          capture_output=True, text=True, timeout=240, **NO_WINDOW)
+    why = proc.stdout + proc.stderr
+    assert "1 passed" in proc.stdout, why
+    session = session_dir(hangs)
+    pid = (session / "worker-gw0-pid.txt").read_text(encoding="utf-8").strip()
+    assert "holder" in (session / "worker-gw0-exit.txt").read_text(encoding="utf-8"), why
+    assert [p.name for p in data.iterdir() if f".pid{pid}." in p.name], sorted(p.name for p in data.iterdir())
+    sentinel_ends(session)
+
+
 ORPHAN = '''import os, subprocess, sys, time
 from pathlib import Path
 

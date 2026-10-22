@@ -110,10 +110,13 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
+      # Under xdist (strategy §5: everything but the serial lane may run in parallel). Single-process, this lane took
+      # most of the job's 1200 s on a good runner and left the serial lane too little on a slow one (2026-10-22).
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600 --session-deadline 1200
+          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
+          --test-timeout 600 --session-deadline 1200
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()

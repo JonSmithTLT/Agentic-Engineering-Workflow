@@ -27,6 +27,10 @@ Model (ADR-0001):
   anything else is an out-of-band modification and fails closed.
 * Every operation (read or write) runs under an OS advisory lock and first
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
+* The store (``state/`` and everything under it) is group-readable whatever the umask (STG-05 CB-08): its files are
+  :data:`STORE_FILE_MODE`, its directories :data:`STORE_DIR_MODE`, so a reader running as the operator's group (the
+  work-item fact issuer) can read it. Every other file AEW writes keeps ``0600``. :func:`write_file` is the one
+  writer that picks the mode; a store written before this gets the modes once, in recovery (``_migrate_modes``).
 * The transition log ``state/log/<rev>.yaml`` is derived from committed state and
   never authoritative, but it is complete and consumable (ADR-0012, amending
   ADR-0001): every revision has exactly one record, carrying the typed events the
@@ -52,6 +56,7 @@ from __future__ import annotations
 
 import copy
 import os
+import stat
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -66,6 +71,7 @@ from aew.engine.lock import FileLock
 from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision, ThreadUnsealed
 from aew.schemas import validate
 from aew.util import (
+    IS_WINDOWS,
     atomic_write,
     create_exclusive,
     dump_yaml,
@@ -79,6 +85,11 @@ from aew.util import (
 )
 
 CHECKSUM_PREFIX = "# aew-checksum sha256:"
+STORE_REL = "state"
+# The store's modes (STG-05 CB-08; WIS-00 WISD-2): group-readable files, group-searchable directories. The one owner of
+# both: every writer of the store goes through ``write_file`` and ``store_dirs``, which apply them.
+STORE_FILE_MODE = 0o640
+STORE_DIR_MODE = 0o750
 CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
@@ -118,6 +129,39 @@ def read_lock_free(path: Path) -> bytes | None:
         if path.is_dir():  # Windows refuses to open a directory with a PermissionError
             return None
         raise
+
+
+def store_dirs(store: Path, directory: Path) -> None:
+    """Create ``directory`` (the store directory or one under it) and every missing directory between, each
+    :data:`STORE_DIR_MODE`: ``mkdir`` is filtered by the umask, ``chmod`` is not. An existing directory keeps its mode
+    (``_migrate_modes`` re-modes a store from before the modes)."""
+    missing = []
+    d = directory
+    while not d.is_dir():
+        missing.append(d)
+        if d == store:
+            break
+        d = d.parent
+    for d in reversed(missing):
+        d.mkdir(parents=d == store, exist_ok=True)
+        if not IS_WINDOWS:  # pragma: posix-only
+            os.chmod(d, STORE_DIR_MODE)
+
+
+def store_of(aew_root: Path) -> Path:
+    """The store directory of ``aew_root``, resolved: what :func:`write_file` compares its (resolved) paths with."""
+    return aew_root.resolve() / STORE_REL
+
+
+def write_file(store: Path, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
+    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``): with the store's modes when it is in
+    ``store`` (from :func:`store_of`), and AEW's ``0600`` otherwise. Both are resolved paths, so a path that reaches
+    the store through ``..`` or a link is in the store."""
+    mode = 0o600
+    if store in path.parents:
+        store_dirs(store, path.parent)
+        mode = STORE_FILE_MODE
+    (create_exclusive if exclusive else atomic_write)(path, data, mode=mode)
 
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
@@ -315,6 +359,7 @@ class ControlStore:
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
         self._lock: FileLock | None = None  # the control lock this process holds for the open session
+        self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
 
     # ------------------------------------------------------------------ paths
 
@@ -397,7 +442,7 @@ class ControlStore:
             if self.control_path.exists():
                 raise IntegrityError(f"{self.control_path} already exists; project is initialized")
             for rel, content in files.items():
-                atomic_write(self._abs(rel), content)
+                write_file(self.store_dir, self._abs(rel), content)
             state = copy.deepcopy(state)
             state["revision"] = 0
             if state.get("last_transition"):  # revision 0 starts the transition chain (ADR-0012)
@@ -406,8 +451,7 @@ class ControlStore:
                     {"schema": outbox.TRANSITION_SCHEMA, **state["last_transition"], "revision": 0, "events": [],
                      "event_overflow": None}, outbox.GENESIS_H)
             validate("control", state, source="initial control state")
-            self.control_path.parent.mkdir(parents=True, exist_ok=True)
-            create_exclusive(self.control_path, serialize_control(state))
+            write_file(self.store_dir, self._abs(CONTROL_REL), serialize_control(state), exclusive=True)
             self._post_commit(state)
 
     # ------------------------------------------------------------------ commit
@@ -500,11 +544,11 @@ class ControlStore:
         self.require_lock_intact()
         faults.hit("txn.before_stage")
         if txn_ref:
-            atomic_write(self._abs(txn_ref["path"]), txn_bytes)
+            write_file(self.store_dir, self._abs(txn_ref["path"]), txn_bytes)
         faults.hit("txn.after_stage")
 
         # The commit point: temp + fsync, then atomic replace of control.yaml.
-        tmp = write_temp(self.control_path.parent, control_bytes, prefix=".control.yaml.")
+        tmp = write_temp(self.control_path.parent, control_bytes, prefix=".control.yaml.", mode=STORE_FILE_MODE)
         try:
             faults.hit("txn.before_replace")
             replace_with_retry(tmp, self.control_path)
@@ -551,6 +595,7 @@ class ControlStore:
 
     def _recover_unprofiled(self) -> dict[str, Any]:
         self._remove_temp_files()
+        self._migrate_modes()
         state = self._load()
         revision = state["revision"]
         txn_dir = self._abs(TXN_DIR)
@@ -575,13 +620,37 @@ class ControlStore:
                     f.unlink()
         return state
 
+    def _migrate_modes(self) -> None:
+        """Give a store written before the store's modes (STG-05 CB-08) those modes, once, under the control lock. The
+        control file's own mode is the record that it ran: every commit publishes the control file at
+        :data:`STORE_FILE_MODE`, and this re-modes it last, so a store whose control file has the mode was migrated
+        (or written with the modes from the start), and a migration interrupted part-way runs again. Wider modes are
+        kept; symbolic links are left alone (``chmod`` would follow them out of the store)."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return
+        try:  # pragma: posix-only
+            current = stat.S_IMODE(os.stat(self.control_path).st_mode)
+        except FileNotFoundError:
+            return
+        if current & STORE_FILE_MODE == STORE_FILE_MODE:
+            return
+        store = self.root / STORE_REL
+        for d, dirs, files in os.walk(store):  # pragma: posix-only
+            for name, want in [*((n, STORE_DIR_MODE) for n in dirs), *((n, STORE_FILE_MODE) for n in files)]:
+                path = Path(d) / name
+                st = os.lstat(path)
+                if not stat.S_ISLNK(st.st_mode) and path != self.control_path:
+                    os.chmod(path, stat.S_IMODE(st.st_mode) | want)
+        os.chmod(store, stat.S_IMODE(os.stat(store).st_mode) | STORE_DIR_MODE)
+        os.chmod(self.control_path, current | STORE_FILE_MODE)
+
     def applied(self, revision: int) -> bool:
         """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
         it is absent the apply is pending, or the committer died in it and recovery will roll it forward."""
         return self._abs(_applied_marker(revision)).exists()
 
     def _mark_applied(self, revision: int) -> None:
-        atomic_write(self._abs(_applied_marker(revision)), "")
+        write_file(self.store_dir, self._abs(_applied_marker(revision)), "")
 
     def _load_txn(self, txn_ref: dict[str, Any]) -> list[dict[str, Any]]:
         path = self._abs(txn_ref["path"])
@@ -614,7 +683,7 @@ class ControlStore:
                     expected_one_of=[w["before"], w["after"]],
                     found=current,
                 )
-            atomic_write(target, w["content"])
+            write_file(self.store_dir, target, w["content"])
             if inject and i == 0:
                 faults.hit("txn.mid_apply")
             point = fault_after[i] if inject and fault_after else None
@@ -627,7 +696,7 @@ class ControlStore:
         if last:
             log_path = self._abs(f"{LOG_DIR}/{state['revision']:06d}.yaml")
             if not log_path.exists():
-                atomic_write(log_path, dump_yaml(last))
+                write_file(self.store_dir, log_path, dump_yaml(last))
                 wrote = True
         if inject:
             faults.hit("txn.after_log")
@@ -640,7 +709,7 @@ class ControlStore:
                     target = self._abs(rel)
                     data = content.encode("utf-8")
                     if sha256_file(target) != sha256_bytes(data):
-                        atomic_write(target, data)
+                        write_file(self.store_dir, target, data)
         if inject:
             faults.hit("txn.after_render")
 
@@ -656,6 +725,23 @@ class ControlStore:
                         pass
 
     # ------------------------------------------------------------------ helpers for tests/doctor
+
+    def mode_problems(self) -> list[str]:
+        """The store's paths (relative to the AEW root) whose mode lacks :data:`STORE_FILE_MODE` or
+        :data:`STORE_DIR_MODE`, without modifying anything; empty on Windows, which has no such modes."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return []
+        store = self.root / STORE_REL  # pragma: posix-only
+        out = []
+        for d, _dirs, files in os.walk(store):
+            here = Path(d)
+            if stat.S_IMODE(os.lstat(here).st_mode) & STORE_DIR_MODE != STORE_DIR_MODE:
+                out.append(here.relative_to(self.root).as_posix() + "/")
+            for name in files:
+                st = os.lstat(here / name)
+                if not stat.S_ISLNK(st.st_mode) and stat.S_IMODE(st.st_mode) & STORE_FILE_MODE != STORE_FILE_MODE:
+                    out.append((here / name).relative_to(self.root).as_posix())
+        return sorted(out)
 
     def verify(self) -> list[str]:
         """Return integrity problems without modifying anything."""

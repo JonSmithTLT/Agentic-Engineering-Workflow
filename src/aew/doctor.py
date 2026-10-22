@@ -85,7 +85,52 @@ def environment_checks() -> list[dict[str, str]]:
         checks.append(_check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and "
                              "writes the control state several times slower on a large project; install a PyYAML "
                              "built with libyaml"))
+    group = primary_group()
+    if group is not None:
+        checks.append(group)
     return checks
+
+
+def primary_group() -> dict[str, str] | None:
+    """Whether the operator's primary group is user-private (STG-05 CB-08): the store is group-readable, so its group
+    must hold the operator alone. None on Windows, which has no such groups. AEW never changes or creates a group."""
+    if sys.platform == "win32":  # pragma: windows-only
+        return None
+    import os  # pragma: posix-only
+
+    try:
+        import grp
+        import pwd
+    except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups to check
+        return None
+    user = pwd.getpwuid(os.getuid())
+    try:
+        group = grp.getgrgid(user.pw_gid)
+    except KeyError:
+        return _check("primary-group", "WARN", f"your primary group (gid {user.pw_gid}) has no entry on this host, "
+                      "so nobody can tell who else is in it; the store is readable by that group")
+    sharing = sorted(u.pw_name for u in pwd.getpwall() if u.pw_gid == user.pw_gid and u.pw_name != user.pw_name)
+    return private_group_check(user.pw_name, group.gr_name, group.gr_mem, sharing)
+
+
+def private_group_check(user: str, group: str, members: list[str], sharing: list[str]) -> dict[str, str]:
+    """``primary-group``: a user-private group is named for ``user``, has no member but ``user``, and is no other
+    account's primary group (``sharing``, among the accounts this host lists)."""
+    problems = []
+    if group != user:
+        problems.append(f"it is named {group!r}, not for you")
+    others = sorted(set(members) - {user})
+    if others:
+        problems.append(f"it has other members ({', '.join(others)})")
+    if sharing:
+        problems.append(f"it is also the primary group of {', '.join(sharing)}")
+    if not problems:
+        return _check("primary-group", "PASS", f"your primary group {group!r} is user-private: AEW's store is "
+                      "group-readable, and only you are in that group")
+    return _check("primary-group", "WARN", f"your primary group {group!r} is not user-private: {'; '.join(problems)}. "
+                  "AEW's store is group-readable, so they can read it too, and a reader that relies on the group "
+                  "holding only you (the work-item fact issuer) does not qualify on this host. AEW changes no group: "
+                  "your administrator can give your account a user-private primary group")
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:

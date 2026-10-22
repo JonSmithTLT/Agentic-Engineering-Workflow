@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -45,7 +46,7 @@ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
-from aew.engine.store import ControlStore
+from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -279,6 +280,14 @@ class ProjectAdmin:
         except Exception as exc:  # report, never crash
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
+        if sys.platform != "win32":  # the store's modes (STG-05 CB-08); Windows has none
+            below = self.k.store.mode_problems()
+            add("store-modes", "WARN" if below else "PASS",
+                f"{len(below)} path(s) in the store are below {STORE_FILE_MODE:04o} (files) or {STORE_DIR_MODE:04o} "
+                f"(directories), so a reader running as your group cannot read them: {', '.join(below[:5])}"
+                f"{' ...' if len(below) > 5 else ''}. AEW writes the store with these modes; restore them with "
+                "`chmod -R g+rX .aew/state`" if below else
+                f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")

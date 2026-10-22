@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew import process_kind
 from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
@@ -191,7 +192,10 @@ class Kernel:
         since it was loaded, reloaded through a recovered read — never by re-entering the lock.
         """
         if not self.store.held and self._manifest_seen != self._authority_files_identity():
-            self.store.read()  # recovery first; the manifest is (re)loaded under the lock
+            if process_kind.kind() == process_kind.NON_WRITER:  # no lock, no recovery (STG-05 CB-09)
+                self._refresh_manifest(self.store.read_committed())
+            else:
+                self.store.read()  # recovery first; the manifest is (re)loaded under the lock
         if self._manifest_error is not None:
             raise self._manifest_error
         assert self._manifest is not None

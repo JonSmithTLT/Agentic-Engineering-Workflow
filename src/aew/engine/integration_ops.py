@@ -944,7 +944,7 @@ class Integration:
         """Resume an interrupted publish by inspecting git: CAS pending, already done, or stale. A lease whose
         custodian died, with no publish in progress, is reconciled instead: nothing was published, so its open
         candidate is retired and the entry returns to the queue in its place (M4-D: never a timeout)."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         unit = state["work"].get(work_id) or {}
         lease = Q.lease_of(state, work_id)
         if (unit.get("integration") or {}).get("status") == "publishing" or not (lease and lease["reconcile"]):

@@ -177,7 +177,7 @@ class Custody:
     def step(self, custodian: str, credential: str) -> tuple[str, dict[str, Any] | None]:
         """One pass of the worker's work: ``ended`` (its custody is over: exit, committing nothing), ``acted`` (it
         validated or routed, with the result) or ``waiting`` (nothing to do yet)."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         inv = state["invocations"].get(custodian) or {}
         lease = (state.get("queue") or {}).get("lease") or {}
         if inv.get("status") != "active" or lease.get("custodian") != custodian or lease.get("reconcile") is not None:

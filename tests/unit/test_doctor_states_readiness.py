@@ -86,7 +86,7 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
             pass
 
     class Store:
-        def read(self):
+        def current(self):
             return {"revision": 0, "invocations": {}}
 
     class Engine:

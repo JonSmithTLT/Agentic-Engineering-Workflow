@@ -285,7 +285,7 @@ class Steering:
     def raise_preview(self, mode: str) -> dict[str, Any]:
         """What a raise to ``mode`` would bind, or the refusal it would get, before the operator is asked: the
         endpoint shows these bindings with its challenge and the commit refuses if any of them moved."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._raise_problem(state, mode)
         digests = self.k.policy_digests()
         return {"project": self.k.project_id, "mode": mode, "previous": effective(state)["mode"],

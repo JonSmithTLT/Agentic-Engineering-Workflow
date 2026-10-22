@@ -9,6 +9,7 @@ store on a read-only bind, the control lock out of the layout) is in tests/integ
 from __future__ import annotations
 
 import errno
+import json
 import os
 import stat
 import sys
@@ -123,13 +124,91 @@ def test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces(e
             os.chmod(path, mode)
 
 
-def test_the_cli_inside_a_worker_run_refuses_a_locked_read_and_routes_its_operations_to_the_bridge(project):
-    # A bridge address of the platform's kind that nothing serves.
-    endpoint = r"\\.\pipe\aew-no-such-bridge-cb09" if sys.platform == "win32" else str(project.root / "no-bridge")
-    env = {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32}
-    status = run_aew("-C", str(project.root), "status", "--json", env=env)
-    err = status.error
-    assert status.returncode != 0 and err["code"] == "PERMISSION_DENIED", status.stderr
-    assert err["details"]["reason"] == "non_writer_process" and err["details"]["entry_point"] == WORKER
-    whoami = run_aew("-C", str(project.root), "whoami", env=env)  # to the bridge, which is not there: never the store
+def worker_env(root: Path) -> dict[str, str]:
+    """A worker run's environment: a bridge address of the platform's kind that nothing serves."""
+    endpoint = r"\\.\pipe\aew-no-such-bridge-cb09" if sys.platform == "win32" else str(root / "no-bridge")
+    return {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32}
+
+
+def leaf_commands() -> list[tuple[str, ...]]:
+    import argparse
+
+    from aew.cli.main import build_parser
+
+    def walk(parser: argparse.ArgumentParser, prefix: tuple[str, ...]):
+        subs = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+        if not subs:
+            yield prefix
+        for action in subs:
+            for name, sub in action.choices.items():
+                yield from walk(sub, (*prefix, name))
+
+    return sorted(set(walk(build_parser(), ())))
+
+
+# Commands a non-writer is refused for want of the lock, each with why it needs it. Shrink-only.
+NEEDS_THE_LOCK = {
+    ("history", "audit"): ("copies the history's root and its mutable tail together, which only the lock keeps "
+                           "consistent"),
+}
+
+
+def test_no_cli_command_inside_a_worker_run_is_refused_only_for_want_of_the_control_lock(project):
+    """Output-side over the whole CLI (review of #231, B1): every command with no required argument, run as a worker's
+    agent runs it, reads lock-free or is refused for a reason of its own (authority, usage, the bridge), never as a
+    non-writer, except the commands that need the lock (NEEDS_THE_LOCK). A command with required arguments stops at
+    argparse and is not judged here; the engine reads behind them are the next test's."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    env = worker_env(project.root)
+    lock = project.root / ".aew" / LOCK_REL
+    lock.unlink()  # a locked read or a session would create it again
+
+    def run(cmd: tuple[str, ...]) -> tuple[tuple[str, ...], str | None]:
+        res = run_aew("-C", str(project.root), *cmd, env=env, timeout=120)
+        try:
+            details = json.loads(res.stderr)["error"].get("details") or {}
+        except (ValueError, KeyError, TypeError):
+            return cmd, None
+        return cmd, details.get("reason")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = dict(pool.map(run, leaf_commands()))
+    refused = {cmd for cmd, reason in outcomes.items() if reason == "non_writer_process"}
+    assert refused == set(NEEDS_THE_LOCK), sorted(refused)
+    assert not lock.exists()
+
+
+def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_before_the_lock(tmp_path):
+    from aewflow import assign, create_planned_ticket, sample_project
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    assign(p, wid)
+    rev = p.rev()  # a read in this process, a writer: before the lock goes, or it would create it again itself
+    lock = p.root / ".aew" / LOCK_REL
+    lock.unlink()  # a locked read or a session would create it again
+    env = worker_env(p.root)
+    for args in (["status", "--json"], ["resume", "--json"], ["invoke", "show", "INV-0001"],
+                 ["context", "show", "INV-0001"], ["harness", "status"], ["lead", "show"], ["work", "list"]):
+        res = run_aew("-C", str(p.root), *args, env=env)
+        assert res.returncode == 0, (args, res.stderr)
+    mutation = run_aew("-C", str(p.root), "work", "create", "ticket", "--title", "x", "--class", "1",
+                       "--token", p.token, "--expect-rev", str(rev), env=env)
+    assert mutation.error["code"] == "PERMISSION_DENIED", mutation.stderr
+    assert mutation.error["details"]["reason"] == "non_writer_process"
+    whoami = run_aew("-C", str(p.root), "whoami", env=env)  # to the bridge, which is not there: never the store
     assert whoami.error["code"] == "STALE_AUTHORITY", whoami.stderr
+    assert not lock.exists()
+
+
+def test_every_engine_read_goes_through_the_one_place_that_chooses_lock_free_for_a_non_writer():
+    """Mechanical (method, not instance): ``ControlStore.current`` picks ``read`` or ``read_committed`` by the
+    process's kind, so no code outside the store calls ``store.read()`` itself; the one exception is the manifest's
+    reload in ``Kernel.manifest``, which makes the same choice beside it."""
+    import re
+
+    src = Path(__file__).resolve().parents[2] / "src" / "aew"
+    calls = {f.relative_to(src).as_posix(): len(re.findall(r"\bstore\.read\(\)", f.read_text(encoding="utf-8")))
+             for f in src.rglob("*.py")}
+    assert {f: n for f, n in calls.items() if n and f != "engine/store.py"} == {"engine/base.py": 1}

@@ -315,7 +315,7 @@ class ContextPacks:
 
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         if inv_id not in state["invocations"]:  # a completed invocation of archived work: its pack, regenerated (R7)
             state = self.archive.rehydrate_invocation(state, inv_id) or state
         inv = state["invocations"].get(inv_id)

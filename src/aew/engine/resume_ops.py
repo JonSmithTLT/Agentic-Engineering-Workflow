@@ -402,7 +402,7 @@ class Resume:
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
         """``session``: inside a Lead session, whether its broker holds Lead authority (``lead_broker.
         session_authority``; M3-D10). ``None`` (outside a Lead session) keeps the guidance for a fresh reader."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         lead = state["lead"]
         work = []
         findings = []
@@ -574,7 +574,7 @@ class Resume:
         return out
 
     def _status_report(self, work_id: str | None) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         if work_id:
             unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}

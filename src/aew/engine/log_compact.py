@@ -260,7 +260,7 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
     an interrupted run left behind. Idempotent. ``window`` below :data:`LOG_WINDOW` is for tests only."""
     if window < 1:
         raise UsageError("the unsealed window must keep at least the newest revision")
-    state = store.read()  # recovery has published the newest record; the control lock is released again
+    state = store.current()  # recovery has published the newest record; the control lock is released again
     marker = state.get("outbox")
     revision = state["revision"]
     if marker is None:

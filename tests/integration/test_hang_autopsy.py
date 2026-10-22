@@ -425,31 +425,43 @@ def test_without_a_session_deadline_nothing_is_created(tmp_path):
 
 
 HELD_OPEN = '''import threading
+from pathlib import Path
 
-RELEASE = threading.Event()
+RELEASED = Path(__file__).with_name("released")
+
+
+def hold():
+    threading.Event().wait(40)
+    RELEASED.write_text("1")  # only a worker that was not killed gets here
 
 
 def test_leaves_a_thread_that_holds_its_worker_open():
     # Non-daemon, so the worker cannot exit when its session ends: past xdist's 10 s exit wait, teardown kills it.
-    threading.Thread(target=RELEASE.wait, args=(40,), name="holder").start()
+    threading.Thread(target=hold, name="holder").start()
 '''
 
 SAVE_WORKER_COVERAGE = '''
-import worker_coverage
+from worker_coverage import pytest_sessionfinish  # the suite's own hook, as tests/conftest.py imports it
+'''
 
-
-@pytest.hookimpl(trylast=True)
+# Another session-finish implementation that raises, in the worker only: pluggy then skips the plain implementations
+# after it, which a save among them would be (review of #232, F2).
+RAISES_AT_FINISH = '''
 def pytest_sessionfinish(session):
-    worker_coverage.save(session)
+    if getattr(session.config, "workerinput", None) is not None:
+        raise RuntimeError("synthetic: a session-finish hook failed")
 '''
 
 
-def test_a_worker_killed_at_teardown_keeps_its_coverage_and_names_what_held_it(tmp_path):
+@pytest.mark.parametrize("finish", ["clean", "a_hook_raises"])
+def test_a_worker_killed_at_teardown_keeps_its_coverage_and_names_what_held_it(tmp_path, finish):
     """The 2026-10-22 gate drop: a worker that has not exited 10 s after teardown starts is killed, and its coverage
-    (saved at exit) was lost. Saved at the end of its session (``worker_coverage``), it is kept; and the worker's exit
-    note names the non-daemon thread that held it open."""
-    proj =project(tmp_path, HELD_OPEN, files={".coveragerc": "[run]\nparallel = true\npatch = subprocess\n"},
-                   conftest_extra=SAVE_WORKER_COVERAGE)
+    (saved at exit) was lost. Saved at the end of its session (``worker_coverage``), it is kept, even when another
+    session-finish hook raises; and the worker's exit note names the non-daemon thread that held it open."""
+    files = {".coveragerc": "[run]\nparallel = true\npatch = subprocess\n"}
+    if finish == "a_hook_raises":
+        files["tests/integration/conftest.py"] = RAISES_AT_FINISH
+    proj = project(tmp_path, HELD_OPEN, files=files, conftest_extra=SAVE_WORKER_COVERAGE)
     hangs, data = tmp_path / "hangs", tmp_path / "cov"
     data.mkdir()
     clean = {k: v for k, v in env().items() if not k.startswith("COVERAGE_")}  # this session's own coverage, if any
@@ -459,6 +471,7 @@ def test_a_worker_killed_at_teardown_keeps_its_coverage_and_names_what_held_it(t
                           capture_output=True, text=True, timeout=240, **NO_WINDOW)
     why = proc.stdout + proc.stderr
     assert "1 passed" in proc.stdout, why
+    assert not (proj / "tests" / "integration" / "released").exists(), "the worker was not killed: nothing was tested"
     session = session_dir(hangs)
     pid = (session / "worker-gw0-pid.txt").read_text(encoding="utf-8").strip()
     assert "holder" in (session / "worker-gw0-exit.txt").read_text(encoding="utf-8"), why

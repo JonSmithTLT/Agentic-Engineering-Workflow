@@ -117,8 +117,11 @@ POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
 
 # libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
 # register took about 4 s, and the tests that render it grew by about 3.5 minutes of the Linux core job after the
-# round-trip checks of #225 (2026-10-22). Measured on the register: the same tokens (a plain token's style is '' rather
-# than None) and the same load. The emitter stays the pure-Python one: libyaml's quotes some text differently (an emoji,
+# round-trip checks of #225 (2026-10-22). On both register files the two readers give the same tokens (a plain token's
+# style is '' rather than None) and the same load; test_register checks that on the files as they are. They differ at
+# the edges, on input the files do not hold (review of #232, F4): libyaml accepts a trailing tab after a plain cell
+# (which render drops, as it always dropped trailing spaces), refuses a byte-order mark inside the text, and words its
+# parse errors differently. The emitter stays the pure-Python one: libyaml's quotes some text differently (an emoji,
 # U+0085), and what render writes, and how strict_problems judges a cell, must not change.
 _SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 

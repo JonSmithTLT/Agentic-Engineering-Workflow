@@ -495,17 +495,31 @@ class Worker:
                                                               f"test's autopsy: {where}"))
         os._exit(DEADLINE_EXIT)
 
-    def pytest_sessionfinish(self, session: Any, exitstatus: int) -> None:
+    @pytest.hookimpl(wrapper=True, trylast=True)
+    def pytest_sessionfinish(self, session: Any, exitstatus: int) -> Any:
         """``worker-gwN-exit``: what could still keep this worker from exiting once its session is over (a non-daemon
         thread, a child process). xdist kills a worker that has not exited 10 s after teardown starts, and a killed
-        worker loses what it had not written (its coverage, 2026-10-22), so this names the holder in the evidence."""
+        worker loses what it had not written (its coverage, 2026-10-22), so this names the holder in the evidence. A
+        wrapper, written in a ``finally``: another session-finish hook that raises cannot skip it (#232, F2)."""
+        try:
+            return (yield)
+        finally:
+            self._exit_note(exitstatus)
+
+    def _exit_note(self, exitstatus: int) -> None:
         worker = self.config.workerinput.get("workerid", "?")
-        threads = [f"{t.name} (target {getattr(t, '_target', None)!r})" for t in threading.enumerate()
-                   if t.is_alive() and not t.daemon and t is not threading.main_thread()]
-        children = [f"{p.pid} {p.cmdline or p.exe}" for p in proctree.table() if p.ppid == os.getpid()]
-        _write(self.dir, f"worker-{worker}-exit",
-               _stamp(f"worker {worker} finished its session (exit {exitstatus}); non-daemon threads: "
-                      f"{threads or 'none'}; child processes: {children or 'none'}"))
+        try:
+            threads = [f"{t.name} (target {getattr(t, '_target', None)!r})" for t in threading.enumerate()
+                       if t.is_alive() and not t.daemon and t is not threading.main_thread()]
+            children = [f"{p.pid} {p.cmdline or p.exe}" for p in proctree.table() if p.ppid == os.getpid()]
+            note = (f"worker {worker} finished its session (exit {exitstatus}); non-daemon threads: "
+                    f"{threads or 'none'}; child processes: {children or 'none'}")
+        except Exception as exc:  # evidence on the way out never fails the exit (review of #232, F2)
+            note = f"worker {worker} finished its session (exit {exitstatus}); collecting failed: {exc!r}"
+        try:
+            _write(self.dir, f"worker-{worker}-exit", _stamp(note))
+        except OSError:
+            pass  # the hang directory cannot be written: there is nowhere to say so
 
     def pytest_unconfigure(self, config: Any) -> None:
         self._done.set()

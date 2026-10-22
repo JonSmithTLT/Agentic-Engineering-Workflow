@@ -548,3 +548,19 @@ def test_note_on_a_detached_head_needs_the_branch_named(tmp_path, monkeypatch):
     assert said == "docs/implementation/notes.d/F19/2026-10-10-review-pr-195.md"
     path, said = register.new_note(DATA, "F19", "///", register.date(2026, 10, 10), tmp_path)
     assert path is None and "empty slug" in said
+
+
+@pytest.mark.parametrize("which", ["YAML", "DUE_YAML"])
+def test_the_register_reads_the_same_with_libyaml_and_the_pure_python_reader(which):
+    """The tool reads with libyaml where PyYAML has it (#232): on the real files both readers give the same tokens and
+    the same data, so `check` judges them the same either way. A plain token's style is '' from libyaml and None from
+    the pure reader. They differ only on inputs the files do not hold (review of #232, F4: a trailing tab, a byte-order
+    mark inside the text, the wording of a parse error), which the comment at `_SafeLoader` records."""
+    text = getattr(register, which).read_text(encoding="utf-8")
+
+    def tokens(loader: Any) -> list[tuple[Any, ...]]:
+        return [(type(t).__name__, t.start_mark.index, t.end_mark.index, getattr(t, "value", None),
+                 getattr(t, "style", None) or None) for t in yaml.scan(text, Loader=loader)]
+
+    assert tokens(register._SafeLoader) == tokens(yaml.SafeLoader)
+    assert yaml.load(text, Loader=register._SafeLoader) == yaml.load(text, Loader=yaml.SafeLoader)  # noqa: S506

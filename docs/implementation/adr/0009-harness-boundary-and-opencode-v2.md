@@ -755,3 +755,71 @@ choices recorded in register F48.
 Dropping the operator endpoint's `dev` label once a platform is qualified (designer, 2026-10-12) concerns the
 endpoint, not this label: ADR-0005's amendment, owed with the slices that build the operator session and qualify
 each platform (register F47.3 and F48), records it.
+
+## Amendment 2026-10-21 — the store's path, the control lock and non-writers (STG-05 CS-1: CB-07, CB-09, CBF-1)
+
+This amends the M4-B amendment's bind order (2026-10-03) and how a contained process reaches the control state. It
+builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold exemption for CS-1 only.
+
+### Bind order: ancestors first (`layout.bind_order`)
+- **Before:** every writable bind came first, then every read-only re-bind.
+- **Now:** the writable binds and the read-only re-binds are applied together, by depth, ancestors first. A path that
+  is in both is read-only: its re-bind comes after.
+- **Why:** a bind holds for its whole subtree except where a deeper bind says otherwise. So a read-only re-bind under
+  a broad writable root still closes what it protects. A writable bind under a read-only re-bind is applied after it
+  and stays writable, which is the ordering rule the Lead's layout needs (CS-4).
+- **One owner:** `bwrap_argv` emits the order and the store check reasons about it.
+
+### No writable bind may change the store's path (CB-07, ruling R-3)
+- **The predicate:** `for_run` checks it on the final layout, for every writable bind `W`, the role's own and the
+  policy's alike:
+  - `W` is not the store (`<project>/.aew/state`) and does not lie under it;
+  - if `W` contains the store, the first directory below `W` on the path to the store is re-bound read-only after `W`.
+    That re-bind is a mount point, which cannot be renamed, replaced or removed.
+- **On failure:** a layout that breaks the predicate is refused (`CONTAINMENT_UNAVAILABLE`, reason
+  `writable_bind_in_store` or `store_path_writable`), naming the bind and what it would need instead.
+- **This is not the operator-root guard.** Run directories live under `.aew/local`, so the guard's own rule would
+  refuse every run.
+- **The project is required:** a contained run is refused when it has none, since the check needs it.
+
+### The control lock is not in an agent's layout (CBF-1)
+- **The mask:** the empty tmpfs that hid the runs directory now covers the project's whole `.aew/local`, plus the runs
+  directory if it lies elsewhere. Only the run's own directories are bound back.
+- **The effect:** the control lock (`.aew/local/control.lock`) is not in the sandbox at all. A lock a contained process
+  takes on a file at that path is a file of its own tmpfs, which no engine writer opens. The store (`.aew/state`)
+  stays visible, read-only.
+- **`FileLock` opens the lock file for writing only.** The M4-B fallback is gone: it opened an existing lock file
+  read-only on a read-only mount and still took `LOCK_EX`, "so a contained reader still serializes with the engine's
+  writers". No reader needs the lock now (below), and a process that cannot open it for writing is not one that may
+  hold it.
+
+### Non-writers read lock-free (CB-09)
+- **The kinds:** `aew.process_kind` lists AEW's entry points and their kinds:
+  - **store writers:** the `aew` CLI, and the run supervisor;
+  - **non-writers:** the CLI inside a worker's run (`AEW_AGENT_ENDPOINT` set), and `aew lead mcp`.
+- **The rule:** in a non-writer, `ControlStore.read`, `session` and `create` are refused before the lock is opened
+  (`PERMISSION_DENIED`, reason `non_writer_process`). Such a process reads only through `read_committed`,
+  `configuration.read_committed`, `outbox.LogView` and `outbox.read_transitions`, which take no lock and run no
+  recovery, so they work on the read-only store.
+- **The bridge:** a worker's `whoami`, `check run` and `submit` already go through the run's bridge, where the
+  supervisor, a store writer, holds the credential and takes the lock.
+- **The declaration is behaviour, not the boundary.** An agent can unset the variable it is judged by. What holds
+  regardless is the layout: the read-only store, and the lock outside it.
+
+### Tests
+- **`tests/unit/test_containment_layout.py`:**
+  - the bind order;
+  - the predicate over every role in `WORKSPACE_ACCESS`, through what the run records of its layout;
+  - three planted bad binds refused: a workspace that is the project root, a scratch at `.aew`, and a harness
+    directory under the store;
+  - the second clause's ordering;
+  - a run without its project.
+- **`tests/integration/test_containment.py`** (Linux):
+  - from a worker sandbox the lock is absent, and an exclusive lock taken there blocks no engine writer;
+  - a non-writer's lock-free reads work against the store on the read-only bind, and its locked read is refused as a
+    non-writer's.
+- **`tests/integration/test_non_writer_reads.py`:**
+  - the table;
+  - the refusals before the lock;
+  - the reads against a read-only store, with no `EROFS` or `EACCES`, and a writer's failure there;
+  - the CLI inside a worker run.

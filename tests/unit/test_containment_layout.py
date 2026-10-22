@@ -37,10 +37,11 @@ def repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
 
 def run_layout(tmp_path: Path, role: str, *, scope: str = "ticket", policy: dict | None = None,
                home: str | None = None) -> C.Layout:
-    _, ws = repo_with_worktree(tmp_path)
+    repo, ws = repo_with_worktree(tmp_path)
     run = tmp_path / "run"
     return C.for_run(role=role, scope=scope, workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
-                     bridge_dir=None, policy=policy, home=home if home is not None else str(tmp_path / "home"))
+                     bridge_dir=None, policy=policy, home=home if home is not None else str(tmp_path / "home"),
+                     project=str(repo))
 
 
 def test_argv_binds_the_root_read_only_first_then_writable_roots_then_read_only_rebinds_then_masks():
@@ -237,3 +238,85 @@ def test_a_tree_that_requires_a_layout_refuses_to_spawn_without_one():
 
 def test_host_pid_of_a_process_in_no_namespace_is_itself():
     assert procs.host_pid(os.getpid()) == os.getpid()
+
+
+# ---------------------------------------------------------------------------------------------- STG-05 CB-07, CBF-1
+
+
+def test_binds_are_applied_ancestors_first_and_a_path_in_both_is_read_only():
+    order = L.bind_order(["/a", "/a/b/c"], ["/a/b", "/x", "/a"])
+    assert order == [("--bind", "/a"), ("--ro-bind", "/x"), ("--ro-bind", "/a"),  # depth 1, the re-bind of /a last
+                     ("--ro-bind", "/a/b"),                                         # read-only under the writable /a
+                     ("--bind", "/a/b/c")]                                          # writable again under the re-bind
+    layout = C.Layout(role="implementer", access="write", bwrap="/usr/bin/bwrap", writable=("/a", "/a/b/c"),
+                      readonly=("/a/b", "/x", "/a"))
+    flags = C.bwrap_argv(layout, ["agent"])
+    binds = [(f, flags[i + 1]) for i, f in enumerate(flags) if f in ("--bind", "--ro-bind") and flags[i + 1] != "/"]
+    assert binds == order  # the argv is the one order, not a second statement of it
+
+
+def project_layout(tmp_path: Path, role: str, *, workspace: Path | None = None, run_dir: Path | None = None,
+                   scratch: Path | None = None) -> C.Layout:
+    """A role's layout in a project with a store and a `.aew/local`, its run directory where a harness run's is."""
+    repo, ws = repo_with_worktree(tmp_path)
+    for d in (".aew/state/log", ".aew/local/harness/runs"):
+        (repo / d).mkdir(parents=True, exist_ok=True)
+    run = run_dir or repo / ".aew/local/harness/runs/R-1"
+    return C.for_run(role=role, scope="ticket", workspace=str(workspace or ws), run_dir=run,
+                     scratch=str(scratch or run / "scratch"), bridge_dir=None, policy=None,
+                     home=str(tmp_path / "home"), project=str(repo), runs=str(run.parent))
+
+
+@pytest.mark.parametrize("role", sorted(L.WORKSPACE_ACCESS))
+def test_every_roles_layout_keeps_its_writable_binds_off_the_stores_path_and_the_control_lock_out(tmp_path, role,
+                                                                                                    fake_bwrap):
+    layout = project_layout(tmp_path, role)
+    repo = os.path.realpath(tmp_path / "repo")
+    store = os.path.join(repo, ".aew", "state")
+    described = layout.describe()
+    # The check itself, over what the run records of its layout: a role added later is checked the same way.
+    L._refuse_store_binds(role, store, L.bind_order(described["writable"], described["readonly"]))
+    assert not any(L._within(w, store) or L._within(store, w) for w in layout.writable)
+    # .aew/local is hidden whole (the runs directory is inside it, so it is not hidden twice), before any bind.
+    local = os.path.join(repo, ".aew", "local")
+    assert layout.hide_runs == (local,)
+    flags = C.bwrap_argv(layout, ["agent"])
+    hidden = next(i for i in range(len(flags) - 1) if flags[i:i + 2] == ["--tmpfs", local])
+    assert all(hidden < i for i, f in enumerate(flags) if f == "--bind")
+    assert os.path.realpath(tmp_path / "repo/.aew/local/harness/runs/R-1/harness") in layout.writable  # bound back
+
+
+def test_a_layout_whose_writable_bind_reaches_the_store_is_refused_naming_the_bind(tmp_path, fake_bwrap):
+    repo = tmp_path / "repo"
+    # The implementer's workspace is the project root itself, with no read-only re-bind of `.aew` after it.
+    with pytest.raises(ContainmentUnavailable, match="contains AEW's store") as root:
+        project_layout(tmp_path / "a", "implementer", workspace=tmp_path / "a" / "repo")
+    assert root.value.details["reason"] == "store_path_writable"
+    assert root.value.details["needs"] == os.path.join(os.path.realpath(tmp_path / "a" / "repo"), ".aew")
+    # A reader whose scratch is `.aew`: `.aew/state` would have to be re-bound read-only after it.
+    with pytest.raises(ContainmentUnavailable, match="contains AEW's store") as scratch:
+        project_layout(tmp_path / "b", "reviewer", scratch=tmp_path / "b" / "repo" / ".aew")
+    assert scratch.value.details["needs"] == os.path.join(os.path.realpath(tmp_path / "b" / "repo"), ".aew", "state")
+    # A run whose harness directory is under the store.
+    with pytest.raises(ContainmentUnavailable, match="lies under it") as inside:
+        project_layout(tmp_path / "c", "investigator", run_dir=tmp_path / "c" / "repo" / ".aew" / "state" / "R-1")
+    assert inside.value.details["reason"] == "writable_bind_in_store"
+    assert not repo.exists()  # each case built its own project
+
+
+def test_a_writable_bind_that_contains_the_store_passes_only_with_the_next_directory_re_bound_after_it():
+    store = os.path.join(os.sep, "p", ".aew", "state")
+    work, aew = os.path.join(os.sep, "p"), os.path.join(os.sep, "p", ".aew")
+    L._refuse_store_binds("lead", store, L.bind_order([work], [aew]))  # R-2: the Lead's writable working tree
+    with pytest.raises(ContainmentUnavailable):  # the same re-bind applied before the writable bind covers nothing
+        L._refuse_store_binds("lead", store, [("--ro-bind", aew), ("--bind", work)])
+    with pytest.raises(ContainmentUnavailable):  # a deeper re-bind is not the next directory on the path
+        L._refuse_store_binds("lead", store, L.bind_order([work], [store]))
+
+
+def test_a_run_without_its_project_is_refused_before_any_layout(tmp_path, monkeypatch, fake_bwrap):
+    monkeypatch.setattr(C, "supported", lambda: True)
+    with pytest.raises(ContainmentUnavailable, match="needs its project root"):
+        C.establish(role="reviewer", scope="ticket", workspace=str(tmp_path), run_dir=tmp_path / "run",
+                    scratch=str(tmp_path / "s"), bridge_dir=None, policy={"containment": {"mode": "required"}})
+    assert not (tmp_path / "run").exists()

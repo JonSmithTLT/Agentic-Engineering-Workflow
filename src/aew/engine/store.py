@@ -27,6 +27,8 @@ Model (ADR-0001):
   anything else is an out-of-band modification and fails closed.
 * Every operation (read or write) runs under an OS advisory lock and first
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
+  A process declared a non-writer (``aew.process_kind``, STG-05 CB-09) is refused
+  all three before the lock is opened: it reads lock-free (``read_committed``).
 * The transition log ``state/log/<rev>.yaml`` is derived from committed state and
   never authoritative, but it is complete and consumable (ADR-0012, amending
   ADR-0001): every revision has exactly one record, carrying the typed events the
@@ -59,7 +61,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
-from aew import profile
+from aew import process_kind, profile
 from aew.coordination import layout as coordination
 from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
@@ -336,6 +338,7 @@ class ControlStore:
 
     @contextmanager
     def session(self) -> Iterator[Session]:
+        process_kind.require_writer("ControlStore.session")
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout) as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
@@ -357,6 +360,7 @@ class ControlStore:
                                  "not delete .aew/local while AEW is running)", path=LOCK_REL, reason="lock_lost")
 
     def read(self) -> dict[str, Any]:
+        process_kind.require_writer("ControlStore.read")
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
             self.held += 1
             try:
@@ -393,6 +397,7 @@ class ControlStore:
         The exclusive creation of ``control.yaml`` is the commit point; an
         interrupted initialization leaves no control state and can be re-run.
         """
+        process_kind.require_writer("ControlStore.create")
         with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
             if self.control_path.exists():
                 raise IntegrityError(f"{self.control_path} already exists; project is initialized")

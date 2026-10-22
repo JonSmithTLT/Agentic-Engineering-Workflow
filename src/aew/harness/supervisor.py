@@ -542,6 +542,9 @@ class Supervisor:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from aew import process_kind
+
+    process_kind.declare("aew.harness.supervisor")
     parser = argparse.ArgumentParser(prog="aew-harness-supervisor")
     parser.add_argument("--run-dir", required=True)
     args = parser.parse_args(argv)

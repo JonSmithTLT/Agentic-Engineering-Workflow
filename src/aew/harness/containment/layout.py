@@ -4,15 +4,20 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 
 * the host root is bound read-only; ``/dev``, ``/proc`` and ``/tmp`` are private to the sandbox; the project is bound
   read-only too, so it stays visible wherever it lives (even under ``/tmp``);
-* every harness run's directory is hidden behind an empty tmpfs, and only this run's own directories are bound back:
-  one run never reads another's harness state (its bridge key, its transcript);
+* the project's ``.aew/local`` (and the runs directory, wherever it lives) is hidden behind an empty tmpfs, and only
+  this run's own directories are bound back: one run never reads another's harness state (its bridge key, its
+  transcript), and the engine's control lock is not in the sandbox at all, so no contained process can hold it
+  (STG-05 CBF-1). The store itself (``.aew/state``) stays visible, read-only, for lock-free reads;
 * PID, IPC and UTS namespaces are private; the network namespace is shared (the harness server listens on
   ``127.0.0.1`` and the provider is remote), so nothing here claims network isolation;
 * the writable roots come from the role (:data:`WORKSPACE_ACCESS`, exhaustive: a role without an entry has no
   layout and its launch is refused), plus the run's own scratch, harness state and private git state, plus any
   path the operator's execution policy adds (recorded on the run's label);
-* read-only re-binds come after every writable bind, so a broad writable root can never reopen what they protect:
-  the repository's git metadata, the workspace's ``.git`` pointer, the bridge directory;
+* writable binds and read-only re-binds are applied ancestors first (:func:`bind_order`): a later bind wins its
+  subtree, so a read-only re-bind under a broad writable root closes what it protects (the repository's git metadata,
+  the workspace's ``.git`` pointer, the bridge directory), and a writable bind under a read-only re-bind stays
+  writable;
+* no writable bind may change the store's path (STG-05 CB-07, ruling R-3; :func:`_refuse_store_binds`);
 * secret masks come last and depend on the path's type: a directory is replaced by an empty tmpfs, a file by an
   empty read-only file (``/dev/null`` would do, but SELinux refuses a device node bound over a home file).
 
@@ -71,7 +76,7 @@ class Layout:
     writable: tuple[str, ...]                # read-write binds, in order
     readonly: tuple[str, ...]                # read-only re-binds, after every writable bind
     visible: tuple[str, ...] = ()            # read-only binds first: the project, wherever it lives
-    hide_runs: tuple[str, ...] = ()          # empty tmpfs before the writable binds: every run's directory
+    hide_runs: tuple[str, ...] = ()          # empty tmpfs before the writable binds: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``
     mask_file: str = "/dev/null"             # an empty read-only file
@@ -93,10 +98,8 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
         out += ["--ro-bind", path, path]
     for path in layout.hide_runs:
         out += ["--tmpfs", path]
-    for path in layout.writable:
-        out += ["--bind", path, path]
-    for path in layout.readonly:
-        out += ["--ro-bind", path, path]
+    for flag, path in bind_order(layout.writable, layout.readonly):
+        out += [flag, path, path]
     for path in layout.hide_dirs:
         out += ["--tmpfs", path]
     for path in layout.hide_files:
@@ -104,6 +107,15 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
     if cwd is not None:
         out += ["--chdir", os.fspath(cwd)]
     return [*out, "--", *argv]
+
+
+def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] | list[str]) -> list[tuple[str, str]]:
+    """The writable binds (``--bind``) and read-only re-binds (``--ro-bind``) in the order bubblewrap applies them:
+    by depth, ancestors first, so each bind holds for its subtree except where a deeper bind says otherwise. A path in
+    both is read-only (the re-bind comes after). Otherwise the order within a depth is the layout's. The one owner of
+    the order: ``bwrap_argv`` emits it and the store check (:func:`_refuse_store_binds`) reasons about it."""
+    tagged = [("--bind", p) for p in writable] + [("--ro-bind", p) for p in readonly]
+    return sorted(tagged, key=lambda t: (len(Path(t[1]).parts), t[0] == "--ro-bind"))
 
 
 def find_bwrap() -> str | None:
@@ -256,14 +268,44 @@ def _refuse_unsafe_root(raw: str, root: str, guarded: list[tuple[str, str]], *, 
             root=raw, resolved=root, exposes=[{"what": w, "path": p} for w, p in exposed])
 
 
+STORE = (".aew", "state")  # the store, relative to the project root (aew.engine.store.STORE_REL under the AEW root)
+
+
+def _refuse_store_binds(role: str, store: str, order: list[tuple[str, str]]) -> None:
+    """STG-05 CB-07 (ruling R-3): no writable bind ``W`` may change the store's path. ``W`` is not the store and not
+    under it; and if ``W`` contains the store, the first component below ``W`` on the path to it is re-bound read-only
+    after ``W`` (``order`` is :func:`bind_order`'s), which makes it a mount point that cannot be renamed, replaced or
+    removed. This is not the operator-root guard (``_refuse_unsafe_root``): run directories live under ``.aew/local``,
+    so a role's own binds need only stay off the store's path."""
+    for i, (flag, w) in enumerate(order):
+        if flag != "--bind":
+            continue
+        if _within(w, store):
+            raise ContainmentUnavailable(
+                f"the {role} layout's writable bind {w} is AEW's store ({store}) or lies under it, so a contained "
+                "process could change the store; the launch is refused. Keep the workspace, scratch and every "
+                "writable root outside the project's .aew/state", role=role, bind=w, store=store,
+                reason="writable_bind_in_store")
+        if _within(store, w):
+            below = os.path.join(w, os.path.relpath(store, w).split(os.sep)[0])
+            if not any(f == "--ro-bind" and p == below for f, p in order[i + 1:]):
+                raise ContainmentUnavailable(
+                    f"the {role} layout's writable bind {w} contains AEW's store ({store}), and {below} is not "
+                    "re-bound read-only after it, so a contained process could rename or replace the directories "
+                    f"on the store's path; the launch is refused. Re-bind {below} read-only in the same layout, or "
+                    "keep the writable bind outside the project", role=role, bind=w, store=store, needs=below,
+                    reason="store_path_writable")
+
+
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
-            home: str | None = None, project: str | os.PathLike[str] | None = None,
+            project: str | os.PathLike[str], home: str | None = None,
             runs: str | os.PathLike[str] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
-    role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout or bubblewrap is
-    missing. ``project`` is the authoritative project root (bound read-only so it stays visible); ``runs`` is the
-    directory holding every run's directory (hidden, with only this run's own directories bound back)."""
+    role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
+    missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
+    so it stays visible; its ``.aew/local`` is hidden, and its store checked against every writable bind); ``runs``
+    is the directory holding every run's directory (hidden too, with only this run's own directories bound back)."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
@@ -313,8 +355,12 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
         if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
             readonly.append(_real(prefix))
-    visible = [_real(project)] if project is not None and os.path.isdir(project) else []
-    hide_runs = [_real(runs)] if runs is not None and os.path.isdir(runs) else []
+    visible = [_real(project)] if os.path.isdir(project) else []
+    local = Path(project) / ".aew" / "local"
+    hide_runs = [_real(local)] if local.is_dir() else []
+    if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
+        hide_runs.append(_real(runs))
+    _refuse_store_binds(role, _real(Path(project).joinpath(*STORE)), bind_order(writable, readonly))
     return Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                   visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
                   mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected), env=env)

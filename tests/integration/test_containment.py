@@ -323,7 +323,7 @@ def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):
     monkeypatch.setenv("PATH", str(lab.root / "empty"))
     args = dict(role="implementer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                scratch=str(lab.run / "scratch"), bridge_dir=None)
+                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo))
     with pytest.raises(C.ContainmentUnavailable, match="bubblewrap"):
         C.establish(**args, policy=None)
     layout, label = C.establish(**args, policy={"containment": {"mode": "allow_weaker"}})
@@ -333,7 +333,8 @@ def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(
 
 def test_establish_labels_a_contained_run_truthfully(lab):
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                                scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None)
+                                scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None,
+                                project=str(lab.repo))
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
     assert label["network"] == "shared" and label["mechanism"].startswith("bubblewrap")
@@ -437,7 +438,8 @@ import subprocess, sys, time
 from aew.harness import containment, procs
 from pathlib import Path
 layout = containment.for_run(role="implementer", scope="ticket", workspace=sys.argv[1], run_dir=Path(sys.argv[2]),
-                             scratch=sys.argv[2] + "/scratch", bridge_dir=None, policy=None, home=sys.argv[3])
+                             scratch=sys.argv[2] + "/scratch", bridge_dir=None, policy=None, home=sys.argv[3],
+                             project=sys.argv[4])
 tree = procs.ProcessTree(layout=layout)
 p = tree.spawn(["sh", "-c", "setsid sleep 300 & echo $! > " + sys.argv[2] + "/scratch/pid; wait"], cwd=sys.argv[1],
                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -447,7 +449,7 @@ time.sleep(300)
 
 
 def test_sigkill_of_the_owner_ends_the_contained_tree(lab):
-    owner = subprocess.Popen([sys.executable, "-c", _OWNER, str(lab.ws), str(lab.run), str(lab.home)],
+    owner = subprocess.Popen([sys.executable, "-c", _OWNER, str(lab.ws), str(lab.run), str(lab.home), str(lab.repo)],
                              stdout=subprocess.PIPE, text=True, start_new_session=True)
     try:
         bwrap_pid = int(owner.stdout.readline())
@@ -477,3 +479,84 @@ def test_a_check_runs_inside_the_runs_layout(lab):
     result = checks.run(cfg, lab.ws, env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
     assert "Read-only file system" in result["log"] and "done" in result["log"]
     assert lab.fingerprint() == before and (lab.ws / "f.txt").read_text() == "base\n"
+
+
+# ------------------------------------------------------------------ STG-05: the store and the control lock (CBF-1)
+
+def aew_project(lab: Lab) -> Path:
+    """Make the lab's repository an AEW project (its store, its `.aew/local` and the control lock), as `aew init`."""
+    from aew.engine.api import Engine
+
+    Engine.initialize(lab.repo, project_id="lab")
+    assert (lab.repo / ".aew" / "local" / "control.lock").exists()
+    return lab.repo / ".aew"
+
+
+def test_from_a_worker_sandbox_the_control_lock_is_not_there_and_a_lock_taken_inside_blocks_no_writer(lab):
+    from aew.engine.lock import FileLock
+    from aew.engine.store import LOCK_REL
+
+    aew = aew_project(lab)
+    layout = lab.layout("reviewer")
+    held = lab.run / "scratch" / "held"
+    # Inside: the lock file is absent (`.aew/local` is an empty tmpfs); a process that makes one there and holds it
+    # exclusively holds a file of its own sandbox's, which no engine writer outside ever opens.
+    hold = (f"test -e {aew / LOCK_REL} && echo present || echo absent; "
+            f"{sys.executable} -c \"import fcntl, time; f = open('{aew / LOCK_REL}', 'a+'); "
+            f"fcntl.flock(f, fcntl.LOCK_EX); open('{held}', 'w').write('1'); time.sleep(60)\"")
+    tree = procs.ProcessTree(layout=layout)
+    try:
+        proc = tree.spawn(["sh", "-c", hold], cwd=str(lab.ws), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL, text=True, env={"PATH": os.environ["PATH"], **layout.env})
+        _wait_file(held)
+        started = time.monotonic()
+        with FileLock(aew / LOCK_REL, timeout=5):  # the engine's own lock, on the host
+            took = time.monotonic() - started
+        assert took < 2, f"an engine writer waited {took:.1f}s on a lock held from a sandbox"
+    finally:
+        tree.kill()
+        tree.close()
+    out, _ = proc.communicate(timeout=30)
+    assert out.splitlines()[0] == "absent"
+
+
+_NON_WRITER_READS = """
+import json, os, sys
+from aew import process_kind
+from aew.engine import configuration, outbox
+from aew.engine.base import Kernel
+from aew.errors import PermissionDenied
+
+process_kind.declare(process_kind.cli_entry_point(["status"], os.environ))
+k = Kernel(*Kernel.locate(__import__("pathlib").Path(sys.argv[1])))
+state = k.store.read_committed()
+since = (state.get("outbox") or {}).get("since", 0)
+out = {"kind": process_kind.kind(), "revision": state["revision"],
+       "manifest": configuration.read_committed(k).manifest_raw is not None,
+       "records": len(list(outbox.read_transitions(k.aew_root, since, state["revision"], outbox=state.get("outbox")))),
+       "segment": outbox.LogView(k.aew_root, since).segment(0) is None}
+try:
+    k.store.read()
+except PermissionDenied as exc:
+    out["locked_read"] = exc.details["reason"]
+print(json.dumps(out))
+"""
+
+
+def test_a_non_writer_in_a_worker_sandbox_reads_the_read_only_store_lock_free(lab):
+    """The store on the sandbox's read-only bind of the project: every lock-free read works (no EROFS or EACCES), and
+    a locked read is refused as a non-writer's, before the lock (which is not there) could be opened."""
+    import json
+
+    aew_project(lab)
+    layout = lab.layout("reviewer")
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    env = f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} AEW_AGENT_ENDPOINT=/tmp/aew-no-bridge"
+    res = lab.sh(layout, f"{env} {sys.executable} -c '{_NON_WRITER_READS}' {lab.repo}")
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout) == {"kind": "non_writer", "revision": 0, "manifest": True, "records": 0,
+                                      "segment": True, "locked_read": "non_writer_process"}
+    # The CLI itself, as an agent runs it there: refused as a non-writer, not by the read-only filesystem.
+    cli = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} status --json")
+    error = json.loads(cli.stderr)["error"]
+    assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process", cli.stderr

@@ -160,6 +160,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _main(argv: list[str]) -> int:
+    from aew import process_kind
+
+    # Before anything can open the store (STG-05 CB-09). Scoped, since tests call `main` in-process.
+    with process_kind.declared_as(process_kind.cli_entry_point(argv, os.environ)):
+        return _run_main(argv)
+
+
+def _run_main(argv: list[str]) -> int:
     _utf8_streams()
     parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv))
     try:

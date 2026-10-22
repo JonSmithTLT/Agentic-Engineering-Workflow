@@ -109,13 +109,38 @@ def primary_group() -> dict[str, str] | None:
     except KeyError:
         return _check("primary-group", "WARN", f"your primary group (gid {user.pw_gid}) has no entry on this host, "
                       "so nobody can tell who else is in it; the store is readable by that group")
-    sharing = sorted(u.pw_name for u in pwd.getpwall() if u.pw_gid == user.pw_gid and u.pw_name != user.pw_name)
-    return private_group_check(user.pw_name, group.gr_name, group.gr_mem, sharing)
+    accounts = pwd.getpwall()
+    sharing = sorted(u.pw_name for u in accounts if u.pw_gid == user.pw_gid and u.pw_name != user.pw_name)
+    return private_group_check(user.pw_name, group.gr_name, group.gr_mem, sharing, listed=len(accounts),
+                               remote=directory_sources())
 
 
-def private_group_check(user: str, group: str, members: list[str], sharing: list[str]) -> dict[str, str]:
+# Name-service sources whose accounts are all on this host, so enumerating them lists every account they hold.
+LOCAL_SOURCES = frozenset({"files", "compat", "systemd", "altfiles"})
+
+
+def directory_sources(nsswitch: Path = Path("/etc/nsswitch.conf")) -> list[str]:
+    """The name-service sources for accounts and groups other than this host's own files (``sss``, ``ldap``, ``nis``,
+    ``winbind`` ...): their accounts need not all be listed when enumerated, so a group check cannot see them all."""
+    try:
+        text = nsswitch.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    found: list[str] = []
+    for line in text.splitlines():
+        db, _, rest = line.split("#", 1)[0].partition(":")
+        if db.strip() in ("passwd", "group"):
+            for word in rest.split():
+                if not word.startswith("[") and word not in LOCAL_SOURCES and word not in found:
+                    found.append(word)
+    return found
+
+
+def private_group_check(user: str, group: str, members: list[str], sharing: list[str], *, listed: int,
+                        remote: list[str]) -> dict[str, str]:
     """``primary-group``: a user-private group is named for ``user``, has no member but ``user``, and is no other
-    account's primary group (``sharing``, among the accounts this host lists)."""
+    account's primary group (``sharing``, among the ``listed`` accounts this host lists). Accounts from a directory
+    service (``remote``) may not all be listed, so then a group that looks private is reported as not confirmed."""
     problems = []
     if group != user:
         problems.append(f"it is named {group!r}, not for you")
@@ -124,13 +149,20 @@ def private_group_check(user: str, group: str, members: list[str], sharing: list
         problems.append(f"it has other members ({', '.join(others)})")
     if sharing:
         problems.append(f"it is also the primary group of {', '.join(sharing)}")
-    if not problems:
-        return _check("primary-group", "PASS", f"your primary group {group!r} is user-private: AEW's store is "
-                      "group-readable, and only you are in that group")
-    return _check("primary-group", "WARN", f"your primary group {group!r} is not user-private: {'; '.join(problems)}. "
-                  "AEW's store is group-readable, so they can read it too, and a reader that relies on the group "
-                  "holding only you (the work-item fact issuer) does not qualify on this host. AEW changes no group: "
-                  "your administrator can give your account a user-private primary group")
+    if problems:
+        return _check("primary-group", "WARN", f"your primary group {group!r} is not user-private: "
+                      f"{'; '.join(problems)}. AEW's store is group-readable, so they can read it too, and a reader "
+                      "that relies on the group holding only you (the work-item fact issuer) does not qualify on this "
+                      "host. AEW changes no group: your administrator can give your account a user-private primary "
+                      "group")
+    seen = (f"your primary group {group!r} is named for you and has no other member among the {listed} accounts "
+            "this host lists")
+    if remote:
+        return _check("primary-group", "WARN", f"{seen}, but this host also takes accounts and groups from "
+                      f"{', '.join(remote)}, which need not all be listed, so AEW cannot confirm that only you are in "
+                      "it (AEW's store is group-readable). Your administrator can confirm it")
+    return _check("primary-group", "PASS", f"{seen}: it is user-private, and AEW's store is group-readable to you "
+                  "alone")
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -280,13 +279,14 @@ class ProjectAdmin:
         except Exception as exc:  # report, never crash
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
-        if sys.platform != "win32":  # the store's modes (STG-05 CB-08); Windows has none
-            below = self.k.store.mode_problems()
+        below = self.k.store.mode_problems()  # the store's modes (STG-05 CB-08); None where there are none (Windows)
+        if below is not None:
             add("store-modes", "WARN" if below else "PASS",
                 f"{len(below)} path(s) in the store are below {STORE_FILE_MODE:04o} (files) or {STORE_DIR_MODE:04o} "
-                f"(directories), so a reader running as your group cannot read them: {', '.join(below[:5])}"
-                f"{' ...' if len(below) > 5 else ''}. AEW writes the store with these modes; restore them with "
-                "`chmod -R g+rX .aew/state`" if below else
+                f"(directories), the modes AEW writes the store with, which a reader running as your group needs: "
+                f"{', '.join(below[:5])}{' ...' if len(below) > 5 else ''}. Restore them with "
+                "`chmod -R u+rwX,g+rX .aew/state` (a path owned by another account needs that account, or `chown`)"
+                if below else
                 f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
         try:
             _ = self.k.manifest

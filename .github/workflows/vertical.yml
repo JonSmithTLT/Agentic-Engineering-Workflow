@@ -2,19 +2,20 @@ name: vertical
 
 # The vertical UAT (docs/implementation/vertical-uat.md): a fresh project from setup to a published one-line fix, with
 # the burden ledger as its measurement. In shadow (`VERTICAL_MODE` in tests/helpers/vertical/ledger.py): it runs on
-# every pull request and on main, uploads each scenario's ledger and summary, and is honestly red while the ledger is
-# not zero. It is a workflow of its own, so ci.yml's conclusion stays the merge gate's (`assurance`); no required job
-# collects its tests (tests/helpers/lanes.py), so it never blocks a merge. Enforcing it is the operator's decision.
+# pushes to main and on dispatch, uploads each scenario's ledger and summary, and is honestly red while the ledger is
+# not zero. Not on pull requests (operator, 2026-10-23, on the designer's ruling that freezes it as a baseline): red on
+# main, its result on a pull request says nothing about that pull request, and main keeps the ledger's time series.
+# It is a workflow of its own, so ci.yml's conclusion stays the merge gate's (`assurance`); no required job collects
+# its tests (tests/helpers/lanes.py), so it never blocks a merge. Enforcing it is the operator's decision.
 
 on:
-  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: vertical-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: vertical-${{ github.ref }}
+  cancel-in-progress: false  # main's runs are its time series: never cancelled
 
 permissions:
   contents: read

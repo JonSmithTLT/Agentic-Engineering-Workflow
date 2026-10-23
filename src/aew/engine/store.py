@@ -633,10 +633,11 @@ class ControlStore:
                     f.unlink()
         return state
 
-    def _store_modes(self) -> Iterator[tuple[Path, int, int]]:  # pragma: posix-only
-        """(path, its mode, the mode it should have at least) for the store directory and every directory and regular
-        file under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so is a path that
-        vanished after it was listed: the compactor prunes log records without the control lock (``log_compact``)."""
+    def _store_modes(self) -> Iterator[tuple[Path, int, int, int]]:  # pragma: posix-only
+        """(path, its mode, the mode it should have at least, its group) for the store directory and every directory
+        and regular file under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so
+        is a path that vanished after it was listed: the compactor prunes log records without the control lock
+        (``log_compact``)."""
         for d, dirs, files in os.walk(self.store_dir):
             names = [("", STORE_DIR_MODE)] if Path(d) == self.store_dir else []
             names += [*((n, STORE_DIR_MODE) for n in dirs), *((n, STORE_FILE_MODE) for n in files)]
@@ -647,7 +648,7 @@ class ControlStore:
                 except FileNotFoundError:
                     continue
                 if not stat.S_ISLNK(st.st_mode):
-                    yield path, stat.S_IMODE(st.st_mode), want
+                    yield path, stat.S_IMODE(st.st_mode), want, st.st_gid
 
     def _migrate_modes(self) -> None:
         """Give a store written before the store's modes (STG-05 CB-08) those modes, once, under the control lock. The
@@ -656,7 +657,8 @@ class ControlStore:
         (or written with the modes from the start), and a migration interrupted part-way runs again. Wider modes are
         kept, and only a path that lacks the bits is changed. A path this process may not change (another account's
         file) is left as it is and the migration still finishes, so it never stops a command; `aew doctor`
-        (``store-modes``) names what is left below the modes."""
+        (``store-modes``) names what is left below the modes. The cost of that: if the control file itself is such a
+        path, the record is never written and every recovery walks the store again (review of #230, N4)."""
         if IS_WINDOWS:  # pragma: windows-only
             return
         control = self.store_dir / Path(CONTROL_REL).name  # pragma: posix-only
@@ -666,7 +668,7 @@ class ControlStore:
             return
         if current & STORE_FILE_MODE == STORE_FILE_MODE:
             return
-        for path, mode, want in self._store_modes():
+        for path, mode, want, _gid in self._store_modes():
             if path != control and mode & want != want:
                 _chmod_if_allowed(path, mode | want)
         _chmod_if_allowed(control, current | STORE_FILE_MODE)
@@ -760,11 +762,23 @@ class ControlStore:
         if IS_WINDOWS:  # pragma: windows-only
             return None
         out = []  # pragma: posix-only
-        for path, mode, want in self._store_modes():
+        for path, mode, want, _gid in self._store_modes():
             if mode & want != want:
-                rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()
-                out.append(rel + "/" if want == STORE_DIR_MODE else rel)
+                out.append(self._rel(path, want))
         return sorted(out)
+
+    def group_problems(self, gid: int) -> list[tuple[str, int]] | None:
+        """The store's paths whose group is not ``gid`` (the operator's primary group), with the group they have. The
+        store's modes make it group-readable, so a path whose group is another (a process run under ``sg``, a
+        set-group-ID directory above the store) is readable by that group's members (review of #230, m6). Nothing is
+        changed: AEW never changes groups. None on Windows."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return None
+        return sorted((self._rel(path, want), g) for path, _mode, want, g in self._store_modes() if g != gid)
+
+    def _rel(self, path: Path, want: int) -> str:  # pragma: posix-only
+        rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()
+        return rel + "/" if want == STORE_DIR_MODE else rel
 
     def verify(self) -> list[str]:
         """Return integrity problems without modifying anything."""

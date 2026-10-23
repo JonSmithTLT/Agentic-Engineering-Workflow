@@ -164,7 +164,7 @@ def write_temp(directory: Path, data: bytes, prefix: str, *, mode: int = 0o600) 
     directory.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
     try:
-        if sys.platform != "win32" and mode != 0o600:  # pragma: posix-only
+        if not IS_WINDOWS and mode != 0o600:  # pragma: posix-only
             os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)

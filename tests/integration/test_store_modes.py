@@ -235,18 +235,87 @@ def test_the_primary_group_check_names_what_makes_a_group_not_user_private():
     # Accounts from a directory service need not all be listed: a group that looks private is not confirmed.
     unseen = private_group_check("op", "op", [], [], listed=12, remote=["sss"])
     assert unseen["status"] == "WARN" and "sss" in unseen["detail"] and "cannot confirm" in unseen["detail"]
+    # Configured but not serving (review of #230, m7): named, and no bar to a PASS.
+    idle = private_group_check("op", "op", [], [], listed=12, remote=[], idle=["sss"])
+    assert idle["status"] == "PASS" and "sss is configured for accounts but not serving" in idle["detail"]
+    # The PASS claims only what was checked: the group, with the store's files' group left to `store-group` (m6).
+    assert "`store-group` checks their group" in ok["detail"] and "to you alone" not in ok["detail"]
 
 
 def test_the_name_service_sources_beyond_this_hosts_files_are_found(tmp_path):
     from aew.doctor import directory_sources
 
-    conf = tmp_path / "nsswitch.conf"
+    conf, pipe, etc = tmp_path / "nsswitch.conf", tmp_path / "nss", tmp_path / "etc"
+    etc.mkdir()
+    (etc / "passwd").write_text("root:x:0:0::/root:/bin/sh\n", encoding="utf-8")
+    pipe.write_text("", encoding="utf-8")  # sssd's responder is there: `sss` serves
     conf.write_text("# a comment: passwd: ldap\npasswd:     files sss systemd\nshadow: files\n"
                     "group:  files [SUCCESS=merge] sss winbind # trailing\nhosts: files dns\n", encoding="utf-8")
-    assert directory_sources(conf) == ["sss", "winbind"]
+    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["sss", "winbind"], [])
+    pipe.unlink()  # RL8's default profile lists `sss` whether or not sssd runs (review of #230, m7)
+    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["winbind"], ["sss"])
     conf.write_text("passwd: files systemd\ngroup: files compat\n", encoding="utf-8")
-    assert directory_sources(conf) == []
-    assert directory_sources(tmp_path / "absent") == []
+    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == ([], [])
+    (etc / "group").write_text("wheel:x:10:\n+@netgroup\n", encoding="utf-8")  # NIS lines: `compat` goes remote (N5)
+    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["compat (NIS lines in /etc/passwd or /etc/group)"], [])
+    assert directory_sources(tmp_path / "absent") == ([], [])
+
+
+def test_doctor_reports_a_uid_with_no_account_entry_instead_of_crashing(monkeypatch):
+    """Review of #230, m5: a container's or a user namespace's uid has no passwd entry, and `getpwuid` raised out of
+    doctor with a traceback. It is a WARN now."""
+    if sys.platform == "win32":
+        from aew.doctor import primary_group
+
+        assert primary_group() is None  # no POSIX accounts to look up
+        return
+    import pwd
+
+    from aew.doctor import environment_checks
+
+    def missing(uid):
+        raise KeyError(f"getpwuid(): uid not found: {uid}")
+
+    monkeypatch.setattr(pwd, "getpwuid", missing)
+    found = {c["check"]: c for c in environment_checks()}
+    assert found["primary-group"]["status"] == "WARN" and "has no account entry" in found["primary-group"]["detail"]
+
+
+def test_an_environment_check_that_raises_is_reported_and_the_others_still_run(monkeypatch):
+    """The class behind m5 (review of #230): every environment check goes through one guard, as project checks do."""
+    from aew import doctor
+
+    def broken():
+        raise RuntimeError("synthetic: the check broke")
+
+    monkeypatch.setattr(doctor, "_git", broken)
+    found = {c["check"]: c for c in doctor.environment_checks()}
+    assert found["git"]["status"] == "FAIL" and "synthetic: the check broke" in found["git"]["detail"]
+    assert {"python", "module:yaml", "yaml"} <= set(found)
+
+
+def test_doctor_names_store_paths_whose_group_is_not_the_operators(tmp_path):
+    """Review of #230, m6: the store's modes make it group-readable, so a path whose group is another (written under
+    `sg`, or below a set-group-ID directory) is readable by that group. `store-group` names them, and AEW changes
+    nothing."""
+    from conftest import make_git_repo
+
+    from aew.doctor import primary_gid
+    from aew.engine.api import Engine
+    from aew.engine.store import ControlStore
+
+    e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
+    store = ControlStore(e.aew_root)
+    gid = primary_gid()
+    if gid is None:  # Windows: no groups
+        assert store.group_problems(0) is None
+        return
+    mine = os.stat(store.store_dir).st_gid
+    assert store.group_problems(mine) == []
+    other = store.group_problems(mine + 1)  # a synthetic gid: every path is "another group" against it
+    assert other and ("state/", mine) in other and all(g == mine for _, g in other)
+    check = {c["check"]: c for c in e.doctor_checks()}["store-group"]
+    assert check["status"] == ("PASS" if mine == gid else "WARN"), check
 
 
 def test_doctor_reports_the_operators_primary_group_where_there_are_posix_groups(tmp_path):

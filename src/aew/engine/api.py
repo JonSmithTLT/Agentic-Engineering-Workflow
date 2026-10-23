@@ -288,6 +288,21 @@ class ProjectAdmin:
                 "`chmod -R u+rwX,g+rX .aew/state` (a path owned by another account needs that account, or `chown`)"
                 if below else
                 f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
+        # The store's group (review of #230, m6): those modes make it readable to the group the store's paths have,
+        # which is meant to be the operator's user-private primary group (`primary-group` checks that group).
+        from aew.doctor import primary_gid
+
+        gid = primary_gid()
+        others = self.k.store.group_problems(gid) if gid is not None else None
+        if others is not None:
+            add("store-group", "WARN" if others else "PASS",
+                f"{len(others)} path(s) in the store have a group other than your primary group (gid {gid}), so its "
+                "members can read them: "
+                f"{', '.join(f'{rel} (gid {g})' for rel, g in others[:5])}{' ...' if len(others) > 5 else ''}. A "
+                "process run under another group (`sg`, `newgrp`) or a set-group-ID directory above the store gives "
+                "new files that group. AEW changes no group: `chgrp -R <your group> .aew/state`, and write the store "
+                "from your own group" if others else
+                f"every path in the store has your primary group (gid {gid})")
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")

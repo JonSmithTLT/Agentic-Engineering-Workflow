@@ -43,52 +43,71 @@ def platform_qualification(platform_name: str | None = None) -> dict[str, str] |
 
 
 def environment_checks() -> list[dict[str, str]]:
-    checks = []
-    windows = platform_qualification()
-    if windows is not None:
-        checks.append(windows)
+    """The host's checks, each run through one guard: a check that raises is reported as FAIL with what it raised,
+    and the other checks still run (doctor reports, never crashes; review of #230, m5)."""
+    checks: list[dict[str, str]] = []
+    for name, check in (("platform", platform_qualification), ("python", _python), ("git", _git),
+                        ("modules", _modules), ("yaml", _yaml), ("primary-group", primary_group)):
+        try:
+            found = check()
+        except Exception as exc:
+            found = _check(name, "FAIL", f"the check itself failed ({type(exc).__name__}: {exc}); the other checks "
+                           "still ran")
+        checks += [] if found is None else found if isinstance(found, list) else [found]
+    return checks
+
+
+def _python() -> dict[str, str]:
     py = sys.version_info[:3]
-    checks.append(
-        _check(
-            "python",
-            "PASS" if py[:2] >= MIN_PYTHON else "FAIL",
-            f"{platform.python_implementation()} {'.'.join(map(str, py))} (need >= {'.'.join(map(str, MIN_PYTHON))})",
-        )
-    )
+    return _check("python", "PASS" if py[:2] >= MIN_PYTHON else "FAIL",
+                  f"{platform.python_implementation()} {'.'.join(map(str, py))} (need >= "
+                  f"{'.'.join(map(str, MIN_PYTHON))})")
+
+
+def _git() -> dict[str, str]:
     git = shutil.which("git")
     if git is None:
-        checks.append(_check("git", "FAIL", "git executable not found on PATH"))
-    else:
-        # No console window on Windows (CREATE_NO_WINDOW; 0, which every platform accepts, where there is none).
-        out = subprocess.run([git, "--version"], capture_output=True, text=True,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
-        match = re.search(r"(\d+)\.(\d+)", out)
-        version: tuple[int, int] = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
-        checks.append(
-            _check(
-                "git",
-                "PASS" if version >= MIN_GIT else "FAIL",
-                f"{out} (need >= {'.'.join(map(str, MIN_GIT))})",
-            )
-        )
+        return _check("git", "FAIL", "git executable not found on PATH")
+    # No console window on Windows (CREATE_NO_WINDOW; 0, which every platform accepts, where there is none).
+    out = subprocess.run([git, "--version"], capture_output=True, text=True,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    match = re.search(r"(\d+)\.(\d+)", out)
+    version: tuple[int, int] = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+    return _check("git", "PASS" if version >= MIN_GIT else "FAIL", f"{out} (need >= {'.'.join(map(str, MIN_GIT))})")
+
+
+def _modules() -> list[dict[str, str]]:
+    out = []
     for module in ("yaml", "jsonschema"):
         try:
             __import__(module)
-            checks.append(_check(f"module:{module}", "PASS", "importable"))
+            out.append(_check(f"module:{module}", "PASS", "importable"))
         except ImportError as exc:
-            checks.append(_check(f"module:{module}", "FAIL", str(exc)))
+            out.append(_check(f"module:{module}", "FAIL", str(exc)))
+    return out
+
+
+def _yaml() -> dict[str, str]:
     from aew.util import yaml_backend  # the step-7 speed-up depends on it (m3-performance.md P1; M3 audit A2)
 
     if yaml_backend() == "libyaml":
-        checks.append(_check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state"))
-    else:
-        checks.append(_check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and "
-                             "writes the control state several times slower on a large project; install a PyYAML "
-                             "built with libyaml"))
-    group = primary_group()
-    if group is not None:
-        checks.append(group)
-    return checks
+        return _check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state")
+    return _check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and writes the "
+                  "control state several times slower on a large project; install a PyYAML built with libyaml")
+
+
+def primary_gid() -> int | None:
+    """The operator's primary group: their account's, or this process's own group when the uid has no account entry.
+    None on Windows."""
+    if sys.platform == "win32":  # pragma: windows-only
+        return None
+    import os  # pragma: posix-only
+    import pwd
+
+    try:
+        return pwd.getpwuid(os.getuid()).pw_gid
+    except KeyError:
+        return os.getgid()
 
 
 def primary_group() -> dict[str, str] | None:
@@ -103,7 +122,11 @@ def primary_group() -> dict[str, str] | None:
         import pwd
     except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups to check
         return None
-    user = pwd.getpwuid(os.getuid())
+    try:
+        user = pwd.getpwuid(os.getuid())
+    except KeyError:  # a container's or a user namespace's uid, or a directory account while its directory is down
+        return _check("primary-group", "WARN", f"your uid {os.getuid()} has no account entry on this host, so nobody "
+                      f"can tell who else is in your group (gid {os.getgid()}); AEW's store is readable by that group")
     try:
         group = grp.getgrgid(user.pw_gid)
     except KeyError:
@@ -111,36 +134,62 @@ def primary_group() -> dict[str, str] | None:
                       "so nobody can tell who else is in it; the store is readable by that group")
     accounts = pwd.getpwall()
     sharing = sorted(u.pw_name for u in accounts if u.pw_gid == user.pw_gid and u.pw_name != user.pw_name)
+    remote, idle = directory_sources()
     return private_group_check(user.pw_name, group.gr_name, group.gr_mem, sharing, listed=len(accounts),
-                               remote=directory_sources())
+                               remote=remote, idle=idle)
 
 
 # Name-service sources whose accounts are all on this host, so enumerating them lists every account they hold.
+# `compat` is one unless the files hold NIS `+`/`-` lines, which bring in accounts this host does not list.
 LOCAL_SOURCES = frozenset({"files", "compat", "systemd", "altfiles"})
+# sssd's name-service responder: `sss` in nsswitch.conf serves nothing while it is absent (RL8's default authselect
+# profile lists `sss` whether or not sssd runs; review of #230, m7).
+SSS_NSS_PIPE = Path("/var/lib/sss/pipes/nss")
 
 
-def directory_sources(nsswitch: Path = Path("/etc/nsswitch.conf")) -> list[str]:
-    """The name-service sources for accounts and groups other than this host's own files (``sss``, ``ldap``, ``nis``,
-    ``winbind`` ...): their accounts need not all be listed when enumerated, so a group check cannot see them all."""
+def directory_sources(nsswitch: Path = Path("/etc/nsswitch.conf"), *, sss_pipe: Path = SSS_NSS_PIPE,
+                      etc: Path = Path("/etc")) -> tuple[list[str], list[str]]:
+    """``(serving, idle)``: the name-service sources for accounts and groups other than this host's own files
+    (``sss``, ``ldap``, ``nis``, ``winbind`` ...), whose accounts need not all be listed when enumerated, so a group
+    check cannot see them all; and those configured but not serving now (``sss`` without its responder)."""
     try:
         text = nsswitch.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return []
+        return [], []
     found: list[str] = []
     for line in text.splitlines():
         db, _, rest = line.split("#", 1)[0].partition(":")
         if db.strip() in ("passwd", "group"):
             for word in rest.split():
-                if not word.startswith("[") and word not in LOCAL_SOURCES and word not in found:
+                if word == "compat" and _nis_lines(etc):
+                    word = "compat (NIS lines in /etc/passwd or /etc/group)"
+                elif word.startswith("[") or word in LOCAL_SOURCES:
+                    continue
+                if word not in found:
                     found.append(word)
-    return found
+    idle = [w for w in found if w == "sss" and not sss_pipe.exists()]
+    return [w for w in found if w not in idle], idle
+
+
+def _nis_lines(etc: Path) -> bool:
+    """Whether ``passwd`` or ``group`` under ``etc`` has a NIS ``+``/``-`` line, which `compat` resolves remotely."""
+    for name in ("passwd", "group"):
+        try:
+            lines = (etc / name).read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        if any(line.startswith(("+", "-")) for line in lines):
+            return True
+    return False
 
 
 def private_group_check(user: str, group: str, members: list[str], sharing: list[str], *, listed: int,
-                        remote: list[str]) -> dict[str, str]:
+                        remote: list[str], idle: list[str] | tuple[str, ...] = ()) -> dict[str, str]:
     """``primary-group``: a user-private group is named for ``user``, has no member but ``user``, and is no other
     account's primary group (``sharing``, among the ``listed`` accounts this host lists). Accounts from a directory
-    service (``remote``) may not all be listed, so then a group that looks private is reported as not confirmed."""
+    service (``remote``) may not all be listed, so then a group that looks private is reported as not confirmed. A
+    source configured but not serving (``idle``) is named, and does not stop a PASS. The check is of the group, not of
+    the store's files: ``store-group`` checks that their group is this one."""
     problems = []
     if group != user:
         problems.append(f"it is named {group!r}, not for you")
@@ -161,8 +210,10 @@ def private_group_check(user: str, group: str, members: list[str], sharing: list
         return _check("primary-group", "WARN", f"{seen}, but this host also takes accounts and groups from "
                       f"{', '.join(remote)}, which need not all be listed, so AEW cannot confirm that only you are in "
                       "it (AEW's store is group-readable). Your administrator can confirm it")
-    return _check("primary-group", "PASS", f"{seen}: it is user-private, and AEW's store is group-readable to you "
-                  "alone")
+    note = (f" ({', '.join(idle)} is configured for accounts but not serving now; if it starts, this check cannot "
+            "confirm the group any more)") if idle else ""
+    return _check("primary-group", "PASS", f"{seen}: it is user-private{note}. Store files with this group are "
+                  "readable by you alone (`store-group` checks their group)")
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:

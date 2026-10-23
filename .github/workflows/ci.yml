@@ -145,13 +145,13 @@ jobs:
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
           --test-timeout 600 --session-deadline 1200
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
           --session-deadline 1200
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -199,14 +199,17 @@ jobs:
         with:
           name: shard-durations
           path: ${{ runner.temp }}/shard-durations
+      # `--durations-file=`, one word: pytest picks its rootdir before the repository's plugin defines the option, so
+      # an existing file given as a separate word counts as a test path, and the rootdir becomes its common ancestor
+      # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          --durations-file "${{ runner.temp }}/shard-durations/durations.json"
+          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -261,7 +264,7 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
         run: >-
           python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
-          --lane fast --test-timeout 600 --session-deadline 960 --hang-dir "${{ runner.temp }}/fastbase/hangs"
+          --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

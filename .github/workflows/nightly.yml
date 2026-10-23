@@ -58,7 +58,7 @@ jobs:
       - run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
           --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 3600
-          --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
+          "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -138,7 +138,7 @@ jobs:
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: >-
           python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
-          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 --hang-dir "${{ runner.temp }}/hangs"
+          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -174,7 +174,7 @@ jobs:
           for i in $(seq 1 10); do
             echo "::group::serial lane repetition $i"
             python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
-              --session-deadline 270 --hang-dir "${{ runner.temp }}/hangs/rep-$i" || exit 1
+              --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
             echo "::endgroup::"
           done
       - name: racing writers with 4x the transactions
@@ -183,7 +183,7 @@ jobs:
           AEW_RACE_WRITES: "200"
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
-          --test-timeout 600 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs/racing"
+          --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -220,7 +220,7 @@ jobs:
         run: |
           echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
           AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
-            --test-timeout 1800 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs" \
+            --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
             "tests/unit/test_store.py::test_randomized_crash_iterations"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -269,13 +269,13 @@ jobs:
           python -m pytest -q -p no:cacheprovider --durations=20 -m "not serial"
           --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600
           --session-deadline 3600 --max-worker-restart 0
-          --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
+          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
       - name: serial lane (once per OS, never parallel)
         if: matrix.shard == 1 && (success() || failure())
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
           --session-deadline 3600
-          --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
+          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

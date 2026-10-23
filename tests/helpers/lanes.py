@@ -379,7 +379,7 @@ def addoption(parser: pytest.Parser) -> None:
                     help="run only this lane's tests")
     group.addoption("--shard", dest="aew_shard", default=None, metavar="K/N",
                     help="run only shard K of N (deterministic, duration-balanced)")
-    group.addoption("--durations-file", dest="aew_durations_file", default=None,
+    group.addoption("--durations-file", dest="aew_durations_file", default=None, metavar="FILE",
                     help="recorded test durations used to balance shards (default tests/durations.json)")
     group.addoption("--lane-report", dest="aew_lane_report", default=None, metavar="PATH",
                     help="write the collected set and per-test outcomes as JSON (read by tools/ci/check_assurance.py)")

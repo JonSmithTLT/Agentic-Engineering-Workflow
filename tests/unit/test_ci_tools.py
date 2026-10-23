@@ -398,7 +398,7 @@ def test_the_lanes_job_takes_its_shards_and_durations_from_the_tier_job_and_only
     lanes = jobs["lanes"]
     assert lanes["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.lanes_matrix) }}"
     pytest_step = next(s for s in lanes["steps"] if "--lane ${{ matrix.lane }}" in str(s.get("run", "")))
-    assert '--durations-file "${{ runner.temp }}/shard-durations/durations.json"' in pytest_step["run"]
+    assert '"--durations-file=${{ runner.temp }}/shard-durations/durations.json"' in pytest_step["run"]
     download = lanes["steps"][lanes["steps"].index(pytest_step) - 1]
     assert download["uses"].startswith("actions/download-artifact") and download["with"]["name"] == "shard-durations"
     steps = jobs["assurance"]["steps"]
@@ -2037,7 +2037,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
     ours, theirs = pytest_flags(lane["run"]), pytest_flags(fast["run"])
     assert ours == theirs and "-n" in ours, (ours, theirs)
-    assert "--session-deadline 960" in lane["run"] and '--hang-dir "${{ runner.temp }}/fastbase/hangs"' in lane["run"]
+    assert "--session-deadline 960" in lane["run"] and '"--hang-dir=${{ runner.temp }}/fastbase/hangs"' in lane["run"]
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
     assert lane["working-directory"] == "${{ runner.temp }}/base"
@@ -2202,6 +2202,34 @@ def _workflow_lanes():
     lanes = bounds.workflow_lanes(ROOT / ".github" / "workflows")
     assert len(lanes) >= 12, [x.label for x in lanes]  # every workflow's pytest invocations were found
     return lanes
+
+
+def plugin_path_options() -> set[str]:
+    """The options the repository's own pytest plugins define whose value is a path (``metavar`` PATH, DIR or FILE),
+    read from their ``addoption`` calls."""
+    found: set[str] = set()
+    for path in [ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py")]:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "addoption"
+                    and node.args and isinstance(node.args[0], ast.Constant)):
+                metavar = next((k.value for k in node.keywords if k.arg == "metavar"), None)
+                if isinstance(metavar, ast.Constant) and metavar.value in ("PATH", "DIR", "FILE"):
+                    found.add(str(node.args[0].value))
+    return found
+
+
+def test_every_path_option_of_the_repositorys_plugins_is_one_word_in_every_workflow():
+    """pytest picks its rootdir from the command's paths before the repository's plugins define their options. So an
+    existing file or directory given as an option's separate word counts as a test path, and the rootdir becomes its
+    common ancestor with the checkout, outside the repository: the plugins are not loaded and every option of theirs
+    is "unrecognized". PR #235's first run failed every lane job that way (`--durations-file <file>`), and the
+    nightly's walk blocks had failed every night the same way (`--hang-dir <directory>`, which exists by then). A
+    path option is therefore always one word, `--opt=value`, in every pytest command of every workflow."""
+    options = plugin_path_options()
+    assert {"--lane-report", "--hang-dir", "--durations-file", "--discovery-out", "--harness-evidence"} <= options
+    separate = [(lane.label, word) for lane in _workflow_lanes()
+                for word in re.sub(r"\$\{\{[^}]*\}\}", "X", lane.command).replace('"', " ").split() if word in options]
+    assert separate == [], separate
 
 
 def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():

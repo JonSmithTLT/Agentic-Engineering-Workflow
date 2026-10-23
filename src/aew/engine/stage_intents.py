@@ -59,8 +59,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-import yaml
-
 from aew.engine import primitives as P
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
@@ -68,7 +66,7 @@ from aew.harness import contract as K
 from aew.harness import runlog
 from aew.knowledge.records import format_id
 from aew.schemas import validate
-from aew.util import load_yaml, sha256_bytes, utc_now
+from aew.util import load_yaml, safe_dump_yaml, sha256_bytes, utc_now
 
 SCHEMA = "aew/stage-intent/v1"
 ACTIVE = "ACTIVE"
@@ -589,7 +587,7 @@ class StageIntents:
         unit = state["work"].get(wid) if wid else None
         archived = wid is not None and unit is None and self.archive.bundle(state, wid) is not None
         rel = cold_rel(si["id"], wid if (unit is not None or archived) else None)
-        text = yaml.safe_dump(si, sort_keys=False, allow_unicode=True)
+        text = safe_dump_yaml(si)
         ctx.session.write(rel, text, immutable=True)
         sha = sha256_bytes(text.encode("utf-8"))
         if unit is not None:

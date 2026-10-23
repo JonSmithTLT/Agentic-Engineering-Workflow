@@ -49,8 +49,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from aew.engine.authority import require_lead
 from aew.engine.base import V2, TxnContext
 from aew.engine.store import Transition
@@ -65,7 +63,7 @@ from aew.errors import (
 )
 from aew.knowledge.records import format_id
 from aew.schemas import validate
-from aew.util import sha256_bytes, utc_now
+from aew.util import safe_dump_yaml, sha256_bytes, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
@@ -500,7 +498,7 @@ class Dispositions:
         unit = state["work"].get(wid) if wid else None
         archived = wid is not None and unit is None and self.archive.bundle(state, wid) is not None
         rel = cold_rel(record["id"], wid if (unit is not None or archived) else None)
-        text = yaml.safe_dump(record, sort_keys=False, allow_unicode=True)
+        text = safe_dump_yaml(record)
         ctx.session.write(rel, text, immutable=True)
         sha = sha256_bytes(text.encode("utf-8"))
         subject = record["subject"]["id"]

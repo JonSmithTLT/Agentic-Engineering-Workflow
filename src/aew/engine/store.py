@@ -78,7 +78,7 @@ from aew.util import (
     create_exclusive,
     dump_yaml,
     fsync_dir,
-    load_yaml,
+    load_own_yaml,
     replace_with_retry,
     sha256_bytes,
     sha256_file,
@@ -236,7 +236,7 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
     expected = trailer[len(CHECKSUM_PREFIX):].strip()
     if sha256_bytes(body.encode("utf-8")) != expected:
         raise IntegrityError(f"{source}: checksum mismatch (damaged or edited outside AEW)")
-    state = load_yaml(body, source=source)
+    state = load_own_yaml(body, source=source)  # checked against its checksum above
     validate("control", state, source=source)
     return state
 
@@ -712,7 +712,7 @@ class ControlStore:
             ) from None
         if sha256_bytes(raw) != txn_ref["sha256"]:
             raise IntegrityError(f"redo record {txn_ref['path']} is damaged")
-        return load_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]
+        return load_own_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]  # its pinned sha256 matched
 
     def _apply(self, staged: list[dict[str, Any]], *, inject: bool = False,
                fault_after: list[str | None] | None = None) -> None:

@@ -294,8 +294,27 @@ def test_a_holder_leaves_the_turnstile_free_so_the_next_taker_queues_behind_it(t
     with FileLock(path, timeout=5):
         with FileLock(path.with_name("control.lock.queue"), timeout=0):  # free while the lock is held
             pass
-        with pytest.raises(LockTimeout, match="could not lock"):  # and the lock still excludes
+        with pytest.raises(LockTimeout, match="could not lock") as timed_out:  # and the lock still excludes
             FileLock(path, timeout=0.05).__enter__()
+        with FileLock(path.with_name("control.lock.queue"), timeout=0):  # a taker that timed out let it go
+            pass
+        assert timed_out.value is not None  # kept alive till here, so only an explicit release freed the turnstile
+
+
+def test_a_taker_that_cannot_open_the_lock_lets_the_turnstile_go(tmp_path):
+    """Every way out of taking the lock releases the turnstile: here the lock file cannot be opened (a directory at
+    its path) after the turnstile was taken."""
+    from aew.engine.lock import FileLock
+
+    path = tmp_path / "control.lock"
+    path.mkdir()
+    with pytest.raises(OSError) as raised:
+        FileLock(path, timeout=5).__enter__()
+    # The error is kept, as a caller that reports it keeps it: its traceback keeps the taker's frame alive, so only an
+    # explicit release, not the file object's garbage collection, frees the turnstile here.
+    with FileLock(path.with_name("control.lock.queue"), timeout=0):
+        pass
+    assert raised.value is not None
 
 
 def test_a_taker_stuck_in_the_turnstile_holds_back_every_other_taker_until_its_timeout(tmp_path):

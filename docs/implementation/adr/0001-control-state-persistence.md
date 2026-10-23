@@ -169,6 +169,7 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
     holds the lock more than twice in a row while the other waits, and every wait is under three holds. Run against
     the old polling loop, it fails with one taker holding the lock 12 times in a row.
   - In `tests/unit/test_store.py`:
-    - the turnstile is free while the lock is held;
+    - the turnstile is free while the lock is held, and after a taker times out;
+    - a taker that cannot open the lock lets the turnstile go;
     - a taker stuck in the turnstile holds others back until their timeout;
     - a turnstile that cannot be opened costs fairness, never the lock.

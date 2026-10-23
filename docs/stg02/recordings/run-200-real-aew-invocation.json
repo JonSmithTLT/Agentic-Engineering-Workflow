@@ -1,0 +1,282 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/runs/SU5WLTAwMDE",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "collection_basis": null,
+   "continuity": "unknown",
+   "correlation_id": "corr:66c2d9ad3be14eb28a3a7a29dc3d6241",
+   "effective_recipient_ref": "fixture:recipient-operator",
+   "items": [
+    {
+     "data": {
+      "attachment_ref": null,
+      "authority_effect": "READ_ONLY_NO_LIFECYCLE_EFFECT",
+      "custody_basis_ref": null,
+      "custody_state": "UNKNOWN",
+      "elapsed_basis_ref": null,
+      "elapsed_observed_seconds": null,
+      "invocation_ref": {
+       "generation": null,
+       "id": "INV-0001",
+       "kind": "execution_activity",
+       "package_digest": null,
+       "revision": null
+      },
+      "last_progress_at": null,
+      "limitations": [
+       "source_unqualified",
+       "partial_observation"
+      ],
+      "non_model_effect_basis_ref": null,
+      "non_model_effect_state": "NOT_ESTABLISHED",
+      "non_model_resource_basis_ref": null,
+      "non_model_resource_exposure": "UNKNOWN",
+      "phase": "UNKNOWN",
+      "phase_basis_ref": null,
+      "phase_observation_class": "UNKNOWN",
+      "progress_basis_ref": null,
+      "remote_effect_basis_ref": null,
+      "remote_effect_domain": "IF12_MODEL_DELIVERY_ONLY",
+      "remote_effect_state": "NOT_ESTABLISHED",
+      "resource_basis_ref": null,
+      "resource_state": {
+       "accounting_class": "UNKNOWN",
+       "accounting_domain": "IF10_MODEL_DELIVERY_ONLY",
+       "currency": null,
+       "monetary_amount": null,
+       "observation_class": "UNKNOWN",
+       "original_operation_ref": null,
+       "outstanding_exposure": "UNKNOWN",
+       "usage_units": null
+      },
+      "source_epoch": "aew:rev:9",
+      "stall_assessment": "NOT_ESTABLISHED",
+      "stall_basis_ref": null,
+      "started_at": null,
+      "wake_assessment": "NOT_ESTABLISHED",
+      "wake_basis_ref": null,
+      "whole_invocation_effect_clearance": "NOT_ESTABLISHED",
+      "whole_invocation_resource_clearance": "NOT_ESTABLISHED",
+      "work_ref": {
+       "generation": null,
+       "id": "T-0001",
+       "kind": "ticket",
+       "package_digest": null,
+       "revision": "plan-1"
+      }
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [
+      {
+       "field_path": "data.phase",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:invocation:INV-0001",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "R01",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.work_ref",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0001",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.custody_state",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.resource_state",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:IF10",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:IF10",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "IF10",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.remote_effect_state",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:IF12",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:IF12",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "IF12",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      }
+     ],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "INV-0001",
+      "kind": "execution_activity",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "run",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "aew:project:calc",
+      "fact_ref": "aew:invocation:INV-0001",
+      "governing_owner": null,
+      "issuer_ref": "aew:engine-state",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T02:32:37Z",
+      "owner": "R01",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "aew:project:calc",
+      "source_version": "aew:rev:9"
+     }
+    }
+   ],
+   "limitations": [
+    "source_unqualified"
+   ],
+   "mode": "detail",
+   "outcome": "partial",
+   "page": null,
+   "projection_as_of": "2026-10-20T02:32:37Z",
+   "wire_version": "0.3.4"
+  }
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/waiting",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.3"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 400,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "invalid_request",
+   "correlation_id": "corr:a0769b053bdc480fbac21faaa8e5bc19",
+   "retry": "never",
+   "status": 400,
+   "title": "The request is not a valid request for this route",
+   "type": "about:blank"
+  }
+ }
+}

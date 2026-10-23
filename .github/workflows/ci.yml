@@ -110,10 +110,13 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
+      # Under xdist (strategy §5: everything but the serial lane may run in parallel). Single-process, this lane took
+      # most of the job's 1200 s on a good runner and left the serial lane too little on a slow one (2026-10-22).
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600 --session-deadline 1200
+          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
+          --test-timeout 600 --session-deadline 1200
           --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
@@ -210,24 +213,25 @@ jobs:
 
   fastbase:
     # The coverage premise's base (CI plan v7 §5, V5-1): the whole fast lane at the base tip (GITHUB_SHA^1), under
-    # coverage, in the same run, with exactly the fast step's flags, so `assurance` can prove that a fast-tier change
-    # did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow run (which stays
-    # full) runs it too (V6-1), and only when a fast-lane test module changed: with only docs and durations there is
-    # no premise to check (PR #163 review, V7-2). Not a required check: `assurance` is, and requires its success only
+    # coverage, in the same run, with exactly the fast step's flags, xdist included (both sides measured the same way:
+    # review of #232, F1 and F6; test_ci_tools compares the two steps' flags), so `assurance` can prove that a
+    # fast-tier change did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow
+    # run (which stays full) runs it too (V6-1), and only when a fast-lane test module changed: with only docs and
+    # durations there is no premise to check (PR #163 review, V7-2). Not a required check: `assurance` is, and requires its success only
     # in the fast tier with a changed module. During shadow a red fastbase is evidence for PR 1b, never a merge blocker.
     name: fastbase
     needs: changes
     if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
     runs-on: ubuntu-latest
-    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes), and
+    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 7.4 and 0.8 minutes), and
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
-    timeout-minutes: 19
+    timeout-minutes: 20
     steps:
       # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
       # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
       - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
         shell: bash
-        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 900 ))" >> "$GITHUB_ENV"
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the base tip, and the spec-pin test verifies the frozen tag
@@ -245,8 +249,8 @@ jobs:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
         run: >-
-          python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
-          --session-deadline 900 --hang-dir "${{ runner.temp }}/fastbase/hangs"
+          python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+          --lane fast --test-timeout 600 --session-deadline 960 --hang-dir "${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -1,0 +1,27 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/waiting?limit=2&cursor=c1.2.b88a18e4729d8220c393a8a47feff09e",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4",
+   "Authorization": "Bearer token-other-synthetic"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 409,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "cursor_stale_or_unauthorized",
+   "correlation_id": "corr:a81d0af4f0fd4a38b2a34ec67037d2d4",
+   "retry": "refresh_read",
+   "status": 409,
+   "title": "The cursor is stale or not yours; read again",
+   "type": "about:blank"
+  }
+ }
+}

@@ -51,7 +51,7 @@ jobs:
         run: >-
           python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py
           -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0
-          --hang-dir "${{ runner.temp }}/vertical/hangs"
+          "--hang-dir=${{ runner.temp }}/vertical/hangs"
       - name: The ledgers' one-screen summaries
         if: always()
         shell: bash

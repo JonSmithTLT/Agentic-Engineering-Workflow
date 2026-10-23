@@ -16,9 +16,23 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
+  shard-history:
+    # Keeps the merge gate's shard-durations history (ci.yml; tools/ci/shard_plan.py, register E44) from expiring:
+    # GitHub removes a cache entry nobody has read for seven days, and a week with no CI run would then leave the
+    # next run to the fallback (review of #235, F1). A restore is a read; nothing here ever saves.
+    name: shard-durations history (read, so it does not expire)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/cache/restore@v6
+        with:
+          path: shard-history/history.json
+          key: shard-durations-restore-only
+          restore-keys: shard-durations-
+
   reference:
-    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome, and its lane
-    # reports refresh tests/durations.json (tools/ci/update_durations.py). The suite is split into duration-balanced
+    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome; the merge gate's
+    # shards balance on `main`'s own history instead (ci.yml, register E44). The suite is split into duration-balanced
     # shards (tests/helpers/lanes.py, `--shard k/N`), each well inside the job timeout; `reference-assurance` below
     # proves the shards together ran every collected test exactly once. Grow `of` when a shard nears 45 minutes,
     # never the timeout (E26). Sized on 2026-10-09 (strategy §8): 113 test-minutes on Linux, 294 on Windows.
@@ -58,7 +72,7 @@ jobs:
       - run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
           --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 3600
-          --lane-report "${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
+          "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -138,7 +152,7 @@ jobs:
           echo "hierarchy walk: same seeds — reproduce with AEW_HWALK_SEEDS=<seed> AEW_HWALK_STEPS=250 AEW_HWALK_FAULT_RATE=0.12 pytest tests/regression/test_hierarchy_walk.py" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: >-
           python -m pytest -q -p no:cacheprovider --lane adversarial -n auto --dist worksteal
-          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 --hang-dir "${{ runner.temp }}/hangs"
+          --test-timeout 1800 --session-deadline 3600 --max-worker-restart 0 "--hang-dir=${{ runner.temp }}/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -174,7 +188,7 @@ jobs:
           for i in $(seq 1 10); do
             echo "::group::serial lane repetition $i"
             python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial --test-timeout 240 \
-              --session-deadline 270 --hang-dir "${{ runner.temp }}/hangs/rep-$i" || exit 1
+              --session-deadline 270 "--hang-dir=${{ runner.temp }}/hangs/rep-$i" || exit 1
             echo "::endgroup::"
           done
       - name: racing writers with 4x the transactions
@@ -183,7 +197,7 @@ jobs:
           AEW_RACE_WRITES: "200"
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --lane serial -k racing_writers
-          --test-timeout 600 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs/racing"
+          --test-timeout 600 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs/racing"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -220,7 +234,7 @@ jobs:
         run: |
           echo "crash seed: $GITHUB_RUN_NUMBER — reproduce with AEW_CRASH_SEED=$GITHUB_RUN_NUMBER AEW_CRASH_ITERATIONS=2000" | tee -a "$GITHUB_STEP_SUMMARY"
           AEW_CRASH_SEED="$GITHUB_RUN_NUMBER" python -m pytest -q -p no:cacheprovider -p no:xdist \
-            --test-timeout 1800 --session-deadline 3600 --hang-dir "${{ runner.temp }}/hangs" \
+            --test-timeout 1800 --session-deadline 3600 "--hang-dir=${{ runner.temp }}/hangs" \
             "tests/unit/test_store.py::test_randomized_crash_iterations"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -269,13 +283,13 @@ jobs:
           python -m pytest -q -p no:cacheprovider --durations=20 -m "not serial"
           --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600
           --session-deadline 3600 --max-worker-restart 0
-          --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
+          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
       - name: serial lane (once per OS, never parallel)
         if: matrix.shard == 1 && (success() || failure())
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
           --session-deadline 3600
-          --lane-report "${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
+          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -311,7 +325,7 @@ jobs:
           test "${{ needs.matrix-extra.result }}" = success
 
   report:
-    needs: [reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra,
+    needs: [shard-history, reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra,
             matrix-extra-assurance]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a

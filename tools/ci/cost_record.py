@@ -5,8 +5,8 @@
 Reads the lane reports `assurance` already downloads and, when given, the run's jobs from the GitHub API, and writes
 what the run cost: queue delay and end-to-end wall clock, runner-minutes, wall time per lane and shard against the
 strategy's budgets, total pytest time, the slowest 20 tests, each test's share of its lane, `aew` CLI calls per test,
-the share of collected tests that `tests/durations.json` covers, and, for a pull request, the cost of the tests in the
-test files it changes.
+the share of collected tests that the run's durations table covers (the `shard-durations` table its shards balanced
+on: register E44), and, for a pull request, the cost of the tests in the test files it changes.
 
 It reports; it never fails the gate (operator, 2026-10-06: runner speed never fails a correct change; the job timeout
 is the only hard bound). CI-health findings are warnings:
@@ -14,7 +14,7 @@ is the only hard bound). CI-health findings are warnings:
 * a lane job over 20 minutes warns, over 25 minutes is a CI-health violation (CRD-11);
 * a test over 25% of its lane's test time, or a fast-lane test over 30 seconds, is a CI-health violation (E45).
 
-    python tools/ci/cost_record.py REPORT_DIR [--jobs JOBS.json] [--durations tests/durations.json]
+    python tools/ci/cost_record.py REPORT_DIR [--jobs JOBS.json] [--durations DURATIONS.json]
         [--changed-files PATHS.txt] [--summary FILE] [--out cost-record.json]
 """
 
@@ -252,12 +252,12 @@ def summary(record: dict[str, Any]) -> str:
     for platform, f in record["platforms"].items():
         lines += ["", f"### {platform}: {f['pytest_s'] / 60:.1f} min of pytest time, "
                       f"{f['cli_calls']['total']} `aew` calls through the test helper (`conftest.run_aew`; direct "
-                      "`python -m aew` starts and fake agents' calls are not counted), durations file covers "
-                      + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
+                      "`python -m aew` starts and fake agents' calls are not counted), the run's durations table "
+                      "covers " + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
                       + " of collected tests", ""]
         if "changed_tests" in f:
             n = f["changed_tests"]
-            lines += [f"New tests (in the files this change touches, unknown to `tests/durations.json`): "
+            lines += [f"New tests (in the files this change touches, unknown to the run's durations table): "
                       f"{n['new']['count']}, {n['new']['seconds']:.0f} s in all."]
             lines += [f"- {t['seconds']:.1f}s ({t['share_of_lane']:.0%} of {t['lane']}) `{t['id']}`"
                       for t in n["new"]["slowest"]]
@@ -282,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("reports", type=Path, help="directory searched recursively for lane reports")
     ap.add_argument("--jobs", type=Path, help="the run's jobs as the GitHub API returns them ({'jobs': [...]})")
     ap.add_argument("--run", type=Path, help="the run itself as the GitHub API returns it (its created_at)")
-    ap.add_argument("--durations", type=Path, help="tests/durations.json")
+    ap.add_argument("--durations", type=Path, help="the table the run's shards balanced on (shard-durations)")
     ap.add_argument("--changed-files", type=Path,
                     help="the change's changed paths, one per line (a pull request's diff against its base)")
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")

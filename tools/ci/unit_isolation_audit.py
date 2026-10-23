@@ -94,8 +94,10 @@ _auditor: Auditor | None = None
 
 def pytest_addoption(parser: Any) -> None:
     group = parser.getgroup("unit-isolation-audit", "the fast tier's audit cross-check (CI plan v7 §7)")
-    group.addoption("--unit-isolation-dir", default=None, help="the unit directory no audited test may load")
-    group.addoption("--unit-isolation-report", default=None, help="directory for this process's violations (JSON)")
+    group.addoption("--unit-isolation-dir", default=None, metavar="DIR",
+                    help="the unit directory no audited test may load")
+    group.addoption("--unit-isolation-report", default=None, metavar="DIR",
+                    help="directory for this process's violations (JSON)")
 
 
 def pytest_configure(config: Any) -> None:

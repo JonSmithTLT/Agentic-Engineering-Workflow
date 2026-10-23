@@ -101,6 +101,7 @@ class Lane:
     lane_report: str | None
     repeats: int = 1
     uploads: list[dict[str, Any]] = field(default_factory=list)
+    job_deadline_s: float | None = None  # the job's AEW_JOB_DEADLINE, as seconds after its first step
 
     @property
     def label(self) -> str:
@@ -148,6 +149,7 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
         for job_name, job in (doc.get("jobs") or {}).items():
             steps = job.get("steps") or []
             uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+            set_at = next((m for m in (JOB_DEADLINE_RE.search(str(s.get("run") or "")) for s in steps) if m), None)
             for step in steps:
                 for command, repeats in _commands(str(step.get("run") or "")):
                     text = re.sub(r"\$\{\{[^}]*\}\}", "X", command)  # expressions are one word to the parser
@@ -164,7 +166,8 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
                         lane=_option(argv, "--lane"), xdist="-n" in argv,
                         max_worker_restart=_option(argv, "--max-worker-restart"),
                         hang_dir=_option(argv, "--hang-dir"), lane_report=_option(argv, "--lane-report"),
-                        repeats=repeats, uploads=uploads))
+                        repeats=repeats, uploads=uploads,
+                        job_deadline_s=float(set_at.group(1)) if set_at else None))
     return lanes
 
 

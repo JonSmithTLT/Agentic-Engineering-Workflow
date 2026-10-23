@@ -3728,11 +3728,13 @@ sections:
     Closed: '2026-10-23'
     By: 'PR #235: every green push to `main` adds its lane reports to a rolling history in the Actions cache (`update_durations.py
       --history`, each test''s last five durations), and every run balances its shards on the history''s medians and sizes
-      the `lanes` matrix from them (`tools/ci/shard_plan.py`: the fewest shards that fit the session deadline on a runner
-      twice as slow; reported, never gating). A missing or unreadable history falls back to the committed table and computed
-      counts rather than to balancing by test count, and no automated PR is needed: the committed `tests/durations.json`
-      is only the seed and the fallback (`testing-and-ci-strategy.md` §7, §8). Exactly-once assurance still proves membership
-      independently of the history'
+      the `lanes` matrix from them (`tools/ci/shard_plan.py`: the fewest shards that fit on a runner twice as slow, the
+      job''s setup included; reported, never gating). The committed `tests/durations.json` is a copy of a green `main` run''s
+      table with each lane''s count, which is also that lane''s floor. A run without a usable history (missing, unreadable
+      or not of a history''s shape) balances on it at twice its counts, the nightly reads the history so it does not expire,
+      and every run warns when the committed table falls behind; the refresh is a copy of a green `main` run''s `shard-durations`
+      table in an ordinary pull request (the operator''s ruling on CRD-13, 2026-10-23; `testing-and-ci-strategy.md` §7,
+      §8). Exactly-once assurance still proves membership independently of the history'
 
   - '#': E45
     Was: 'A per-test cost check: a test over a set share of its lane''s time (for example 25%), or a fast-lane test over

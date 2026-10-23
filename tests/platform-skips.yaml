@@ -264,6 +264,51 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
+    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask077]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask002]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask077]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask002]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_changed_later: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_interrupted_migration_runs_again_until_the_control_file_has_the_mode: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_the_migration_changes_only_what_lacks_the_bits_and_finishes_past_a_path_it_may_not_change: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_path_the_compactor_prunes_during_a_walk_fails_neither_the_migration_nor_doctor: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_store_directory_that_is_a_link_still_gets_the_stores_modes: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

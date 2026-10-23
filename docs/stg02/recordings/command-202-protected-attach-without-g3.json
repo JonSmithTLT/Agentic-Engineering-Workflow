@@ -1,0 +1,75 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/o01/v0/command-sets",
+  "headers": {
+   "X-AEW-O01-Wire": "o01-command-0.2-review-candidate",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "wire_version": "o01-command-0.2-review-candidate",
+   "request_set_ref": "fixture:request-attach-lead-no-g3.rec20261020T023237.attach",
+   "client_request_key": "fixture:key-attach-lead-no-g3.rec20261020T023237.attach",
+   "recipient_ref": "fixture:recipient-operator",
+   "installation_ref": "fixture:installation-slice",
+   "consent_set_ref": "fixture:consent-never-issued",
+   "intents": [
+    {
+     "intent_ref": "fixture:intent-attach-lead",
+     "action": "ATTACH_LEAD",
+     "actor_ref": "fixture:recipient-operator",
+     "authority_class": "OPERATOR_RESERVED",
+     "owner_hint": "HEB",
+     "subject": {
+      "project_ref": "fixture:project-slice",
+      "installation_ref": "fixture:installation-slice",
+      "attachment_ref": null,
+      "generation_ref": null
+     },
+     "predecessor": {
+      "basis_ref": "fixture:basis-attach",
+      "basis_version": "fixture:revision-1",
+      "source_epoch": "fixture:heb-epoch-1"
+     },
+     "target": {
+      "project_ref": "fixture:project-slice",
+      "profile_binding_ref": "fixture:profile-1",
+      "requested_lead_ref": "fixture:lead-2",
+      "seat_class": "LEAD"
+     },
+     "origin_proof_ref": "fixture:origin-proof-never-issued",
+     "delegated_grant_proof_ref": null
+    }
+   ]
+  }
+ },
+ "response": {
+  "status": 202,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-o01-wire": "o01-command-0.2-review-candidate"
+  },
+  "body": {
+   "carrier_state": "COMPLETE_WITH_PER_INTENT_RESULTS",
+   "observed_at": "2026-10-20T02:32:37Z",
+   "recipient_ref": "fixture:recipient-operator",
+   "request_set_ref": "fixture:request-attach-lead-no-g3.rec20261020T023237.attach",
+   "results": [
+    {
+     "admission_state": "REJECTED",
+     "cancellation_state": "NONE",
+     "effect_state": "NOT_OBSERVED",
+     "intent_ref": "fixture:intent-attach-lead",
+     "operation_ref": null,
+     "owner": "HEB",
+     "owner_evidence_ref": null,
+     "reason_code": "ORIGIN_NOT_ESTABLISHED",
+     "residual_remote_effect": "NOT_ESTABLISHED"
+    }
+   ],
+   "source_valid_until": "2026-10-20T02:47:37Z",
+   "wire_version": "o01-command-0.2-review-candidate"
+  }
+ }
+}

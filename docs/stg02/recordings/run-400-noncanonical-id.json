@@ -1,0 +1,26 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/runs/Zml4dHVyZTpydW4tY29udGludWUtMQ=",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 400,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "code": "invalid_request",
+   "correlation_id": "corr:b6af38b0f70c4cf5be607301c486b748",
+   "retry": "never",
+   "status": 400,
+   "title": "The request is not a valid request for this route",
+   "type": "about:blank"
+  }
+ }
+}

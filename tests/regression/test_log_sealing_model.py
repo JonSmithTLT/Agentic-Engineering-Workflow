@@ -289,12 +289,12 @@ def test_rule_28_has_teeth_pruning_before_the_segment_is_durable_is_caught(tmp_p
     and crashed in between would leave neither representation, which the oracle reports as incomplete history."""
     state = long_log(tmp_path, 2 * SEG + 20)
 
-    def prune_then_crash(path, text):
+    def prune_then_crash(store, path, text, *, exclusive=False):
         for r in range(SEG):
             (tmp_path / outbox.record_path(r)).unlink(missing_ok=True)
         raise InjectedFault("between pruning and publishing")
 
-    monkeypatch.setattr(log_compact, "create_exclusive", prune_then_crash)
+    monkeypatch.setattr(log_compact, "write_file", prune_then_crash)
     with pytest.raises(InjectedFault):
         log_compact.compact(make_store(tmp_path), window=WINDOW)
     assert any("incomplete history" in p for p in outbox_violations(tmp_path, state))

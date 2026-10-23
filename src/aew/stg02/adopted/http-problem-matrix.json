@@ -1,0 +1,1671 @@
+{
+ "operations": 22,
+ "rows": [
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/coverage",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/coverage",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/coverage",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/coverage",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/coverage",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/waiting",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/waiting",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/waiting",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/waiting",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/waiting",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attention",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/attention",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attention",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/attention",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/attention",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attachments",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/attachments",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attachments",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/attachments",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/attachments",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attachments/{attachment_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/attachments/{attachment_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/attachments/{attachment_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/attachments/{attachment_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/attachments/{attachment_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/work",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/work",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/work",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work/{work_kind}/{work_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/work/{work_kind}/{work_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work/{work_kind}/{work_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/work/{work_kind}/{work_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/work/{work_kind}/{work_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/research/claims/{claim_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/research/claims/{claim_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/research/claims/{claim_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/research/claims/{claim_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/research/claims/{claim_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/knowledge",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/knowledge",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/knowledge",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/resolve",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/resolve",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/resolve",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/resolve",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/resolve",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/capabilities",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/capabilities",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/capabilities",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/capabilities",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/capabilities",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/runs",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/runs",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/runs",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/runs",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/runs",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/runs/{execution_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/runs/{execution_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/runs/{execution_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/runs/{execution_id}",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/runs/{execution_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/continuation-state/{work_id}",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/continuation-state/{work_id}",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/continuation-state/{work_id}",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/continuation-state/{work_id}",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/owner-operations",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/owner-operations",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/owner-operations",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "cursor_stale_or_unauthorized",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/v1/read/owner-operations",
+   "status": 409
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/owner-operations",
+   "status": 503
+  },
+  {
+   "api": "D01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/holds/{hold_id}/recovery",
+   "status": 400
+  },
+  {
+   "api": "D01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "reauthenticate",
+   "route": "/v1/read/holds/{hold_id}/recovery",
+   "status": 401
+  },
+  {
+   "api": "D01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/v1/read/holds/{hold_id}/recovery",
+   "status": 404
+  },
+  {
+   "api": "D01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-Wire-Version": "0.3.4"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/v1/read/holds/{hold_id}/recovery",
+   "status": 503
+  },
+  {
+   "api": "O01",
+   "code": "invalid_request",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "never",
+   "route": "/o01/v0/command-sets",
+   "status": 400
+  },
+  {
+   "api": "O01",
+   "code": "unsupported_action",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "never",
+   "route": "/o01/v0/command-sets",
+   "status": 400
+  },
+  {
+   "api": "O01",
+   "code": "authentication_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "reauthenticate",
+   "route": "/o01/v0/command-sets",
+   "status": 401
+  },
+  {
+   "api": "O01",
+   "code": "operator_origin_not_established",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "not_established",
+   "route": "/o01/v0/command-sets",
+   "status": 401
+  },
+  {
+   "api": "O01",
+   "code": "operator_origin_unqualified",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "reauthenticate",
+   "route": "/o01/v0/command-sets",
+   "status": 401
+  },
+  {
+   "api": "O01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "never",
+   "route": "/o01/v0/command-sets",
+   "status": 404
+  },
+  {
+   "api": "O01",
+   "code": "precondition_changed",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "refresh_read",
+   "route": "/o01/v0/command-sets",
+   "status": 409
+  },
+  {
+   "api": "O01",
+   "code": "request_key_conflict",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "never",
+   "route": "/o01/v0/command-sets",
+   "status": 409
+  },
+  {
+   "api": "O01",
+   "code": "unresolved_no_redispatch",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "never",
+   "route": "/o01/v0/command-sets",
+   "status": 409
+  },
+  {
+   "api": "O01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "post",
+   "retry": "when_source_recovers",
+   "route": "/o01/v0/command-sets",
+   "status": 503
+  },
+  {
+   "api": "O01",
+   "code": "not_found_or_not_disclosable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "get",
+   "retry": "never",
+   "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+   "status": 404
+  },
+  {
+   "api": "O01",
+   "code": "precondition_changed",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "get",
+   "retry": "refresh_read",
+   "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+   "status": 409
+  },
+  {
+   "api": "O01",
+   "code": "owner_unavailable",
+   "content_type": [
+    "application/problem+json"
+   ],
+   "headers": {
+    "Cache-Control": "private, no-store",
+    "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+   },
+   "method": "get",
+   "retry": "when_source_recovers",
+   "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+   "status": 503
+  }
+ ],
+ "status": "derived from the published OpenAPI documents by 03-ORACLE/verify_external_behaviour.py; do not edit by hand"
+}

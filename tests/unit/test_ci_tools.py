@@ -28,6 +28,7 @@ def _load(name: str):
 check_assurance = _load("check_assurance")
 tier = _load("tier")
 update_durations = _load("update_durations")
+shard_plan = _load("shard_plan")
 cost_record = _load("cost_record")
 coverage_gate = _load("coverage_gate")
 coverage_premise = _load("coverage_premise")
@@ -262,6 +263,176 @@ def test_durations_merge_updates_and_prunes():
     assert merged["schema"] == "aew/test-durations/v1"
     assert merged["platforms"]["win32"] == {ALL[0]: 0.5}  # refreshed; the vanished test and the skip are gone
     assert merged["platforms"]["darwin"] == {"k": 1.0}  # platforms without reports are kept
+
+
+# ------------------------------------------------------------------ the rolling durations and the shard sizing (E44)
+
+def timed_report(platform: str, lane: str, durations: dict[str, float], wall_s: float = 10.0, workers: int = 4,
+                 lanes: dict[str, str] | None = None, shard: str | None = None) -> dict:
+    r = report(platform, lane, {n: "passed" for n in durations}, shard=shard, xdist_workers=workers,
+               lanes=dict(lanes or {}))
+    r["wall_s"] = wall_s
+    for n, d in durations.items():
+        r["results"][n]["duration"] = d
+    return r
+
+
+def test_the_durations_history_keeps_each_tests_last_five_runs_and_the_table_is_their_median():
+    seed = {"platforms": {"linux": {ALL[0]: 100.0, "tests/unit/test_gone.py::x": 1.0}}}
+    history = update_durations.seed_history(seed)
+    for i, d in enumerate([1.0, 2.0, 3.0, 4.0, 50.0, 6.0]):
+        history = update_durations.merge_history(history, [timed_report("linux", "fast", {ALL[0]: d})], f"run{i}")
+    assert history["platforms"]["linux"][ALL[0]] == [2.0, 3.0, 4.0, 50.0, 6.0]  # the seed and the oldest run are gone
+    assert history["runs"] == ["run1", "run2", "run3", "run4", "run5"]
+    assert "tests/unit/test_gone.py::x" not in history["platforms"]["linux"]  # no longer collected
+    assert update_durations.table(history) == {"schema": "aew/test-durations/v1",
+                                               "platforms": {"linux": {ALL[0]: 4.0}}}  # one slow run moves nothing
+    skipped = report("linux", "fast", {ALL[0]: "skipped"})
+    assert update_durations.merge_history(history, [skipped])["platforms"]["linux"][ALL[0]] == [2.0, 3.0, 4.0, 50.0,
+                                                                                                6.0]
+
+
+def test_a_missing_unreadable_or_foreign_history_starts_again_from_the_committed_table(tmp_path):
+    seed = {"platforms": {"win32": {ALL[0]: 7.0}}}
+    for content in (None, "{not json", json.dumps({"schema": "aew/something-else/v1"})):
+        path = tmp_path / "history.json"
+        if content is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(content, encoding="utf-8")
+        history = update_durations.load_history(path, seed)
+        assert history["runs"] == [] and history["platforms"] == {"win32": {ALL[0]: [7.0]}}
+
+
+def test_the_history_records_each_tests_lane_the_xdist_workers_and_each_lanes_time_outside_its_tests():
+    lanes = {ALL[0]: "fast", ALL[2]: "regression"}
+    runs = [timed_report("linux", "regression", {ALL[2]: 8.0}, wall_s=20.0, workers=4, lanes=lanes, shard="1/2"),
+            timed_report("linux", "regression", {ALL[2]: 1.0, ALL[3]: 2.0}, wall_s=5.0, workers=4, lanes=lanes,
+                         shard="2/2"),
+            timed_report("linux", "serial", {ALL[1]: 3.0}, wall_s=4.0, workers=1, lanes=lanes)]
+    runs[2]["xdist_workers"] = None  # a serial session runs without xdist
+    history = update_durations.merge_history(update_durations.seed_history({}), runs, "run")
+    assert history["lanes"] == {"linux": lanes} and history["workers"] == {"linux": 4}
+    # the longest test bounds a shard (8 s on its own), and the worst shard of the lane is kept: 20 - 8 = 12 s
+    assert history["overhead"]["linux"] == {"regression": [12.0], "serial": [1.0]}
+
+
+def sized_history(durations: dict[str, float], lane: str = "integration", workers: int = 4,
+                  outside_s: float = 0.0) -> dict:
+    """A history of one run on both platforms, every test in ``lane``."""
+    out = {"schema": update_durations.HISTORY_SCHEMA, "runs": ["run"], "platforms": {}, "lanes": {}, "workers": {},
+           "overhead": {}}
+    for _, _, platform, _ in shard_plan.LANE_JOBS:
+        out["platforms"][platform] = {n: [d] for n, d in durations.items()}
+        out["lanes"][platform] = {n: lane for n in durations}
+        out["workers"][platform] = workers
+        out["overhead"][platform] = {lane: [outside_s]}
+    return out
+
+
+def test_each_lane_gets_the_fewest_shards_that_fit_the_deadline_on_a_runner_twice_as_slow():
+    deadline = 1800.0  # budget 900 s per shard on the history's runners
+    tests = {f"tests/integration/test_x.py::t{i}": 100.0 for i in range(80)}  # 8000 s, 4 workers: 2000 s in one
+    sizings, table, source = shard_plan.plan(sized_history(tests, outside_s=60.0), {}, deadline)
+    by = {(s.platform, s.lane): s for s in sizings}
+    lane = by[("linux", "integration")]
+    # 3 shards: 27 tests of 100 s over 4 workers is 675 s, plus 60 s outside them; 2 shards would be 1060 s
+    assert (lane.shards, lane.tests, round(lane.slowest_s), lane.budget_s, lane.warning) == (3, 80, 735, 900.0, "")
+    assert shard_plan.slowest_shard_s(sorted(tests), tests, 2, 4, 60.0) > 900.0
+    assert by[("linux", "acceptance")].shards == 1 and by[("linux", "acceptance")].tests == 0  # an empty lane
+    assert table["platforms"]["linux"]["tests/integration/test_x.py::t0"] == 100.0 and "median of 1" in source
+
+
+def test_a_lane_that_no_shard_count_fits_is_a_warning_and_gets_the_closest_count_never_a_failure():
+    one_long = {"tests/integration/test_x.py::huge": 1000.0, **{f"tests/integration/test_x.py::t{i}": 1.0
+                                                                 for i in range(40)}}
+    lane = shard_plan.plan(sized_history(one_long), {}, 1800.0)[0][0]
+    assert lane.shards == 1 and "test_x.py::huge alone is estimated at 1000 s" in lane.warning
+    many = {f"tests/integration/test_x.py::t{i}": 100.0 for i in range(2000)}
+    lane = shard_plan.plan(sized_history(many), {}, 1800.0)[0][0]
+    assert lane.shards == shard_plan.MAX_SHARDS and "outgrown sharding" in lane.warning
+    text, warnings = shard_plan.summary([lane], "test", 1800.0, extra_jobs=30)
+    assert any("outgrown sharding" in w for w in warnings) and "never gating" in text
+    assert any("more than the account's 40 concurrent jobs" in w for w in warnings)
+
+
+def test_without_a_usable_history_the_fallback_counts_and_the_committed_table_are_used():
+    seed = {"schema": "aew/test-durations/v1", "platforms": {"linux": {ALL[0]: 1.0}}}
+    no_lanes = sized_history({ALL[0]: 1.0})
+    del no_lanes["lanes"]["win32"]  # a history from before a platform's reports recorded lanes
+    for history in (None, update_durations.seed_history(seed), no_lanes):
+        sizings, table, source = shard_plan.plan(history, seed, 1800.0)
+        assert {(s.platform, s.lane): s.shards for s in sizings} == shard_plan.FALLBACK_SHARDS
+        assert table == seed and source.startswith("fallback")
+    assert {(p, lane) for _, _, p, lanes in shard_plan.LANE_JOBS for lane in lanes} == set(shard_plan.FALLBACK_SHARDS)
+
+
+def test_the_matrix_is_shards_one_to_n_of_n_per_runner_and_lane_on_the_pythons_core_tests_on():
+    sizings = [shard_plan.Sizing(p, lane, shard_plan.FALLBACK_SHARDS[(p, lane)], 0, 0.0, 900.0)
+               for _, _, p, lanes in shard_plan.LANE_JOBS for lane in lanes]
+    include = shard_plan.matrix(sizings)["include"]
+    groups: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for e in include:
+        assert set(e) == {"os", "python", "lane", "shard", "of"}
+        groups.setdefault((e["os"], e["lane"]), []).append((e["shard"], e["of"]))
+    for (os_, lane), shards in groups.items():
+        n = shards[0][1]
+        assert shards == [(k, n) for k in range(1, n + 1)], (os_, lane)
+    core = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]["core"]
+    pythons = {m["os"]: m["python"] for m in core["strategy"]["matrix"]["include"]}
+    assert {e["os"]: e["python"] for e in include} == pythons  # one Python per platform, the same as core's
+
+
+def test_the_lanes_job_takes_its_shards_and_durations_from_the_tier_job_and_only_main_adds_to_the_history():
+    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
+    tier_steps = jobs["changes"]["steps"]
+    assert jobs["changes"]["outputs"]["lanes_matrix"] == "${{ steps.shards.outputs.lanes_matrix }}"
+    restore = [s for s in tier_steps if str(s.get("uses", "")).startswith("actions/cache/")]
+    assert [s["uses"] for s in restore] == ["actions/cache/restore@v6"]  # the tier job never saves
+    assert restore[0]["with"]["restore-keys"] == "shard-durations-"
+    shards = next(s for s in tier_steps if s.get("id") == "shards")
+    assert "tools/ci/shard_plan.py" in shards["run"] and restore[0]["with"]["path"] in shards["run"].replace(
+        "$RUNNER_TEMP", "${{ runner.temp }}")
+    upload = next(s for s in tier_steps if s.get("with", {}).get("name") == "shard-durations")
+    assert "if" not in upload  # every run uploads the one table its shards cut
+    lanes = jobs["lanes"]
+    assert lanes["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.lanes_matrix) }}"
+    pytest_step = next(s for s in lanes["steps"] if "--lane ${{ matrix.lane }}" in str(s.get("run", "")))
+    assert '--durations-file "${{ runner.temp }}/shard-durations/durations.json"' in pytest_step["run"]
+    download = lanes["steps"][lanes["steps"].index(pytest_step) - 1]
+    assert download["uses"].startswith("actions/download-artifact") and download["with"]["name"] == "shard-durations"
+    steps = jobs["assurance"]["steps"]
+    names = [s.get("id") or s.get("name") or s.get("uses") for s in steps]
+    caching = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/") or
+               "update_durations.py" in str(s.get("run", ""))]
+    assert [s.get("uses", "run") for s in caching] == ["actions/cache/restore@v6", "run", "actions/cache/save@v6"]
+    main_only = "github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'"
+    for s in caching:
+        assert s["if"] == main_only, s  # no status function: each runs only after every earlier step succeeded
+        assert names.index("assure") < steps.index(s)  # the envelope first: only a green run is recorded
+    assert caching[2]["with"]["key"] == "shard-durations-${{ github.run_id }}-${{ github.run_attempt }}"
+    assert caching[0]["with"]["path"] == caching[2]["with"]["path"] and "--history " + caching[0]["with"]["path"] in (
+        caching[1]["run"])
+
+
+def test_the_sizer_reads_the_lanes_jobs_deadline_where_ci_yml_sets_it_and_writes_what_the_run_needs(tmp_path):
+    assert shard_plan.lanes_deadline_s(ROOT / ".github" / "workflows") == 1800.0
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps({"schema": "aew/test-durations/v1", "platforms": {}}), encoding="utf-8")
+    history = tmp_path / "history.json"
+    history.write_text(json.dumps(sized_history({"tests/integration/test_x.py::t": 5.0})), encoding="utf-8")
+    out, summary_md, table = tmp_path / "out.txt", tmp_path / "summary.md", tmp_path / "run" / "durations.json"
+    assert shard_plan.main(["--history", str(history), "--seed", str(seed), "--durations-out", str(table),
+                            "--github-output", str(out), "--summary", str(summary_md)]) == 0
+    line = out.read_text(encoding="utf-8").strip()
+    assert line.startswith("lanes_matrix=") and "\n" not in line
+    assert {e["of"] for e in json.loads(line.split("=", 1)[1])["include"]} == {1}
+    assert json.loads(table.read_text(encoding="utf-8"))["platforms"]["linux"] == {"tests/integration/test_x.py::t":
+                                                                                    5.0}
+    assert "| linux | integration | 1 | 1 |" in summary_md.read_text(encoding="utf-8")
+    assert shard_plan.main(["--history", str(tmp_path / "none.json"), "--seed", str(seed), "--durations-out",
+                            str(table), "--github-output", str(out)]) == 0  # the cache missed: the fallback
+    assert json.loads(table.read_text(encoding="utf-8")) == json.loads(seed.read_text(encoding="utf-8"))
 
 
 # ------------------------------------------------------------------ the tiered gate (CI redesign P1)

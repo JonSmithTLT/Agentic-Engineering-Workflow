@@ -190,7 +190,10 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
   - virtualenvs: the dependency ranges are unpinned, so a cached venv would freeze versions silently;
   - `.pytest_cache`: CI runs `-p no:cacheprovider`, so nothing like `--lf` can change selection;
   - any `.aew` control state, fixture or temporary repositories, worktrees, or lane reports.
-- **Shard-balancing durations** (`tests/durations.json`) are **committed and reviewed**, not cached. Stale durations affect only balance, never which tests run. Refresh them with `tools/ci/update_durations.py`, from the nightly serial `reference` reports, or from a full green `main` run's lane reports when the nightly is stale.
+- **Shard-balancing durations are cached, from `main`'s green push runs** (register E44, since 2026-10-23). Durations affect only balance, never which tests run, and assurance proves every test ran exactly once whatever they say.
+  - **The history.** Each push to `main` whose assurance envelope is complete (every test ran once and passed) adds its lane reports to a rolling history in the Actions cache (`update_durations.py --history`). Each test keeps its last five durations, so one slow runner moves nothing. The history also keeps the lane each test ran in, each platform's xdist workers, and each lane's time outside its tests.
+  - **Every run uses it.** The `tier` job restores the newest history and computes the run's table: each test's median. It uploads that table once (`shard-durations`), and every lane job balances on it, so all shards of a lane cut the same partition. The same job sizes the lanes from it (§8).
+  - **`tests/durations.json`** is committed. It is the seed a missing history starts from, and the table a run uses when the cache has none (a first run, or no push to `main` for the cache's seven days). Local runs and the nightly read it too. Refresh it with `tools/ci/update_durations.py` when it is far behind, from a full green `main` run's lane reports. Nothing in the pull-request gate depends on its being fresh.
 
 ## 8. Runtime budgets
 
@@ -223,7 +226,20 @@ Before and after:
 
 Through M2 the longest jobs were the Windows `adversarial` lane (the M1 walk's 5 seeds on 4 workers, 140–280 s per seed depending on the runner; the M2 hierarchy walk adds ~50 s) and the Windows `acceptance` shards (M2's AT-13 alone is ~300 s there); at `b542ee3` (2026-10-07) they are the Linux `integration` and `regression` shards (1207–1262 s each), with Windows `adversarial` and `acceptance` at 280–335 s. Since M2 the lane jobs are: Linux integration 1, acceptance 1, regression 2, adversarial 1; Windows integration 2, acceptance 2, regression 3, adversarial 2 (14 lane jobs, 17 with `core` and `assurance`, sized from the first two M2 CI runs); since M4-D3 Linux integration is 2 (one shard reached 29 of its 30 minutes on `main`, and the queue tests took it over); since M4-D5 Windows integration is 3 (a shard of 2 ran out its 30 minutes once checks-mode validation's tests were added); since 2026-10-06 integration is 3 on both platforms (with the typed Lead surface's and the dashboard's tests, every shard of 2 ran 24 to over 30 of its 30 minutes); since 2026-10-07 Linux integration is 5, Linux regression 4 and Windows integration 4, with `tests/durations.json` refreshed from the full `main` run at `b542ee3` (on a good runner Linux integration and regression shards took 19 to 20 minutes, so a slower runner timed out at 30, five times in two days; each shard is now about 12 minutes on a good runner, inside 30 at the 2× runner variance; the lasting fix is the redesign's P3 and P4, E42 to E44). The durations came from that run's parallel lane reports, not the nightly `reference` reports §7 prefers, because the nightly had not succeeded since 2026-10-04; xdist contention and Linux coverage inflate their times roughly evenly, so balance is unaffected. Runner-to-runner variation is up to 2× for CPU-bound jobs.
 
-A lane that outgrows its budget gets another shard: add a matrix entry in `ci.yml`, since shards are deterministic. Do not move it to nightly.
+**Since 2026-10-23 the `lanes` job's shard counts are computed for every run, not written by hand** (`tools/ci/shard_plan.py`, register E44). Before that, the counts had been set by hand from one measurement and left there. From 2026-10-12 the slowest Windows integration shard took 26 to 28.6 of its 30 minutes on almost every full run, and a runner a third slower timed it out (2026-10-23).
+- **The rule.** Each lane on each platform gets the fewest shards whose slowest shard fits the session deadline on a runner twice as slow as the history's (the 2× variation above). The `tier` job computes it from the history (§7).
+- **The estimate.** A shard is estimated as `lanes.partition` cuts it:
+  - its tests' median seconds over the platform's xdist workers, or its longest test if that is more;
+  - plus the lane's measured time outside its tests (collection, worker start, an uneven tail), the median of its kept runs.
+- **What grows the counts.** A lane that grows past its budget gets another shard on the first run after a green `main` run has measured the growth. So a pull request's new tests count toward the sizing once the first green `main` run after its merge has measured them.
+- **Reported, never gating** (E51). Each run's summary lists the counts and estimates, with a warning in three cases:
+  - a single test longer than the budget;
+  - a lane that would need more than 16 shards;
+  - a full run that needs more than the account's 40 concurrent jobs.
+  Each of these means the suite is outgrowing sharding, and shared setup (E42) or one build of each module fixture (E52) is due.
+- **The cost.** The counts it computed from `main`'s run at `a3b33e3a` (2026-10-23) are its fallback, used when there is no history: Linux integration 6, acceptance 1, regression 3, adversarial 1; Windows integration 7, acceptance 1, regression 3, adversarial 1. That is 23 lane jobs against the 22 set by hand, with every shard estimated at under 15 minutes.
+
+Do not move a slow lane to nightly.
 
 ## 9. Classifying a new test
 

@@ -380,8 +380,8 @@ jobs:
       # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
       # session never moves a duration. How long the run took plays no part: a slow green run is recorded too, so a
       # lane that outgrows its budget is measured and gets more shards. The history never fails the gate
-      # (continue-on-error), and a history the update could not write is never saved: a bad one then expires, and
-      # update_durations.py itself sets aside one not of a history's shape (review of #235, F2).
+      # (continue-on-error), and a history the update could not write is never saved. A bad one is replaced by the next
+      # green run, whose update sets aside one not of a history's shape and starts again (review of #235, F2).
       - name: The shard-durations history so far (main's green push runs only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
         continue-on-error: true

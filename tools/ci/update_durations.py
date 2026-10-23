@@ -14,8 +14,9 @@ committed table). The committed table, tests/durations.json, is refreshed by cop
     python tools/ci/update_durations.py REPORT_DIR --history history.json --seed tests/durations.json \
         --out durations.json --run-label "<run id>/<attempt> <sha>"
 
-Without ``--history``, it merges lane reports into the table at ``--out`` directly (its other keys are kept), for a
-table made from runs that are not `main`'s; entries for tests no longer collected are dropped.
+Without ``--history``, it merges lane reports into the table at ``--out`` directly, for a table made from runs that are
+not `main`'s: its shard counts are kept and its ``sized_from`` dropped, and entries for tests no longer collected are
+dropped.
 
     python tools/ci/update_durations.py REPORT_DIR [REPORT_DIR ...] --out durations.json
 """
@@ -50,7 +51,8 @@ def merge(current: dict[str, Any], reports: list[dict[str, Any]]) -> dict[str, A
                 table[nid] = round(float(res["duration"]), 2)
     for platform, ids in collected.items():
         platforms[platform] = {n: d for n, d in platforms[platform].items() if n in ids}
-    others = {k: v for k, v in current.items() if k not in ("schema", "platforms")}  # e.g. the lanes' shard counts
+    # the lanes' shard counts are kept; `sized_from` names the run the table came from, which a merge makes untrue
+    others = {k: v for k, v in current.items() if k not in ("schema", "platforms", "sized_from")}
     return {"schema": DURATIONS_SCHEMA,
             "platforms": {p: dict(sorted(t.items())) for p, t in sorted(platforms.items())}, **others}
 

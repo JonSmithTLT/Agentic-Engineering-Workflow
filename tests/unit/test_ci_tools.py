@@ -259,11 +259,14 @@ def test_the_repository_skip_manifest_is_well_formed():
 
 
 def test_durations_merge_updates_and_prunes():
-    current = {"platforms": {"win32": {ALL[0]: 9.0, "tests/unit/test_gone.py::x": 1.0}, "darwin": {"k": 1.0}}}
+    current = {"platforms": {"win32": {ALL[0]: 9.0, "tests/unit/test_gone.py::x": 1.0}, "darwin": {"k": 1.0}},
+               "shards": {"win32": {"fast": 1}}, "sized_from": "run 1"}
     merged = update_durations.merge(current, [report("win32", "fast", {ALL[0]: "passed", SKIP_ID: "skipped"})])
     assert merged["schema"] == "aew/test-durations/v1"
     assert merged["platforms"]["win32"] == {ALL[0]: 0.5}  # refreshed; the vanished test and the skip are gone
     assert merged["platforms"]["darwin"] == {"k": 1.0}  # platforms without reports are kept
+    # the counts are kept, and the run the table came from is no longer named (review of #235, N2)
+    assert merged["shards"] == {"win32": {"fast": 1}} and "sized_from" not in merged
 
 
 # ------------------------------------------------------------------ the rolling durations and the shard sizing (E44)
@@ -392,6 +395,7 @@ def test_without_a_usable_history_each_lane_runs_twice_its_committed_count_so_a_
     which would never save a history and so never recover. Twice its counts holds until a lane has more than doubled
     since the refresh, and a run with a history warns long before (below)."""
     seed = committed({"integration": 9, "regression": 3}, platforms={"linux": {ALL[0]: 1.0}})
+    seed["shards"]["win32"]["integration"] = 20  # above the tripwire: it counts as 16, as on a run with a history
     del seed["shards"]["win32"]["adversarial"]
     no_lanes = sized_history({ALL[0]: 1.0})
     del no_lanes["lanes"]["win32"]  # a history from before a platform's reports recorded lanes
@@ -399,16 +403,21 @@ def test_without_a_usable_history_each_lane_runs_twice_its_committed_count_so_a_
                          (no_lanes, "could not be used (ValueError")):
         sizings, table, source, warnings = shard_plan.plan(history, seed, D1800, lane_jobs())
         by = {(s.platform, s.lane): s.shards for s in sizings}
-        assert by[("linux", "integration")] == shard_plan.MAX_SHARDS  # 2 x 9, capped
+        assert by[("linux", "integration")] == 18 and by[("win32", "integration")] == 32  # twice, past the tripwire
         assert by[("linux", "regression")] == 6 and by[("linux", "acceptance")] == 2
         assert by[("win32", "adversarial")] == shard_plan.MAX_SHARDS  # no committed count at all
         assert any("win32 adversarial: tests/durations.json gives it no shard count" in w for w in warnings)
         assert source.startswith("the fallback") and warnings[0].startswith("no usable history")
+        assert "(linux: integration 18, acceptance 2, regression 6, adversarial 2; win32: integration 32" in (
+            warnings[0])  # the counts the fallback runs, not only its rule
         assert why in source or history is None
         # the run's table is the committed one, and its counts are the committed ones unchanged: a copy refreshes
         # nothing from a fallback run
         assert table["platforms"] == seed["platforms"]
         assert table["shards"]["linux"] == seed["shards"]["linux"] and "adversarial" not in table["shards"]["win32"]
+    # every lane at the fallback's cap still fits one matrix (review of #235, N1)
+    lanes = sum(len(lanes) for _, _, _, lanes in lane_jobs())
+    assert lanes * shard_plan.FALLBACK_MAX_SHARDS <= shard_plan.MATRIX_LIMIT
 
 
 def test_the_committed_counts_are_each_lanes_floor_and_a_run_warns_when_the_history_needs_more():

@@ -54,8 +54,8 @@ import update_durations  # noqa: E402  (tools/ci: the history's owner)
 
 # Measured, testing-and-ci-strategy.md §8: "Runner-to-runner variation is up to 2x for CPU-bound jobs".
 RUNNER_VARIANCE = 2.0
-# Tripwire, per lane (8 lanes: at most 128 lane jobs): a lane that needs more is a warning that the suite has outgrown
-# sharding (register E42, shared setup; E52, module fixtures rebuilt in every shard).
+# Tripwire, per lane (8 lanes: at most 128 lane jobs on a run with a history): a lane that needs more is a warning that
+# the suite has outgrown sharding (register E42, shared setup; E52, module fixtures rebuilt in every shard).
 MAX_SHARDS = 16
 # The account's limit on concurrent jobs (GitHub Pro, from 2026-10-07): a full run past it queues behind itself.
 CONCURRENT_JOBS = 40
@@ -66,9 +66,15 @@ DEFAULT_OUTSIDE_S = 215.0
 # download) in run 40019126451 (2026-10-23): 48 s on Linux, 56 s on Windows. For a lane the history has no
 # measurement of yet (lane reports carry `job_remaining_s` from #235 on).
 DEFAULT_SETUP_S = 56.0
-# A run without a usable history sizes each lane at this many times its committed count, capped at MAX_SHARDS.
+# GitHub's limit on the jobs one matrix may start in a workflow run.
+MATRIX_LIMIT = 256
+# A run without a usable history sizes each lane at this many times its committed count (the operator's ruling on
+# CRD-13, 2026-10-23). A count is at most MAX_SHARDS, as on a run with a history, so the fallback's cap is this many
+# times that: twice holds for every count, and every lane at the cap still fits one matrix (a test keeps it so).
 FALLBACK_MARGIN = 2.0
-# A run with a history warns when the committed table knows less than this share of a platform's tests.
+FALLBACK_MAX_SHARDS = int(FALLBACK_MARGIN * MAX_SHARDS)
+# A run with a history warns when the committed table knows less than this share of a platform's tests (the drift
+# threshold of the operator's ruling on CRD-13, 2026-10-23).
 COVERAGE_WARNING = 0.9
 # The lanes the `lanes` job runs on every runner the `core` job tests on (the full tier's, less the ones `core` runs
 # itself), and each runner's sys.platform.
@@ -204,13 +210,15 @@ def fallback(seed: Mapping[str, Any], deadlines: Deadlines, jobs: Sequence[tuple
     for _, _, platform, lanes in jobs:
         for lane in lanes:
             base = counts.get((platform, lane))
-            n = MAX_SHARDS if base is None else min(MAX_SHARDS, math.ceil(FALLBACK_MARGIN * base))
+            n = MAX_SHARDS if base is None else math.ceil(FALLBACK_MARGIN * min(base, MAX_SHARDS))
             sizings.append(Sizing(platform, lane, n, 0, 0.0, budget, committed=base))
             if base is None:
                 warnings.append(f"{platform} {lane}: tests/durations.json gives it no shard count, so it runs "
                                 f"{MAX_SHARDS}; {REFRESH}")
     source = f"the fallback ({why}): {FALLBACK_MARGIN:g}x each lane's count in tests/durations.json"
-    warnings.insert(0, f"no usable history: {why}. Each lane runs {FALLBACK_MARGIN:g}x its committed count")
+    runs = "; ".join(f"{p}: " + ", ".join(f"{s.lane} {s.shards}" for s in sizings if s.platform == p)
+                     for p in dict.fromkeys(s.platform for s in sizings))
+    warnings.insert(0, f"no usable history: {why}. Each lane runs {FALLBACK_MARGIN:g}x its committed count ({runs})")
     return sizings, run_table(seed.get("platforms") or {}, sizings, source), source, warnings
 
 

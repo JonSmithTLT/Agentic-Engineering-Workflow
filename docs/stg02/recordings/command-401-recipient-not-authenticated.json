@@ -1,0 +1,63 @@
+{
+ "request": {
+  "method": "POST",
+  "path": "/o01/v0/command-sets",
+  "headers": {
+   "X-AEW-O01-Wire": "o01-command-0.2-review-candidate",
+   "Content-Type": "application/json"
+  },
+  "body": {
+   "wire_version": "o01-command-0.2-review-candidate",
+   "request_set_ref": "fixture:request-continue.rec20261020T023237.p07.rec20261020T023237.rcpt",
+   "client_request_key": "fixture:key-continue.rec20261020T023237.p07.rec20261020T023237.rcpt",
+   "recipient_ref": "fixture:recipient-other",
+   "installation_ref": "fixture:installation-slice",
+   "consent_set_ref": null,
+   "intents": [
+    {
+     "intent_ref": "fixture:intent-continue",
+     "action": "CONTINUE_ELIGIBLE_WORK",
+     "actor_ref": "fixture:lead-1",
+     "authority_class": "CURRENT_DELEGATED_GRANT",
+     "owner_hint": "HEB",
+     "subject": {
+      "project_ref": "fixture:project-slice",
+      "installation_ref": "fixture:installation-slice",
+      "attachment_ref": "fixture:attachment-lead-1",
+      "generation_ref": "fixture:generation-1"
+     },
+     "predecessor": {
+      "basis_ref": "fixture:basis-eligible-continue",
+      "basis_version": "fixture:revision-1",
+      "source_epoch": "fixture:heb-epoch-1"
+     },
+     "target": {
+      "work_ref": "fixture:ticket-continue",
+      "work_revision": "fixture:revision-1",
+      "grant_ref": "fixture:grant-ticket-continue",
+      "eligible_basis_ref": "fixture:basis-eligible-continue",
+      "selection_mode": "DELIBERATE_SELECTED_WORK"
+     },
+     "origin_proof_ref": null,
+     "delegated_grant_proof_ref": "fixture:delegation-continue-current"
+    }
+   ]
+  }
+ },
+ "response": {
+  "status": 401,
+  "headers": {
+   "content-type": "application/problem+json",
+   "cache-control": "private, no-store",
+   "x-aew-o01-wire": "o01-command-0.2-review-candidate"
+  },
+  "body": {
+   "code": "authentication_unqualified",
+   "correlation_id": "corr:68580a532df24fceb438ccb5e36267d2",
+   "retry": "reauthenticate",
+   "status": 401,
+   "title": "The request is not authenticated",
+   "type": "about:blank"
+  }
+ }
+}

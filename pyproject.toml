@@ -42,6 +42,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "aew.schemas" = ["*.json"]
+"aew.stg02" = ["adopted/*.json", "adopted/*.yaml", "worlds/*.json"]
 "aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]
 "aew.templates" = ["*.md", "*.yaml"]
 "aew.maps" = ["rules.yaml"]

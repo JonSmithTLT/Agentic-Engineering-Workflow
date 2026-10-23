@@ -307,11 +307,14 @@ def test_a_narrow_operator_root_is_accepted_and_the_layout_stays_contained(lab):
 
 @pytest.mark.parametrize("reach", ["control_state", "host_tmp", "sibling_run"])
 def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run(lab, reach):
-    """Whatever widened the layout (an operator root, a future bug), reaching these fails the launch self-test."""
+    """Whatever widened the layout (an operator root, a future bug), reaching these fails the launch self-test. A
+    writable bind of the runs directory itself no longer shows the other runs: the mask on that path comes after it and
+    is remounted read-only (review of #231, m2 and m5), so the widened root is unwritable from inside, which fails the
+    self-test too."""
     (lab.repo / ".aew" / "state").mkdir(parents=True)
     good = lab.layout()
     extra, expected = {"control_state": (str(lab.repo), ".aew"), "host_tmp": ("/tmp", ".tmp-marker"),
-                       "sibling_run": (str(lab.run.parent), ".probe-run")}[reach]
+                       "sibling_run": (str(lab.run.parent), "is not writable on the host from inside")}[reach]
     result = probe.self_test(dataclasses.replace(good, writable=(*good.writable, extra)), sentinel_dir=lab.outside,
                              sibling_dir=lab.root)
     assert result["ok"] is False and expected in result["reason"], result

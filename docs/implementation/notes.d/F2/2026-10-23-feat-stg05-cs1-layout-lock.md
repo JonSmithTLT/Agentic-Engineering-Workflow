@@ -10,6 +10,11 @@ CS-2 and CS-4.
   - A reader's layout has no private object store, only the real one, bound read-only, so both writes fail
     (`unable to create temporary file: Read-only file system`). The command answers `GIT_ERROR`.
   - Writers are unaffected: they have a private index and object store, with the real objects as alternates.
+- **Its two faces.** The pin sees only the first.
+  - **In a reader's sandbox,** the read fails as above.
+  - **Outside a sandbox** (every worker run on Windows, and any non-writer run uncontained), the same read succeeds by
+    writing loose objects into the real repository's `.git/objects`. In #231's re-review, a worker's `gate show` of
+    the in-flight Ticket added 3. No test sees this: the tree diff judges `.aew` only.
 - **Its reach.**
   - The engine computes the fingerprint through `invocations.snapshot_of` and `current_snapshot`, and through
     `worktrees.status`.
@@ -21,7 +26,8 @@ CS-2 and CS-4.
   - A reader still writes only its scratch and harness state, never the real object store.
   - Either fix is acceptable if it keeps that boundary: a fingerprint computed without writing objects (preferred),
     or a private object directory in the reader's scratch with the real store as a read-only alternate.
-  - Which slice builds it is the operator's decision. When it lands, the pin empties.
+  - The operator placed it in CS-2, as its outcome 7. Its fix and its test cover both faces: for example, the test
+    compares `.git/objects` before and after a non-writer's read. When it lands, the pin empties.
 - **The two other outcomes of this fix round.**
   - A non-writer writes neither the store nor the control lock.
   - Under `.aew/local` a non-writer writes only the derived history index's catch-up, which every reader of archived

@@ -821,8 +821,16 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   `FileLock` on the lock's path anywhere else.
 - **The engine's reads choose by kind:** every read the engine makes goes through `ControlStore.current`. That is
   `read` in a writer and `read_committed` in a non-writer, and `Kernel.manifest` makes the same choice. So the CLI's
-  reads work inside a worker's run. A first version left the engine's reads on `read` and refused every read command
-  in the sandbox (review of #231, B1).
+  reads work inside a worker's run, except the reader git gap below. A first version left the engine's reads on
+  `read` and refused every read command in the sandbox (review of #231, B1).
+- **The reader git gap, pinned and not fixed here.** A fingerprint read of a fresh or changed workspace runs
+  `git add -A` into a throwaway index, which writes or freshens blobs in the object store:
+  - **Inside a reader's sandbox,** where the real object store is read-only, `gate show` and `work roles` of such a
+    Ticket answer `GIT_ERROR`. The sandbox test pins exactly these (`READER_GIT_GAP`), recognised by their mechanism.
+  - **Outside a sandbox** (every worker run on Windows, and any non-writer run uncontained), the same read succeeds by
+    writing loose objects into the real repository's `.git/objects`. No test sees that face yet.
+  - The designer ruled the outcome (D-CS2-1): a reader never writes the real object store. CS-2 builds it (its outcome
+    7), for both faces.
 - **What a non-writer writes:** never the store, and never the lock. Under `.aew/local` it writes only the derived
   history index's catch-up, as every reader of archived history does (the dashboard server among them). Every result
   of that index is authenticated against the store's history root, and on a read-only view the index is a private
@@ -852,13 +860,22 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   - from a worker sandbox the lock is absent, creating it fails with `EROFS`, and the run's bound-back harness
     directory stays writable;
   - every command a worker can run, inside a reviewer's sandbox, either works or is refused for a reason of its own,
-    with no crash and nothing met read-only;
+    with no crash. Nothing meets the read-only filesystem but the pinned reader git gap (`READER_GIT_GAP`, above), and
+    only `WRITER_ONLY` is refused as a non-writer's;
   - a non-writer's lock-free reads work against the store on the read-only bind, and its locked read is refused as a
     non-writer's.
 - **`tests/integration/test_non_writer_reads.py`:**
   - the table;
   - the refusals before the lock;
   - the reads against a read-only store, with no `EROFS` or `EACCES`, and a writer's failure there;
-  - the CLI inside a worker run: its reads succeed, a mutation is refused before the lock, and over the whole CLI no
-    command is refused as a non-writer but those that need the lock;
+  - the CLI inside a worker run: its reads succeed, and a mutation is refused before the lock;
+  - `history compact`, `context pack` and `history reindex` refused as a non-writer's before they start;
+  - every command a worker can run (each parser leaf, and each surface-map probe, with an in-flight and a finished
+    Ticket) on a worked project: a stat snapshot of the whole `.aew` tree is unchanged but the history index's
+    catch-up, the lock is not created, nothing crashes, and only `WRITER_ONLY` is refused as a non-writer's;
+  - the reader git gap's classifier, on planted cases both ways;
+  - the one opener: no code outside `engine/store.py` names the control lock's path, found by import and by literal,
+    with a second, text-based detector that must agree on the tree and on planted cases;
+  - the entry-point table against the tree, both ways: every module that runs as a process is a row, and every row is
+    one;
   - a guard that no code outside the store calls `store.read()` but the manifest reload.

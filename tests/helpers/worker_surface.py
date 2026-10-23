@@ -44,12 +44,16 @@ WRITE_FAILURES = ("Traceback", "Read-only file system", "Permission denied")
 
 # A known gap, pinned shrink-only (register F2's note of 2026-10-23, as reported to the designer): a read that
 # fingerprints a workspace (`aew.snapshot.fingerprint._working_index`, `git add -A` into a throwaway index) needs git
-# to write the blob of each changed or racily clean file, and a reader's sandbox has no private object store, only
-# the read-only real one, so it fails there with a GIT_ERROR. It predates CB-09 (the reader layout of M4-B). The
-# designer ruled the outcome (D-CS2-1, 2026-10-23: a fingerprint is a read, it works in a reader's sandbox and equals a
-# writer's value, and a reader never writes the real object store); which slice builds it is the operator's. When it
-# lands, this pin empties and the sandbox test passes without it. Writers are unaffected: theirs is the private index
-# and object store. Limit: a fingerprint read that fails for another reason is not in this class.
+# to write the blob of each changed or racily clean file. It has two faces, and this pin sees only the first:
+# - in a reader's sandbox, which has no private object store, only the read-only real one, the read fails with a
+#   GIT_ERROR;
+# - outside a sandbox (every worker run on Windows, any non-writer run uncontained), the same read succeeds by
+#   writing loose objects into the real repository's `.git/objects`, which the `.aew` tree diff does not judge.
+# It predates CB-09 (the reader layout of M4-B). The designer ruled the outcome (D-CS2-1, 2026-10-23: a fingerprint is
+# a read, it works in a reader's sandbox and equals a writer's value, and a reader never writes the real object
+# store), and the operator placed it in CS-2 (its outcome 7), whose fix and test must cover both faces. When it lands,
+# this pin empties and the sandbox test passes without it. Writers are unaffected: theirs is the private index and
+# object store. Limit: a fingerprint read that fails for another reason is not in this class.
 READER_GIT_GAP: frozenset[tuple[str, ...]] = frozenset({("gate", "show"), ("work", "roles")})
 
 

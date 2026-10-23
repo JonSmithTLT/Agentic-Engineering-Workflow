@@ -72,10 +72,10 @@ from aew.engine.outbox import (
     segment_path,
     verify_segment,
 )
-from aew.engine.store import LOCK_REL, ControlStore
+from aew.engine.store import LOCK_REL, ControlStore, store_of, write_file
 from aew.errors import IntegrityError, UsageError, ValidationFailed
 from aew.schemas import validate
-from aew.util import create_exclusive, dump_yaml, load_yaml
+from aew.util import dump_yaml, load_yaml
 
 _RECORD = re.compile(r"^([0-9]{6,})\.yaml$")
 _SIDECAR = re.compile(r"^([0-9]{6,})\.events\.yaml$")
@@ -231,7 +231,7 @@ def seal_steps(aew_root: Path, index: int, since: int,
     if text is not None:
         try:
             with publish_lock():
-                create_exclusive(aew_root / rel, text)
+                write_file(store_of(aew_root), (aew_root / rel).resolve(), text, exclusive=True)
         except IntegrityError:
             if not (aew_root / rel).is_file():
                 raise

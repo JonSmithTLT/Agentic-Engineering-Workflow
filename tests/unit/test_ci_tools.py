@@ -852,7 +852,7 @@ def test_collection_proves_the_lanes_split():
 
 def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_ledgers():
     """Structure of the `vertical` workflow: pushes to main and dispatch only, never a pull request (operator,
-    2026-10-23: frozen as a baseline, red on main), main's runs never cancelled, both OSes, its ledgers uploaded
+    2026-10-23: frozen as a baseline, red on main), a running main run never cancelled, both OSes, its ledgers uploaded
     whatever the outcome, not a lane report, and honestly red (no continue-on-error). It is a workflow of its own, so
     the red job never makes ci.yml's run (the merge gate's) conclude red; ci.yml neither runs nor names it. Windows,
     outside the enforced gate (spec v2, the operator's Q1(e)), keeps running and reporting: its job stays in the matrix

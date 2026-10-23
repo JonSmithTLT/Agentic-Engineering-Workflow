@@ -15,7 +15,7 @@ on:
 
 concurrency:
   group: vertical-${{ github.ref }}
-  cancel-in-progress: false  # main's runs are its time series: never cancelled
+  cancel-in-progress: false  # main's time series: a running run is never cancelled; GitHub keeps the newest pending
 
 permissions:
   contents: read

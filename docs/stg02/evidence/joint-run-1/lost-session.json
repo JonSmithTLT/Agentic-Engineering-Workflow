@@ -1,0 +1,25 @@
+{
+  "staging": "controlled browser response barrier; actual upstream response, no fixture substitution",
+  "stages": [
+    {
+      "label": "probe-lost-response-held",
+      "utc": "2026-10-21T00:24:40.365Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": []
+    },
+    {
+      "label": "probe-lost-response-unknown",
+      "utc": "2026-10-21T00:25:04.519Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": [
+        "signal is aborted without reason No validated receipt from this attempt; the owner outcome is not established here."
+      ]
+    },
+    {
+      "label": "probe-lost-response-reconciled",
+      "utc": "2026-10-21T00:27:41.381Z",
+      "url": "http://127.0.0.1:4252/",
+      "alerts": []
+    }
+  ]
+}

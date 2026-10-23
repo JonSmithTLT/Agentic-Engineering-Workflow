@@ -11,6 +11,15 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     tailwindcss(),
+    ...(mode === 'stg02' ? [{
+      name: 'stg02-entry',
+      configureServer(server: import('vite').ViteDevServer) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url?.split('?')[0] === '/stg02') req.url = req.url.replace('/stg02', '/stg02.html');
+          next();
+        });
+      },
+    }] : []),
     ...(mode === 'demo'
       ? [
           {
@@ -28,7 +37,17 @@ export default defineConfig(({ mode }) => ({
         ]
       : []),
   ],
-  build: { outDir: mode === 'demo' ? 'dist-demo' : 'dist' },
+  build: {
+    outDir: mode === 'stg02' ? 'dist-stg02' : mode === 'demo' ? 'dist-demo' : 'dist',
+    ...(mode === 'stg02' ? { rollupOptions: { input: 'stg02.html' } } : {}),
+  },
+  ...(mode === 'stg02' ? { server: {
+    host: '127.0.0.1', port: 4251, strictPort: true,
+    proxy: {
+      '/v1/read': 'http://127.0.0.1:4252',
+      '/o01/v0': 'http://127.0.0.1:4252',
+    },
+  } } : {}),
   preview: {
     host: '127.0.0.1',
     headers: {

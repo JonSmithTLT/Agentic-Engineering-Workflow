@@ -1,0 +1,37 @@
+{
+  "client_request_key": "client-key-001",
+  "consent_set_ref": null,
+  "installation_ref": "install:demo001",
+  "intents": [
+    {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "actor_ref": "actor:lead001",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "delegated_grant_proof_ref": "grantproof:demo001",
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": null,
+      "owner_hint": "HEB",
+      "predecessor": {
+        "basis_ref": "basis:version001",
+        "basis_version": "rev:b001",
+        "source_epoch": "epoch:source001"
+      },
+      "subject": {
+        "attachment_ref": "att:demo-001",
+        "generation_ref": "gen:alpha001",
+        "installation_ref": "install:demo001",
+        "project_ref": "project:demo001"
+      },
+      "target": {
+        "eligible_basis_ref": "eligibility:001",
+        "grant_ref": "grant:demo001",
+        "selection_mode": "DELIBERATE_SELECTED_WORK",
+        "work_ref": "work:ticket001",
+        "work_revision": "rev:work001"
+      }
+    }
+  ],
+  "recipient_ref": "recipient:operator001",
+  "request_set_ref": "set:demo001",
+  "wire_version": "o01-command-0.2-review-candidate"
+}

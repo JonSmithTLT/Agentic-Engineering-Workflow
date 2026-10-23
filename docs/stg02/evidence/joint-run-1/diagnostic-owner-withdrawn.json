@@ -1,0 +1,8 @@
+{
+  "path": "/o01/v0/owner-operations/HEB/op:c3e5f43126facd3fdd2039dc757d34b7",
+  "utc": "2026-10-21T00:23:08.0522073Z",
+  "status": 404,
+  "method": "GET",
+  "body": "{\"code\": \"not_found_or_not_disclosable\", \"correlation_id\": \"corr:48d19e681141483cbc882d780ffdd8ef\", \"retry\": \"never\", \"status\": 404, \"title\": \"Not found or not disclosable\", \"type\": \"about:blank\"}",
+  "kind": "literal-path withdrawal diagnostic, not product-UI owner completion"
+}

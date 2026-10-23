@@ -1,0 +1,139 @@
+{
+  "backend": "966fc2c610c7b9e26c8d9d9f004139532c956520",
+  "wrapper": "f8dd097cf9f929c1759820b66b4f169cb32fad11",
+  "app": "af77308aa48cbc73a73791b58b807c0a9ebdbe55",
+  "requestSha256": "07919368eff3305a1a706ae80f72e7c9288a94774af5aed5ecd9897c29d68697",
+  "ownerHref": "/stg02?view=operation&id=HEB%7Cop%3Ac3e5f43126facd3fdd2039dc757d34b7",
+  "steps": [
+    {
+      "label": "01-waiting",
+      "utc": "2026-10-21T00:51:18.566Z",
+      "url": "http://127.0.0.1:4252/",
+      "postCount": 0,
+      "alerts": []
+    },
+    {
+      "label": "02-run",
+      "utc": "2026-10-21T00:51:18.827Z",
+      "url": "http://127.0.0.1:4252/stg02?view=run&id=fixture%3Arun-continue-1",
+      "postCount": 0,
+      "alerts": []
+    },
+    {
+      "label": "03-continuation",
+      "utc": "2026-10-21T00:51:19.070Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=fixture%3Aticket-continue",
+      "postCount": 0,
+      "alerts": []
+    },
+    {
+      "label": "04-selected",
+      "utc": "2026-10-21T00:51:19.369Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=fixture%3Aticket-continue",
+      "postCount": 0,
+      "alerts": []
+    },
+    {
+      "label": "04-receipt",
+      "utc": "2026-10-21T00:51:19.650Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=fixture%3Aticket-continue",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "05-reload",
+      "utc": "2026-10-21T00:51:19.892Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=fixture%3Aticket-continue",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "05-owner",
+      "utc": "2026-10-21T00:51:20.072Z",
+      "url": "http://127.0.0.1:4252/stg02?view=operation&id=HEB%7Cop%3Ac3e5f43126facd3fdd2039dc757d34b7",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "05-owner-index",
+      "utc": "2026-10-21T00:51:20.320Z",
+      "url": "http://127.0.0.1:4252/stg02?view=operations",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "06-protected",
+      "utc": "2026-10-21T00:51:20.449Z",
+      "url": "http://127.0.0.1:4252/stg02?view=operations",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "probe-unknown-id",
+      "utc": "2026-10-21T00:51:20.649Z",
+      "url": "http://127.0.0.1:4252/stg02?view=run&id=fixture%3Ajoint-unknown-id",
+      "postCount": 1,
+      "alerts": [
+        "Not found or not disclosable. No current representation is established."
+      ]
+    },
+    {
+      "label": "probe-outage-run-before",
+      "utc": "2026-10-21T00:51:38.622Z",
+      "url": "http://127.0.0.1:4252/stg02?view=run&id=INV-0001",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "probe-outage-work-before",
+      "utc": "2026-10-21T00:51:38.881Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=T-0002",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "probe-outage-work-503",
+      "utc": "2026-10-21T00:52:18.448Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=T-0002",
+      "postCount": 1,
+      "alerts": [
+        "503: owner_unavailable. No current representation is established."
+      ]
+    },
+    {
+      "label": "probe-outage-run-503",
+      "utc": "2026-10-21T00:52:18.631Z",
+      "url": "http://127.0.0.1:4252/stg02?view=run&id=INV-0001",
+      "postCount": 1,
+      "alerts": [
+        "503: owner_unavailable. No current representation is established."
+      ]
+    },
+    {
+      "label": "probe-outage-waiting-partial",
+      "utc": "2026-10-21T00:52:18.884Z",
+      "url": "http://127.0.0.1:4252/stg02?view=waiting&id=",
+      "postCount": 1,
+      "alerts": []
+    },
+    {
+      "label": "probe-outage-work-503-first",
+      "utc": "2026-10-21T00:52:50.197Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=T-0002",
+      "postCount": 1,
+      "alerts": [
+        "503: owner_unavailable. No current representation is established."
+      ]
+    },
+    {
+      "label": "06-protected",
+      "utc": "2026-10-21T00:52:50.289Z",
+      "url": "http://127.0.0.1:4252/stg02?view=continuation&id=T-0002",
+      "postCount": 1,
+      "alerts": [
+        "503: owner_unavailable. No current representation is established."
+      ]
+    }
+  ],
+  "failures": []
+}

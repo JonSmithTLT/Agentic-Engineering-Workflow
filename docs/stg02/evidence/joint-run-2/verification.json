@@ -1,0 +1,27 @@
+{
+  "remote_assurance": "NOT OBSERVED",
+  "traffic_responses": 29,
+  "app_source_clean": true,
+  "wrapper_source_clean": true,
+  "builds": {
+    "dist": {
+      "files": 8,
+      "manifest_sha256": "fcb7b25b16508cfe419528e07bca83adc188fbc4ab2b1b44148106113319dcd9",
+      "unchanged": true
+    },
+    "dist-demo": {
+      "files": 43,
+      "manifest_sha256": "2b20749e478f63e533b0a90b99f0562197d2d2982a9be122c8b435695eac090d",
+      "unchanged": true
+    },
+    "dist-stg02": {
+      "files": 4,
+      "manifest_sha256": "d6ec95cf93b42beb4a3902039a104734e3c3d1289f023f0be7fd55659b0608a1",
+      "unchanged": true
+    }
+  },
+  "response_hashes_valid": true,
+  "held_and_reconciled_request_and_receipt_bytes_identical": true,
+  "original_command_posts_in_primary_trace": 1,
+  "checked_utc": "2026-10-21T01:01:02.5639263+00:00"
+}

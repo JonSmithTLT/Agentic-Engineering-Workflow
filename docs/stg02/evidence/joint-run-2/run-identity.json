@@ -1,0 +1,12 @@
+{
+  "run": "joint-state-2",
+  "started_utc": "2026-10-21T00:50:56.6029675+00:00",
+  "pid": 6384,
+  "expires_utc": "2026-10-21T01:50:56.6029675+00:00",
+  "request_sha256": "07919368eff3305a1a706ae80f72e7c9288a94774af5aed5ecd9897c29d68697",
+  "app_commit": "af77308aa48cbc73a73791b58b807c0a9ebdbe55",
+  "lifetime_seconds": 3600,
+  "wrapper_commit": "f8dd097cf9f929c1759820b66b4f169cb32fad11",
+  "wrapper_sha256": "3cb9191d3cb923d7899a0942c65d6f07502e4b0b52b8e5c8c76080e379286a33",
+  "backend_commit": "966fc2c610c7b9e26c8d9d9f004139532c956520"
+}

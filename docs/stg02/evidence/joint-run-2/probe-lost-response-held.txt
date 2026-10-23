@@ -1,0 +1,140 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+Read outcome: partial
+continuity
+unknown
+projection as of
+2026-10-21T00:56:59Z
+correlation id
+corr:5ff234d93890429c8ac9c0f4ca9f2e3a
+
+Limitations: source_unqualified
+
+Source observation time and validity belong to the supplied facts. Fetch time does not renew them.
+
+Incomplete membership: absence here does not establish that no other items exist.
+
+Collection basis — aggregation only
+
+This supplied stamp supports collection coverage, not the authority of each item. Displaying qualification does not independently prove it.
+
+Supplied source stamp: CNI · unknown · unqualified
+Last-known observation: 2026-10-21T00:49:25Z · Basis: fixture:cni-waiting-collection
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+Collection basis and per-owner closures
+aew:waiting:T-0002 · waiting
+
+Supplied source stamp: CNI · unknown · unqualified
+Last-known observation: 2026-10-21T00:56:59Z · Basis: aew:waiting:T-0002
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+work
+Inspect work
+cause
+dependency
+responsible owner
+WIS
+progress
+blocked
+narrative
+Inspect narrative
+action status
+read_only
+Inspect continuation information for T-0002
+
+A waiting notice is not an owner action. No run association is inferred.
+
+Complete supplied record
+fixture:waiting-ticket-continue · waiting
+
+Supplied source stamp: CNI · unknown · unqualified
+Last-known observation: 2026-10-21T00:49:25Z · Basis: fixture:cni-waiting-ticket-continue
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+work
+Inspect work
+cause
+operator_need
+responsible owner
+HEB
+progress
+blocked
+narrative
+Inspect narrative
+action status
+read_only
+Inspect continuation information for fixture:ticket-continue
+
+A waiting notice is not an owner action. No run association is inferred.
+
+Complete supplied record
+fixture:waiting-ticket-held · waiting
+
+Supplied source stamp: CNI · unknown · unqualified
+Last-known observation: 2026-10-21T00:49:25Z · Basis: fixture:cni-waiting-ticket-held
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+work
+Inspect work
+cause
+qualified_hold
+responsible owner
+AEV
+progress
+blocked
+narrative
+Inspect narrative
+action status
+read_only
+Inspect continuation information for fixture:ticket-held
+
+A waiting notice is not an owner action. No run association is inferred.
+
+Complete supplied record
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request
+Independently supplied command set (JSON; no credentials)Review separate request
+Select every supplied intent deliberately
+fixture:intent-continue · Work fixture:ticket-continue at fixture:revision-1 · Delegation fixture:delegation-continue-current
+Submit selected work to HEB
+
+Waiting for a receipt. An effect is not established.
+
+Original request identity for recovery
+
+After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.
+
+Inspect owner-operation outcomesReconcile using the same key and exact body
+
+A retry is a lookup. No automatic retry or new key is generated.
+
+Dispatch completion is unresolved. Reconciliation stays blocked because no durable recovery disposition was recorded; use owner reads.

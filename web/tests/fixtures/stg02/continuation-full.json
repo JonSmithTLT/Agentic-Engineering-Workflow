@@ -1,0 +1,486 @@
+{
+  "body": {
+    "collection_basis": null,
+    "continuity": "source_qualified",
+    "correlation_id": "correlation:one",
+    "effective_recipient_ref": "recipient:operator-1",
+    "items": [
+      {
+        "data": {
+          "axes": {
+            "ADC": {
+              "basis_ref": "basis:ADC",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:ADC",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "blocked",
+              "valid_until": "2026-10-19T13:00:00Z"
+            },
+            "AEV": {
+              "basis_ref": "basis:AEV",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:AEV",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "ok",
+              "valid_until": "2026-10-19T13:00:00Z"
+            },
+            "HEB": {
+              "basis_ref": "basis:HEB",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:HEB",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "ok",
+              "valid_until": "2026-10-19T13:00:00Z"
+            },
+            "IF10": {
+              "basis_ref": "basis:IF10",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:IF10",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "ok",
+              "valid_until": "2026-10-19T13:00:00Z"
+            },
+            "R01": {
+              "basis_ref": "basis:R01",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:R01",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "ok",
+              "valid_until": "2026-10-19T13:00:00Z"
+            },
+            "WIS": {
+              "basis_ref": "basis:WIS",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner_epoch": "epoch:WIS",
+              "qualification": "qualified",
+              "reason_code": null,
+              "source_version": "v1",
+              "state": "ok",
+              "valid_until": "2026-10-19T13:00:00Z"
+            }
+          },
+          "binding_ref": "binding:one",
+          "generation_ref": "gen:one",
+          "informational_only": true,
+          "operation": "CONTINUE_ELIGIBLE_WORK",
+          "work_ref": "ticket:one",
+          "work_revision": "revision:one"
+        },
+        "disclosure": {
+          "effective_recipient_ref": "recipient:operator-1",
+          "form": "full",
+          "policy_ref": "policy:one",
+          "qualified_release": true,
+          "scope_ref": "scope:one"
+        },
+        "field_sources": [
+          {
+            "field_path": "data.axes.ADC",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:ADC",
+              "governing_owner": "ADC",
+              "issuer_ref": "issuer:ADC",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "ADC",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "ADC",
+                "source_epoch": "epoch:ADC",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:ADC",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.axes.AEV",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:AEV",
+              "governing_owner": "AEV",
+              "issuer_ref": "issuer:AEV",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "AEV",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "AEV",
+                "source_epoch": "epoch:AEV",
+                "source_proof_ref": "proof:AEV",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:AEV",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.axes.HEB",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:HEB",
+              "governing_owner": "HEB",
+              "issuer_ref": "issuer:HEB",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "HEB",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "HEB",
+                "source_epoch": "epoch:HEB",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:HEB",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.axes.IF10",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:IF10",
+              "governing_owner": null,
+              "issuer_ref": "issuer:IF10",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "IF10",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "IF10",
+                "source_epoch": "epoch:IF10",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:IF10",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.axes.R01",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:R01",
+              "governing_owner": null,
+              "issuer_ref": "issuer:R01",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "R01",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "R01",
+                "source_epoch": "epoch:R01",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:R01",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.axes.WIS",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:WIS",
+              "governing_owner": "WIS",
+              "issuer_ref": "issuer:WIS",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "WIS",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "WIS",
+                "source_epoch": "epoch:WIS",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:WIS",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.binding_ref",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:HEB",
+              "governing_owner": "HEB",
+              "issuer_ref": "issuer:HEB",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "HEB",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "HEB",
+                "source_epoch": "epoch:HEB",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:HEB",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.generation_ref",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:HEB",
+              "governing_owner": "HEB",
+              "issuer_ref": "issuer:HEB",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "HEB",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "HEB",
+                "source_epoch": "epoch:HEB",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:HEB",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.informational_only",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:HEB",
+              "governing_owner": "HEB",
+              "issuer_ref": "issuer:HEB",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "HEB",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "HEB",
+                "source_epoch": "epoch:HEB",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:HEB",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.operation",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:HEB",
+              "governing_owner": "HEB",
+              "issuer_ref": "issuer:HEB",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "HEB",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "HEB",
+                "source_epoch": "epoch:HEB",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:HEB",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.work_ref",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:WIS",
+              "governing_owner": "WIS",
+              "issuer_ref": "issuer:WIS",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "WIS",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "WIS",
+                "source_epoch": "epoch:WIS",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:WIS",
+              "source_version": "v1"
+            }
+          },
+          {
+            "field_path": "data.work_revision",
+            "source": {
+              "authority_class": "qualified_observation",
+              "closures": [],
+              "coverage_ref": "coverage:one",
+              "fact_ref": "basis:WIS",
+              "governing_owner": "WIS",
+              "issuer_ref": "issuer:WIS",
+              "observation_state": "present_current",
+              "observed_at": "2026-10-18T13:00:00Z",
+              "owner": "WIS",
+              "owner_coverage_class": "qualified_source_basis",
+              "qualification": "qualified",
+              "renewal": {
+                "checked_at": "2026-10-18T13:00:00Z",
+                "coverage_ref": "coverage:one",
+                "invalidation": "expiry_or_revalidation_failure",
+                "kind": "source_valid_until",
+                "qualified_owner": "WIS",
+                "source_epoch": "epoch:WIS",
+                "source_proof_ref": "proof:one",
+                "valid_until": "2026-10-19T13:00:00Z",
+                "verification_method": "source_attested_interval"
+              },
+              "source_epoch": "epoch:WIS",
+              "source_version": "v1"
+            }
+          }
+        ],
+        "links": [],
+        "ref": {
+          "generation": "gen:one",
+          "id": "continuation:one",
+          "kind": "continuation_state",
+          "package_digest": null,
+          "revision": "revision:one"
+        },
+        "resource_type": "continuation_vector",
+        "source": {
+          "authority_class": "qualified_observation",
+          "closures": [],
+          "coverage_ref": "coverage:one",
+          "fact_ref": "basis:HEB",
+          "governing_owner": "HEB",
+          "issuer_ref": "issuer:HEB",
+          "observation_state": "present_current",
+          "observed_at": "2026-10-18T13:00:00Z",
+          "owner": "HEB",
+          "owner_coverage_class": "qualified_source_basis",
+          "qualification": "qualified",
+          "renewal": {
+            "checked_at": "2026-10-18T13:00:00Z",
+            "coverage_ref": "coverage:one",
+            "invalidation": "expiry_or_revalidation_failure",
+            "kind": "source_valid_until",
+            "qualified_owner": "HEB",
+            "source_epoch": "epoch:HEB",
+            "source_proof_ref": "proof:one",
+            "valid_until": "2026-10-19T13:00:00Z",
+            "verification_method": "source_attested_interval"
+          },
+          "source_epoch": "epoch:HEB",
+          "source_version": "v1"
+        }
+      }
+    ],
+    "limitations": [],
+    "mode": "detail",
+    "outcome": "provided",
+    "page": null,
+    "projection_as_of": "2026-10-18T13:00:00Z",
+    "wire_version": "0.3.4"
+  },
+  "headers": {
+    "Cache-Control": "private, no-store",
+    "Content-Type": "application/json",
+    "X-AEW-Wire-Version": "0.3.4"
+  },
+  "status": 200
+}

@@ -1,0 +1,648 @@
+[
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 400,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "authentication_unqualified",
+      "correlation_id": "correlation:one",
+      "retry": "reauthenticate",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 401,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 404,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "owner_unavailable",
+      "correlation_id": "correlation:one",
+      "retry": "when_source_recovers",
+      "status": 503,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 503,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/owner-operations",
+    "status": 400,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "authentication_unqualified",
+      "correlation_id": "correlation:one",
+      "retry": "reauthenticate",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/owner-operations",
+    "status": 401,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/owner-operations",
+    "status": 404,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "cursor_stale_or_unauthorized",
+      "correlation_id": "correlation:one",
+      "retry": "refresh_read",
+      "status": 409,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/owner-operations",
+    "status": 409,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "owner_unavailable",
+      "correlation_id": "correlation:one",
+      "retry": "when_source_recovers",
+      "status": 503,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/owner-operations",
+    "status": 503,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/holds/{hold_id}/recovery",
+    "status": 400,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "authentication_unqualified",
+      "correlation_id": "correlation:one",
+      "retry": "reauthenticate",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/holds/{hold_id}/recovery",
+    "status": 401,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/holds/{hold_id}/recovery",
+    "status": 404,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "owner_unavailable",
+      "correlation_id": "correlation:one",
+      "retry": "when_source_recovers",
+      "status": 503,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "protocol error",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/holds/{hold_id}/recovery",
+    "status": 503,
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 400,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "unsupported_action",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 400,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "operator_origin_not_established",
+      "correlation_id": "correlation:one",
+      "retry": "not_established",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 401,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "operator_origin_unqualified",
+      "correlation_id": "correlation:one",
+      "retry": "reauthenticate",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 401,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "authentication_unqualified",
+      "correlation_id": "correlation:one",
+      "retry": "reauthenticate",
+      "status": 401,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 401,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 404,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "precondition_changed",
+      "correlation_id": "correlation:one",
+      "retry": "refresh_read",
+      "status": 409,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 409,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "request_key_conflict",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 409,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 409,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "owner_unavailable",
+      "correlation_id": "correlation:one",
+      "retry": "when_source_recovers",
+      "status": 503,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 503,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "unresolved_no_redispatch",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 409,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "command refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 409,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "owner lookup refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "get",
+    "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+    "status": 404,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "precondition_changed",
+      "correlation_id": "correlation:one",
+      "retry": "refresh_read",
+      "status": 409,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "owner lookup refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "get",
+    "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+    "status": 409,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "owner_unavailable",
+      "correlation_id": "correlation:one",
+      "retry": "when_source_recovers",
+      "status": 503,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "owner lookup refusal",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "get",
+    "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+    "status": 503,
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "hidden_same_public_observation",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 404,
+    "subject_class": "hidden",
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "nonexistent_same_public_observation",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 404,
+    "subject_class": "nonexistent",
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "hidden_same_public_observation",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "get",
+    "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+    "status": 404,
+    "subject_class": "hidden",
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "not_found_or_not_disclosable",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 404,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "nonexistent_same_public_observation",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "get",
+    "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+    "status": 404,
+    "subject_class": "nonexistent",
+    "version": "o01-command-0.2-review-candidate"
+  },
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "exact_version_mismatch_refused",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-Wire-Version": "0.3.4"
+    },
+    "method": "get",
+    "route": "/v1/read/continuation-state/{work_id}",
+    "status": 400,
+    "submitted_version": "0.3.3",
+    "version": "0.3.4"
+  },
+  {
+    "body": {
+      "code": "invalid_request",
+      "correlation_id": "correlation:one",
+      "retry": "never",
+      "status": 400,
+      "title": "Request could not be completed",
+      "type": "about:blank"
+    },
+    "case": "exact_version_mismatch_refused",
+    "headers": {
+      "Cache-Control": "private, no-store",
+      "Content-Type": "application/problem+json",
+      "X-AEW-O01-Wire": "o01-command-0.2-review-candidate"
+    },
+    "method": "post",
+    "route": "/o01/v0/command-sets",
+    "status": 400,
+    "submitted_version": "o01-command-0.1-candidate",
+    "version": "o01-command-0.2-review-candidate"
+  }
+]

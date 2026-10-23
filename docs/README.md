@@ -199,7 +199,21 @@ The first vertical slice against the architecture workspace's adopted STG-01 v0.
 | Document | What it is |
 |---|---|
 | [`BACKEND-REPORT.md`](stg02/BACKEND-REPORT.md) | The backend report: each field's owner and whether it is real or a labelled fixture, what cannot be produced yet, the recorded HTTP responses, the conformance driver's result, the four push-back points and context feedback |
-| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | The backend's classified gap entries (STG02-BE-01 to BE-16), for the designer's gap register |
+| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | Preserved backend entries and separately identified website gap entries for designer triage |
+| [`WEBSITE-REPORT.md`](stg02/WEBSITE-REPORT.md) | Historical first website checkpoint and its limits; links to later correction and joint-test handoffs |
+| [`IMPLEMENTATION-NOTES.md`](stg02/IMPLEMENTATION-NOTES.md) | Isolated website implementation, reproduction and authority boundaries |
+| [`CORRECTION-HANDOFF.md`](stg02/CORRECTION-HANDOFF.md) | Corrected website runtime, independent review and committed-source freeze |
+| [`JOINT-TEST-HANDOFF.md`](stg02/JOINT-TEST-HANDOFF.md) | Joint-run results and remaining designer decisions, without an author acceptance claim |
+| [`JOINT-TEST-NOTES.md`](stg02/JOINT-TEST-NOTES.md) | Exact tested identities, HTTP chronology, probes, failures and limitations for both runs |
+| [`JOINT-WRAPPER.md`](stg02/JOINT-WRAPPER.md) | Reviewed fixture/joint wrapper modes and test-tool boundaries |
+| [`CONTEXT-FEEDBACK.md`](stg02/CONTEXT-FEEDBACK.md) | Website-side handoff and skill feedback |
+| [Run-1 evidence](stg02/evidence/joint-run-1/README.md) | Selected hashed captures and HTTP evidence, including failed and inconclusive cases |
+| [Run-2 evidence](stg02/evidence/joint-run-2/README.md) | Corrected owner navigation, controlled recovery and explicitly attributed ledger observations |
+| [Initial website review](stg02/reviews/review-3173362.md) | Original implementation findings and coverage |
+| [Corrected runtime review](stg02/reviews/review-af77308a.md) | Recheck of the corrected runtime at its exact commit |
+| [Evidence-carrier review](stg02/reviews/review-50cd41be.md) | Review of the original correction handoff and evidence |
+| [Initial joint-wrapper review](stg02/reviews/review-joint-wrapper-041595cf.md) | Original test-wrapper findings |
+| [Corrected joint-wrapper review](stg02/reviews/review-joint-wrapper-f8dd097c.md) | Exact-commit wrapper recheck and limits |
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 

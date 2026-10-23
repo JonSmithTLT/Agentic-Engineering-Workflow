@@ -122,3 +122,54 @@ modify the policy and approve the modification.
 - Tests: `tests/integration/test_authority.py` (edit, removal, an invalid file, a project from before the pin). The
   test fixtures pin the policy they start with (`Project.pin_policy`) and adopt the edits they are about
   (`Project.adopt_policy`).
+
+## Amendment 2026-10-23 — the lock is fair (operator decision)
+
+The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing writers raised `LOCK_TIMEOUT` after
+120 s. Safety held (no lost update). Liveness did not.
+
+- **Cause.** `FileLock` polled a non-blocking OS lock every 10 ms. A holder that released and at once asked again
+  re-locked within microseconds, while the waiter slept in its poll. So the waiter waited through the holder's whole
+  run of transactions: wait ≈ run length × hold. Two processes taking the lock 50 times back to back, with 20 ms
+  holds, gave one run of 50 and a 1 s wait. Any writer doing many transactions back to back could starve another
+  past its lock timeout (60 s by default).
+- **Decision: a turnstile** (operator, 2026-10-23). A taker first takes a second OS lock, on `<lock>.queue`, and
+  releases it as soon as it holds the lock. A releaser then queues behind a waiter instead of overtaking it.
+  - Two takers alternate strictly.
+  - With three or more, the next holder is whichever queued taker polls first. The expected wait is about
+    (takers − 1) holds, with a geometric tail and no hard bound.
+  - A strict FIFO queue was held in reserve for the case where three-taker tails matter.
+  - Raising the timeout is not a fix (testing strategy §5).
+  - One deadline covers both waits, so the timeout and its `LOCK_TIMEOUT` message are unchanged. Every `FileLock`
+    gets the turnstile: the control lock, the map registry's, and the dashboard and operator endpoint locks.
+- **Considered and rejected.**
+  - A blocking OS lock: on Linux, an unlock wakes the waiters to retry, so a releaser still on the CPU re-locks
+    first, as before. A timeout would also need ctypes (`LockFileEx`) or signals.
+  - A releaser backoff: it delays every back-to-back transaction, even uncontended.
+- **The turnstile only orders takers; it excludes no one.**
+  - It has no removed-file check. If `local/` is removed while a waiter holds the turnstile, a newcomer can make a new
+    one, and fairness lapses for a moment. Exclusion is unaffected: the lock's own check is unchanged (amendment of
+    2026-10-04).
+  - A taker that cannot open the turnstile takes the lock without it, rather than failing.
+  - STG-05 CB-09's lock-free readers take neither lock.
+- **Accepted con** (operator, 2026-10-23). A process stopped while it waits (Ctrl+Z, a debugger) holds the turnstile.
+  Every other taker then waits behind it until its timeout, as behind a stopped holder. A crash or a kill frees it.
+  A bypass after a set wait was rejected: for holds longer than that wait, it gives the releaser its lead back.
+- **Measured** (prototype, 50 back-to-back takes per process, Windows and WSL Linux):
+
+  | Takers | Polling: longest wait | Turnstile: longest wait | Turnstile: holds waited through per take |
+  |---|---|---|---|
+  | 2 | 34–50 holds | 1.1–2.1 holds | exactly 1 |
+  | 3 | 77–104 holds | 4–13 holds | mean 2, max 4–10 |
+
+  An uncontended take costs 147 µs more on Windows and 7 µs more on Linux.
+- **Tests.**
+  - `tests/integration/test_store_processes.py::test_a_taker_waiting_for_the_lock_gets_it_within_about_one_hold`
+    (serial) runs two real processes, 12 takes each, with 100 ms holds. Outside the survivor's final run, no taker
+    holds the lock more than twice in a row while the other waits, and every wait is under three holds. Run against
+    the old polling loop, it fails with one taker holding the lock 12 times in a row.
+  - In `tests/unit/test_store.py`:
+    - the turnstile is free while the lock is held, and after a taker times out;
+    - a taker that cannot open the lock lets the turnstile go;
+    - a taker stuck in the turnstile holds others back until their timeout;
+    - a turnstile that cannot be opened costs fairness, never the lock.

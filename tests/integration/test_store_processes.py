@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -82,6 +84,66 @@ def test_two_racing_writers_lose_no_updates(tmp_path):
         assert p.returncode == 0, err
     assert check_invariants(tmp_path) == 2 * RACE_WRITES
     assert make_store(tmp_path).read()["revision"] == 2 * RACE_WRITES
+
+
+LOCK_WORKER = HELPERS / "lock_worker.py"
+# A hold long beside the lock's 10 ms poll and a process switch, so a fair handover costs a small part of a hold.
+# 12 takes each: polling alone let one racer take all 12 before the other got one (ADR-0001, amendment 2026-10-23).
+FAIR_HOLD_S = 0.1
+FAIR_TAKES = 12
+FAIR_MAX_RUN = 2  # one take more than strict alternation: a waiter descheduled for a whole hold before it queued
+FAIR_MAX_WAIT_HOLDS = 3  # a fair wait is one hold plus about two polls; the slack is a slow runner's scheduling
+
+
+def runs_before_last(order: str) -> list[int]:
+    """The lengths of the runs of one holder in ``order``, but the last: that one is the survivor finishing alone,
+    with no one waiting."""
+    runs: list[int] = []
+    for i, name in enumerate(order):
+        if i and name == order[i - 1]:
+            runs[-1] += 1
+        else:
+            runs.append(1)
+    return runs[:-1]
+
+
+def test_a_taker_waiting_for_the_lock_gets_it_within_about_one_hold(tmp_path):
+    """Liveness (ADR-0001, amendment 2026-10-23): two processes take the lock back to back. A waiter is served within
+    about one hold, not after the holder's whole loop: no holder takes it more than twice in a row while the other
+    waits, and no wait reaches a few holds. Before the turnstile, polling alone let a releaser re-lock within
+    microseconds, so one racer ran its whole loop while the other waited (the nightly's LockTimeout, 2026-10-23)."""
+    lock, order, go = tmp_path / "control.lock", tmp_path / "order.txt", tmp_path / "go"
+    order.write_text("", encoding="utf-8")
+    env = dict(os.environ)
+    procs = {name: subprocess.Popen([sys.executable, str(LOCK_WORKER), str(lock), str(FAIR_TAKES), str(FAIR_HOLD_S),
+                                     name, str(order), str(go)], env=env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+             for name in "AB"}
+    try:
+        deadline = time.monotonic() + 60
+        while not all(go.with_name(f"go.{name}.ready").exists() for name in procs):
+            assert all(p.poll() is None for p in procs.values()), "a racer exited before the start"
+            assert time.monotonic() < deadline, "the racers were not ready within 60 s"
+            time.sleep(0.01)
+        go.write_text("go", encoding="utf-8")
+        waits = {}
+        for name, p in procs.items():
+            out, err = p.communicate(timeout=120)
+            assert p.returncode == 0, err
+            waits[name] = json.loads(out)
+    finally:
+        for p in procs.values():
+            if p.poll() is None:
+                p.kill()
+                p.communicate()
+    taken = order.read_text(encoding="utf-8")
+    assert sorted(taken) == sorted("AB" * FAIR_TAKES)
+    run = max(runs_before_last(taken))
+    longest = max(w for ws in waits.values() for w in ws)
+    assert run <= FAIR_MAX_RUN and longest < FAIR_MAX_WAIT_HOLDS * FAIR_HOLD_S, (
+        f"order {taken}: a run of {run} takes while the other waited; the longest wait {longest:.3f} s, "
+        f"{longest / FAIR_HOLD_S:.1f} holds")
 
 
 def test_stale_revision_from_another_process(tmp_path):

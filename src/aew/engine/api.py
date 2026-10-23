@@ -45,7 +45,7 @@ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
-from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
+from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore, operator_gid
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -290,9 +290,7 @@ class ProjectAdmin:
                 f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
         # The store's group (review of #230, m6): those modes make it readable to the group the store's paths have,
         # which is meant to be the operator's user-private primary group (`primary-group` checks that group).
-        from aew.doctor import primary_gid
-
-        gid = primary_gid()
+        gid = operator_gid()
         others = self.k.store.group_problems(gid) if gid is not None else None
         if others is not None:
             add("store-group", "WARN" if others else "PASS",

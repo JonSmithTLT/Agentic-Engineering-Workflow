@@ -96,20 +96,6 @@ def _yaml() -> dict[str, str]:
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
 
 
-def primary_gid() -> int | None:
-    """The operator's primary group: their account's, or this process's own group when the uid has no account entry.
-    None on Windows."""
-    if sys.platform == "win32":  # pragma: windows-only
-        return None
-    import os  # pragma: posix-only
-    import pwd
-
-    try:
-        return pwd.getpwuid(os.getuid()).pw_gid
-    except KeyError:
-        return os.getgid()
-
-
 def primary_group() -> dict[str, str] | None:
     """Whether the operator's primary group is user-private (STG-05 CB-08): the store is group-readable, so its group
     must hold the operator alone. None on Windows, which has no such groups. AEW never changes or creates a group."""

@@ -300,13 +300,12 @@ def test_doctor_names_store_paths_whose_group_is_not_the_operators(tmp_path):
     nothing."""
     from conftest import make_git_repo
 
-    from aew.doctor import primary_gid
     from aew.engine.api import Engine
-    from aew.engine.store import ControlStore
+    from aew.engine.store import ControlStore, operator_gid
 
     e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
     store = ControlStore(e.aew_root)
-    gid = primary_gid()
+    gid = operator_gid()
     if gid is None:  # Windows: no groups
         assert store.group_problems(0) is None
         return

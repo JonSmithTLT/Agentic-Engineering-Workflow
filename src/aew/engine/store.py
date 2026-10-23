@@ -58,6 +58,7 @@ from __future__ import annotations
 import copy
 import os
 import stat
+import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -158,6 +159,21 @@ def _chmod_if_allowed(path: Path, mode: int) -> None:  # pragma: posix-only
         os.chmod(path, mode)
     except (PermissionError, FileNotFoundError):
         pass
+
+
+def operator_gid() -> int | None:
+    """The group the store's paths should have (:meth:`ControlStore.group_problems`): the operator's primary group, or
+    this process's own group when the uid has no account entry. None where there are no POSIX groups (Windows)."""
+    if sys.platform == "win32":  # pragma: windows-only
+        return None
+    try:  # pragma: posix-only
+        import pwd
+    except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups
+        return None
+    try:
+        return pwd.getpwuid(os.getuid()).pw_gid
+    except KeyError:  # a container's or a user namespace's uid
+        return os.getgid()
 
 
 def store_of(aew_root: Path) -> Path:

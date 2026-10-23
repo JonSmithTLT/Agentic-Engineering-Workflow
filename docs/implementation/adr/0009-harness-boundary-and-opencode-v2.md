@@ -816,11 +816,21 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   (`PERMISSION_DENIED`, reason `non_writer_process`). Such a process reads only through `read_committed`,
   `configuration.read_committed`, `outbox.LogView` and `outbox.read_transitions`, which take no lock and run no
   recovery, so they work on the read-only store.
+- **One opener of the lock:** `ControlStore.control_lock` is the only place AEW opens the control lock, and it refuses
+  a non-writer. `read`, `session`, `create` and the log compactor's publish all take it there, and a test refuses a
+  `FileLock` on the lock's path anywhere else.
 - **The engine's reads choose by kind:** every read the engine makes goes through `ControlStore.current`. That is
   `read` in a writer and `read_committed` in a non-writer, and `Kernel.manifest` makes the same choice. So the CLI's
-  reads work inside a worker's run, and only commands that need the lock are refused there (`history audit`, listed
-  in the test). A first version left the engine's reads on `read` and refused every read command in the sandbox
-  (review of #231, B1).
+  reads work inside a worker's run. A first version left the engine's reads on `read` and refused every read command
+  in the sandbox (review of #231, B1).
+- **What a non-writer writes:** never the store, and never the lock. Under `.aew/local` it writes only the derived
+  history index's catch-up, as every reader of archived history does (the dashboard server among them). Every result
+  of that index is authenticated against the store's history root, and on a read-only view the index is a private
+  copy instead. A command whose purpose is a write there is refused. The commands a non-writer is refused are listed
+  with why in the test:
+  - `history audit` (the lock);
+  - `history compact` (the lock and `.aew/state/log`);
+  - `context pack` and `history reindex` (derived data under `.aew/local`).
 - **The bridge:** a worker's `whoami`, `check run` and `submit` already go through the run's bridge, where the
   supervisor, a store writer, holds the credential and takes the lock.
 - **The declaration is behaviour, not the boundary.** An agent can unset the variable it is judged by. What holds
@@ -839,7 +849,10 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   - a policy root inside a reader's workspace left out, and a missing `.aew/local` made and hidden;
   - a run without its project.
 - **`tests/integration/test_containment.py`** (Linux):
-  - from a worker sandbox the lock is absent, and an exclusive lock taken there blocks no engine writer;
+  - from a worker sandbox the lock is absent, creating it fails with `EROFS`, and the run's bound-back harness
+    directory stays writable;
+  - every command a worker can run, inside a reviewer's sandbox, either works or is refused for a reason of its own,
+    with no crash and nothing met read-only;
   - a non-writer's lock-free reads work against the store on the read-only bind, and its locked read is refused as a
     non-writer's.
 - **`tests/integration/test_non_writer_reads.py`:**

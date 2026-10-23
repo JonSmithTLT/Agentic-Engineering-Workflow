@@ -228,6 +228,10 @@ skipped:
       Linux bubblewrap containment (STG-05 CB-09, CBF-1); Windows has no OS filesystem containment. Covered on
       Linux (CI and the Rocky 8 lane); the layout itself (the .aew/local mask, the store check) is tested on every
       platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_its_own_reason: >-
+      Linux bubblewrap containment (STG-05 CB-09; review of #231, m7); Windows has no OS filesystem containment.
+      Covered on Linux (CI and the Rocky 8 lane); on Windows the same commands run outside a sandbox, judged by a
+      tree diff, in test_non_writer_reads.py::test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock.
     tests/integration/test_non_writer_reads.py::test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces: >-
       POSIX permission bits stand in for a sandbox's read-only bind (STG-05 CB-09); Windows has none. Covered on
       Linux; on Windows the same reads run lock-free in

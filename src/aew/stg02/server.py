@@ -463,6 +463,13 @@ def driver_config(s: Slice, bearer: str | None = None) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from aew import process_kind
+
+    with process_kind.declared_as("aew.stg02.server"):  # scoped: tests call main in-process (STG-05 CB-09)
+        return _main(argv)
+
+
+def _main(argv: list[str] | None) -> int:
     ap = argparse.ArgumentParser(prog="python -m aew.stg02.server", description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--port", type=int, default=DEV_PORT)
     ap.add_argument("--state-dir", type=Path, required=True, help="where the key ledger and owner records live")

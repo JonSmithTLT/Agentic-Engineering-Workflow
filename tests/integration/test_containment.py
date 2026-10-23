@@ -560,3 +560,54 @@ def test_a_non_writer_in_a_worker_sandbox_reads_the_read_only_store_lock_free(la
     locked = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} history audit")
     error = json.loads(locked.stderr)["error"]
     assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process", locked.stderr
+
+
+def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_its_own_reason(visible):
+    """Inside a real reviewer's sandbox (the store on the project's read-only bind, `.aew/local` an empty read-only
+    mask with only the run's own directories bound back), on a project with finished work and a log past the
+    compaction window: every command a worker's agent can run (``worker_surface.commands``) works or is refused for a
+    reason of its own, with no crash and nothing met read-only, and only WRITER_ONLY is refused as a non-writer's
+    (review of #231, m7: `context pack` crashed on the mask, and `history reindex` blamed "another AEW process").
+    The one class that still meets the read-only filesystem, a fingerprint read's git writing objects, is pinned as
+    ``worker_surface.READER_GIT_GAP``, with why."""
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import worker_surface
+
+    w = worker_surface.worked_project(visible)
+    ws = visible / "review-ws"
+    assert git("worktree", "add", "-q", "--detach", str(ws), cwd=w.p.root).returncode == 0
+    run = w.p.root / ".aew" / "local" / "harness" / "runs" / "R-REVIEW-1"
+    run.mkdir(parents=True)
+    home = visible / "home"
+    home.mkdir()
+    layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
+                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent))
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    env = {"PATH": os.environ["PATH"], "PYTHONPATH": os.environ.get("PYTHONPATH", ""), "HOME": str(home),
+           "LANG": "C.UTF-8", **layout.env, "AEW_AGENT_ENDPOINT": "/tmp/aew-no-bridge/s", "AEW_AGENT_KEY": "00" * 32}
+
+    def run_one(argv: list[str]) -> tuple[list[str], subprocess.CompletedProcess[str]]:
+        cmd = C.bwrap_argv(layout, [sys.executable, "-m", "aew", "-C", str(w.p.root), *argv], cwd=str(ws))
+        return argv, subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180,
+                                    stdin=subprocess.DEVNULL)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(run_one, worker_surface.commands(w)))
+    gap = {worker_surface.words(a) for a, r in results if worker_surface.git_object_store_refused(r.stderr)}
+    met = {" ".join(a): r.stderr[-300:] for a, r in results
+           if any(sign in r.stderr for sign in worker_surface.WRITE_FAILURES)
+           and not worker_surface.git_object_store_refused(r.stderr)}
+    assert met == {}
+    assert gap == worker_surface.READER_GIT_GAP, sorted(gap)  # the pinned gap, both ways: it only shrinks
+
+    def reason(stderr: str) -> str | None:
+        try:
+            return (json.loads(stderr)["error"].get("details") or {}).get("reason")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return None
+
+    refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
+    assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)

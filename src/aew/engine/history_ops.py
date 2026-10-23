@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aew import process_kind
 from aew.engine import faults, recall
 from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
 from aew.engine.authority import require_lead
@@ -222,7 +223,10 @@ class HistoryCommands:
         return {"id": record_id, "depth": depth, "edges": edges, "nodes": nodes, "truncated": truncated}
 
     def history_reindex(self) -> dict[str, Any]:
-        """Rebuild the derived index from the manifest (it is never authority; losing it loses nothing)."""
+        """Rebuild the derived index from the manifest (it is never authority; losing it loses nothing). A writer's
+        operation: a non-writer only catches the shared index up, or reads a private copy (``HistoryIndex.sync``), and
+        never deletes it (review of #231, m7)."""
+        process_kind.require_writer("history reindex", writes="the derived history index under .aew/local")
         state = self.k.store.current()
         self._require_v2(state)
         index = HistoryIndex(self.k.aew_root)

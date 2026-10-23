@@ -26,8 +26,9 @@ from contextlib import contextmanager
 STORE_WRITER = "store_writer"
 NON_WRITER = "non_writer"
 
-# entry point -> (kind, why). Exhaustive for AEW's own processes: the `aew` CLI (and `python -m aew`), in the four
-# roles it plays, and the run supervisor (`python -m aew.harness.supervisor`). The Lead broker runs the CLI in its own
+# entry point -> (kind, why). Exhaustive for AEW's own processes, and a test compares it with every module that runs
+# as one (`if __name__ == "__main__"`, `aew/__main__.py`, the console script): the `aew` CLI (and `python -m aew`), in
+# the four roles it plays, and each `python -m` module by its dotted name. The Lead broker runs the CLI in its own
 # process (`lead_broker.run_cli`, not through `main`), so it declares nothing and is a store writer, as it must be: it
 # holds the Lead's credential and commits for the Lead.
 ENTRY_POINTS: dict[str, tuple[str, str]] = {
@@ -43,6 +44,8 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
                      "Lead broker, which holds the credential"),
     "aew.harness.supervisor": (STORE_WRITER, "a run's supervisor: holds the run's credential and commits through the "
                                "engine"),
+    "aew.stg02.server": (NON_WRITER, "the STG-02 slice's producer: it reads a project's committed state lock-free "
+                         "(dashboard.reader) and writes only its own state directory, never the store"),
 }
 AGENT_ENDPOINT_ENV = "AEW_AGENT_ENDPOINT"  # aew.harness.bridge.ENV_ENDPOINT, named here to keep this module free of AEW
 
@@ -97,15 +100,19 @@ def kind() -> str:
     return ENTRY_POINTS[_declared][0] if _declared is not None else STORE_WRITER
 
 
-def require_writer(operation: str) -> None:
-    """Refuse ``operation`` (a ``ControlStore`` method that takes the control lock) in a non-writer process, before
-    anything opens the lock: ``PERMISSION_DENIED``, reason ``non_writer_process``."""
+def require_writer(operation: str, *, writes: str | None = None) -> None:
+    """Refuse ``operation`` in a non-writer process, before it starts: ``PERMISSION_DENIED``, reason
+    ``non_writer_process``. Without ``writes`` the operation takes the control lock (``ControlStore.control_lock``, the
+    one opener); with it, the operation's purpose is the write ``writes`` names under ``.aew``, which is a writer's
+    (review of #231, m7), and the refusal says so."""
     if kind() != NON_WRITER:
         return
     from aew.errors import PermissionDenied
 
+    what = (f"which writes {writes}, is refused before it writes anything" if writes is not None
+            else "which takes the engine's control lock, is refused before the lock is opened")
     raise PermissionDenied(
-        f"this process ({_declared}) reads AEW's store lock-free only, so `{operation}`, which takes the engine's "
-        "control lock, is refused before the lock is opened. Inside a worker's run, `aew whoami`, `aew check run` and "
-        "`aew submit` reach the engine through the run's bridge; anything else is the Lead's to run",
+        f"this process ({_declared}) reads AEW's store lock-free only, so `{operation}`, {what}. Inside a worker's "
+        "run, `aew whoami`, `aew check run` and `aew submit` reach the engine through the run's bridge; anything else "
+        "is the Lead's to run",
         entry_point=_declared, operation=operation, reason="non_writer_process")

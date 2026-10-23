@@ -75,8 +75,8 @@ class Layout:
     role: str
     access: str                              # "write" or "read": the role's access to its workspace
     bwrap: str                               # absolute path of the bubblewrap binary
-    writable: tuple[str, ...]                # read-write binds, in order
-    readonly: tuple[str, ...]                # read-only re-binds, after every writable bind
+    writable: tuple[str, ...]                # read-write binds, applied by depth with `readonly` (bind_order)
+    readonly: tuple[str, ...]                # read-only re-binds; a writable bind under one comes after it
     visible: tuple[str, ...] = ()            # read-only binds first: the project, wherever it lives
     hide_runs: tuple[str, ...] = ()          # empty tmpfs at its depth, then read-only: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs

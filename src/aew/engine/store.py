@@ -410,10 +410,16 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
+    def control_lock(self, operation: str) -> FileLock:
+        """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
+        here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
+        ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
+        process_kind.require_writer(operation)
+        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+
     @contextmanager
     def session(self) -> Iterator[Session]:
-        process_kind.require_writer("ControlStore.session")
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout) as lock:
+        with self.control_lock("ControlStore.session") as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
             try:
@@ -434,8 +440,7 @@ class ControlStore:
                                  "not delete .aew/local while AEW is running)", path=LOCK_REL, reason="lock_lost")
 
     def read(self) -> dict[str, Any]:
-        process_kind.require_writer("ControlStore.read")
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.read"):
             self.held += 1
             try:
                 return copy.deepcopy(self._recover())
@@ -481,8 +486,7 @@ class ControlStore:
         The exclusive creation of ``control.yaml`` is the commit point; an
         interrupted initialization leaves no control state and can be re-run.
         """
-        process_kind.require_writer("ControlStore.create")
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.create"):
             if self.control_path.exists():
                 raise IntegrityError(f"{self.control_path} already exists; project is initialized")
             for rel, content in files.items():

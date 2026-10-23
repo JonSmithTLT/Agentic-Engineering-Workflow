@@ -325,7 +325,10 @@ class ContextPacks:
         return ctxmod.render(inputs), inv
 
     def context_pack(self, inv_id: str) -> dict[str, Any]:
-        """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
+        """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted). A writer's operation: its
+        purpose is a write under ``.aew/local``, which a non-writer never makes (``context show`` renders in memory
+        there; review of #231, m7)."""
+        process_kind.require_writer("context pack", writes="the invocation's pack under .aew/local/packs")
         text, inv = self._rendered(inv_id)
         rel = self.pack_rel(inv_id)
         atomic_write(self.k.aew_root / rel, text)

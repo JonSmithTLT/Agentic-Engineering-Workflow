@@ -26,11 +26,16 @@ from contextlib import contextmanager
 STORE_WRITER = "store_writer"
 NON_WRITER = "non_writer"
 
-# entry point -> (kind, why). Exhaustive for AEW's own processes: the `aew` CLI (and `python -m aew`), in the three
-# roles it plays, and the run supervisor (`python -m aew.harness.supervisor`).
+# entry point -> (kind, why). Exhaustive for AEW's own processes: the `aew` CLI (and `python -m aew`), in the four
+# roles it plays, and the run supervisor (`python -m aew.harness.supervisor`). The Lead broker runs the CLI in its own
+# process (`lead_broker.run_cli`, not through `main`), so it declares nothing and is a store writer, as it must be: it
+# holds the Lead's credential and commits for the Lead.
 ENTRY_POINTS: dict[str, tuple[str, str]] = {
     "aew": (STORE_WRITER, "the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine "
             "commands take the control lock"),
+    "aew dashboard serve": (NON_WRITER, "the dashboard server, long-running and read-only: it reads the store "
+                            "lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, "
+                            "never the control lock"),
     "aew (worker run)": (NON_WRITER, "the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, "
                          "`check run` and `submit` go through the run's bridge, whose supervisor holds the "
                          "credential and the lock; nothing else in that process may take the lock"),
@@ -55,7 +60,9 @@ def declare(entry_point: str) -> None:
 @contextmanager
 def declared_as(entry_point: str) -> Iterator[None]:
     """:func:`declare` for the extent of the block, then the previous declaration again (a CLI ``main`` called
-    in-process, as tests do, must not leave its kind behind)."""
+    in-process, as tests do, must not leave its kind behind). The declaration is the process's, not the thread's:
+    another thread sees it while the block runs. No caller runs ``main`` in a thread; one that did would need a
+    ``contextvars.ContextVar`` here."""
     global _declared
     previous = _declared
     declare(entry_point)
@@ -78,7 +85,8 @@ def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
             value = True
         elif not arg.startswith("-"):
             words.append(arg)
-    return "aew lead mcp" if words[:2] == ["lead", "mcp"] else "aew"
+    named: dict[tuple[str, ...], str] = {("lead", "mcp"): "aew lead mcp", ("dashboard", "serve"): "aew dashboard serve"}
+    return named.get(tuple(words[:2]), "aew")
 
 
 def declared() -> str | None:

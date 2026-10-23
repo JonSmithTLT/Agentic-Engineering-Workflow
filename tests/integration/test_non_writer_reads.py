@@ -39,6 +39,8 @@ def test_every_entry_point_has_a_kind_and_the_cli_knows_which_it_is():
         (("lead", "mcp"), ()): "aew lead mcp",
         (("-C", "/p", "lead", "mcp"), ()): "aew lead mcp",
         (("--print-credential", "lead", "mcp"), ()): "aew lead mcp",
+        (("-C", "/p", "dashboard", "serve", "--port", "0"), ()): "aew dashboard serve",
+        (("dashboard", "status"), ()): "aew",
         (("status",), (("AEW_AGENT_ENDPOINT", "/tmp/aew-x/s"),)): WORKER,
         (("lead", "mcp"), (("AEW_AGENT_ENDPOINT", "/tmp/aew-x/s"),)): WORKER,
     }

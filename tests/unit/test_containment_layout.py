@@ -275,15 +275,35 @@ def test_every_roles_layout_keeps_its_writable_binds_off_the_stores_path_and_the
     store = os.path.join(repo, ".aew", "state")
     described = layout.describe()
     # The check itself, over what the run records of its layout: a role added later is checked the same way.
-    L._refuse_store_binds(role, store, L.bind_order(described["writable"], described["readonly"]))
+    L._refuse_store_binds(role, repo, L.bind_order(described["writable"], described["readonly"], layout.hide_runs))
     assert not any(L._within(w, store) or L._within(store, w) for w in layout.writable)
-    # .aew/local is hidden whole (the runs directory is inside it, so it is not hidden twice), before any bind.
+    # .aew/local is hidden whole (the runs directory is inside it, so it is not hidden twice), and stays hidden.
     local = os.path.join(repo, ".aew", "local")
     assert layout.hide_runs == (local,)
-    flags = C.bwrap_argv(layout, ["agent"])
-    hidden = next(i for i in range(len(flags) - 1) if flags[i:i + 2] == ["--tmpfs", local])
-    assert all(hidden < i for i, f in enumerate(flags) if f == "--bind")
+    assert mask_problems(C.bwrap_argv(layout, ["agent"]), layout.hide_runs) == []
     assert os.path.realpath(tmp_path / "repo/.aew/local/harness/runs/R-1/harness") in layout.writable  # bound back
+
+
+def mask_problems(flags: list[str], hidden: tuple[str, ...]) -> list[str]:
+    """The masked-path invariant (review of #231, m2 and m5), enumerated over the argv: after a mask's ``--tmpfs H``,
+    no bind lands on ``H`` or above it (that would show the host's ``H`` again), only deeper bind-backs; and ``H`` is
+    remounted read-only after the last of them (a writable mask lets a contained process make its own lock there)."""
+    out = []
+    kinds = ("--bind", "--ro-bind", "--tmpfs", "--remount-ro")
+    steps = [(i, f, flags[i + 1]) for i, f in enumerate(flags) if f in kinds]
+    for h in hidden:
+        masked = [i for i, f, p in steps if f == "--tmpfs" and p == h]
+        remounts = [i for i, f, p in steps if f == "--remount-ro" and p == h]
+        if len(masked) != 1 or len(remounts) != 1:
+            out.append(f"{h}: masked {len(masked)} times and remounted read-only {len(remounts)} times, not once each")
+            continue
+        for i, f, p in steps:
+            dest = flags[i + 2] if f in ("--bind", "--ro-bind") else p
+            if f in ("--bind", "--ro-bind") and i > masked[0] and L._within(h, dest):
+                out.append(f"{f} {dest} after the mask of {h} shows the host's {h} again")
+            if f in ("--bind", "--ro-bind") and L._within(dest, h) and dest != h and i > remounts[0]:
+                out.append(f"{f} {dest} into {h} after its read-only remount")
+    return out
 
 
 def test_a_layout_whose_writable_bind_reaches_the_store_is_refused_naming_the_bind(tmp_path, fake_bwrap):
@@ -305,13 +325,82 @@ def test_a_layout_whose_writable_bind_reaches_the_store_is_refused_naming_the_bi
 
 
 def test_a_writable_bind_that_contains_the_store_passes_only_with_the_next_directory_re_bound_after_it():
-    store = os.path.join(os.sep, "p", ".aew", "state")
-    work, aew = os.path.join(os.sep, "p"), os.path.join(os.sep, "p", ".aew")
-    L._refuse_store_binds("lead", store, L.bind_order([work], [aew]))  # R-2: the Lead's writable working tree
+    work = os.path.realpath(os.path.join(os.sep, "p"))
+    aew, store = os.path.join(work, ".aew"), os.path.join(work, ".aew", "state")
+    L._refuse_store_binds("lead", work, L.bind_order([work], [aew]))  # R-2: the Lead's writable working tree
     with pytest.raises(ContainmentUnavailable):  # the same re-bind applied before the writable bind covers nothing
-        L._refuse_store_binds("lead", store, [("--ro-bind", aew), ("--bind", work)])
+        L._refuse_store_binds("lead", work, [("--ro-bind", aew), ("--bind", work)])
     with pytest.raises(ContainmentUnavailable):  # a deeper re-bind is not the next directory on the path
-        L._refuse_store_binds("lead", store, L.bind_order([work], [store]))
+        L._refuse_store_binds("lead", work, L.bind_order([work], [store]))
+
+
+def test_in_the_leads_r2_shape_the_mask_comes_after_the_aew_re_bind_so_the_lock_stays_hidden():
+    """Review of #231, m2, scenario 1: the project writable and `.aew` re-bound read-only after it (what R-3 admits).
+    Applied before every bind, the mask was covered again by the `.aew` re-bind, the host's lock with it."""
+    work = os.path.realpath(os.path.join(os.sep, "p"))
+    aew, local = os.path.join(work, ".aew"), os.path.join(work, ".aew", "local")
+    run = os.path.join(local, "harness", "runs", "R-1", "harness")
+    layout = C.Layout(role="lead", access="write", bwrap="/usr/bin/bwrap", writable=(work, run), readonly=(aew,),
+                      hide_runs=(local,))
+    flags = C.bwrap_argv(layout, ["agent"])
+    assert mask_problems(flags, layout.hide_runs) == []
+    kinds = ("--bind", "--ro-bind", "--tmpfs", "--remount-ro")
+    steps = [(f, flags[i + 1]) for i, f in enumerate(flags) if f in kinds]
+    assert steps[-5:] == [("--bind", work), ("--ro-bind", aew), ("--tmpfs", local), ("--bind", run),
+                          ("--remount-ro", local)]
+    # The old order, the mask before every bind, is what the enumeration exists to catch.
+    old = [layout.bwrap, "--tmpfs", local, "--bind", work, work, "--ro-bind", aew, aew, "--bind", run, run]
+    assert mask_problems(old, layout.hide_runs) != []
+
+
+def test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link(tmp_path,
+                                                                                                          fake_bwrap):
+    """Review of #231, m1: R-3 judged the resolved store, so a symlinked `.aew` under a writable bind passed, and a
+    contained process could rename the link and make a `.aew` of its own for the next host `aew` to find."""
+    if sys.platform == "win32":
+        pytest.skip("a symlink needs a privilege on Windows; the check is pure and runs on Linux and macOS")
+    work = tmp_path / "p"
+    (tmp_path / "elsewhere" / "state").mkdir(parents=True)
+    work.mkdir()
+    (work / ".aew").symlink_to(tmp_path / "elsewhere")
+    real = os.path.realpath(work)
+    with pytest.raises(ContainmentUnavailable, match="symlink on the path to AEW's store") as refused:
+        L._refuse_store_binds("lead", work, L.bind_order([real], [os.path.join(real, ".aew")]))
+    assert refused.value.details["reason"] == "store_path_symlink"
+    assert refused.value.details["symlink"] == os.path.join(real, ".aew")
+    L._refuse_store_binds("lead", work, L.bind_order([os.path.realpath(tmp_path / "out")], []))  # no bind reaches it
+
+
+def test_an_operator_root_inside_a_readers_workspace_is_not_bound_so_the_workspace_stays_read_only(tmp_path,
+                                                                                                    fake_bwrap):
+    """Review of #231, m3: with binds by depth, a writable root deeper than the reader's read-only workspace would win
+    its subtree. A reader's workspace is read-only whole, so the root is left out of its layout (an implementer, who
+    writes the workspace anyway, still gets it)."""
+    repo, ws = repo_with_worktree(tmp_path)
+    build = ws / "build"
+    build.mkdir()
+    for role, bound in (("reviewer", False), ("implementer", True)):
+        run = tmp_path / f"run-{role}"
+        layout = C.for_run(role=role, scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
+                           bridge_dir=None, policy={"writable": [str(build)]}, home=str(tmp_path / "home"),
+                           project=str(repo))
+        assert (os.path.realpath(build) in layout.writable) is bound, role
+        assert (os.path.realpath(build) in layout.operator_writable) is bound, role
+
+
+def test_a_missing_aew_local_is_made_and_hidden_and_a_project_with_no_aew_has_nothing_to_hide(tmp_path, fake_bwrap):
+    """Review of #231, m4: skipped while absent, the mask failed open for a lock a host writer created later."""
+    repo, ws = repo_with_worktree(tmp_path)
+    run = tmp_path / "run"
+    kwargs = {"role": "reviewer", "scope": "ticket", "workspace": str(ws), "run_dir": run,
+              "scratch": str(run / "scratch"), "bridge_dir": None, "policy": None, "home": str(tmp_path / "home"),
+              "project": str(repo)}
+    assert C.for_run(**kwargs).hide_runs == ()  # not an AEW root: nothing made there
+    assert not (repo / ".aew").exists()
+    (repo / ".aew" / "state").mkdir(parents=True)
+    layout = C.for_run(**kwargs)
+    assert (repo / ".aew" / "local").is_dir()
+    assert layout.hide_runs == (os.path.realpath(repo / ".aew" / "local"),)
 
 
 def test_a_run_without_its_project_is_refused_before_any_layout(tmp_path, monkeypatch, fake_bwrap):

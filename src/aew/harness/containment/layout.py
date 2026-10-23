@@ -7,7 +7,9 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 * the project's ``.aew/local`` (and the runs directory, wherever it lives) is hidden behind an empty tmpfs, and only
   this run's own directories are bound back: one run never reads another's harness state (its bridge key, its
   transcript), and the engine's control lock is not in the sandbox at all, so no contained process can hold it
-  (STG-05 CBF-1). The store itself (``.aew/state``) stays visible, read-only, for lock-free reads;
+  (STG-05 CBF-1). The mask takes its place in the one bind order (no bind above it can bring the lock back), and is
+  remounted read-only once the run's own directories are bound back into it, so nothing makes a lock of its own
+  there. The store itself (``.aew/state``) stays visible, read-only, for lock-free reads;
 * PID, IPC and UTS namespaces are private; the network namespace is shared (the harness server listens on
   ``127.0.0.1`` and the provider is remote), so nothing here claims network isolation;
 * the writable roots come from the role (:data:`WORKSPACE_ACCESS`, exhaustive: a role without an entry has no
@@ -16,7 +18,7 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 * writable binds and read-only re-binds are applied ancestors first (:func:`bind_order`): a later bind wins its
   subtree, so a read-only re-bind under a broad writable root closes what it protects (the repository's git metadata,
   the workspace's ``.git`` pointer, the bridge directory), and a writable bind under a read-only re-bind stays
-  writable;
+  writable. A reader's workspace stays read-only whole: an operator root inside it is not bound;
 * no writable bind may change the store's path (STG-05 CB-07, ruling R-3; :func:`_refuse_store_binds`);
 * secret masks come last and depend on the path's type: a directory is replaced by an empty tmpfs, a file by an
   empty read-only file (``/dev/null`` would do, but SELinux refuses a device node bound over a home file).
@@ -76,7 +78,7 @@ class Layout:
     writable: tuple[str, ...]                # read-write binds, in order
     readonly: tuple[str, ...]                # read-only re-binds, after every writable bind
     visible: tuple[str, ...] = ()            # read-only binds first: the project, wherever it lives
-    hide_runs: tuple[str, ...] = ()          # empty tmpfs before the writable binds: .aew/local, the runs dir
+    hide_runs: tuple[str, ...] = ()          # empty tmpfs at its depth, then read-only: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``
     mask_file: str = "/dev/null"             # an empty read-only file
@@ -96,10 +98,10 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
            "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", SANDBOX_TMP]
     for path in layout.visible:
         out += ["--ro-bind", path, path]
-    for path in layout.hide_runs:
-        out += ["--tmpfs", path]
-    for flag, path in bind_order(layout.writable, layout.readonly):
-        out += [flag, path, path]
+    for flag, path in bind_order(layout.writable, layout.readonly, layout.hide_runs):
+        out += [flag, path] if flag == "--tmpfs" else [flag, path, path]
+    for path in layout.hide_runs:  # after the run's own bind-backs into it, which keep their own flags
+        out += ["--remount-ro", path]
     for path in layout.hide_dirs:
         out += ["--tmpfs", path]
     for path in layout.hide_files:
@@ -109,13 +111,20 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
     return [*out, "--", *argv]
 
 
-def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] | list[str]) -> list[tuple[str, str]]:
-    """The writable binds (``--bind``) and read-only re-binds (``--ro-bind``) in the order bubblewrap applies them:
-    by depth, ancestors first, so each bind holds for its subtree except where a deeper bind says otherwise. A path in
-    both is read-only (the re-bind comes after). Otherwise the order within a depth is the layout's. The one owner of
-    the order: ``bwrap_argv`` emits it and the store check (:func:`_refuse_store_binds`) reasons about it."""
-    tagged = [("--bind", p) for p in writable] + [("--ro-bind", p) for p in readonly]
-    return sorted(tagged, key=lambda t: (len(Path(t[1]).parts), t[0] == "--ro-bind"))
+_RANK = {"--bind": 0, "--ro-bind": 1, "--tmpfs": 2}
+
+
+def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] | list[str],
+               hidden: tuple[str, ...] | list[str] = ()) -> list[tuple[str, str]]:
+    """The writable binds (``--bind``), read-only re-binds (``--ro-bind``) and the masks of ``hide_runs``
+    (``--tmpfs``) in the order bubblewrap applies them: by depth, ancestors first, so each holds for its subtree except
+    where a deeper one says otherwise. On one path the mask comes last, after a re-bind, after a writable bind. So no
+    bind ever lands on a masked path after its mask (review of #231, m2): only the run's own bind-backs, deeper, come
+    after it. Otherwise the order within a depth is the layout's. The one owner of the order: ``bwrap_argv`` emits it
+    and the store check (:func:`_refuse_store_binds`) reasons about it."""
+    tagged = ([("--bind", p) for p in writable] + [("--ro-bind", p) for p in readonly]
+              + [("--tmpfs", p) for p in hidden])
+    return sorted(tagged, key=lambda t: (len(Path(t[1]).parts), _RANK[t[0]]))
 
 
 def find_bwrap() -> str | None:
@@ -271,30 +280,51 @@ def _refuse_unsafe_root(raw: str, root: str, guarded: list[tuple[str, str]], *, 
 STORE = (".aew", "state")  # the store, relative to the project root (aew.engine.store.STORE_REL under the AEW root)
 
 
-def _refuse_store_binds(role: str, store: str, order: list[tuple[str, str]]) -> None:
+def _refuse_store_binds(role: str, project: str | os.PathLike[str], order: list[tuple[str, str]]) -> None:
     """STG-05 CB-07 (ruling R-3): no writable bind ``W`` may change the store's path. ``W`` is not the store and not
     under it; and if ``W`` contains the store, the first component below ``W`` on the path to it is re-bound read-only
     after ``W`` (``order`` is :func:`bind_order`'s), which makes it a mount point that cannot be renamed, replaced or
     removed. This is not the operator-root guard (``_refuse_unsafe_root``): run directories live under ``.aew/local``,
-    so a role's own binds need only stay off the store's path."""
+    so a role's own binds need only stay off the store's path.
+
+    The path is checked twice: as the engine walks it (the project's own ``.aew/state``, which ``Kernel.locate`` finds
+    by name) and where it leads. A symlink on the walked path cannot be protected by a re-bind (a mount lands on its
+    target and leaves the link renamable), so a writable bind over one is refused (review of #231, m1)."""
+    walked = os.path.join(_real(project), *STORE)
+    links = [p for p in (os.path.dirname(walked), walked) if os.path.islink(p)]
     for i, (flag, w) in enumerate(order):
         if flag != "--bind":
             continue
-        if _within(w, store):
+        reached = [p for p in links if _within(p, w)]
+        if reached:
             raise ContainmentUnavailable(
-                f"the {role} layout's writable bind {w} is AEW's store ({store}) or lies under it, so a contained "
-                "process could change the store; the launch is refused. Keep the workspace, scratch and every "
-                "writable root outside the project's .aew/state", role=role, bind=w, store=store,
-                reason="writable_bind_in_store")
-        if _within(store, w):
-            below = os.path.join(w, os.path.relpath(store, w).split(os.sep)[0])
-            if not any(f == "--ro-bind" and p == below for f, p in order[i + 1:]):
-                raise ContainmentUnavailable(
-                    f"the {role} layout's writable bind {w} contains AEW's store ({store}), and {below} is not "
-                    "re-bound read-only after it, so a contained process could rename or replace the directories "
-                    f"on the store's path; the launch is refused. Re-bind {below} read-only in the same layout, or "
-                    "keep the writable bind outside the project", role=role, bind=w, store=store, needs=below,
-                    reason="store_path_writable")
+                f"the {role} layout's writable bind {w} contains {reached[0]}, a symlink on the path to AEW's store, "
+                "and a read-only re-bind cannot keep a contained process from renaming or replacing a symlink; the "
+                "launch is refused. Keep the writable bind outside the project, or make the project's .aew and "
+                ".aew/state real directories", role=role, bind=w, store=walked, symlink=reached[0],
+                reason="store_path_symlink")
+        for store in dict.fromkeys((walked, _real(walked))):
+            _refuse_store_bind(role, store, w, order[i + 1:])
+
+
+def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str]]) -> None:
+    """:func:`_refuse_store_binds` for one writable bind ``w`` and one spelling of the store's path; ``after`` is what
+    the order applies after ``w``."""
+    if _within(w, store):
+        raise ContainmentUnavailable(
+            f"the {role} layout's writable bind {w} is AEW's store ({store}) or lies under it, so a contained "
+            "process could change the store; the launch is refused. Keep the workspace, scratch and every "
+            "writable root outside the project's .aew/state", role=role, bind=w, store=store,
+            reason="writable_bind_in_store")
+    if _within(store, w):
+        below = os.path.join(w, os.path.relpath(store, w).split(os.sep)[0])
+        if not any(f == "--ro-bind" and p == below for f, p in after):
+            raise ContainmentUnavailable(
+                f"the {role} layout's writable bind {w} contains AEW's store ({store}), and {below} is not "
+                "re-bound read-only after it, so a contained process could rename or replace the directories "
+                f"on the store's path; the launch is refused. Re-bind {below} read-only in the same layout, or "
+                "keep the writable bind outside the project", role=role, bind=w, store=store, needs=below,
+                reason="store_path_writable")
 
 
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
@@ -345,10 +375,12 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         if not os.path.isdir(path):
             raise ContainmentUnavailable(f"policy containment.writable path {raw!r} is not an existing directory")
         _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
+        if access == "read" and _within(path, str(ws)):
+            continue  # a reader's workspace is read-only whole: a root inside it is not bound (review of #231, m3)
         operator.append(path)
     writable += [p for p in operator if p not in writable]
     if access == "read":
-        readonly.insert(0, str(ws))       # the workspace itself, re-bound read-only over any broad writable root
+        readonly.insert(0, str(ws))       # the workspace itself, re-bound read-only over any broader writable root
         protected.append(str(ws))
     if bridge_dir:
         readonly.append(_real(bridge_dir))
@@ -357,10 +389,12 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
             readonly.append(_real(prefix))
     visible = [_real(project)] if os.path.isdir(project) else []
     local = Path(project) / ".aew" / "local"
-    hide_runs = [_real(local)] if local.is_dir() else []
+    if local.parent.is_dir():  # made now, so a lock a host writer creates there later is hidden too (#231, m4)
+        local.mkdir(exist_ok=True)
+    hide_runs = [_real(local)] if local.is_dir() else []  # no .aew: not an AEW root, so no lock to hide
     if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
         hide_runs.append(_real(runs))
-    _refuse_store_binds(role, _real(Path(project).joinpath(*STORE)), bind_order(writable, readonly))
+    _refuse_store_binds(role, project, bind_order(writable, readonly, hide_runs))
     return Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                   visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
                   mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected), env=env)

@@ -492,32 +492,25 @@ def aew_project(lab: Lab) -> Path:
     return lab.repo / ".aew"
 
 
-def test_from_a_worker_sandbox_the_control_lock_is_not_there_and_a_lock_taken_inside_blocks_no_writer(lab):
+def test_from_a_worker_sandbox_the_control_lock_is_not_there_and_none_can_be_made(lab):
+    """Inside, `.aew/local` is an empty tmpfs, remounted read-only once the run's own directories are bound back into
+    it (review of #231, m5): the host's lock is absent, a process cannot make a lock of its own there (EROFS), and the
+    run's own harness directory, bound back into the mask, stays writable."""
     from aew.engine.lock import FileLock
     from aew.engine.store import LOCK_REL
 
     aew = aew_project(lab)
+    lab.run = aew / "local" / "harness" / "runs" / "R-1"  # where a harness run's directory is: inside the mask
     layout = lab.layout("reviewer")
-    held = lab.run / "scratch" / "held"
-    # Inside: the lock file is absent (`.aew/local` is an empty tmpfs); a process that makes one there and holds it
-    # exclusively holds a file of its own sandbox's, which no engine writer outside ever opens.
-    hold = (f"test -e {aew / LOCK_REL} && echo present || echo absent; "
-            f"{sys.executable} -c \"import fcntl, time; f = open('{aew / LOCK_REL}', 'a+'); "
-            f"fcntl.flock(f, fcntl.LOCK_EX); open('{held}', 'w').write('1'); time.sleep(60)\"")
-    tree = procs.ProcessTree(layout=layout)
-    try:
-        proc = tree.spawn(["sh", "-c", hold], cwd=str(lab.ws), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                          stdin=subprocess.DEVNULL, text=True, env={"PATH": os.environ["PATH"], **layout.env})
-        _wait_file(held)
-        started = time.monotonic()
-        with FileLock(aew / LOCK_REL, timeout=5):  # the engine's own lock, on the host
-            took = time.monotonic() - started
-        assert took < 2, f"an engine writer waited {took:.1f}s on a lock held from a sandbox"
-    finally:
-        tree.kill()
-        tree.close()
-    out, _ = proc.communicate(timeout=30)
-    assert out.splitlines()[0] == "absent"
+    harness = lab.run / "harness"
+    probe = (f"test -e {aew / LOCK_REL} && echo present || echo absent; "
+             f"{sys.executable} -c \"import errno\ntry:\n    open('{aew / LOCK_REL}', 'a+')\n    print('made')\n"
+             f"except OSError as e:\n    print(errno.errorcode[e.errno])\"; "
+             f"echo x > {harness / 'w'} && echo harness-writable")
+    res = lab.sh(layout, probe)
+    assert res.stdout.split() == ["absent", "EROFS", "harness-writable"], res.stdout + res.stderr
+    with FileLock(aew / LOCK_REL, timeout=5):  # the engine's own lock, on the host, untouched
+        pass
 
 
 _NON_WRITER_READS = """
@@ -556,7 +549,11 @@ def test_a_non_writer_in_a_worker_sandbox_reads_the_read_only_store_lock_free(la
     assert res.returncode == 0, res.stderr
     assert json.loads(res.stdout) == {"kind": "non_writer", "revision": 0, "manifest": True, "records": 0,
                                       "segment": True, "locked_read": "non_writer_process"}
-    # The CLI itself, as an agent runs it there: refused as a non-writer, not by the read-only filesystem.
-    cli = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} status --json")
-    error = json.loads(cli.stderr)["error"]
-    assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process", cli.stderr
+    # The CLI itself, as an agent runs it there: its reads work lock-free on the read-only store (review of #231, B1),
+    # and a command that needs the lock is refused as a non-writer's, not by the read-only filesystem.
+    for args in ("status --json", "work list"):
+        cli = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} {args}")
+        assert cli.returncode == 0, (args, cli.stderr)
+    locked = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} history audit")
+    error = json.loads(locked.stderr)["error"]
+    assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process", locked.stderr

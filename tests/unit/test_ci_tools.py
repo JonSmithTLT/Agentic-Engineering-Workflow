@@ -851,17 +851,20 @@ def test_collection_proves_the_lanes_split():
 
 
 def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_ledgers():
-    """Structure of the `vertical` workflow: every pull request and main, both OSes, its ledgers uploaded whatever the
-    outcome, not a lane report, and honestly red (no continue-on-error). It is a workflow of its own, so the red job
-    never makes ci.yml's run (the merge gate's) conclude red; ci.yml neither runs nor names it. Windows, outside the
-    enforced gate (spec v2, the operator's Q1(e)), keeps running and reporting: its job stays in the matrix and its
-    summaries (which lead with its unqualified state) are written whatever the outcome."""
+    """Structure of the `vertical` workflow: pushes to main and dispatch only, never a pull request (operator,
+    2026-10-23: frozen as a baseline, red on main), a running main run never cancelled, both OSes, its ledgers uploaded
+    whatever the outcome, not a lane report, and honestly red (no continue-on-error). It is a workflow of its own, so
+    the red job never makes ci.yml's run (the merge gate's) conclude red; ci.yml neither runs nor names it. Windows,
+    outside the enforced gate (spec v2, the operator's Q1(e)), keeps running and reporting: its job stays in the matrix
+    and its summaries (which lead with its unqualified state) are written whatever the outcome."""
     from vertical.ledger import VERTICAL_MODE
 
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
     job = wf["jobs"]["vertical"]
     assert list(wf["jobs"]) == ["vertical"]
-    assert "pull_request" in wf[True] and wf[True]["push"]["branches"] == ["main"]  # PyYAML reads `on:` as True
+    assert set(wf[True]) == {"push", "workflow_dispatch"}  # PyYAML reads `on:` as True
+    assert wf[True]["push"] == {"branches": ["main"]}
+    assert wf["concurrency"]["cancel-in-progress"] is False
     assert "if" not in job and "needs" not in job and "continue-on-error" not in job
     assert {m["os"] for m in job["strategy"]["matrix"]["include"]} == {"ubuntu-latest", "windows-latest"}
     run = next(s for s in job["steps"] if "pytest" in str(s.get("run", "")))

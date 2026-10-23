@@ -6,6 +6,13 @@ when the job is green. This page holds its thresholds; the test module pins the 
 `tests/unit/test_vertical_ledger.py` checks that the two agree, so **changing a threshold means changing this page,
 which needs the operator.** It is an implementation document, not a design.
 
+**Frozen as a baseline** (the designer's ruling of 2026-10-23; the trigger change is the operator's, the same day). Its
+outcome (§1) stands as a release requirement, and the instrument is to be re-derived from the adopted actions, each
+ideal-path step citing the action and the surface that serves it. Until then no change amends `IDEAL_PATH` or the
+fallbacks for the old surfaces (a row that `tests/unit/test_surface_map.py` moves to EXISTS once its proposed command is
+built still moves), it runs on pushes to `main` and on dispatch only (§5), and its thresholds and mode stay as they
+are. The workflow and the test module are retired in the pull request that lands the re-derived one, not before.
+
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
 outside the enforced gate; Q3: publish by console approval). §7 lists each one and where it is implemented.
 
@@ -227,10 +234,13 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   it: a red shadow test must never block a merge, and a collected test that did not run would fail `assurance`.
   `tests/unit/test_ci_tools.py` proves both.
 - **Its own workflow, in shadow.** The `vertical` job (`vertical.yml`, Linux and Windows; outside `ci.yml`, so its red
-  never colours the merge gate's run) runs on every pull request and on `main`, uploads
-  the ledgers and summaries as artifacts (`vertical-ledger-<OS>`), and writes the summaries to the run's summary page.
-  It is not in `assurance`'s needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered
-  assertion.
+  never colours the merge gate's run) runs on every push to `main` and on dispatch, uploads the ledgers and summaries
+  as artifacts (`vertical-ledger-<OS>`), and writes the summaries to the run's summary page. It does not run on pull
+  requests (operator, 2026-10-23): it is red on `main`, so on a pull request its result says nothing about that pull
+  request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; when pushes land close
+  together GitHub keeps only the newest pending one, as for every push run on `main`
+  ([testing-and-ci-strategy.md](testing-and-ci-strategy.md) §3). It is not in `assurance`'s needs. It is honestly red
+  while the ledger is not zero: no xfail, no skip, no lowered assertion.
 - **Platforms.** It runs on Windows and Linux; any platform-only part is pinned in `tests/platform-skips.yaml` (none
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).

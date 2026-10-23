@@ -115,6 +115,21 @@ SLUG_RULE = ("the branch slug is the branch's name in lower case, each run of ch
 POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
 
 
+# libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
+# register took about 4 s, and the tests that render it grew by about 3.5 minutes of the Linux core job after the
+# round-trip checks of #225 (2026-10-22). On both register files the two readers give the same tokens (a plain token's
+# style is '' rather than None) and the same load; test_register checks that on the files as they are. They differ at
+# the edges, on input the files do not hold (review of #232, F4): libyaml accepts a trailing tab after a plain cell
+# (which render drops, as it always dropped trailing spaces), refuses a byte-order mark inside the text, and words its
+# parse errors differently. The emitter stays the pure-Python one: libyaml's quotes some text differently (an emoji,
+# U+0085), and what render writes, and how strict_problems judges a cell, must not change.
+_SafeLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _load(text: str) -> Any:
+    return yaml.load(text, Loader=_SafeLoader)  # noqa: S506 - a SafeLoader (or its libyaml form)
+
+
 class _Dumper(yaml.SafeDumper):
     pass
 
@@ -234,7 +249,7 @@ def render_markdown(data: dict[str, Any]) -> str:
 
 
 def load() -> dict[str, Any]:
-    return yaml.safe_load(YAML.read_text(encoding="utf-8"))
+    return _load(YAML.read_text(encoding="utf-8"))
 
 
 def lost_text(text: str, name: str) -> list[str]:
@@ -253,7 +268,7 @@ def lost_text(text: str, name: str) -> list[str]:
     Known limit, covered by neither: a NEL (U+0085) or a carriage return inside a quoted cell loads as a space (YAML
     folds them as line breaks), and the same folding drops a space right before or after a typed line break
     (``"a \\nb"`` loads as ``"a\\nb"``), so the text changes at load, before any dump."""
-    tokens = list(yaml.scan(text))
+    tokens = list(yaml.scan(text, Loader=_SafeLoader))
     spans = sorted((t.start_mark.index, t.end_mark.index) for t in tokens if t.end_mark.index > t.start_mark.index)
     starts = [s for s, _ in spans]
     out = []
@@ -277,7 +292,7 @@ def lost_text(text: str, name: str) -> list[str]:
     return sorted(out, key=lambda p: int(p.split(":")[1]))
 
 
-class _StrictLoader(yaml.SafeLoader):
+class _StrictLoader(_SafeLoader):  # type: ignore[valid-type,misc]
     """The safe loader, refusing a key repeated within one mapping, which a plain load keeps only the last of."""
 
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
@@ -473,7 +488,7 @@ def summary(data: dict[str, Any]) -> str:
 # ------------------------------------------------------------------------------------------------------- decisions due
 
 def load_due() -> dict[str, Any]:
-    return yaml.safe_load(DUE_YAML.read_text(encoding="utf-8"))
+    return _load(DUE_YAML.read_text(encoding="utf-8"))
 
 
 def due_key(item: dict[str, Any]) -> tuple[Any, ...]:
@@ -711,8 +726,8 @@ def render(root: Path = ROOT) -> list[str]:
     refused = source_problems(root)
     if refused:
         return refused
-    data = normalize(yaml.safe_load(yaml_path.read_text(encoding="utf-8")))
-    due = normalize_due(yaml.safe_load(due_yaml.read_text(encoding="utf-8")))
+    data = normalize(_load(yaml_path.read_text(encoding="utf-8")))
+    due = normalize_due(_load(due_yaml.read_text(encoding="utf-8")))
     for path, text in ((due_yaml, dump(due)), (yaml_path, dump(data))):
         if text != path.read_text(encoding="utf-8"):
             path.write_text(text, encoding="utf-8", newline="\n")
@@ -939,7 +954,7 @@ def resolve(root: Path = ROOT) -> int:
             print(f"{rel}: already resolved (no conflict markers), kept: `git add` it once it is right")
             continue
         try:
-            sides = [yaml.safe_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
+            sides = [_load(s.stdout) if s.returncode == 0 else None for s in (base, ours, theirs)]
         except yaml.YAMLError as e:
             print(f"{rel}: a side is not valid YAML, nothing written: {e}", file=sys.stderr)
             return 2
@@ -999,7 +1014,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "import":
         data = parse_markdown(MD.read_text(encoding="utf-8"))
         YAML.write_text(dump(data), encoding="utf-8", newline="\n")
-        rendered = render_markdown(yaml.safe_load(YAML.read_text(encoding="utf-8")))
+        rendered = render_markdown(_load(YAML.read_text(encoding="utf-8")))
         if rendered != MD.read_text(encoding="utf-8"):
             print("imported, but the YAML does not render back to the markdown byte for byte", file=sys.stderr)
             return 1

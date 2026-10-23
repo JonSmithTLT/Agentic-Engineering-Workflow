@@ -1809,12 +1809,34 @@ DEADLINE_MARGINS_MIN = _deadline_margins_min()
 # decision, after Windows integration shards met their job deadline), and a margin change in bounds.py must move
 # every timeout with it, or the pin fails.
 PRE_G3A_TIMEOUT_MIN = {
-    "ci.yml": {"core": 20, "lanes": 30, "fastbase": 15},
+    # fastbase: 15 before G3a; 16 since its lane runs under xdist, sized from strategy §8 (2 x 7.4 + 0.8 minutes;
+    # operator, 2026-10-22, #232)
+    "ci.yml": {"core": 20, "lanes": 30, "fastbase": 16},
     "vertical.yml": {"vertical": 45},
     "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
     "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60, "matrix-extra": 60},
     "unit-isolation-audit.yml": {"parallel": 40, "serial": 40},
 }
+
+
+PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations")
+
+
+def pytest_flags(run: str) -> list[str]:
+    """A step's pytest flags after the command (the fast step's `${{ ... }}` command expression is dropped), without
+    the ones each job sets for itself (its deadline, lane report, hang directory and durations)."""
+    import shlex
+
+    words = shlex.split(run.split("}}", 1)[-1] if run.lstrip().startswith("${{") else run.split(" pytest", 1)[1])
+    out, skip = [], False
+    for word in words:
+        if skip:
+            skip = False
+        elif word.split("=", 1)[0] in PER_JOB_FLAGS:
+            skip = "=" not in word
+        else:
+            out.append(word)
+    return out
 
 
 def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
@@ -1838,9 +1860,13 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     runs = "\n".join(str(s.get("run", "")) for s in base["steps"])
     assert 'git worktree add --detach "$RUNNER_TEMP/base" "$GITHUB_SHA^1"' in runs
     lane = next(s for s in base["steps"] if "pytest" in str(s.get("run", "")))
-    assert lane["run"] == ("python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist "
-                           "--test-timeout 600 --session-deadline 900 "  # its own job's deadline and hang dir (G3)
-                           '--hang-dir "${{ runner.temp }}/fastbase/hangs"')
+    assert lane["run"].startswith("python -m coverage run -m pytest ")
+    fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
+    # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
+    # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
+    ours, theirs = pytest_flags(lane["run"]), pytest_flags(fast["run"])
+    assert ours == theirs and "-n" in ours, (ours, theirs)
+    assert "--session-deadline 960" in lane["run"] and '--hang-dir "${{ runner.temp }}/fastbase/hangs"' in lane["run"]
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's
     assert lane["working-directory"] == "${{ runner.temp }}/base"

@@ -521,7 +521,7 @@ def test_the_matrix_is_shards_one_to_n_of_n_per_runner_and_lane_on_the_pythons_c
     assert {lane for _, lane in groups} == set(tier.LANES["full"]) - tier.FAST_LANES  # the full tier, less core's
 
 
-def test_the_committed_table_gives_every_lane_a_count_and_nothing_else_writes_its_counts():
+def test_the_committed_table_gives_every_lane_a_shard_count():
     """tests/durations.json is a copy of a green `main` run's `shard-durations` table: every lane of every platform
     has a count, so a fallback run never has to guess one."""
     seed = json.loads((ROOT / "tests" / "durations.json").read_text(encoding="utf-8"))

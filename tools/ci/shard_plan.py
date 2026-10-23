@@ -72,7 +72,16 @@ MATRIX_LIMIT = 256
 # CRD-13, 2026-10-23). A count is at most MAX_SHARDS, as on a run with a history, so the fallback's cap is this many
 # times that: twice holds for every count, and every lane at the cap still fits one matrix (a test keeps it so).
 FALLBACK_MARGIN = 2.0
-FALLBACK_MAX_SHARDS = int(FALLBACK_MARGIN * MAX_SHARDS)
+
+
+def fallback_shards(committed: int) -> int:
+    """The shards a lane with this committed count runs on a run without a usable history."""
+    return math.ceil(FALLBACK_MARGIN * min(committed, MAX_SHARDS))
+
+
+# The fallback's cap, from the same rule, so the matrix bound a test checks is the one the fallback uses (review of
+# #235, N3).
+FALLBACK_MAX_SHARDS = fallback_shards(MAX_SHARDS)
 # A run with a history warns when the committed table knows less than this share of a platform's tests (the drift
 # threshold of the operator's ruling on CRD-13, 2026-10-23).
 COVERAGE_WARNING = 0.9
@@ -210,7 +219,7 @@ def fallback(seed: Mapping[str, Any], deadlines: Deadlines, jobs: Sequence[tuple
     for _, _, platform, lanes in jobs:
         for lane in lanes:
             base = counts.get((platform, lane))
-            n = MAX_SHARDS if base is None else math.ceil(FALLBACK_MARGIN * min(base, MAX_SHARDS))
+            n = MAX_SHARDS if base is None else fallback_shards(base)
             sizings.append(Sizing(platform, lane, n, 0, 0.0, budget, committed=base))
             if base is None:
                 warnings.append(f"{platform} {lane}: tests/durations.json gives it no shard count, so it runs "

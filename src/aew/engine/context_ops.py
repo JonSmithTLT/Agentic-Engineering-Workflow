@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from aew import roles
+from aew import process_kind, roles
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
 from aew.errors import IntegrityError, NotFound
@@ -313,8 +313,8 @@ class ContextPacks:
         atomic_write(self.k.aew_root / rel, text)  # rebuildable local data, not control state
         inv["pack"] = {"path": rel, "sha256": sha256_text(text), "sources": sources}
 
-    def context_pack(self, inv_id: str) -> dict[str, Any]:
-        """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
+    def _rendered(self, inv_id: str) -> tuple[str, dict[str, Any]]:
+        """An invocation's pack text, rendered from durable state, and the invocation."""
         state = self.k.store.current()
         if inv_id not in state["invocations"]:  # a completed invocation of archived work: its pack, regenerated (R7)
             state = self.archive.rehydrate_invocation(state, inv_id) or state
@@ -322,7 +322,11 @@ class ContextPacks:
         if inv is None:
             raise NotFound(f"no invocation {inv_id}")
         inputs, _ = self.pack_inputs(state, inv_id)
-        text = ctxmod.render(inputs)
+        return ctxmod.render(inputs), inv
+
+    def context_pack(self, inv_id: str) -> dict[str, Any]:
+        """Regenerate an invocation's pack from durable state (e.g. after local/ was deleted)."""
+        text, inv = self._rendered(inv_id)
         rel = self.pack_rel(inv_id)
         atomic_write(self.k.aew_root / rel, text)
         recorded = (inv.get("pack") or {}).get("sha256")
@@ -330,7 +334,12 @@ class ContextPacks:
                 "matches_recorded": recorded == sha256_text(text)}
 
     def context_show(self, inv_id: str) -> str:
+        """The pack's text. A missing pack is regenerated, and kept, by a store writer; a non-writer (a worker's
+        sandbox, where `.aew/local` is a read-only mask) renders it without writing (STG-05 CB-09, CBF-1)."""
         path = self.k.aew_root / self.pack_rel(inv_id)
-        if not path.exists():
-            self.context_pack(inv_id)
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+        if process_kind.kind() == process_kind.NON_WRITER:
+            return self._rendered(inv_id)[0]
+        self.context_pack(inv_id)
         return path.read_text(encoding="utf-8")

@@ -11,8 +11,11 @@ from __future__ import annotations
 import errno
 import json
 import os
+import shutil
 import stat
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -126,6 +129,31 @@ def test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces(e
             os.chmod(path, mode)
 
 
+@contextmanager
+def read_only_aew(root: Path) -> Iterator[None]:
+    """The project's `.aew` as a worker's sandbox has it (the store on a read-only bind, `.aew/local` a read-only
+    mask), approximated outside one where permission bits hold: nothing under it writable. On Windows, and as root,
+    the bits stop nothing, so the block runs on a writable tree there (the tests' other checks still hold)."""
+    changed: list[tuple[Path, int]] = []
+    if sys.platform != "win32" and not (hasattr(os, "geteuid") and os.geteuid() == 0):
+        for d, dirs, files in os.walk(root / ".aew", topdown=False):
+            for name in [*files, *dirs, ""]:
+                path = Path(d) / name if name else Path(d)
+                mode = stat.S_IMODE(os.lstat(path).st_mode)
+                os.chmod(path, mode & ~0o222)
+                changed.append((path, mode))
+    try:
+        yield
+    finally:
+        for path, mode in reversed(changed):
+            os.chmod(path, mode)
+
+
+# What a command run in a worker's sandbox must never show: a crash, or a write that only a read-only store refuses
+# (`context show` regenerating a pack under the mask was one: #231 at 51fffde1, CI).
+WRITE_FAILURES = ("Traceback", "Read-only file system", "Permission denied")
+
+
 def worker_env(root: Path) -> dict[str, str]:
     """A worker run's environment: a bridge address of the platform's kind that nothing serves."""
     endpoint = r"\\.\pipe\aew-no-such-bridge-cb09" if sys.platform == "win32" else str(root / "no-bridge")
@@ -166,18 +194,23 @@ def test_no_cli_command_inside_a_worker_run_is_refused_only_for_want_of_the_cont
     lock = project.root / ".aew" / LOCK_REL
     lock.unlink()  # a locked read or a session would create it again
 
+    failed: dict[tuple[str, ...], str] = {}
+
     def run(cmd: tuple[str, ...]) -> tuple[tuple[str, ...], str | None]:
         res = run_aew("-C", str(project.root), *cmd, env=env, timeout=120)
+        if any(sign in res.stderr for sign in WRITE_FAILURES):
+            failed[cmd] = res.stderr[-400:]
         try:
             details = json.loads(res.stderr)["error"].get("details") or {}
         except (ValueError, KeyError, TypeError):
             return cmd, None
         return cmd, details.get("reason")
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with read_only_aew(project.root), ThreadPoolExecutor(max_workers=8) as pool:
         outcomes = dict(pool.map(run, leaf_commands()))
     refused = {cmd for cmd, reason in outcomes.items() if reason == "non_writer_process"}
     assert refused == set(NEEDS_THE_LOCK), sorted(refused)
+    assert failed == {}, failed  # no command crashed or tried to write the read-only `.aew`
     assert not lock.exists()
 
 
@@ -190,11 +223,15 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
     rev = p.rev()  # a read in this process, a writer: before the lock goes, or it would create it again itself
     lock = p.root / ".aew" / LOCK_REL
     lock.unlink()  # a locked read or a session would create it again
+    packs = p.root / ".aew" / "local" / "packs"
+    shutil.rmtree(packs)  # as a sandbox sees them, under the mask: `context show` renders without writing one
     env = worker_env(p.root)
-    for args in (["status", "--json"], ["resume", "--json"], ["invoke", "show", "INV-0001"],
-                 ["context", "show", "INV-0001"], ["harness", "status"], ["lead", "show"], ["work", "list"]):
-        res = run_aew("-C", str(p.root), *args, env=env)
-        assert res.returncode == 0, (args, res.stderr)
+    with read_only_aew(p.root):
+        for args in (["status", "--json"], ["resume", "--json"], ["invoke", "show", "INV-0001"],
+                     ["context", "show", "INV-0001"], ["harness", "status"], ["lead", "show"], ["work", "list"]):
+            res = run_aew("-C", str(p.root), *args, env=env)
+            assert res.returncode == 0, (args, res.stderr)
+    assert not packs.exists()
     mutation = run_aew("-C", str(p.root), "work", "create", "ticket", "--title", "x", "--class", "1",
                        "--token", p.token, "--expect-rev", str(rev), env=env)
     assert mutation.error["code"] == "PERMISSION_DENIED", mutation.stderr

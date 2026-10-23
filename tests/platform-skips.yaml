@@ -220,7 +220,7 @@ skipped:
     tests/integration/test_containment.py::test_sigkill_of_the_owner_ends_the_contained_tree: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_from_a_worker_sandbox_the_control_lock_is_not_there_and_a_lock_taken_inside_blocks_no_writer: >-
+    tests/integration/test_containment.py::test_from_a_worker_sandbox_the_control_lock_is_not_there_and_none_can_be_made: >-
       Linux bubblewrap containment (STG-05 CB-09, CBF-1); Windows has no OS filesystem containment. Covered on
       Linux (CI and the Rocky 8 lane); the layout itself (the .aew/local mask, the store check) is tested on every
       platform in tests/unit/test_containment_layout.py.

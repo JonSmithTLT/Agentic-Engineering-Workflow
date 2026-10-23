@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import Ajv from 'ajv';
 import { createHash } from 'node:crypto';
+import ts from 'typescript';
 import { compatibleSchema } from '../src/stg02/schema-compat.ts';
 
 const pins = {
@@ -67,8 +68,19 @@ const code = [
 ];
 for (const [, index] of functions) code.push(`let impl${index}; function v${index}(...args) { const result = impl${index}(...args); v${index}.errors = impl${index}.errors; return result; }`);
 const metadata = [];
+const unsupportedRuntimeNames = new Set(['self', 'RULES', 'customRules', 'ValidationError', 'regExp']);
+function checkRuntimeDependencies(source) {
+  // Compiler compatibility check, not a sanitizer for arbitrary code. Only the
+  // SHA-256-pinned schema inputs above are compiled. Inspect identifier tokens
+  // rather than treating a regex over generated source as a security boundary.
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, source);
+  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+    if (token === ts.SyntaxKind.Identifier && unsupportedRuntimeNames.has(scanner.getTokenText()))
+      throw new Error('Unsupported compiled runtime dependency');
+  }
+}
 for (const [fn, index] of functions) {
-  if (/\b(?:self|RULES|customRules|ValidationError|regExp)\b/.test(fn.source.code)) throw new Error('Unsupported compiled runtime dependency');
+  checkRuntimeDependencies(fn.source.code);
   metadata.push(`v${index}.schema = ${literal(fn.schema)}; v${index}.refVal = ${literal(fn.refVal)}; v${index}.root = ${literal(fn.root)};`);
 }
 const implementations = [];

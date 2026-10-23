@@ -12,6 +12,9 @@ import problems from './fixtures/stg02/problems.json';
 import protectedRequest from './fixtures/stg02/protected-request.json';
 
 describe('STG-02 adopted wire boundary', () => {
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__', 'unknown'])('rejects unsupported validator identity %s', kind => {
+    expect(() => validated(kind as never, {})).toThrow('Unsupported validator kind');
+  });
   it('validates independently recorded D-01 shapes without promoting source qualification', () => {
     for (const [kind, body] of [['waiting', waiting], ['run', run], ['continuation', full.body], ['continuation', partial.body], ['operations', first.body], ['operations', last.body]] as const)
       expect(validated(kind, body)).toEqual(body);

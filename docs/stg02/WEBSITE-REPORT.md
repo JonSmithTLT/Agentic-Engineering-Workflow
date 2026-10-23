@@ -1,6 +1,6 @@
 # STG-02 website report
 
-Status: first runtime checkpoint `3173362d2cc5f6dde2b49db7103092f903bd2760` built from a clean committed source; independent review returned findings. Corrections are in progress on 2026-10-20. Corrected-source freeze, fresh independent review and joint interoperability remain pending. No acceptance verdict.
+Historical report of first runtime checkpoint `3173362d2cc5f6dde2b49db7103092f903bd2760`, whose independent review returned findings. The corrected runtime was subsequently frozen and reviewed; joint runs 1 and 2 were completed. See [CORRECTION-HANDOFF.md](CORRECTION-HANDOFF.md) and [JOINT-TEST-HANDOFF.md](JOINT-TEST-HANDOFF.md) for those later results and remaining designer decisions. Validation of any later PR head is separate. No independent joint-acceptance verdict is claimed.
 
 ## Authority and source
 
@@ -71,7 +71,7 @@ Pinned offline builder `sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5
 
 A preceding host-mounted WSL full run had 235 passes and one unchanged historical-graph test timing out at 5 seconds. That failure remains recorded; the pinned container passed the same test without any test or runtime correction in that area. This is not a claim that retrying fixed a defect. Earlier environment failures included old Python validators, CRLF in a local shell launcher, and cross-session loopback. A same-process-group fixture/browser harness resolved the browser reachability issue. No unsafe-eval CSP relaxation was made; validators are compiled offline.
 
-Limitations: no physical device, real browser zoom, live credential/session use, backend interoperability or independent acceptance. Remaining adversarial/retirement/header/owner-pin coverage, broader inherited browser regressions and exact committed-source evidence are still to be completed. The isolated validator bundle emits a chunk-size warning, disclosed in `IMPLEMENTATION-NOTES.md`.
+Initial-checkpoint limitations: physical devices, real browser zoom, live credential/session use and independent acceptance were not exercised; later adversarial checks, corrected-source freeze/review and joint interoperability results are recorded in [CORRECTION-HANDOFF.md](CORRECTION-HANDOFF.md) and [JOINT-TEST-HANDOFF.md](JOINT-TEST-HANDOFF.md). Those later records do not claim production or independent joint acceptance. The isolated validator bundle emits a chunk-size warning, disclosed in `IMPLEMENTATION-NOTES.md`.
 
 ## Independent findings and correction checkpoint — 2026-10-20
 

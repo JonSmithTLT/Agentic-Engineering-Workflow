@@ -12,8 +12,22 @@ export const array = (value: Json | undefined): Json[] => Array.isArray(value) ?
 export const text = (value: Json | undefined) => value === null || value === undefined ? 'Not supplied' : typeof value === 'object' ? JSON.stringify(value) : String(value);
 
 export type ReadKind = 'waiting' | 'run' | 'continuation' | 'operations' | 'operation';
+function validatorFor(kind: keyof typeof validators) {
+  switch (kind) {
+    case 'waiting': return validators.waiting;
+    case 'run': return validators.run;
+    case 'continuation': return validators.continuation;
+    case 'operations': return validators.operations;
+    case 'operation': return validators.operation;
+    case 'd01Problem': return validators.d01Problem;
+    case 'command': return validators.command;
+    case 'receipt': return validators.receipt;
+    case 'o01Problem': return validators.o01Problem;
+    default: throw new Error('Unsupported validator kind');
+  }
+}
 export function validated(kind: keyof typeof validators, value: unknown): ObjectValue {
-  const validate = validators[kind];
+  const validate = validatorFor(kind);
   if (!validate(value)) throw new Error(`Rejected ${kind} structure: ${validate.errors?.map(error => `${error.dataPath ?? ''} ${error.message ?? ''}`).join('; ')}`);
   const body = value as ObjectValue;
   if (kind === 'operation' && ['owner', 'operation_ref', 'intent_ref'].some(key => body[key] !== object(body.result)[key]))

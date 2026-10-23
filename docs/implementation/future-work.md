@@ -1778,18 +1778,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E42/`, oldest first (`python tools/register.py show E42`).*
 
-### E44
-
-**Work:** Refresh and rebalance the shards from E43's record; duration history influences placement only, never which tests run: a missing, stale or corrupt cache falls back to balancing by test count, and the committed `tests/durations.json` is refreshed by an automated PR when drift passes a threshold
-
-**Source:** [CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P4, §5 step 5; [cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md) §5.3 (ledger CRD-13, CCI-03)
-
-**When:** **M4 candidate**, after E43
-
-**Notes:** Exactly-once assurance proves membership independently of the cache
-
-*Later notes: `notes.d/E44/`, oldest first (`python tools/register.py show E44`).*
-
 ### E46
 
 **Work:** Sweep the current fast-lane outliers (a 33.5 s randomized crash test, several 5 to 7 s surface-runner tests) and investigate the store crash slowdown (1 to 7 minutes before the outbox, over 60 after) as a performance regression, never by a bigger budget
@@ -2583,6 +2571,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** `tools/ci/cost_record.py`, run by `assurance` after the assurance check (`if: always()`, `continue-on-error`: reported, never gated) from the lane reports and the run's jobs (GitHub API, `actions: read`): queue delay and end-to-end wall clock, runner-minutes per OS, wall time per job, total pytest time and per lane and shard, the slowest 20 tests with each one's share of its lane and its `aew` calls through the test helper (counted by `conftest.run_aew`; direct `python -m aew` starts and fake agents' calls are not counted, carried in the lane report's new `cli_calls`), the share of collected tests in `tests/durations.json`; a job summary plus the `cost-record` artifact; every lane and both core steps print `--durations=20`; a test job over 20 minutes warns, over 25 is a CI-health violation, the 30-minute timeout stays the only hard bound; §8's budgets are compared as warnings, as §8 defines them (Linux `core` within 3 minutes, the Linux fast lane's test time within 3, the run from its first job's creation to its last job done within 15); the time a run waits as pending before its first job is reported as a fact, not judged; on a re-run only that attempt's jobs count (carried-over jobs are listed and count for nothing). A PR's summary shows its new tests (in the files it touches and unknown to `tests/durations.json`) and every test in those files. The lead developer's reviewer brief asks about a change's test cost from 2026-10-07 (CCI-06). Repeated violations opening an issue stay E47; whether wall-clock ever becomes a hard gate is E51
 
 *Later notes: `notes.d/E43/`, oldest first (`python tools/register.py show E43`).*
+
+### E44
+
+**Was:** Refresh and rebalance the shards from E43's record; duration history influences placement only, never which tests run: a missing, stale or corrupt cache falls back to balancing by test count, and the committed `tests/durations.json` is refreshed by an automated PR when drift passes a threshold
+
+**Closed:** 2026-10-23
+
+**By:** PR #235: every green push to `main` adds its lane reports to a rolling history in the Actions cache (`update_durations.py --history`, each test's last five durations), and every run balances its shards on the history's medians and sizes the `lanes` matrix from them (`tools/ci/shard_plan.py`: the fewest shards that fit the session deadline on a runner twice as slow; reported, never gating). A missing or unreadable history falls back to the committed table and computed counts rather than to balancing by test count, and no automated PR is needed: the committed `tests/durations.json` is only the seed and the fallback (`testing-and-ci-strategy.md` §7, §8). Exactly-once assurance still proves membership independently of the history
+
+*Later notes: `notes.d/E44/`, oldest first (`python tools/register.py show E44`).*
 
 ### E45
 

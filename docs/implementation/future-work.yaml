@@ -2948,15 +2948,6 @@ sections:
       the slow scenario files; it is what stops the suite's cost growing faster than the product. The integration lanes
       ran 21 to 26 of their 30 minutes, and `main`'s run for `389e32d` timed one out (30m45s, 2026-10-06)
 
-  - '#': E44
-    Work: 'Refresh and rebalance the shards from E43''s record; duration history influences placement only, never which
-      tests run: a missing, stale or corrupt cache falls back to balancing by test count, and the committed `tests/durations.json`
-      is refreshed by an automated PR when drift passes a threshold'
-    Source: '[CI redesign v0.2](../design/ci-redesign-design-v0.2.md) P4, §5 step 5; [cost-detection investigation](../research/ci-cost-detection-investigation-2026-10-06.md)
-      §5.3 (ledger CRD-13, CCI-03)'
-    When: '**M4 candidate**, after E43'
-    Notes: Exactly-once assurance proves membership independently of the cache
-
   - '#': E46
     Work: Sweep the current fast-lane outliers (a 33.5 s randomized crash test, several 5 to 7 s surface-runner tests) and
       investigate the store crash slowdown (1 to 7 minutes before the outbox, over 60 after) as a performance regression,
@@ -3729,6 +3720,19 @@ sections:
       it touches and unknown to `tests/durations.json`) and every test in those files. The lead developer''s reviewer brief
       asks about a change''s test cost from 2026-10-07 (CCI-06). Repeated violations opening an issue stay E47; whether
       wall-clock ever becomes a hard gate is E51'
+
+  - '#': E44
+    Was: 'Refresh and rebalance the shards from E43''s record; duration history influences placement only, never which tests
+      run: a missing, stale or corrupt cache falls back to balancing by test count, and the committed `tests/durations.json`
+      is refreshed by an automated PR when drift passes a threshold'
+    Closed: '2026-10-23'
+    By: 'PR #235: every green push to `main` adds its lane reports to a rolling history in the Actions cache (`update_durations.py
+      --history`, each test''s last five durations), and every run balances its shards on the history''s medians and sizes
+      the `lanes` matrix from them (`tools/ci/shard_plan.py`: the fewest shards that fit the session deadline on a runner
+      twice as slow; reported, never gating). A missing or unreadable history falls back to the committed table and computed
+      counts rather than to balancing by test count, and no automated PR is needed: the committed `tests/durations.json`
+      is only the seed and the fallback (`testing-and-ci-strategy.md` §7, §8). Exactly-once assurance still proves membership
+      independently of the history'
 
   - '#': E45
     Was: 'A per-test cost check: a test over a set share of its lane''s time (for example 25%), or a fast-lane test over

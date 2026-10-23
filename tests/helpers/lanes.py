@@ -100,16 +100,21 @@ def parse_shard(spec: str) -> tuple[int, int]:
     return k, n
 
 
-def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: int) -> list[list[str]]:
-    """Deterministic longest-processing-time partition into ``shards`` bins.
-
-    Every nodeid lands in exactly one bin whatever the durations say; durations only affect balance.
-    Tests without a recorded duration count as the mean of the recorded ones: the median of a suite of millisecond
-    tests is 0, which piled every new test into one shard (equal weights = round-robin by nodeid).
-    """
+def weights(nodeids: Sequence[str], durations: Mapping[str, float]) -> dict[str, float]:
+    """Each test's weight in :func:`partition`: its recorded duration, or the mean of the recorded ones. The median of
+    a suite of millisecond tests is 0, which piled every new test into one shard (equal weights = round-robin by
+    nodeid). ``tools/ci/shard_plan.py`` estimates shards with the same weights (review of #235, F6)."""
     known = [durations[n] for n in nodeids if n in durations]
     default = statistics.fmean(known) if known else 1.0
-    weight = {n: float(durations.get(n, default)) for n in nodeids}
+    return {n: float(durations.get(n, default)) for n in nodeids}
+
+
+def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: int) -> list[list[str]]:
+    """Deterministic longest-processing-time partition into ``shards`` bins, by :func:`weights`.
+
+    Every nodeid lands in exactly one bin whatever the durations say; durations only affect balance.
+    """
+    weight = weights(nodeids, durations)
     bins: list[list[str]] = [[] for _ in range(shards)]
     loads = [0.0] * shards
     for nid in sorted(nodeids, key=lambda n: (-weight[n], n)):
@@ -199,6 +204,12 @@ class LanePlugin:
         self.durations: dict[str, float] = {}
         self.cli_calls: dict[str, int] = {}
         self.started = time.perf_counter()
+        # How much of the CI job's deadline was left as the session started: the job's setup came out of it, and the
+        # shard sizer budgets for that setup on a slow runner (tools/ci/shard_plan.py; review of #235, F3).
+        import session_deadline
+
+        job_wall = session_deadline.job_deadline()
+        self.job_remaining_s = round(job_wall - time.time(), 1) if job_wall is not None else None
         self.guard_before: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ selection
@@ -321,6 +332,7 @@ class LanePlugin:
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
             "wall_s": round(time.perf_counter() - self.started, 2),
+            "job_remaining_s": self.job_remaining_s,
             "collected": sorted(self.collected),
             "lanes": dict(sorted(self.lanes.items())),
             "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
@@ -375,7 +387,7 @@ def addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("aew-lanes", "AEW CI lanes (docs/implementation/testing-and-ci-strategy.md)")
     group.addoption("--live", dest="aew_live", action="store_true", default=False,
                     help="also collect tests/live: real harness binaries and real models (opt-in; never CI)")
-    group.addoption("--lane", dest="aew_lane", choices=LANES, default=None,
+    group.addoption("--lane", dest="aew_lane", choices=LANES, default=None, metavar="LANE",
                     help="run only this lane's tests")
     group.addoption("--shard", dest="aew_shard", default=None, metavar="K/N",
                     help="run only shard K of N (deterministic, duration-balanced)")

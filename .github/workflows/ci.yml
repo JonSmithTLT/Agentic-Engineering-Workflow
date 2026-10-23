@@ -83,7 +83,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
       # The shard sizing (register E44): only `main`'s green push runs save the history (the assurance job), so this
-      # restores the newest of them. The key itself is never saved; a miss falls back to the committed table.
+      # restores the newest of them. The key itself is never saved; a miss falls back to the committed table and
+      # twice its counts (the nightly restores the history every night, so a quiet week does not evict it).
       - name: The shard-durations history of main's green push runs (newest)
         uses: actions/cache/restore@v6
         with:
@@ -378,22 +379,30 @@ jobs:
       # The shard-durations history (register E44; tools/ci/shard_plan.py sizes every run's lanes from it). Only a
       # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
       # session never moves a duration. How long the run took plays no part: a slow green run is recorded too, so a
-      # lane that outgrows its budget is measured and gets more shards.
+      # lane that outgrows its budget is measured and gets more shards. The history never fails the gate
+      # (continue-on-error), and a history the update could not write is never saved: a bad one then expires, and
+      # update_durations.py itself sets aside one not of a history's shape (review of #235, F2).
       - name: The shard-durations history so far (main's green push runs only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+        continue-on-error: true
         uses: actions/cache/restore@v6
         with:
           path: shard-history/history.json
           key: shard-durations-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: shard-durations-
-      - name: This run's durations join the history (each test keeps its last five)
+      - id: durations
+        name: This run's durations join the history (each test keeps its last five; a re-run adds nothing)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+        continue-on-error: true
         run: >-
           python tools/ci/update_durations.py lane-reports --history shard-history/history.json
           --seed tests/durations.json --out shard-history/durations.json
           --run-label "${{ github.run_id }}/${{ github.run_attempt }} ${{ github.sha }}"
       - name: Save the history for the next runs
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+          && steps.durations.outcome == 'success'
+        continue-on-error: true
         uses: actions/cache/save@v6
         with:
           path: shard-history/history.json

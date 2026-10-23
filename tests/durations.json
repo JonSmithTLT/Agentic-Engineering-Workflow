@@ -11137,5 +11137,20 @@
    "tests/unit/test_yaml_backends.py::test_libyaml_is_used_where_pyyaml_has_it": 0.0,
    "tests/unit/test_yaml_backends.py::test_strings_read_and_write_identically": 0.04
   }
- }
+ },
+ "shards": {
+  "linux": {
+   "integration": 6,
+   "acceptance": 1,
+   "regression": 3,
+   "adversarial": 1
+  },
+  "win32": {
+   "integration": 8,
+   "acceptance": 1,
+   "regression": 3,
+   "adversarial": 1
+  }
+ },
+ "sized_from": "main's green push run 39900909868 (a3b33e3a, 2026-10-23), sized by tools/ci/shard_plan.py as the first history would be"
 }

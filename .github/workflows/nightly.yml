@@ -16,9 +16,23 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
+  shard-history:
+    # Keeps the merge gate's shard-durations history (ci.yml; tools/ci/shard_plan.py, register E44) from expiring:
+    # GitHub removes a cache entry nobody has read for seven days, and a week with no CI run would then leave the
+    # next run to the fallback (review of #235, F1). A restore is a read; nothing here ever saves.
+    name: shard-durations history (read, so it does not expire)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/cache/restore@v6
+        with:
+          path: shard-history/history.json
+          key: shard-durations-restore-only
+          restore-keys: shard-durations-
+
   reference:
-    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome, and its lane
-    # reports refresh tests/durations.json (tools/ci/update_durations.py). The suite is split into duration-balanced
+    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome; the merge gate's
+    # shards balance on `main`'s own history instead (ci.yml, register E44). The suite is split into duration-balanced
     # shards (tests/helpers/lanes.py, `--shard k/N`), each well inside the job timeout; `reference-assurance` below
     # proves the shards together ran every collected test exactly once. Grow `of` when a shard nears 45 minutes,
     # never the timeout (E26). Sized on 2026-10-09 (strategy §8): 113 test-minutes on Linux, 294 on Windows.
@@ -311,7 +325,7 @@ jobs:
           test "${{ needs.matrix-extra.result }}" = success
 
   report:
-    needs: [reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra,
+    needs: [shard-history, reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra,
             matrix-extra-assurance]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a

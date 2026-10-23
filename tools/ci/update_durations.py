@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Refresh tests/durations.json from lane reports (docs/implementation/testing-and-ci-strategy.md).
+"""The durations shards balance on (docs/implementation/testing-and-ci-strategy.md §7; register E44).
 
-Durations only balance shards; they never decide which tests run. Prefer the nightly serial `reference`
-reports (no xdist contention); a full green `main` run's lane reports do when the nightly is stale.
-Entries for tests no longer collected are dropped.
+Durations only balance shards; they never decide which tests run.
 
-    python tools/ci/update_durations.py REPORT_DIR [REPORT_DIR ...] --out tests/durations.json
-
-With ``--history``, it keeps the rolling history instead (register E44): every green push run on `main` adds its
+With ``--history`` (the merge gate's own use), it keeps the rolling history: every green push run on `main` adds its
 reports, each test keeps its last :data:`KEEP` durations, and ``--out`` is written as the median of them, the table
 the shards balance on. The history also keeps what ``shard_plan.py`` sizes the lanes from: the lane each test ran in,
-each platform's xdist workers, and each lane's time outside its tests. When the history is missing or unreadable it
-starts from ``--seed`` (the committed table).
+each platform's xdist workers, each lane's time outside its tests, and how much of the job's deadline its sessions
+started with. When the history is missing, unreadable or not of a history's shape, it starts from ``--seed`` (the
+committed table). The committed table, tests/durations.json, is refreshed by copying a green `main` run's
+``shard-durations`` artifact over it (``shard_plan.py`` writes it, with each lane's shard count).
 
     python tools/ci/update_durations.py REPORT_DIR --history history.json --seed tests/durations.json \
         --out durations.json --run-label "<run id>/<attempt> <sha>"
+
+Without ``--history``, it merges lane reports into the table at ``--out`` directly (its other keys are kept), for a
+table made from runs that are not `main`'s; entries for tests no longer collected are dropped.
+
+    python tools/ci/update_durations.py REPORT_DIR [REPORT_DIR ...] --out durations.json
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ import argparse
 import json
 import statistics
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,27 +50,80 @@ def merge(current: dict[str, Any], reports: list[dict[str, Any]]) -> dict[str, A
                 table[nid] = round(float(res["duration"]), 2)
     for platform, ids in collected.items():
         platforms[platform] = {n: d for n, d in platforms[platform].items() if n in ids}
+    others = {k: v for k, v in current.items() if k not in ("schema", "platforms")}  # e.g. the lanes' shard counts
     return {"schema": DURATIONS_SCHEMA,
-            "platforms": {p: dict(sorted(t.items())) for p, t in sorted(platforms.items())}}
+            "platforms": {p: dict(sorted(t.items())) for p, t in sorted(platforms.items())}, **others}
 
 
 def seed_history(seed: dict[str, Any]) -> dict[str, Any]:
     """A history whose one observation per test is the committed table's: the start, before any run is kept."""
     return {"schema": HISTORY_SCHEMA, "runs": [],
             "platforms": {p: {n: [float(d)] for n, d in t.items()} for p, t in (seed.get("platforms") or {}).items()},
-            "lanes": {}, "workers": {}, "overhead": {}}
+            "lanes": {}, "workers": {}, "overhead": {}, "job_remaining": {}}
+
+
+def _number(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _nested(value: Any, leaf: Callable[[Any], bool]) -> bool:
+    """``value`` is ``{platform: {name: leaf}}``."""
+    return isinstance(value, dict) and all(
+        isinstance(t, dict) and all(isinstance(n, str) and leaf(x) for n, x in t.items()) for t in value.values())
+
+
+def _series(x: Any) -> bool:
+    return isinstance(x, list) and all(_number(d) for d in x)
+
+
+# Each key a history holds, and its shape (the ones a history from before a key existed lacks are optional).
+_SHAPES: dict[str, Callable[[Any], bool]] = {
+    "runs": lambda v: isinstance(v, list) and all(isinstance(r, str) for r in v),
+    "platforms": lambda v: _nested(v, _series),
+    "lanes": lambda v: _nested(v, lambda x: isinstance(x, str)),
+    "workers": lambda v: isinstance(v, dict) and all(isinstance(n, int) and not isinstance(n, bool) and n > 0
+                                                     for n in v.values()),
+    "overhead": lambda v: _nested(v, _series),
+    "job_remaining": lambda v: _nested(v, _series),
+}
+_REQUIRED = ("runs", "platforms")
+
+
+def history_problem(data: Any) -> str | None:
+    """Why ``data`` is not a history this module could have written, or None. A file that parses and names the
+    schema but has another shape (a writer's bug, a shape change later reverted) must start again too, never fail a
+    run (CRD-13; review of #235, F2)."""
+    if not isinstance(data, dict) or data.get("schema") != HISTORY_SCHEMA:
+        return f"it is not a {HISTORY_SCHEMA} document"
+    missing = [k for k in _REQUIRED if k not in data]
+    if missing:
+        return f"it has no {', '.join(missing)}"
+    wrong = [k for k, ok in _SHAPES.items() if k in data and not ok(data[k])]
+    return f"its {', '.join(wrong)} {'is' if len(wrong) == 1 else 'are'} not of a history's shape" if wrong else None
+
+
+def read_history(path: Path) -> tuple[dict[str, Any] | None, str]:
+    """(the history at ``path``, "") or (None, why there is none to use)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "no history of green `main` runs (a first run, or the cache gone)"
+    except (OSError, ValueError) as exc:
+        return None, f"the history could not be read ({type(exc).__name__})"
+    problem = history_problem(data)
+    return (None, f"the history was set aside: {problem}") if problem else (data, "")
 
 
 def load_history(path: Path, seed: dict[str, Any]) -> dict[str, Any]:
-    """The history at ``path``, or one seeded from ``seed`` when it is missing, unreadable or of another schema: a
-    history only balances shards, so starting again is always safe."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return seed_history(seed)
-    if not isinstance(data, dict) or data.get("schema") != HISTORY_SCHEMA:
-        return seed_history(seed)
-    return data
+    """The history at ``path``, or one seeded from ``seed`` when there is none to use (:func:`read_history`): a
+    history only balances shards, so starting again is always safe, and the next green run replaces a bad one."""
+    data, _ = read_history(path)
+    return data if data is not None else seed_history(seed)
+
+
+def run_id(label: str) -> str:
+    """The run a history label names (``<run id>/<attempt> <sha>``)."""
+    return label.split("/", 1)[0].split(" ", 1)[0]
 
 
 def outside_tests_s(report: dict[str, Any]) -> float | None:
@@ -82,15 +139,20 @@ def outside_tests_s(report: dict[str, Any]) -> float | None:
 def merge_history(history: dict[str, Any], reports: list[dict[str, Any]], label: str = "",
                   keep: int = KEEP) -> dict[str, Any]:
     """Add one green run's ``reports`` to ``history``: each test's duration (skips excepted) joins its last ``keep``;
-    tests no longer collected on a platform are dropped; the lanes, workers and time outside the tests are this run's.
-    """
+    tests no longer collected on a platform are dropped; the lanes, workers and time outside the tests are this run's,
+    and so is the least of the job's deadline any of a lane's sessions started with (its slowest setup). A run already
+    in the history is not added again: re-running main's assurance job after it saved must not count one runner's
+    timings twice (review of #235, F5)."""
     out = json.loads(json.dumps(history))  # a deep copy: the caller's history is left as it was
     out["schema"] = HISTORY_SCHEMA
+    if label and run_id(label) in {run_id(r) for r in out.get("runs", [])}:
+        return out
     out["runs"] = ([*out.get("runs", []), label] if label else list(out.get("runs", [])))[-keep:]
     collected: dict[str, set[str]] = {}
     lanes: dict[str, dict[str, str]] = {}
     workers: dict[str, int] = {}
     outside: dict[str, dict[str, float]] = {}
+    remaining: dict[str, dict[str, float]] = {}
     for r in reports:
         platform = r["platform"]
         table = out.setdefault("platforms", {}).setdefault(platform, {})
@@ -102,6 +164,9 @@ def merge_history(history: dict[str, Any], reports: list[dict[str, Any]], label:
         if spent is not None:
             per_lane = outside.setdefault(platform, {})
             per_lane[r["lane"]] = max(per_lane.get(r["lane"], 0.0), spent)
+        if _number(r.get("job_remaining_s")):
+            left = remaining.setdefault(platform, {})
+            left[r["lane"]] = min(left.get(r["lane"], float("inf")), float(r["job_remaining_s"]))
         for nid, res in r["results"].items():
             if res["outcome"] != "skipped":
                 table[nid] = [*table.get(nid, []), round(float(res["duration"]), 2)][-keep:]
@@ -115,7 +180,11 @@ def merge_history(history: dict[str, Any], reports: list[dict[str, Any]], label:
         kept = out.setdefault("overhead", {}).setdefault(platform, {})
         for lane, spent in per_lane.items():
             kept[lane] = [*kept.get(lane, []), round(spent, 1)][-keep:]
-    out["platforms"] = {p: dict(sorted(t.items())) for p, t in sorted(out["platforms"].items())}
+    for platform, per_lane in remaining.items():
+        kept = out.setdefault("job_remaining", {}).setdefault(platform, {})
+        for lane, left in per_lane.items():
+            kept[lane] = [*kept.get(lane, []), round(left, 1)][-keep:]
+    out["platforms"] ={p: dict(sorted(t.items())) for p, t in sorted(out["platforms"].items())}
     return out
 
 
@@ -149,10 +218,18 @@ def main(argv: list[str] | None = None) -> int:
     platforms = ", ".join(sorted({r["platform"] for r in reports}))
     if args.history:
         seed = json.loads(args.seed.read_text(encoding="utf-8")) if args.seed else {}
-        history = merge_history(load_history(args.history, seed), reports, args.run_label)
+        _, why = read_history(args.history)
+        before = load_history(args.history, seed)
+        history = merge_history(before, reports, args.run_label)
         write_json(args.history, history)
         write_json(args.out, table(history))
-        print(f"{args.history}: {platforms} added from {len(reports)} report(s); {len(history['runs'])} run(s) kept")
+        if why:
+            print(f"{args.history}: started again from the committed table: {why}")
+        if history == before:
+            print(f"{args.history}: run {run_id(args.run_label)} is in the history already; nothing added")
+        else:
+            print(f"{args.history}: {platforms} added from {len(reports)} report(s); {len(history['runs'])} run(s) "
+                  "kept")
         return 0
     current = json.loads(args.out.read_text(encoding="utf-8")) if args.out.exists() else {}
     write_json(args.out, merge(current, reports))

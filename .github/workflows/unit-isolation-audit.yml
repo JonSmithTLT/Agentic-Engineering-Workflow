@@ -68,8 +68,8 @@ jobs:
           -q -p no:cacheprovider -m "not serial" -n auto --dist worksteal
           --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 2400 --max-worker-restart 0
           "--hang-dir=${{ runner.temp }}/audit/hangs"
-          -p unit_isolation_audit --unit-isolation-dir tests/unit
-          --unit-isolation-report "${{ runner.temp }}/audit"
+          -p unit_isolation_audit --unit-isolation-dir=tests/unit
+          "--unit-isolation-report=${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -105,8 +105,8 @@ jobs:
           python -m pytest tests/integration tests/regression tests/acceptance
           -q -p no:cacheprovider -m serial -p no:xdist --test-timeout 600 --session-deadline 2400
           "--hang-dir=${{ runner.temp }}/audit/hangs"
-          -p unit_isolation_audit --unit-isolation-dir tests/unit
-          --unit-isolation-report "${{ runner.temp }}/audit"
+          -p unit_isolation_audit --unit-isolation-dir=tests/unit
+          "--unit-isolation-report=${{ runner.temp }}/audit"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

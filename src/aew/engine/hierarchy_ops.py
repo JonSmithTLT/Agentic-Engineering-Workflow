@@ -601,7 +601,7 @@ class Hierarchy:
                 "revision": ctx.session.committed_revision}
 
     def work_tree(self, root: str | None = None) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
 
         def node(wid: str) -> dict[str, Any]:
             if wid not in state["work"]:

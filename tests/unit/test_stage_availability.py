@@ -29,7 +29,7 @@ class FakeEngine:
 
     def __init__(self, state: dict[str, Any], answers: dict[str, str] | None = None,
                  found: dict[str, dict[str, Any]] | None = None) -> None:
-        self.store = SimpleNamespace(read=lambda: state)
+        self.store = SimpleNamespace(current=lambda: state)
         self.answers = answers or {}
         self.found = found or {}
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []

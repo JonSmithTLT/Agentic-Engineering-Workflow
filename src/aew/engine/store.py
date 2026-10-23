@@ -27,6 +27,8 @@ Model (ADR-0001):
   anything else is an out-of-band modification and fails closed.
 * Every operation (read or write) runs under an OS advisory lock and first
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
+  A process declared a non-writer (``aew.process_kind``, STG-05 CB-09) is refused
+  all three before the lock is opened: it reads lock-free (``read_committed``).
 * The store (``state/`` and everything under it) is group-readable whatever the umask (STG-05 CB-08): its files are
   :data:`STORE_FILE_MODE`, its directories :data:`STORE_DIR_MODE`, so a reader running as the operator's group (the
   work-item fact issuer) can read it. Every other file AEW writes keeps ``0600``. :func:`write_file` picks the mode
@@ -66,7 +68,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
-from aew import profile
+from aew import process_kind, profile
 from aew.coordination import layout as coordination
 from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
@@ -408,9 +410,16 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
+    def control_lock(self, operation: str) -> FileLock:
+        """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
+        here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
+        ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
+        process_kind.require_writer(operation)
+        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+
     @contextmanager
     def session(self) -> Iterator[Session]:
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout) as lock:
+        with self.control_lock("ControlStore.session") as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
             try:
@@ -431,12 +440,22 @@ class ControlStore:
                                  "not delete .aew/local while AEW is running)", path=LOCK_REL, reason="lock_lost")
 
     def read(self) -> dict[str, Any]:
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.read"):
             self.held += 1
             try:
                 return copy.deepcopy(self._recover())
             finally:
                 self.held -= 1
+
+    def current(self) -> dict[str, Any]:
+        """The committed state, as this process may read it (STG-05 CB-09). A store writer reads under the control lock,
+        after recovery (``read``). A non-writer (``aew.process_kind``) reads lock-free (``read_committed``): no lock,
+        no recovery and no render, so it works on a read-only store, and may see a committed revision whose staged
+        records are not applied yet (``read_committed`` says how a reader treats that). The one place that chooses:
+        every read of the engine's goes through here, never through ``read`` (a test enforces it)."""
+        if process_kind.kind() == process_kind.NON_WRITER:
+            return self.read_committed()
+        return self.read()
 
     def control_identity(self) -> tuple[int, int, int] | None:
         """A cheap identity of the committed control file (mtime, size, inode), or None when there is none. The file
@@ -467,7 +486,7 @@ class ControlStore:
         The exclusive creation of ``control.yaml`` is the commit point; an
         interrupted initialization leaves no control state and can be re-run.
         """
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.create"):
             if self.control_path.exists():
                 raise IntegrityError(f"{self.control_path} already exists; project is initialized")
             for rel, content in files.items():

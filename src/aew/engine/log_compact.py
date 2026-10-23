@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew import process_kind
 from aew.engine import faults
 from aew.engine.lock import FileLock
 from aew.engine.outbox import (
@@ -72,7 +73,7 @@ from aew.engine.outbox import (
     segment_path,
     verify_segment,
 )
-from aew.engine.store import LOCK_REL, ControlStore, store_of, write_file
+from aew.engine.store import ControlStore, store_of, write_file
 from aew.errors import IntegrityError, UsageError, ValidationFailed
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml
@@ -257,10 +258,15 @@ def seal_steps(aew_root: Path, index: int, since: int,
 
 def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
     """Seal every segment that lies entirely before the newest ``window`` revisions, and finish pruning any segment
-    an interrupted run left behind. Idempotent. ``window`` below :data:`LOG_WINDOW` is for tests only."""
+    an interrupted run left behind. Idempotent. ``window`` below :data:`LOG_WINDOW` is for tests only.
+
+    A store writer's operation: it rewrites ``.aew/state/log`` and takes the control lock around each publish, so a
+    non-writer is refused before anything else (STG-05 CB-09; review of #231, MJ1)."""
+    process_kind.require_writer("history compact", writes="the transition log's segments under .aew/state, under the "
+                                "engine's control lock")
     if window < 1:
         raise UsageError("the unsealed window must keep at least the newest revision")
-    state = store.read()  # recovery has published the newest record; the control lock is released again
+    state = store.current()  # a writer's read: recovery has published the newest record; the lock is released again
     marker = state.get("outbox")
     revision = state["revision"]
     if marker is None:
@@ -280,7 +286,7 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
             continue
 
         def control_lock() -> FileLock:
-            return FileLock(store.root / LOCK_REL, timeout=store.lock_timeout)
+            return store.control_lock("history compact")
 
         try:
             for step in seal_steps(store.root, index, since, control_lock):

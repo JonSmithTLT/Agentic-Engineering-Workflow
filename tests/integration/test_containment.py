@@ -307,11 +307,14 @@ def test_a_narrow_operator_root_is_accepted_and_the_layout_stays_contained(lab):
 
 @pytest.mark.parametrize("reach", ["control_state", "host_tmp", "sibling_run"])
 def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_run(lab, reach):
-    """Whatever widened the layout (an operator root, a future bug), reaching these fails the launch self-test."""
+    """Whatever widened the layout (an operator root, a future bug), reaching these fails the launch self-test. A
+    writable bind of the runs directory itself no longer shows the other runs: the mask on that path comes after it and
+    is remounted read-only (review of #231, m2 and m5), so the widened root is unwritable from inside, which fails the
+    self-test too."""
     (lab.repo / ".aew" / "state").mkdir(parents=True)
     good = lab.layout()
     extra, expected = {"control_state": (str(lab.repo), ".aew"), "host_tmp": ("/tmp", ".tmp-marker"),
-                       "sibling_run": (str(lab.run.parent), ".probe-run")}[reach]
+                       "sibling_run": (str(lab.run.parent), "is not writable on the host from inside")}[reach]
     result = probe.self_test(dataclasses.replace(good, writable=(*good.writable, extra)), sentinel_dir=lab.outside,
                              sibling_dir=lab.root)
     assert result["ok"] is False and expected in result["reason"], result
@@ -323,7 +326,7 @@ def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):
     monkeypatch.setenv("PATH", str(lab.root / "empty"))
     args = dict(role="implementer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                scratch=str(lab.run / "scratch"), bridge_dir=None)
+                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo))
     with pytest.raises(C.ContainmentUnavailable, match="bubblewrap"):
         C.establish(**args, policy=None)
     layout, label = C.establish(**args, policy={"containment": {"mode": "allow_weaker"}})
@@ -333,7 +336,8 @@ def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(
 
 def test_establish_labels_a_contained_run_truthfully(lab):
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                                scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None)
+                                scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None,
+                                project=str(lab.repo))
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
     assert label["network"] == "shared" and label["mechanism"].startswith("bubblewrap")
@@ -437,7 +441,8 @@ import subprocess, sys, time
 from aew.harness import containment, procs
 from pathlib import Path
 layout = containment.for_run(role="implementer", scope="ticket", workspace=sys.argv[1], run_dir=Path(sys.argv[2]),
-                             scratch=sys.argv[2] + "/scratch", bridge_dir=None, policy=None, home=sys.argv[3])
+                             scratch=sys.argv[2] + "/scratch", bridge_dir=None, policy=None, home=sys.argv[3],
+                             project=sys.argv[4])
 tree = procs.ProcessTree(layout=layout)
 p = tree.spawn(["sh", "-c", "setsid sleep 300 & echo $! > " + sys.argv[2] + "/scratch/pid; wait"], cwd=sys.argv[1],
                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -447,7 +452,7 @@ time.sleep(300)
 
 
 def test_sigkill_of_the_owner_ends_the_contained_tree(lab):
-    owner = subprocess.Popen([sys.executable, "-c", _OWNER, str(lab.ws), str(lab.run), str(lab.home)],
+    owner = subprocess.Popen([sys.executable, "-c", _OWNER, str(lab.ws), str(lab.run), str(lab.home), str(lab.repo)],
                              stdout=subprocess.PIPE, text=True, start_new_session=True)
     try:
         bwrap_pid = int(owner.stdout.readline())
@@ -477,3 +482,132 @@ def test_a_check_runs_inside_the_runs_layout(lab):
     result = checks.run(cfg, lab.ws, env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
     assert "Read-only file system" in result["log"] and "done" in result["log"]
     assert lab.fingerprint() == before and (lab.ws / "f.txt").read_text() == "base\n"
+
+
+# ------------------------------------------------------------------ STG-05: the store and the control lock (CBF-1)
+
+def aew_project(lab: Lab) -> Path:
+    """Make the lab's repository an AEW project (its store, its `.aew/local` and the control lock), as `aew init`."""
+    from aew.engine.api import Engine
+
+    Engine.initialize(lab.repo, project_id="lab")
+    assert (lab.repo / ".aew" / "local" / "control.lock").exists()
+    return lab.repo / ".aew"
+
+
+def test_from_a_worker_sandbox_the_control_lock_is_not_there_and_none_can_be_made(lab):
+    """Inside, `.aew/local` is an empty tmpfs, remounted read-only once the run's own directories are bound back into
+    it (review of #231, m5): the host's lock is absent, a process cannot make a lock of its own there (EROFS), and the
+    run's own harness directory, bound back into the mask, stays writable."""
+    from aew.engine.lock import FileLock
+    from aew.engine.store import LOCK_REL
+
+    aew = aew_project(lab)
+    lab.run = aew / "local" / "harness" / "runs" / "R-1"  # where a harness run's directory is: inside the mask
+    layout = lab.layout("reviewer")
+    harness = lab.run / "harness"
+    probe = (f"test -e {aew / LOCK_REL} && echo present || echo absent; "
+             f"{sys.executable} -c \"import errno\ntry:\n    open('{aew / LOCK_REL}', 'a+')\n    print('made')\n"
+             f"except OSError as e:\n    print(errno.errorcode[e.errno])\"; "
+             f"echo x > {harness / 'w'} && echo harness-writable")
+    res = lab.sh(layout, probe)
+    assert res.stdout.split() == ["absent", "EROFS", "harness-writable"], res.stdout + res.stderr
+    with FileLock(aew / LOCK_REL, timeout=5):  # the engine's own lock, on the host, untouched
+        pass
+
+
+_NON_WRITER_READS = """
+import json, os, sys
+from aew import process_kind
+from aew.engine import configuration, outbox
+from aew.engine.base import Kernel
+from aew.errors import PermissionDenied
+
+process_kind.declare(process_kind.cli_entry_point(["status"], os.environ))
+k = Kernel(*Kernel.locate(__import__("pathlib").Path(sys.argv[1])))
+state = k.store.read_committed()
+since = (state.get("outbox") or {}).get("since", 0)
+out = {"kind": process_kind.kind(), "revision": state["revision"],
+       "manifest": configuration.read_committed(k).manifest_raw is not None,
+       "records": len(list(outbox.read_transitions(k.aew_root, since, state["revision"], outbox=state.get("outbox")))),
+       "segment": outbox.LogView(k.aew_root, since).segment(0) is None}
+try:
+    k.store.read()
+except PermissionDenied as exc:
+    out["locked_read"] = exc.details["reason"]
+print(json.dumps(out))
+"""
+
+
+def test_a_non_writer_in_a_worker_sandbox_reads_the_read_only_store_lock_free(lab):
+    """The store on the sandbox's read-only bind of the project: every lock-free read works (no EROFS or EACCES), and
+    a locked read is refused as a non-writer's, before the lock (which is not there) could be opened."""
+    import json
+
+    aew_project(lab)
+    layout = lab.layout("reviewer")
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    env = f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} AEW_AGENT_ENDPOINT=/tmp/aew-no-bridge"
+    res = lab.sh(layout, f"{env} {sys.executable} -c '{_NON_WRITER_READS}' {lab.repo}")
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout) == {"kind": "non_writer", "revision": 0, "manifest": True, "records": 0,
+                                      "segment": True, "locked_read": "non_writer_process"}
+    # The CLI itself, as an agent runs it there: its reads work lock-free on the read-only store (review of #231, B1),
+    # and a command that needs the lock is refused as a non-writer's, not by the read-only filesystem.
+    for args in ("status --json", "work list"):
+        cli = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} {args}")
+        assert cli.returncode == 0, (args, cli.stderr)
+    locked = lab.sh(layout, f"{env} {sys.executable} -m aew -C {lab.repo} history audit")
+    error = json.loads(locked.stderr)["error"]
+    assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process", locked.stderr
+
+
+def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_its_own_reason(visible):
+    """Inside a real reviewer's sandbox (the store on the project's read-only bind, `.aew/local` an empty read-only
+    mask with only the run's own directories bound back), on a project with finished work and a log past the
+    compaction window: every command a worker's agent can run (``worker_surface.commands``) works or is refused for a
+    reason of its own, with no crash and nothing met read-only, and only WRITER_ONLY is refused as a non-writer's
+    (review of #231, m7: `context pack` crashed on the mask, and `history reindex` blamed "another AEW process").
+    The one class that still meets the read-only filesystem, a fingerprint read's git writing objects, is pinned as
+    ``worker_surface.READER_GIT_GAP``, with why."""
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import worker_surface
+
+    w = worker_surface.worked_project(visible)
+    ws = visible / "review-ws"
+    assert git("worktree", "add", "-q", "--detach", str(ws), cwd=w.p.root).returncode == 0
+    run = w.p.root / ".aew" / "local" / "harness" / "runs" / "R-REVIEW-1"
+    run.mkdir(parents=True)
+    home = visible / "home"
+    home.mkdir()
+    layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
+                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent))
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    env = {"PATH": os.environ["PATH"], "PYTHONPATH": os.environ.get("PYTHONPATH", ""), "HOME": str(home),
+           "LANG": "C.UTF-8", **layout.env, "AEW_AGENT_ENDPOINT": "/tmp/aew-no-bridge/s", "AEW_AGENT_KEY": "00" * 32}
+
+    def run_one(argv: list[str]) -> tuple[list[str], subprocess.CompletedProcess[str]]:
+        cmd = C.bwrap_argv(layout, [sys.executable, "-m", "aew", "-C", str(w.p.root), *argv], cwd=str(ws))
+        return argv, subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180,
+                                    stdin=subprocess.DEVNULL)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(run_one, worker_surface.commands(w)))
+    gap = {worker_surface.words(a) for a, r in results if worker_surface.git_object_store_refused(r.stderr)}
+    met = {" ".join(a): r.stderr[-300:] for a, r in results
+           if any(sign in r.stderr for sign in worker_surface.WRITE_FAILURES)
+           and not worker_surface.git_object_store_refused(r.stderr)}
+    assert met == {}
+    assert gap == worker_surface.READER_GIT_GAP, sorted(gap)  # the pinned gap, both ways: it only shrinks
+
+    def reason(stderr: str) -> str | None:
+        try:
+            return (json.loads(stderr)["error"].get("details") or {}).get("reason")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return None
+
+    refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
+    assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)

@@ -256,6 +256,32 @@ def test_the_repository_skip_manifest_is_well_formed():
     assert set(data["skipped"]) == {"win32", "linux"} and all(data["skipped"]["win32"].values())
 
 
+def test_every_pinned_platform_skip_names_a_test_that_exists():
+    """A renamed or removed test leaves its pin behind, and only `assurance` noticed, once both platforms had run (#231
+    at 53c47b3a: "pinned skip no longer exists"). Each pin names a file under tests/ and a test function defined in it
+    (a class's method for `Class::test`; a parametrized id names its function)."""
+    import ast
+
+    data = check_assurance.load_expectations(ROOT / "tests" / "platform-skips.yaml")
+    missing = []
+    for platform, pins in data["skipped"].items():
+        for nid in pins:
+            path, *names = nid.split("::")
+            file = ROOT / path
+            if not file.is_file():
+                missing.append(f"{platform}: {nid} (no file {path})")
+                continue
+            scope: list[ast.stmt] = ast.parse(file.read_text(encoding="utf-8")).body
+            for name in [n.split("[", 1)[0] for n in names]:
+                found = next((s for s in scope if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                              and s.name == name), None)
+                if found is None:
+                    missing.append(f"{platform}: {nid} (no {name} in {path})")
+                    break
+                scope = found.body if isinstance(found, ast.ClassDef) else []
+    assert missing == [], missing
+
+
 def test_durations_merge_updates_and_prunes():
     current = {"platforms": {"win32": {ALL[0]: 9.0, "tests/unit/test_gone.py::x": 1.0}, "darwin": {"k": 1.0}}}
     merged = update_durations.merge(current, [report("win32", "fast", {ALL[0]: "passed", SKIP_ID: "skipped"})])

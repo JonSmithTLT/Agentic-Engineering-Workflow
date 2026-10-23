@@ -102,7 +102,7 @@ class Migration:
                 "summary": ctx.summary, "closure": closed}
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        if self.k.store.read()["schema"] == V2:  # a project is never v1 again once it is v2
+        if self.k.store.current()["schema"] == V2:  # a project is never v1 again once it is v2
             return self._upgrade_v2(token, expect_rev)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.k.archived_credential)

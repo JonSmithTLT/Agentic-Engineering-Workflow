@@ -240,7 +240,7 @@ class Validation:
         publish is E6b's). A fail or an inconclusive result takes M4-D5's paths. Where containment cannot keep the
         candidate immutable, nothing is pinned: the lease is released to AWAITING_DISPOSITION, for the Lead."""
         who = Principal(CUSTODIAN, credential)
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._require_validatable(state, work_id)
         current = ((state["work"][work_id].get("integration") or {}).get(CURRENT))
         try:
@@ -257,7 +257,7 @@ class Validation:
 
     def _validate(self, who: Principal, expect_rev: int, work_id: str, *, wait: bool,
                   diagnostic: bool) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._require_validatable(state, work_id)
         ob = self.obligation(state, work_id)
         self._require_checks_mode(ob, work_id)
@@ -271,7 +271,7 @@ class Validation:
                 filesystem=label["filesystem"], next="dispatch the post-integration verifier")
         rev = expect_rev
         while True:
-            state = self.k.store.read()
+            state = self.k.store.current()
             unit = self._require_validatable(state, work_id)
             current = (unit["integration"] or {}).get(CURRENT)
             identity = self._identity(unit, self.obligation(state, work_id), self._check_set())
@@ -297,7 +297,7 @@ class Validation:
             return self._run(who, rev, work_id, attempt=attempts + 1, diagnostic=diagnostic)
 
     def _rev(self) -> int:
-        return int(self.k.store.read()["revision"])
+        return int(self.k.store.current()["revision"])
 
     @staticmethod
     def _infra_attempts(current: dict[str, Any] | None, identity: dict[str, Any]) -> int:
@@ -321,7 +321,7 @@ class Validation:
             from aew.engine.outbox import wait_for
 
             def ended() -> bool:
-                unit = self.k.store.read()["work"].get(work_id) or {}
+                unit = self.k.store.current()["work"].get(work_id) or {}
                 now = (unit.get("integration") or {}).get(slot_of(run)) or {}
                 return now.get("id") != run["id"] or now.get("state") != "running" or not executor_alive(now)
 
@@ -368,7 +368,7 @@ class Validation:
             if diagnostic:
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
                         "revision": self._rev()}
-            current = (self.k.store.read()["work"][work_id].get("integration") or {}).get(CURRENT)
+            current = (self.k.store.current()["work"][work_id].get("integration") or {}).get(CURRENT)
             return self._release_unavailable(who, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
                                                 else "not an allow-listed transient reason" if code not in V.TRANSIENT
@@ -437,7 +437,7 @@ class Validation:
     def _execute(self, work_id: str, run: dict[str, Any]) -> dict[str, Any]:
         """Run the pinned checks, outside the control lock, contained, under the deadline. Stages each result
         atomically and writes ``finished.json`` last. Returns the staged outcome, or ``{"infra": code}``."""
-        unit = self.k.store.read()["work"][work_id]
+        unit = self.k.store.current()["work"][work_id]
         integ = unit["integration"]
         meta = self.gates.record_meta(unit)
         scope = (list((meta.get("scope") or {}).get("paths") or []), (meta.get("acceptance") or {}).get("inputs"))
@@ -847,7 +847,7 @@ class Validation:
         return breaker["open"] is not None
 
     def breaker_status(self) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         breaker = ((state.get("queue") or {}).get("validation_breaker")) or {"failures": [], "open": None}
         return {"open": breaker["open"] is not None, **breaker, "threshold": V.BREAKER_THRESHOLD,
                 "window_s": V.BREAKER_WINDOW_S}

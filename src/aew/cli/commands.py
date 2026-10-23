@@ -301,7 +301,7 @@ def _init(args: argparse.Namespace) -> Any:
         _cwd(args), project_id=args.project_id, name=args.name, branch=args.branch,
         workspaces_root=args.workspaces_root,
     )
-    state = engine.store.read()
+    state = engine.store.current()
     return {
         "ok": True,
         "project_id": engine.project_id,

@@ -146,7 +146,7 @@ def planned_shape(engine: Any, stage: str, arguments: dict[str, Any], *,
                   state: dict[str, Any] | None = None) -> dict[int, bool]:
     """Whether each state-dependent step of ``stage`` is planned for ``arguments`` now (``APPLIES``): the stage's
     planner and its availability ask the same functions on the same kind of read."""
-    current = engine.store.read() if state is None else state
+    current = engine.store.current() if state is None else state
     return {n: bool(applies(engine, current, arguments)) for n, applies in APPLIES.get(stage, {}).items()}
 
 
@@ -303,7 +303,7 @@ def stage_availability(engine: Any, stage: str, arguments: dict[str, Any], *,
 
 def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str, Any] | None) -> dict[str, Any]:
     t = contract.tool(stage)
-    current: dict[str, Any] = engine.store.read() if state is None else state
+    current: dict[str, Any] = engine.store.current() if state is None else state
     if t is None or stage not in STAGES:
         return {"stage": stage, "availability": UNKNOWN, "reason_codes": [GUARD_NOT_QUERYABLE], "blockers": [],
                 "steps": []}

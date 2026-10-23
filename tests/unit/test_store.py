@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -281,3 +282,46 @@ def test_a_taker_whose_lock_file_is_replaced_while_it_waits_locks_the_new_file(t
         assert len(opened) == 2 and lock.intact()
         held = os.fstat(lock._fh.fileno())
         assert (held.st_ino, held.st_dev) == (path.stat().st_ino, path.stat().st_dev)
+
+
+def test_a_holder_leaves_the_turnstile_free_so_the_next_taker_queues_behind_it(tmp_path):
+    """ADR-0001, amendment 2026-10-23: the turnstile is held only until the lock is, so a waiter can queue while the
+    holder works, and the holder's next take waits behind it (the two-process proof is in test_store_processes)."""
+    from aew.engine.lock import FileLock
+    from aew.errors import LockTimeout
+
+    path = tmp_path / "control.lock"
+    with FileLock(path, timeout=5):
+        with FileLock(path.with_name("control.lock.queue"), timeout=0):  # free while the lock is held
+            pass
+        with pytest.raises(LockTimeout, match="could not lock"):  # and the lock still excludes
+            FileLock(path, timeout=0.05).__enter__()
+
+
+def test_a_taker_stuck_in_the_turnstile_holds_back_every_other_taker_until_its_timeout(tmp_path):
+    """The con the operator accepted (2026-10-23): a process stopped while it waits holds the turnstile. Another taker
+    then times out with the lock's own message and leaves nothing held; once the turnstile is free, the lock is."""
+    from aew.engine.lock import FileLock
+    from aew.errors import LockTimeout
+
+    path = tmp_path / "control.lock"
+    with FileLock(path.with_name("control.lock.queue"), timeout=5):  # a queued waiter, stopped
+        with pytest.raises(LockTimeout, match=f"could not lock {re.escape(str(path))} within 0.05s"):
+            FileLock(path, timeout=0.05).__enter__()
+    with FileLock(path, timeout=0):
+        pass
+
+
+def test_a_taker_that_cannot_open_the_turnstile_still_takes_the_lock_and_it_still_excludes(tmp_path):
+    """The turnstile only orders takers: one that cannot be opened (here a directory at its path) costs fairness,
+    never the lock."""
+    from aew.engine.lock import FileLock
+    from aew.errors import LockTimeout
+
+    path = tmp_path / "control.lock"
+    path.with_name("control.lock.queue").mkdir()
+    with FileLock(path, timeout=5):
+        with pytest.raises(LockTimeout, match="could not lock"):
+            FileLock(path, timeout=0.05).__enter__()
+    with FileLock(path, timeout=0):
+        pass

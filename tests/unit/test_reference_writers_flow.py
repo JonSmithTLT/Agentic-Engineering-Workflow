@@ -314,6 +314,9 @@ def test_the_page_states_the_with_limit_and_names_its_live_case():
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
     assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
+    assert "The counts of writer functions reached below are lower bounds." in page, "review of #258, N5"
+    assert ("a write whose destination is not placed (the unresolved records) carries no role reach and is not "
+            "checked") in page, "the designer's stated limit: the unresolved records are not checked"
 
 
 def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
@@ -653,10 +656,11 @@ def test_a_store_transaction_write_under_local_that_a_non_writer_role_reaches_is
     assert ("aew.m", "txn_local") in store[NAMED] and ("aew.m", "txn_local") not in local[NAMED]
 
 
-def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
-    """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
-    item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever
-    the writer writes; a writer the named role reaches alone, and one the common path gives every role, do not."""
+def test_a_writer_a_cli_command_reaches_says_the_worker_role_is_given_nothing_by_the_call_graph():
+    """The call graph attributes nothing to the environment's role, so a writer any CLI command's handler reaches (the
+    named roles' too: every command runs as the worker run when the environment says so) carries one item that says its
+    absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever the writer writes;
+    one the common path gives every role, and one no CLI command reaches, do not (addendum 5)."""
     a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
                      "def cmd_local(a):\n    local_only(None)\n\n"
                      "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
@@ -666,7 +670,7 @@ def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_
     listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
     assert gate in listed["state/s"], "a store write the general handlers reach"
     assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
-    assert gate not in listed["local/l"], "a writer only the named role reaches"
+    assert gate in listed["local/l"], "a writer only a non-aew command's handler reaches (addendum 5)"
     assert gate not in listed["state/c"], "the common path gives the worker role this one"
     assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}

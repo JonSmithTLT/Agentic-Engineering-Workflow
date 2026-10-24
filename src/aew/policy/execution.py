@@ -103,16 +103,31 @@ def parse(raw: bytes, *, source: str) -> dict[str, Any]:
     return data
 
 
-def check_semantics(policy: dict[str, Any], *, source: str) -> None:
+NO_SUCH_PROFILE, NO_DEFAULT_ROUTE = "NO_SUCH_PROFILE", "NO_DEFAULT_ROUTE"
+ROUTE_TABLES = ("archetypes", "classes", "cards")
+
+
+def semantic_problems(policy: dict[str, Any]) -> list[tuple[tuple[str, ...], str, str | None]]:
+    """The policy's semantic problems, as structure: ``(location, code, target)`` with the location as keys from the
+    document's root, the code (``NO_SUCH_PROFILE``, ``NO_DEFAULT_ROUTE``) and the route's target profile name (None for
+    a missing default). For a schema-valid policy. ``check_semantics`` words them; the configuration projection
+    (register F46.1, proposal §7 rule 1) shows them without the values."""
     profiles = policy["profiles"]
     routing = policy["routing"]
-    problems = []
-    targets = [("routing.default", routing.get("default"))] if routing.get("default") else []
-    for table in ("archetypes", "classes", "cards"):
-        targets += [(f"routing.{table}.{key}", name) for key, name in (routing.get(table) or {}).items()]
-    problems += [f"{where}: no profile {name!r}" for where, name in targets if name not in profiles]
+    targets = [(("routing", "default"), routing.get("default"))] if routing.get("default") else []
+    for table in ROUTE_TABLES:
+        targets += [(("routing", table, key), name) for key, name in (routing.get(table) or {}).items()]
+    out: list[tuple[tuple[str, ...], str, str | None]] = [
+        (where, NO_SUCH_PROFILE, name) for where, name in targets if name not in profiles]
     if policy["configured"] and not routing.get("default"):
-        problems.append("routing.default: a configured policy needs a default route")
+        out.append((("routing", "default"), NO_DEFAULT_ROUTE, None))
+    return out
+
+
+def check_semantics(policy: dict[str, Any], *, source: str) -> None:
+    problems = [f"{'.'.join(where)}: no profile {name!r}" if code == NO_SUCH_PROFILE
+                else f"{'.'.join(where)}: a configured policy needs a default route"
+                for where, code, name in semantic_problems(policy)]
     if problems:
         raise ValidationFailed(f"{source}: execution policy is inconsistent", violations=problems)
 

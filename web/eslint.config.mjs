@@ -5,6 +5,7 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'dist-demo/**',
+      'dist-stg02/**',
       'artifacts/**',
       'output/**',
       'src/api/types.ts',

@@ -27,6 +27,13 @@ Model (ADR-0001):
   anything else is an out-of-band modification and fails closed.
 * Every operation (read or write) runs under an OS advisory lock and first
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
+  A process declared a non-writer (``aew.process_kind``, STG-05 CB-09) is refused
+  all three before the lock is opened: it reads lock-free (``read_committed``).
+* The store (``state/`` and everything under it) is group-readable whatever the umask (STG-05 CB-08): its files are
+  :data:`STORE_FILE_MODE`, its directories :data:`STORE_DIR_MODE`, so a reader running as the operator's group (the
+  work-item fact issuer) can read it. Every other file AEW writes keeps ``0600``. :func:`write_file` picks the mode
+  from the path for every write the store makes, and the control file's temp is written at the store's mode; a store
+  written before this gets the modes once, in recovery (``_migrate_modes``).
 * The transition log ``state/log/<rev>.yaml`` is derived from committed state and
   never authoritative, but it is complete and consumable (ADR-0012, amending
   ADR-0001): every revision has exactly one record, carrying the typed events the
@@ -52,20 +59,23 @@ from __future__ import annotations
 
 import copy
 import os
+import stat
+import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
-from aew import profile
+from aew import process_kind, profile
 from aew.coordination import layout as coordination
 from aew.engine import faults, outbox
 from aew.engine.lock import FileLock
 from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision, ThreadUnsealed
 from aew.schemas import validate
 from aew.util import (
+    IS_WINDOWS,
     atomic_write,
     create_exclusive,
     dump_yaml,
@@ -79,11 +89,111 @@ from aew.util import (
 )
 
 CHECKSUM_PREFIX = "# aew-checksum sha256:"
+STORE_REL = "state"
+# The store's modes (STG-05 CB-08; WIS-00 WISD-2): group-readable files, group-searchable directories. The one owner of
+# both: every write into the store goes through ``write_file`` (and ``store_dirs``), except the control file's temp,
+# which ``_commit_unprofiled`` writes with ``write_temp(..., mode=STORE_FILE_MODE)`` before it replaces the control
+# file.
+STORE_FILE_MODE = 0o640
+STORE_DIR_MODE = 0o750
 CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
 LOCK_REL = "local/control.lock"
 READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
+_T = TypeVar("_T")
+# What an open reports for a present file in the middle of a replace, besides a sharing violation: only Windows.
+MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
+
+
+def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = ()) -> _T:
+    """``read()``, retried briefly on ``PermissionError`` (and on ``also``): on Windows a lock-free reader's open can
+    collide with a writer's atomic replace for a moment (a sharing violation), as the writer's own
+    ``replace_with_retry`` does on its side. The one owner of that retry, for every lock-free read of a file that may
+    be replaced. The last attempt's error is raised."""
+    for attempt in range(READ_RETRIES):
+        try:
+            return read()
+        except (PermissionError, *also):
+            if attempt == READ_RETRIES - 1:
+                raise
+            time.sleep(0.01 * (attempt + 1))
+    raise AssertionError("unreachable")
+
+
+def read_lock_free(path: Path) -> bytes | None:
+    """A file's bytes without the control lock, or None when it does not exist. No ``is_file()`` pre-check. On
+    Windows a missing file is absent only after the retries: in the middle of a replace, a stat can fail and an open can
+    even report the file missing, so a present file would look absent (F1a review, R4). That costs a truly absent file
+    the retries' backoff (about 0.3 s) there. On POSIX ``rename`` replaces a name atomically, so a missing file is
+    absent at once (F1a re-review, R8; as ``aew.dashboard.reader`` gates its own retry). A directory reads as absent."""
+    try:
+        return retry_lock_free(path.read_bytes, also=MISSING_MID_REPLACE)
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    except PermissionError:
+        if path.is_dir():  # Windows refuses to open a directory with a PermissionError
+            return None
+        raise
+
+
+def store_dirs(store: Path, directory: Path) -> None:
+    """Create ``directory`` (the store directory or one under it) and every missing directory between, each
+    :data:`STORE_DIR_MODE`: ``mkdir`` is filtered by the umask, ``chmod`` is not. An existing directory keeps its mode
+    (``_migrate_modes`` re-modes a store from before the modes)."""
+    missing = []
+    d = directory
+    while not d.is_dir():
+        missing.append(d)
+        if d == store:
+            break
+        d = d.parent
+    for d in reversed(missing):
+        d.mkdir(parents=d == store, exist_ok=True)
+        if not IS_WINDOWS:  # pragma: posix-only
+            os.chmod(d, STORE_DIR_MODE)
+
+
+def _chmod_if_allowed(path: Path, mode: int) -> None:  # pragma: posix-only
+    """``chmod``, except where this process may not change the path (another account's file) or it has gone: the
+    migration then leaves it, and `aew doctor` names it."""
+    try:
+        os.chmod(path, mode)
+    except (PermissionError, FileNotFoundError):
+        pass
+
+
+def operator_gid() -> int | None:
+    """The group the store's paths should have (:meth:`ControlStore.group_problems`): the operator's primary group, or
+    this process's own group when the uid has no account entry. None where there are no POSIX groups (Windows)."""
+    if sys.platform == "win32":  # pragma: windows-only
+        return None
+    try:  # pragma: posix-only
+        import pwd
+    except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups
+        return None
+    try:
+        return pwd.getpwuid(os.getuid()).pw_gid
+    except KeyError:  # a container's or a user namespace's uid
+        return os.getgid()
+
+
+def store_of(aew_root: Path) -> Path:
+    """The store directory of ``aew_root``, resolved itself (a ``state`` that is a link resolves to its target): what
+    :func:`write_file` compares its resolved paths with, and what the migration and `aew doctor` walk."""
+    return (aew_root / STORE_REL).resolve()
+
+
+def write_file(store: Path, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
+    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``): with the store's modes when it is in
+    ``store`` (from :func:`store_of`), and AEW's ``0600`` otherwise. Both are resolved paths, so a path that reaches
+    the store through ``..`` or a link is in the store."""
+    mode = 0o600
+    if store in path.parents:
+        store_dirs(store, path.parent)
+        mode = STORE_FILE_MODE
+    (create_exclusive if exclusive else atomic_write)(path, data, mode=mode)
+
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
 AfterApply = Callable[[dict[str, Any]], None]
@@ -209,7 +319,6 @@ class Session:
                                                       self._prewritten, working=self.state)
         return self.committed_revision
 
-
     # ------------------------------------------------------------------ the seal check (F9-A plan D-16, R3)
 
     def _unsealed_endings(self) -> list[tuple[str, str]]:
@@ -281,6 +390,7 @@ class ControlStore:
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
         self._lock: FileLock | None = None  # the control lock this process holds for the open session
+        self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
 
     # ------------------------------------------------------------------ paths
 
@@ -300,9 +410,16 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
+    def control_lock(self, operation: str) -> FileLock:
+        """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
+        here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
+        ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
+        process_kind.require_writer(operation)
+        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+
     @contextmanager
     def session(self) -> Iterator[Session]:
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout) as lock:
+        with self.control_lock("ControlStore.session") as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
             try:
@@ -323,12 +440,22 @@ class ControlStore:
                                  "not delete .aew/local while AEW is running)", path=LOCK_REL, reason="lock_lost")
 
     def read(self) -> dict[str, Any]:
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.read"):
             self.held += 1
             try:
                 return copy.deepcopy(self._recover())
             finally:
                 self.held -= 1
+
+    def current(self) -> dict[str, Any]:
+        """The committed state, as this process may read it (STG-05 CB-09). A store writer reads under the control lock,
+        after recovery (``read``). A non-writer (``aew.process_kind``) reads lock-free (``read_committed``): no lock,
+        no recovery and no render, so it works on a read-only store, and may see a committed revision whose staged
+        records are not applied yet (``read_committed`` says how a reader treats that). The one place that chooses:
+        every read of the engine's goes through here, never through ``read`` (a test enforces it)."""
+        if process_kind.kind() == process_kind.NON_WRITER:
+            return self.read_committed()
+        return self.read()
 
     def control_identity(self) -> tuple[int, int, int] | None:
         """A cheap identity of the committed control file (mtime, size, inode), or None when there is none. The file
@@ -351,14 +478,7 @@ class ControlStore:
 
         On Windows the writer's atomic replace and a reader's open can collide for a moment (a sharing violation,
         ``PermissionError``); the reader retries briefly, as the writer does on its side (``replace_with_retry``)."""
-        for attempt in range(READ_RETRIES):
-            try:
-                return copy.deepcopy(self._load())
-            except PermissionError:
-                if attempt == READ_RETRIES - 1:
-                    raise
-                time.sleep(0.01 * (attempt + 1))
-        raise AssertionError("unreachable")
+        return retry_lock_free(lambda: copy.deepcopy(self._load()))
 
     def create(self, state: dict[str, Any], files: dict[str, str]) -> None:
         """Initialize a project: write skeleton files, then publish revision 0.
@@ -366,11 +486,11 @@ class ControlStore:
         The exclusive creation of ``control.yaml`` is the commit point; an
         interrupted initialization leaves no control state and can be re-run.
         """
-        with FileLock(self.root / LOCK_REL, timeout=self.lock_timeout):
+        with self.control_lock("ControlStore.create"):
             if self.control_path.exists():
                 raise IntegrityError(f"{self.control_path} already exists; project is initialized")
             for rel, content in files.items():
-                atomic_write(self._abs(rel), content)
+                write_file(self.store_dir, self._abs(rel), content)
             state = copy.deepcopy(state)
             state["revision"] = 0
             if state.get("last_transition"):  # revision 0 starts the transition chain (ADR-0012)
@@ -379,8 +499,7 @@ class ControlStore:
                     {"schema": outbox.TRANSITION_SCHEMA, **state["last_transition"], "revision": 0, "events": [],
                      "event_overflow": None}, outbox.GENESIS_H)
             validate("control", state, source="initial control state")
-            self.control_path.parent.mkdir(parents=True, exist_ok=True)
-            create_exclusive(self.control_path, serialize_control(state))
+            write_file(self.store_dir, self._abs(CONTROL_REL), serialize_control(state), exclusive=True)
             self._post_commit(state)
 
     # ------------------------------------------------------------------ commit
@@ -473,11 +592,11 @@ class ControlStore:
         self.require_lock_intact()
         faults.hit("txn.before_stage")
         if txn_ref:
-            atomic_write(self._abs(txn_ref["path"]), txn_bytes)
+            write_file(self.store_dir, self._abs(txn_ref["path"]), txn_bytes)
         faults.hit("txn.after_stage")
 
         # The commit point: temp + fsync, then atomic replace of control.yaml.
-        tmp = write_temp(self.control_path.parent, control_bytes, prefix=".control.yaml.")
+        tmp = write_temp(self.store_dir, control_bytes, prefix=".control.yaml.", mode=STORE_FILE_MODE)
         try:
             faults.hit("txn.before_replace")
             replace_with_retry(tmp, self.control_path)
@@ -524,6 +643,7 @@ class ControlStore:
 
     def _recover_unprofiled(self) -> dict[str, Any]:
         self._remove_temp_files()
+        self._migrate_modes()
         state = self._load()
         revision = state["revision"]
         txn_dir = self._abs(TXN_DIR)
@@ -548,13 +668,53 @@ class ControlStore:
                     f.unlink()
         return state
 
+    def _store_modes(self) -> Iterator[tuple[Path, int, int, int]]:  # pragma: posix-only
+        """(path, its mode, the mode it should have at least, its group) for the store directory and every directory
+        and regular file under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so
+        is a path that vanished after it was listed: the compactor prunes log records without the control lock
+        (``log_compact``)."""
+        for d, dirs, files in os.walk(self.store_dir):
+            names = [("", STORE_DIR_MODE)] if Path(d) == self.store_dir else []
+            names += [*((n, STORE_DIR_MODE) for n in dirs), *((n, STORE_FILE_MODE) for n in files)]
+            for name, want in names:
+                path = Path(d) / name if name else Path(d)
+                try:
+                    st = os.lstat(path)
+                except FileNotFoundError:
+                    continue
+                if not stat.S_ISLNK(st.st_mode):
+                    yield path, stat.S_IMODE(st.st_mode), want, st.st_gid
+
+    def _migrate_modes(self) -> None:
+        """Give a store written before the store's modes (STG-05 CB-08) those modes, once, under the control lock. The
+        control file's own mode is the record that it ran: every commit publishes the control file at
+        :data:`STORE_FILE_MODE`, and this re-modes it last, so a store whose control file has the mode was migrated
+        (or written with the modes from the start), and a migration interrupted part-way runs again. Wider modes are
+        kept, and only a path that lacks the bits is changed. A path this process may not change (another account's
+        file) is left as it is and the migration still finishes, so it never stops a command; `aew doctor`
+        (``store-modes``) names what is left below the modes. The cost of that: if the control file itself is such a
+        path, the record is never written and every recovery walks the store again (review of #230, N4)."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return
+        control = self.store_dir / Path(CONTROL_REL).name  # pragma: posix-only
+        try:
+            current = stat.S_IMODE(os.stat(control).st_mode)
+        except FileNotFoundError:
+            return
+        if current & STORE_FILE_MODE == STORE_FILE_MODE:
+            return
+        for path, mode, want, _gid in self._store_modes():
+            if path != control and mode & want != want:
+                _chmod_if_allowed(path, mode | want)
+        _chmod_if_allowed(control, current | STORE_FILE_MODE)
+
     def applied(self, revision: int) -> bool:
         """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
         it is absent the apply is pending, or the committer died in it and recovery will roll it forward."""
         return self._abs(_applied_marker(revision)).exists()
 
     def _mark_applied(self, revision: int) -> None:
-        atomic_write(self._abs(_applied_marker(revision)), "")
+        write_file(self.store_dir, self._abs(_applied_marker(revision)), "")
 
     def _load_txn(self, txn_ref: dict[str, Any]) -> list[dict[str, Any]]:
         path = self._abs(txn_ref["path"])
@@ -587,7 +747,7 @@ class ControlStore:
                     expected_one_of=[w["before"], w["after"]],
                     found=current,
                 )
-            atomic_write(target, w["content"])
+            write_file(self.store_dir, target, w["content"])
             if inject and i == 0:
                 faults.hit("txn.mid_apply")
             point = fault_after[i] if inject and fault_after else None
@@ -600,7 +760,7 @@ class ControlStore:
         if last:
             log_path = self._abs(f"{LOG_DIR}/{state['revision']:06d}.yaml")
             if not log_path.exists():
-                atomic_write(log_path, dump_yaml(last))
+                write_file(self.store_dir, log_path, dump_yaml(last))
                 wrote = True
         if inject:
             faults.hit("txn.after_log")
@@ -613,7 +773,7 @@ class ControlStore:
                     target = self._abs(rel)
                     data = content.encode("utf-8")
                     if sha256_file(target) != sha256_bytes(data):
-                        atomic_write(target, data)
+                        write_file(self.store_dir, target, data)
         if inject:
             faults.hit("txn.after_render")
 
@@ -629,6 +789,31 @@ class ControlStore:
                         pass
 
     # ------------------------------------------------------------------ helpers for tests/doctor
+
+    def mode_problems(self) -> list[str] | None:
+        """The store's paths (``state/...``; a directory ends in ``/``) whose mode lacks :data:`STORE_FILE_MODE` or
+        :data:`STORE_DIR_MODE`, without modifying anything. None on Windows, which has no such modes: there is nothing
+        to report either way."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return None
+        out = []  # pragma: posix-only
+        for path, mode, want, _gid in self._store_modes():
+            if mode & want != want:
+                out.append(self._rel(path, want))
+        return sorted(out)
+
+    def group_problems(self, gid: int) -> list[tuple[str, int]] | None:
+        """The store's paths whose group is not ``gid`` (the operator's primary group), with the group they have. The
+        store's modes make it group-readable, so a path whose group is another (a process run under ``sg``, a
+        set-group-ID directory above the store) is readable by that group's members (review of #230, m6). Nothing is
+        changed: AEW never changes groups. None on Windows."""
+        if IS_WINDOWS:  # pragma: windows-only
+            return None
+        return sorted((self._rel(path, want), g) for path, _mode, want, g in self._store_modes() if g != gid)
+
+    def _rel(self, path: Path, want: int) -> str:  # pragma: posix-only
+        rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()
+        return rel + "/" if want == STORE_DIR_MODE else rel
 
     def verify(self) -> list[str]:
         """Return integrity problems without modifying anything."""

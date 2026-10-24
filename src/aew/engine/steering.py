@@ -92,6 +92,11 @@ def empty() -> dict[str, Any]:
     return {"default": None, "standing": {"mode": None, "record": None, "rev": 0}, "override": None, "requests": []}
 
 
+# Where the effective mode comes from: an operator raise, a Lead lowering, the adopted default, or nothing set.
+RAISED, LOWERED, STANDING_DEFAULT, NO_SOURCE = "raise", "lower", "default", "none"
+EFFECTIVE_SOURCES = (RAISED, LOWERED, STANDING_DEFAULT, NO_SOURCE)
+
+
 def effective(state: dict[str, Any]) -> dict[str, Any]:
     """The effective mode and where it comes from: the override while its generation is current, else the standing
     mode. ``ended`` names an override whose generation has ended (it no longer counts)."""
@@ -99,9 +104,9 @@ def effective(state: dict[str, Any]) -> dict[str, Any]:
     generation = int(state["lead"]["generation"])
     override = s.get("override")
     if override and override["generation"] == generation and state["lead"]["status"] != "vacant":
-        return {"mode": override["mode"], "source": "raise" if override["by"] == "operator" else "lower",
+        return {"mode": override["mode"], "source": RAISED if override["by"] == "operator" else LOWERED,
                 "record": override["record"], "rev": override["rev"], "generation": override["generation"]}
-    out = {"mode": s["standing"]["mode"], "source": "default" if s["standing"]["record"] else "none",
+    out = {"mode": s["standing"]["mode"], "source": STANDING_DEFAULT if s["standing"]["record"] else NO_SOURCE,
            "record": s["standing"]["record"], "rev": s["standing"]["rev"], "generation": None}
     if override:
         out["ended"] = {"mode": override["mode"], "generation": override["generation"], "record": override["record"]}
@@ -280,7 +285,7 @@ class Steering:
     def raise_preview(self, mode: str) -> dict[str, Any]:
         """What a raise to ``mode`` would bind, or the refusal it would get, before the operator is asked: the
         endpoint shows these bindings with its challenge and the commit refuses if any of them moved."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._raise_problem(state, mode)
         digests = self.k.policy_digests()
         return {"project": self.k.project_id, "mode": mode, "previous": effective(state)["mode"],

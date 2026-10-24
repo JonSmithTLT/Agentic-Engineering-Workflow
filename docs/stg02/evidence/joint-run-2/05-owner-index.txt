@@ -1,0 +1,86 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+Read outcome: partial
+continuity
+unknown
+projection as of
+2026-10-21T00:51:20Z
+correlation id
+corr:6ff13f09bf65442ca863562d841974a7
+
+Limitations: G3_unqualified · source_unqualified
+
+Source observation time and validity belong to the supplied facts. Fetch time does not renew them.
+
+Incomplete membership: absence here does not establish that no other items exist.
+
+Collection basis — aggregation only
+
+This supplied stamp supports collection coverage, not the authority of each item. Displaying qualification does not independently prove it.
+
+Supplied source stamp: CNI · unknown · unqualified
+Last-known observation: 2026-10-21T00:49:25Z · Basis: fixture:cni-owner-operation-roster
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+Collection basis and per-owner closures
+ownerop:HEB:op:c3e5f43126facd3fdd2039dc757d34b7 · owner_operation_index
+
+Supplied source stamp: HEB · unknown · unqualified
+Last-known observation: 2026-10-21T00:51:19Z · Basis: op-record:op:c3e5f43126facd3fdd2039dc757d34b7
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+action
+CONTINUE_ELIGIBLE_WORK
+attachment generation
+fixture:generation-1
+detail path
+/o01/v0/owner-operations/HEB/op:c3e5f43126facd3fdd2039dc757d34b7
+issued at
+2026-10-21T00:51:19Z
+operation ref
+op:c3e5f43126facd3fdd2039dc757d34b7
+owner
+HEB
+owner epoch
+fixture:heb-epoch-1
+source version
+fixture:heb-v1
+subject ref
+fixture:ticket-continue
+Read owner observation: HEB / op:c3e5f43126facd3fdd2039dc757d34b7
+Complete supplied record
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request
+Original request identity for recovery
+
+After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.
+
+Inspect owner-operation outcomesReconcile using the same key and exact body
+
+A retry is a lookup. No automatic retry or new key is generated.

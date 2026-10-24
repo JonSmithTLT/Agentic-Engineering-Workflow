@@ -313,7 +313,7 @@ class Archive:
         """Archived reads, on this thread, that never take the control lock and never wait long on the derived
         index: an index busy past ``wait_s`` is ``LockTimeout`` on a sync and ``sqlite3.DatabaseError`` on a query of an
         index already synced, and a sync that meets a later commit is ``HistoryMoved`` instead of the re-read of state
-        (``store.read()``) that a CLI reader does (register F20.8: the dashboard's ``/maps``, which a reader polls).
+        (``store.current()``) that a CLI reader does (register F20.8: the dashboard's ``/maps``, which a reader polls).
         The caller reports these as "read again later"; any other ``IntegrityError`` is damage, reported as such."""
         previous = getattr(self._reader, "wait_s", None)
         self._reader.wait_s = wait_s
@@ -740,7 +740,7 @@ class Archive:
                     raise
                 if self.k.store.held or attempt == 2:
                     raise
-                state = self.k.store.read()
+                state = self.k.store.current()
         raise AssertionError("unreachable")
 
     def _index_stat(self) -> tuple[int, int] | None:

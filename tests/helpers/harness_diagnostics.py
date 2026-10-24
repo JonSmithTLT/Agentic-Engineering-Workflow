@@ -170,3 +170,106 @@ def report(item: pytest.Item, rep: pytest.TestReport) -> None:
 
 def forget() -> None:
     LABS.clear()
+
+
+# ---------------------------------------------------------------------------------------------- the autopsy's writer
+#
+# The hang-and-flake autopsy (tests/helpers/autopsy.py, the session deadline and its sentinel) writes only through the
+# functions below, so there is one evidence path with one set of rules:
+#
+# - **redaction:** every text is passed through ``K.redact`` whole, before anything is cut;
+# - **size:** each file is capped (its tail kept, from a line boundary, with a note), and the whole autopsy too, by a
+#   :class:`Budget` its writer shares;
+# - **names:** nothing written ends in ``.json``: every file name gets ``.txt`` appended unless it already ends so
+#   (``events.jsonl`` becomes ``events.jsonl.txt``). The assurance tools also skip the ``autopsy`` directory itself
+#   (``tools/ci``), so a name that slipped this rule would still not be read as a lane report.
+
+AUTOPSY_DIR = "autopsy"  # under the hang directory; tools/ci/check_assurance.py and update_durations.py skip it
+AUTOPSY_FILE_CAP = 512 * 1024
+AUTOPSY_TOTAL_CAP = 64 * 1024 * 1024
+TRUNCATED = "[… earlier text not copied: the autopsy's per-file cap]\n"
+
+
+class Budget:
+    """The bytes an autopsy may still write (shared by every writer of one autopsy directory)."""
+
+    def __init__(self, total: int = AUTOPSY_TOTAL_CAP) -> None:
+        self.left = total
+        self.refused: list[str] = []
+
+    def take(self, name: str, size: int) -> bool:
+        if size > self.left:
+            self.refused.append(f"{name}: {size} bytes (the autopsy's total cap left {self.left})")
+            return False
+        self.left -= size
+        return True
+
+
+def safe_name(name: str) -> str:
+    """A file name an assurance tool can never read as a lane report: ``.txt`` appended unless already there."""
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[-150:] or "_"
+    return name if name.endswith(".txt") else name + ".txt"
+
+
+def safe_dir(name: str) -> str:
+    """A directory name for one test or process (as :func:`_safe`: readable, bounded, unique)."""
+    return _safe(name)
+
+
+def capped(text: str, cap: int = AUTOPSY_FILE_CAP) -> str:
+    """The tail of ``text`` within ``cap`` characters, cut on a line boundary when that leaves anything."""
+    if len(text) <= cap:
+        return text
+    cut = text[-cap:]
+    _, sep, rest = cut.partition("\n")
+    return TRUNCATED + (rest if sep and rest else cut)
+
+
+def write_text(dest_dir: Path, name: str, text: str, *, budget: Budget | None = None, append: bool = False,
+               cap: int = AUTOPSY_FILE_CAP) -> Path | None:
+    """Write ``text`` redacted, capped and safely named under ``dest_dir``. Returns the path, or None when the
+    autopsy's total budget refused it (the refusal is kept in the budget, and reported by its writer)."""
+    body = capped(K.redact(text), cap)
+    target = dest_dir / safe_name(name)
+    if budget is not None and not budget.take(target.name, len(body.encode("utf-8", "replace"))):
+        return None
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    with target.open("a" if append else "w", encoding="utf-8", errors="replace", newline="") as fh:
+        fh.write(body)
+    return target
+
+
+def copy_file(src: Path, dest_dir: Path, name: str | None = None, *, budget: Budget | None = None,
+              cap: int = AUTOPSY_FILE_CAP) -> Path | None:
+    """Copy one file, redacted whole and then capped, as ``<name>.txt`` (never ``*.json``). Read with the short
+    sharing-violation retry of :func:`_read`, since a child may still be writing it."""
+    return write_text(dest_dir, name or src.name, _read(src).decode("utf-8", "replace"), budget=budget, cap=cap)
+
+
+def copy_tree(src: Path, dest: Path, *, budget: Budget | None = None, cap: int = AUTOPSY_FILE_CAP,
+              max_files: int = 2000) -> tuple[list[Path], list[str]]:
+    """Copy a directory (a test's working directory, a child's diagnostics) file by file through :func:`copy_file`:
+    redacted, capped, renamed so nothing ends in ``.json``. Never a move: the original is left to its owner. Returns
+    what was copied and what was not (unreadable, over a cap, or past ``max_files``); one failure never stops the
+    rest."""
+    copied: list[Path] = []
+    failed: list[str] = []
+    try:
+        files = sorted(p for p in src.rglob("*") if p.is_file())
+    except OSError as exc:
+        return copied, [f"{src}: {type(exc).__name__}: {exc}"]
+    for i, path in enumerate(files):
+        rel = path.relative_to(src)
+        if i >= max_files:
+            failed.append(f"{len(files) - max_files} more files not copied (max {max_files})")
+            break
+        try:
+            out = copy_file(path, dest / rel.parent, rel.name, budget=budget, cap=cap)
+        except OSError as exc:
+            failed.append(f"{rel.as_posix()}: {type(exc).__name__}: {exc}")
+            continue
+        if out is None:
+            failed.append(f"{rel.as_posix()}: refused by the autopsy's total cap")
+        else:
+            copied.append(out)
+    return copied, failed

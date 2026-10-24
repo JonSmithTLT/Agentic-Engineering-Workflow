@@ -8,7 +8,6 @@ generation-bound token checked inside each locked transition.
 
 from __future__ import annotations
 
-import errno
 import os
 import sys
 import time
@@ -65,16 +64,12 @@ class FileLock:
         return (held.st_ino, held.st_dev) == (now.st_ino, now.st_dev)
 
     def _open(self):  # type: ignore[no-untyped-def]
-        """The lock file, for writing where possible. On a read-only mount (a contained run's view of the project,
-        M4-B) an existing lock file is opened read-only: POSIX ``flock`` needs no write access, so a contained reader
-        still serializes with the engine's writers instead of failing."""
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            return open(self.path, "a+b")
-        except OSError as exc:
-            if sys.platform == "win32" or exc.errno not in (errno.EROFS, errno.EACCES) or not self.path.exists():
-                raise
-            return open(self.path, "rb")
+        """The lock file, opened for writing. Only a store writer locks it (``aew.process_kind``); a reader reads
+        lock-free, and a contained run's layout hides ``.aew/local`` (STG-05 CB-09, CBF-1). So there is no read-only
+        fallback: a process that cannot open the lock for writing is not one that may hold it (ADR-0009, amendment
+        2026-10-21)."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        return open(self.path, "a+b")
 
     def __exit__(
         self,

@@ -1,0 +1,37 @@
+{
+  "wire_version": "o01-command-0.2-review-candidate",
+  "request_set_ref": "request:continue-eligible-work",
+  "client_request_key": "key:continue-eligible-work",
+  "recipient_ref": "recipient:operator-1",
+  "installation_ref": "installation:one",
+  "consent_set_ref": null,
+  "intents": [
+    {
+      "intent_ref": "intent:continue-eligible-work",
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "actor_ref": "lead:new",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "owner_hint": "HEB",
+      "subject": {
+        "project_ref": "project:one",
+        "installation_ref": "installation:one",
+        "attachment_ref": "attachment:new",
+        "generation_ref": "gen:new"
+      },
+      "predecessor": {
+        "basis_ref": "basis:one",
+        "basis_version": "version:one",
+        "source_epoch": "epoch:one"
+      },
+      "target": {
+        "work_ref": "ticket:one",
+        "work_revision": "revision:one",
+        "grant_ref": "grant:1",
+        "eligible_basis_ref": "basis:eligible",
+        "selection_mode": "DELIBERATE_SELECTED_WORK"
+      },
+      "origin_proof_ref": null,
+      "delegated_grant_proof_ref": "delegation:proof-current"
+    }
+  ]
+}

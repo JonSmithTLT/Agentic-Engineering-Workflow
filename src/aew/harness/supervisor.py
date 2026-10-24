@@ -140,7 +140,7 @@ class Supervisor:
     # ------------------------------------------------------------------ authority
 
     def authority_problem(self) -> str | None:
-        state = self.engine.store.read()
+        state = self.engine.store.current()
         return self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
 
     def _control_changed(self) -> bool:
@@ -184,7 +184,7 @@ class Supervisor:
 
     def start(self) -> bool:
         faults.pause("harness.supervisor.before_custody")  # tests: a supervisor slow to take custody
-        state = self.engine.store.read()
+        state = self.engine.store.current()
         try:
             inv_id, inv, _ = require_invocation(state, self._credential, None,
                                                 archived=self.engine.archived_credential)
@@ -360,7 +360,7 @@ class Supervisor:
         if not pending:
             return []
         try:
-            inv = self.engine.store.read()["invocations"].get(self.inv_id) or {}
+            inv = self.engine.store.current()["invocations"].get(self.inv_id) or {}
             entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
             recorded = {r["file"]: r for r in entry.get("requests") or []}
         except errors.AEWError as exc:
@@ -542,6 +542,9 @@ class Supervisor:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from aew import process_kind
+
+    process_kind.declare("aew.harness.supervisor")
     parser = argparse.ArgumentParser(prog="aew-harness-supervisor")
     parser.add_argument("--run-dir", required=True)
     args = parser.parse_args(argv)

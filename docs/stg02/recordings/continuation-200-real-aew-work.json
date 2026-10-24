@@ -1,0 +1,500 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/continuation-state/VC0wMDAy",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "collection_basis": null,
+   "continuity": "unknown",
+   "correlation_id": "corr:af4fe43bc1c344b280541146e4e4d478",
+   "effective_recipient_ref": "fixture:recipient-operator",
+   "items": [
+    {
+     "data": {
+      "axes": {
+       "ADC": {
+        "basis_ref": null,
+        "observed_at": null,
+        "owner_epoch": null,
+        "qualification": "not_established",
+        "reason_code": "SOURCE_UNAVAILABLE",
+        "source_version": null,
+        "state": "unknown",
+        "valid_until": null
+       },
+       "AEV": {
+        "basis_ref": null,
+        "observed_at": null,
+        "owner_epoch": null,
+        "qualification": "not_established",
+        "reason_code": "SOURCE_UNAVAILABLE",
+        "source_version": null,
+        "state": "unknown",
+        "valid_until": null
+       },
+       "HEB": {
+        "basis_ref": null,
+        "observed_at": null,
+        "owner_epoch": null,
+        "qualification": "not_established",
+        "reason_code": "SOURCE_UNAVAILABLE",
+        "source_version": null,
+        "state": "unknown",
+        "valid_until": null
+       },
+       "IF10": {
+        "basis_ref": null,
+        "observed_at": null,
+        "owner_epoch": null,
+        "qualification": "not_established",
+        "reason_code": "SOURCE_UNAVAILABLE",
+        "source_version": null,
+        "state": "unknown",
+        "valid_until": null
+       },
+       "R01": {
+        "basis_ref": null,
+        "observed_at": null,
+        "owner_epoch": null,
+        "qualification": "not_established",
+        "reason_code": "SOURCE_UNAVAILABLE",
+        "source_version": null,
+        "state": "unknown",
+        "valid_until": null
+       },
+       "WIS": {
+        "basis_ref": "aew:work:T-0002",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner_epoch": "aew:project:calc",
+        "qualification": "unqualified",
+        "reason_code": "SOURCE_UNQUALIFIED",
+        "source_version": "aew:rev:9",
+        "state": "unknown",
+        "valid_until": null
+       }
+      },
+      "binding_ref": "unavailable:HEB",
+      "generation_ref": "unavailable:HEB",
+      "informational_only": true,
+      "operation": "CONTINUE_ELIGIBLE_WORK",
+      "work_ref": "T-0002",
+      "work_revision": "plan-1"
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [
+      {
+       "field_path": "data.axes.ADC",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:ADC",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:ADC",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "ADC",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.axes.AEV",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:AEV",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:AEV",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "AEV",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.axes.HEB",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.axes.IF10",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:IF10",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:IF10",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "IF10",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.axes.R01",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:R01",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:R01",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "R01",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.axes.WIS",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.binding_ref",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.generation_ref",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.informational_only",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.operation",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "unavailable:HEB",
+        "governing_owner": null,
+        "issuer_ref": "unavailable:HEB",
+        "observation_state": "unavailable",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "not_established",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "unavailable",
+        "source_version": "unavailable"
+       }
+      },
+      {
+       "field_path": "data.work_ref",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.work_revision",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      }
+     ],
+     "links": [],
+     "ref": {
+      "generation": "unavailable:HEB",
+      "id": "aew:continuation:T-0002",
+      "kind": "continuation_state",
+      "package_digest": null,
+      "revision": "plan-1"
+     },
+     "resource_type": "continuation_vector",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "unavailable:HEB",
+      "governing_owner": null,
+      "issuer_ref": "unavailable:HEB",
+      "observation_state": "unavailable",
+      "observed_at": "2026-10-20T02:32:37Z",
+      "owner": "HEB",
+      "owner_coverage_class": "not_established",
+      "qualification": "not_established",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "unavailable",
+      "source_version": "unavailable"
+     }
+    }
+   ],
+   "limitations": [
+    "G3_unqualified",
+    "source_unavailable",
+    "source_unqualified"
+   ],
+   "mode": "detail",
+   "outcome": "partial",
+   "page": null,
+   "projection_as_of": "2026-10-20T02:32:37Z",
+   "wire_version": "0.3.4"
+  }
+ }
+}

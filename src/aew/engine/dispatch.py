@@ -293,7 +293,7 @@ class Dispatch:
         return decision.require()
 
     def explain(self, entrypoint: str, work_id: str, **args: Any) -> dict[str, Any]:
-        decision = self.decide(self.k.store.read(), entrypoint, work_id, **args)
+        decision = self.decide(self.k.store.current(), entrypoint, work_id, **args)
         return {"ok": True, **decision.to_dict(), "channel": decision.channel}
 
     # ---- the commit check (a transaction finalizer)

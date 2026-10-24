@@ -175,7 +175,6 @@ class Inputs:
         return out
 
 
-
 class NonMutating:
     """Non-mutating (evidence-only) Tickets: attempts, observations, records, gates and acceptance."""
 
@@ -221,7 +220,7 @@ class NonMutating:
 
     def prune_observations(self, state: dict[str, Any] | None = None) -> list[str]:
         """Remove observation worktrees whose invocation has ended (best effort; outside any transaction)."""
-        state = state or self.k.store.read()
+        state = state or self.k.store.current()
         removed = []
         for inv in state["invocations"].values():
             obs = inv.get("observation") or {}
@@ -326,7 +325,7 @@ class NonMutating:
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
         """Non-mutating Tickets are reconciled on their attempt, not a workspace (nothing is inferred)."""
         if inspection is None:
-            state = self.k.store.read()
+            state = self.k.store.current()
             unit = state["work"].get(work_id)
             if unit is not None and is_nm_ticket(unit):
                 inspection = self._inspect_attempt(state, work_id, unit)

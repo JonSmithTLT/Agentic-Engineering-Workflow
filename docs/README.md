@@ -145,6 +145,8 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 | [`vertical-uat.md`](implementation/vertical-uat.md) | The vertical UAT (in shadow): a fresh project to a published fix, its burden ledger and the thresholds the test pins |
+| [`surface-map.md`](implementation/surface-map.md) | Anti-drift guard G1: every `aew` command and typed Lead tool registered with one home, its users, journeys, `mutates`, the Lead's door and disposition, and its refusal codes; the standing rule for new surfaces; which checks are enforced and which only report until A1, A2 and A4 |
+| [`surface-map.yaml`](implementation/surface-map.yaml) | The surface map's registry, checked against the live parser and typed surface by `tests/unit/test_surface_map.py` |
 
 **ADRs** (one entry per ADR with a blank line between, so a change to one entry and an ADR added after it merge; an entry says what the ADR decides and when it was accepted or amended, and build progress goes in [`implementation-status.md`](implementation/implementation-status.md) or a [register note](implementation/notes.d/README.md)):
 
@@ -190,6 +192,29 @@ Two amendments of 2026-10-05 are designed, not built, and the register tracks th
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.3, which adds the maps and raw-history search routes to 0.1.2 and changes nothing 0.1.2 returns; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
 
+## The STG-02 slice ([`stg02/`](stg02/))
+
+The first vertical slice against the architecture workspace's adopted STG-01 v0.5.4 wire (D-01 0.3.4 reads, the O-01 0.2 command route), built in `src/aew/stg02/` beside the provisional dashboard API, which it does not change.
+
+| Document | What it is |
+|---|---|
+| [`BACKEND-REPORT.md`](stg02/BACKEND-REPORT.md) | The backend report: each field's owner and whether it is real or a labelled fixture, what cannot be produced yet, the recorded HTTP responses, the conformance driver's result, the four push-back points and context feedback |
+| [`GAP-ENTRIES.md`](stg02/GAP-ENTRIES.md) | Preserved backend entries and separately identified website gap entries for designer triage |
+| [`WEBSITE-REPORT.md`](stg02/WEBSITE-REPORT.md) | Historical first website checkpoint and its limits; links to later correction and joint-test handoffs |
+| [`IMPLEMENTATION-NOTES.md`](stg02/IMPLEMENTATION-NOTES.md) | Isolated website implementation, reproduction and authority boundaries |
+| [`CORRECTION-HANDOFF.md`](stg02/CORRECTION-HANDOFF.md) | Corrected website runtime, independent review and committed-source freeze |
+| [`JOINT-TEST-HANDOFF.md`](stg02/JOINT-TEST-HANDOFF.md) | Joint-run results and remaining designer decisions, without an author acceptance claim |
+| [`JOINT-TEST-NOTES.md`](stg02/JOINT-TEST-NOTES.md) | Exact tested identities, HTTP chronology, probes, failures and limitations for both runs |
+| [`JOINT-WRAPPER.md`](stg02/JOINT-WRAPPER.md) | Reviewed fixture/joint wrapper modes and test-tool boundaries |
+| [`CONTEXT-FEEDBACK.md`](stg02/CONTEXT-FEEDBACK.md) | Website-side handoff and skill feedback |
+| [Run-1 evidence](stg02/evidence/joint-run-1/README.md) | Selected hashed captures and HTTP evidence, including failed and inconclusive cases |
+| [Run-2 evidence](stg02/evidence/joint-run-2/README.md) | Corrected owner navigation, controlled recovery and explicitly attributed ledger observations |
+| [Initial website review](stg02/reviews/review-3173362.md) | Original implementation findings and coverage |
+| [Corrected runtime review](stg02/reviews/review-af77308a.md) | Recheck of the corrected runtime at its exact commit |
+| [Evidence-carrier review](stg02/reviews/review-50cd41be.md) | Review of the original correction handoff and evidence |
+| [Initial joint-wrapper review](stg02/reviews/review-joint-wrapper-041595cf.md) | Original test-wrapper findings |
+| [Corrected joint-wrapper review](stg02/reviews/review-joint-wrapper-f8dd097c.md) | Exact-commit wrapper recheck and limits |
+
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 
 A proposal's adoption state is in its status line and here. "Design frozen, proposed" means the designer has settled its
@@ -214,6 +239,7 @@ until then they are proposals and rank nowhere in "What governs".
 | [`shallow-finding-termination-proposal.md`](design/proposals/shallow-finding-termination-proposal.md) | F17 | Proposed (v0.2) | Evaluation baseline first |
 | [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) | F20.2 to F20.7 | Approved with modifications (designer and operator, 2026-10-05; its §7): every decision F20.2 to F20.6 needed, with a recommendation and disposition each, and the slice plan | M4's dashboard track, being built one PR per slice |
 | [`dashboard-maps-and-history-search-v0.1.md`](design/proposals/dashboard-maps-and-history-search-v0.1.md) | F20.8 | Approved (operator, 2026-10-10): the contract 0.1.3 change note (the maps routes and the conditional raw-history search), the compatibility rule, and its appendix of OpenAPI additions; adopted unchanged in contract 0.1.3 (W1, PR #173) | S0 and W1 done; S1 serves the five maps routes; S2 search, then S3 acceptance |
+| [`dashboard-configuration-read-v0.1.md`](design/proposals/dashboard-configuration-read-v0.1.md) | F46.1 | Proposed (slice F1b; the F46.1 proposal is designer- and operator-approved): the contract 0.1.4 change note (`/configuration` and `/configuration/execution`, the `configuration` capability) and its appendix of OpenAPI additions, pinned to the projection's real output and to the engine's constants | W2 (the web developer applies Appendix A), then F1c serves the routes |
 
 ## Research and investigations ([`research/`](research/))
 

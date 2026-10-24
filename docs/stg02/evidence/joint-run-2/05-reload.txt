@@ -1,0 +1,118 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+Read outcome: partial
+continuity
+unknown
+projection as of
+2026-10-21T00:51:19Z
+correlation id
+corr:4ff89c6b042046e3a47d2ece3f236a4b
+
+Limitations: G3_unqualified · source_unavailable · source_unqualified
+
+Source observation time and validity belong to the supplied facts. Fetch time does not renew them.
+
+fixture:continuation-ticket-continue · continuation_vector
+
+Supplied source stamp: HEB · unknown · unqualified
+Last-known observation: 2026-10-21T00:49:25Z · Basis: fixture:heb-continuation-ticket-continue
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+
+Information only — never permission to act. HEB independently decides command admission.
+
+ADC: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+fixture:adc-grant-continue
+observed at
+2026-10-21T00:49:25Z
+ADC epoch and validity
+AEV: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+AEV epoch and validity
+HEB: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+fixture:heb-basis-continue
+observed at
+2026-10-21T00:49:25Z
+HEB epoch and validity
+IF10: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+fixture:if10-account-continue
+observed at
+2026-10-21T00:49:25Z
+IF10 epoch and validity
+R01: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+fixture:r01-budget-continue
+observed at
+2026-10-21T00:49:25Z
+R01 epoch and validity
+WIS: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+fixture:wis-revision-continue
+observed at
+2026-10-21T00:49:25Z
+WIS epoch and validity
+Complete supplied record
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request
+Original request identity for recovery
+
+After reload, read the owner-operation index and owner observation. Missing observations leave the outcome unknown.
+
+Inspect owner-operation outcomesReconcile using the same key and exact body
+
+A retry is a lookup. No automatic retry or new key is generated.

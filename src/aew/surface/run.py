@@ -301,7 +301,7 @@ def _stale(engine: Any, ctx: SurfaceContext) -> errors.AEWError | None:
     if session is not None and not session.get("holds"):
         return errors.StaleAuthority("this Lead session no longer holds Lead authority: "
                                      f"{session.get('detail') or 'the seat moved on'}")
-    current = int((engine.store.read().get("lead") or {}).get("generation") or 0)
+    current = int((engine.store.current().get("lead") or {}).get("generation") or 0)
     if ctx.generation is not None and ctx.generation != current:
         return errors.StaleAuthority(
             f"this surface acts for Lead generation {ctx.generation}, but the current generation is {current}",

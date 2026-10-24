@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
@@ -21,7 +21,8 @@ from aew import SPEC_SET
 from aew.engine import usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
-from aew.engine.base import POLICY_PINS, Kernel, TxnContext, policy_files
+from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
+from aew.engine.configuration import CLI_ENVIRONMENT, Configuration
 from aew.engine.context_ops import ContextPacks
 from aew.engine.coordination_ops import Coordination
 from aew.engine.custody_ops import Custody, spawn_worker
@@ -44,7 +45,7 @@ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
-from aew.engine.store import ControlStore
+from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore, operator_gid
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -92,7 +93,7 @@ class ProjectAdmin:
         self.coordination = coordination
 
     def authority_list(self) -> dict[str, Any]:
-        self.k.store.read()  # recovery + integrity
+        self.k.store.current()  # recovery + integrity
         return {"accepted": self.k.manifest["authority"]["accepted"],
                 "candidates": self.k.manifest["authority"]["candidates"]}
 
@@ -189,18 +190,7 @@ class ProjectAdmin:
                 pins[rel] = None
                 continue
             raw = path.read_bytes()
-            data = load_yaml(raw.decode("utf-8"), source=str(path))
-            name = names.get(rel, "execution")
-            if name == "execution":  # before the schema, so an unquoted `off` is refused with its cause and fix
-                X.refuse_yaml_boolean(data, source=str(path))
-            if name in ("guardrails", "checks", "gates", "execution"):
-                validate(name, data, source=str(path))
-            if name == "pricing":  # parsed as the ledger parses it (a YAML date is the table's `as_of` string)
-                from aew.engine.usage_ops import Prices
-
-                Prices(raw, source=str(path))
-            if name == "execution":
-                X.check_semantics(data, source=str(path))
+            check_policy_bytes(names.get(rel, "execution"), raw, source=str(path))
             pins[rel] = sha256_bytes(raw)
         return pins
 
@@ -284,11 +274,33 @@ class ProjectAdmin:
             checks.append({"check": name, "status": status, "detail": detail})
 
         try:
-            state = self.k.store.read()
+            state = self.k.store.current()
             add("control-state", "PASS", f"revision {state['revision']}, checksum and schema valid")
         except Exception as exc:  # report, never crash
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
+        below = self.k.store.mode_problems()  # the store's modes (STG-05 CB-08); None where there are none (Windows)
+        if below is not None:
+            add("store-modes", "WARN" if below else "PASS",
+                f"{len(below)} path(s) in the store are below {STORE_FILE_MODE:04o} (files) or {STORE_DIR_MODE:04o} "
+                f"(directories), the modes AEW writes the store with, which a reader running as your group needs: "
+                f"{', '.join(below[:5])}{' ...' if len(below) > 5 else ''}. Restore them with "
+                "`chmod -R u+rwX,g+rX .aew/state` (a path owned by another account needs that account, or `chown`)"
+                if below else
+                f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
+        # The store's group (review of #230, m6): those modes make it readable to the group the store's paths have,
+        # which is meant to be the operator's user-private primary group (`primary-group` checks that group).
+        gid = operator_gid()
+        others = self.k.store.group_problems(gid) if gid is not None else None
+        if others is not None:
+            add("store-group", "WARN" if others else "PASS",
+                f"{len(others)} path(s) in the store have a group other than your primary group (gid {gid}), so its "
+                "members can read them: "
+                f"{', '.join(f'{rel} (gid {g})' for rel, g in others[:5])}{' ...' if len(others) > 5 else ''}. A "
+                "process run under another group (`sg`, `newgrp`) or a set-group-ID directory above the store gives "
+                "new files that group. AEW changes no group: `chgrp -R <your group> .aew/state`, and write the store "
+                "from your own group" if others else
+                f"every path in the store has your primary group (gid {gid})")
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")
@@ -479,6 +491,7 @@ class Engine:
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
+        self._configuration = Configuration(k)  # the configuration read projection (F46.1)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
         self._migration = Migration(k, hierarchy=hierarchy, archive=archive, coordination=coordination)
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
@@ -664,6 +677,10 @@ class Engine:
     def doctor_checks(self) -> list[dict[str, str]]:
         return self._project.doctor_checks()
 
+    def configuration(self, document: str | None = None, *, observed_in: str = CLI_ENVIRONMENT,
+                      env: Mapping[str, str] | None = None) -> dict[str, Any]:
+        return self._configuration.configuration(document, observed_in=observed_in, env=env)
+
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.evidence_gate_context(state, work_id)
 
@@ -681,7 +698,7 @@ class Engine:
         """Whether ``primitive`` with ``args`` is legal now (AVAILABLE, BLOCKED or UNKNOWN), asked of the guard its own
         commit evaluates (M4-E E4; ``aew.engine.guards``). ``state`` defaults to the committed state; a stage's
         availability passes the state a later step would see. The query records what it found in ``args``."""
-        state = self._k.store.read() if state is None else state
+        state = self._k.store.current() if state is None else state
         return self._guard_queries.answer(state, primitive, work_id, {} if args is None else args)
 
     def gate_memo(self) -> AbstractContextManager[None]:
@@ -690,7 +707,7 @@ class Engine:
 
     def validation_mode(self, work_id: str | None, *, state: dict[str, Any] | None = None) -> str | None:
         """The Ticket's resolved post-integration validation mode (``checks`` or ``verifier``), or None."""
-        return self._integration.validation_mode(self._k.store.read() if state is None else state, work_id or "")
+        return self._integration.validation_mode(self._k.store.current() if state is None else state, work_id or "")
 
     def candidate_overlay(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         """A copy of ``state`` with ``work_id``'s integration candidate prepared under its entry's lease, as a later
@@ -705,7 +722,7 @@ class Engine:
 
     def stage_cards(self, work_id: str | None, slot: str, *, state: dict[str, Any] | None = None) -> dict[str, Any]:
         """The cards a request stage launches for ``work_id``'s ``slot`` now (M4-E E5b; ``Roles.planned_cards``)."""
-        state = self._k.store.read() if state is None else state
+        state = self._k.store.current() if state is None else state
         unit = self._units.unit(state, work_id or "")
         if unit["kind"] != "ticket" or not unit.get("mutating"):  # a request stage is a mutating Ticket's
             return {"cards": [], "unresolved": []}
@@ -720,7 +737,7 @@ class Engine:
                          invocation: str | None = None) -> dict[str, Any]:
         """The dispatch decision the named (or the unit's next) dispatch would get now: the same predicate the
         dispatch evaluates in its own transaction (M4-A)."""
-        state = self._k.store.read()
+        state = self._k.store.current()
         if invocation is None and not work_id:
             raise UsageError("name a work unit, or --invocation for a harness launch")
         if invocation is not None:
@@ -743,7 +760,7 @@ class Engine:
 
     def plan_lint(self, work_id: str, *, revision: int | None = None) -> dict[str, Any]:
         """Deterministic plan lint (v0.4 §18) of a Ticket's accepted plan, or of the named revision."""
-        state = self._k.store.read()
+        state = self._k.store.current()
         unit = self._units.unit(state, work_id)
         if unit["kind"] != "ticket":
             raise UsageError("plan lint applies to Tickets (their scope and acceptance)")
@@ -1026,7 +1043,7 @@ class Engine:
     def status(self, work_id: str | None = None) -> dict[str, Any]:
         out = self._resume.status(work_id)
         if work_id is None:
-            state = self._k.store.read()
+            state = self._k.store.current()
             view = self._steering.view(state)
             if view["configured"] or "steering" in state:  # legacy/manual projects show nothing new (decision 3)
                 from aew.harness import operator_client
@@ -1056,7 +1073,7 @@ class Engine:
         return self._steering.raise_mode(principal, mode=mode, generation=generation, legality_digest=legality_digest)
 
     def steering_view(self) -> dict[str, Any]:
-        return self._steering.view(self._k.store.read())
+        return self._steering.view(self._k.store.current())
 
     # ---------------------------------------------------------------- the stage journal (M4-E E3)
 
@@ -1092,7 +1109,7 @@ class Engine:
                       plan: list[dict[str, Any]] | None) -> dict[str, Any]:
         """What continuing an unfinished stage would meet now (read-only: ``resume``, and the surface before a
         continue)."""
-        return self._stages.recheck_active(self._k.store.read(), intent, contract_digest=contract_digest, plan=plan)
+        return self._stages.recheck_active(self._k.store.current(), intent, contract_digest=contract_digest, plan=plan)
 
     # ---------------------------------------------------------------- dispositions and anomalies (M4-E E5b)
 
@@ -1104,12 +1121,12 @@ class Engine:
 
     def disposition(self, ref: str) -> dict[str, Any]:
         """A disposition record, by its id or its subject (TIS-35: found without scanning)."""
-        return self._dispositions.read(self._k.store.read(), ref)
+        return self._dispositions.read(self._k.store.current(), ref)
 
     def anomaly_disposal_refusal(self, anomaly: str) -> dict[str, Any] | None:
         """Why the open anomaly cannot be disposed of now (its refusal's code, message and details), or None: the
         query the disposal's own refusal uses (PR 182 review, m4)."""
-        refused = self._dispositions.disposal_refusal(self._k.store.read(), anomaly)
+        refused = self._dispositions.disposal_refusal(self._k.store.current(), anomaly)
         return None if refused is None else {"code": refused.code, "message": refused.message,
                                              "details": dict(refused.details)}
 
@@ -1121,7 +1138,7 @@ class Engine:
 
     def anomalies_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open anomalies (hot), by id."""
-        state = self._k.store.read() if state is None else state
+        state = self._k.store.current() if state is None else state
         return [dict(a) for _, a in sorted((state.get("anomalies") or {}).items())]
 
     def disposition_items(self, work_id: str, *, state: dict[str, Any] | None = None,
@@ -1130,7 +1147,7 @@ class Engine:
         recorded on the Ticket, and those of the named reports (``evidence``), which their ingest would record."""
         from aew.engine import disposition_ops as DO
 
-        state = self._k.store.read() if state is None else state
+        state = self._k.store.current() if state is None else state
         unit = state["work"].get(work_id)
         if unit is None:
             return []
@@ -1144,10 +1161,10 @@ class Engine:
                 and not (i["id"] in seen or seen.add(i["id"]))]
 
     def stage_intents_view(self) -> list[dict[str, Any]]:
-        return self._stages.view(self._k.store.read())
+        return self._stages.view(self._k.store.current())
 
     def stage_intent(self, intent: str) -> dict[str, Any]:
-        return self._stages.read(self._k.store.read(), intent)
+        return self._stages.read(self._k.store.current(), intent)
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
         return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)
@@ -1175,7 +1192,7 @@ class Engine:
             raise UsageError(f"unknown event kind(s) {unknown}: one of "
                              f"{', '.join(outbox.DERIVED_KINDS + outbox.DECLARED_KINDS)}")
         seen = self._control_identity()  # before the read: a commit in between changes it, and is then noticed
-        state = self._k.store.read()
+        state = self._k.store.current()
         if since > state["revision"]:
             raise UsageError(f"--since {since} is after the current revision {state['revision']}")
         if follow and since == state["revision"]:
@@ -1187,7 +1204,7 @@ class Engine:
                 if now == seen:
                     return None
                 seen = now
-                s = self._k.store.read()
+                s = self._k.store.current()
                 return s if s["revision"] > since else None
 
             state = outbox.wait_for(committed, self._k.aew_root, timeout=timeout) or state

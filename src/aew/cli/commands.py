@@ -112,13 +112,21 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
         token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason, authorization=operator_attribution(
             "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
 
-    from aew.cli import dashboard_commands, history_commands, map_commands, operator_commands, work_commands
+    from aew.cli import (
+        dashboard_commands,
+        history_commands,
+        map_commands,
+        operator_commands,
+        settings_commands,
+        work_commands,
+    )
 
     work_commands.register(sub)
     history_commands.register(sub, recall_search=recall_search)
     dashboard_commands.register(sub)
     map_commands.register(sub)
     operator_commands.register(sub)
+    settings_commands.register(sub)
     if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
         from aew.cli import message_commands
 
@@ -293,7 +301,7 @@ def _init(args: argparse.Namespace) -> Any:
         _cwd(args), project_id=args.project_id, name=args.name, branch=args.branch,
         workspaces_root=args.workspaces_root,
     )
-    state = engine.store.read()
+    state = engine.store.current()
     return {
         "ok": True,
         "project_id": engine.project_id,

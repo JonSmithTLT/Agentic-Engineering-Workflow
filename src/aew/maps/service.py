@@ -40,7 +40,7 @@ def _lead_actor(engine: Any, token: str, *, committed: bool = False) -> dict[str
     """The current Lead for ``token``, or the refusal (``STALE_AUTHORITY`` for a superseded Lead). ``committed`` reads
     the committed control state without the control lock (``read_committed``): the check repeated at the publication
     and selection boundary, where the map registry's lock is already held."""
-    state = engine.store.read_committed() if committed else engine.store.read()
+    state = engine.store.read_committed() if committed else engine.store.current()
     actor = require_lead(state, token, archived=engine.archived_credential)
     return {"kind": "lead", "id": actor["token_id"], "generation": actor["generation"]}
 
@@ -123,7 +123,7 @@ def _evidence(engine: Any, evidence_id: str) -> dict[str, Any]:
     """An existing evidence record by id: in a hot unit's evidence, or held by finished work in the history."""
     from aew.knowledge import evidence as E
 
-    state = engine.store.read()
+    state = engine.store.current()
     for wid in sorted(state["work"]):
         for e in E.scan(engine.aew_root, wid)[0]:
             if e["id"] == evidence_id:

@@ -532,13 +532,13 @@ def _retryable(c: Call, intent: str, primitive: str, args: dict[str, Any]) -> bo
         return False
     if _stale(c.engine, c.ctx) is not None:
         return False
-    if si["generation"] != int(c.engine.store.read()["lead"]["generation"]):
+    if si["generation"] != int(c.engine.store.current()["lead"]["generation"]):
         return False
     return availability(c, primitive, args) == AVAILABLE
 
 
 def _revision(c: Call) -> int:
-    return int(c.engine.store.read()["revision"])
+    return int(c.engine.store.current()["revision"])
 
 
 def _stop(c: Call, intent: str, n: int, primitive: str, exc: errors.AEWError, outputs: list[dict[str, Any]], *,

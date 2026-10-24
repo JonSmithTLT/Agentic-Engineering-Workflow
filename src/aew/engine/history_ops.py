@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aew import process_kind
 from aew.engine import faults, recall
 from aew.engine.archive_ops import evidence_pins, evidence_source, held_evidence, pinned_records, redact
 from aew.engine.authority import require_lead
@@ -130,7 +131,7 @@ class HistoryCommands:
 
     def history_show(self, record_id: str) -> dict[str, Any]:
         """An exact historical record by stable id, with its annotations and trust label (invariant 12)."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._require_v2(state)
         entry, held_as = self._found(state, record_id)
         doc = self.archive.record(entry)
@@ -178,7 +179,7 @@ class HistoryCommands:
                     _epoch(stamp)
                 except ValueError:
                     raise UsageError(f"{name} must be a UTC timestamp like 2026-10-02T00:00:00Z") from None
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._require_v2(state)
         index = self.archive.index(state)
         moves = index.moves()
@@ -196,7 +197,7 @@ class HistoryCommands:
         """The provenance and reference links recorded from and to a record, followed ``depth`` steps (bounded)."""
         if not 1 <= depth <= LINKS_MAX_DEPTH:
             raise UsageError(f"--depth must be between 1 and {LINKS_MAX_DEPTH}")
-        state = self.k.store.read()
+        state = self.k.store.current()
         self._require_v2(state)
         self._found(state, record_id)  # NotFound for an unknown id
         index = self.archive.index(state)
@@ -222,8 +223,11 @@ class HistoryCommands:
         return {"id": record_id, "depth": depth, "edges": edges, "nodes": nodes, "truncated": truncated}
 
     def history_reindex(self) -> dict[str, Any]:
-        """Rebuild the derived index from the manifest (it is never authority; losing it loses nothing)."""
-        state = self.k.store.read()
+        """Rebuild the derived index from the manifest (it is never authority; losing it loses nothing). A writer's
+        operation: a non-writer only catches the shared index up, or reads a private copy (``HistoryIndex.sync``), and
+        never deletes it (review of #231, m7)."""
+        process_kind.require_writer("history reindex", writes="the derived history index under .aew/local")
+        state = self.k.store.current()
         self._require_v2(state)
         index = HistoryIndex(self.k.aew_root)
         try:
@@ -423,7 +427,7 @@ class HistoryCommands:
                 raise IntegrityError(f"history audit found {len(problems)} problem(s)", audit=result)
             return {"recorded": False, **result}
         for _ in range(AUDIT_ATTEMPTS):
-            revision = self.k.store.read()["revision"]
+            revision = self.k.store.current()["revision"]
             try:
                 with self.k.lead_txn(token, revision, "history.audit") as ctx:
                     root = ctx.state["cold"]["root"]

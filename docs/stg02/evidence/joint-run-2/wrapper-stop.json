@@ -1,0 +1,8 @@
+{
+  "utc": "2026-10-21T00:57:00.100Z",
+  "pid": 6384,
+  "wrapperCommit": "f8dd097cf9f929c1759820b66b4f169cb32fad11",
+  "receiptWasWithheld": true,
+  "elapsedSinceResponseMs": 284,
+  "staging": "actual HTTP response withheld by browser barrier; owned wrapper stopped before release and before application deadline"
+}

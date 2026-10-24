@@ -38,6 +38,10 @@ from dataclasses import dataclass
 from aew.errors import ValidationFailed
 
 SEP = "/"
+# Why a model id maps to no provider/model pair: the `reason` of every ModelIdRefused, and the codes a configuration
+# projection reports as `identity_error.code` (register F46.1).
+MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT = "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict"
+REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT)
 
 
 @dataclass(frozen=True)
@@ -78,12 +82,12 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
     head, sep, rest = raw.partition(SEP)
     if _bad(raw) or (sep and (not head or not rest)):
         raise ModelIdRefused(f"{field}: {raw!r} is not a model id: write it exactly as the harness lists it "
-                             "(provider/model, for example vendor/model-name)", reason="model_id_malformed",
+                             "(provider/model, for example vendor/model-name)", reason=MALFORMED,
                              field=field, value=raw)
     if provider is None or provider == "":
         if not sep:
             raise ModelIdRefused(f"{field}: {raw!r} names no provider: write the id exactly as the harness lists it "
-                                 f"(provider/{raw}), or set the profile's provider", reason="model_id_no_provider",
+                                 f"(provider/{raw}), or set the profile's provider", reason=NO_PROVIDER,
                                  field=field, value=raw)
         return ModelIdentity(raw, head, rest)
     provider = str(provider)
@@ -96,7 +100,7 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
         f"{field}: {raw!r} carries the provider prefix {head!r}, but the profile's provider is {provider!r}. Did you "
         f"mean {suggestions[0]} (provider {head}, as the harness lists it)? If the harness lists the model as "
         f"{suggestions[1]}, write that id. Either way, the simplest form is the id exactly as the harness prints it, "
-        "with no separate provider", reason="model_id_provider_conflict", field=field, value=raw, provider=provider,
+        "with no separate provider", reason=PROVIDER_CONFLICT, field=field, value=raw, provider=provider,
         suggestions=suggestions)
 
 
@@ -110,5 +114,5 @@ def from_catalog(provider: str, listed: str) -> ModelIdentity:
     even when it contains ``/`` (a routing provider's ``vendor/model``)."""
     if _bad(str(provider)) or SEP in str(provider) or _bad(str(listed)):
         raise ModelIdRefused(f"catalog entry {provider!r}/{listed!r} is not a provider and a model id",
-                             reason="model_id_malformed", field="catalog", value=str(listed))
+                             reason=MALFORMED, field="catalog", value=str(listed))
     return ModelIdentity(str(listed), str(provider), str(listed))

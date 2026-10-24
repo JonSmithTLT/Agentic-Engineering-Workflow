@@ -169,7 +169,7 @@ class LeadBroker:
     def __init__(self, engine: Any, token: str) -> None:
         self.engine = engine
         self._token = token
-        state = engine.store.read()
+        state = engine.store.current()
         self._require_lead(state, token)  # only the current Lead's credential is ever brokered
         self.generation = int(state["lead"]["generation"])  # the generation this session acts for
         self.session_label = state["lead"].get("session_label")
@@ -227,7 +227,7 @@ class LeadBroker:
         cancel the handoff."""
         token = self._token  # taken before the (possibly slow) read: close() may clear it meanwhile (M3-D11)
         try:
-            self._require_lead(self.engine.store.read(), token)
+            self._require_lead(self.engine.store.current(), token)
         except errors.StaleAuthority as exc:
             return exc.message
         except errors.AEWError:
@@ -258,7 +258,7 @@ class LeadBroker:
             self.server.close()
             raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {problem}")
         if op == "lead.whoami":
-            lead = self.engine.store.read()["lead"]
+            lead = self.engine.store.current()["lead"]
             return {"generation": lead["generation"], "session_label": lead.get("session_label")}
         return self._run_cli(list(args["argv"]), args["cwd"], args["stdin"])
 
@@ -307,7 +307,7 @@ class LeadBroker:
     def _mark(self, meta: dict[str, Any]) -> None:
         """Record the revision a call starts from, for the log. The caller holds the serialization."""
         try:
-            meta["revision_before"] = int(self.engine.store.read()["revision"])
+            meta["revision_before"] = int(self.engine.store.current()["revision"])
         except Exception:  # noqa: BLE001  telemetry: the call reports its own refusal, the log what it could read
             meta["revision_before"] = None
 
@@ -494,7 +494,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
     held = os.environ.pop("AEW_LEAD_TOKEN", "")  # in memory only: never inherited by git, hooks or any child
     if acquire:
-        token = engine.lead_acquire(expect_rev=engine.store.read()["revision"], session_label=session_label)["token"]
+        token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:
         token = held
         if not token:
@@ -512,7 +512,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         finally:
             broker.close()
     out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership}
-    state = engine.store.read()
+    state = engine.store.current()
     if acquire and not broker.superseded:
         active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
         if ownership != "clean":

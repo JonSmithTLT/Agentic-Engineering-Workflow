@@ -78,7 +78,7 @@ def test_a_lead_session_that_ends_during_an_authority_check_is_not_superseded(mo
     class Store:
         slow = False
 
-        def read(self):
+        def current(self):
             if self.slow:
                 entered.set()
                 release.wait(10)

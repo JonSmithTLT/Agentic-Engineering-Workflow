@@ -167,7 +167,7 @@ class Harness:
         is removed from the command's output."""
         credential = result.pop("invocation_token")
         inv_id = result["invocation"]
-        run = self.k.store.read()["invocations"][inv_id]["runs"][-1]["run"]
+        run = self.k.store.current()["invocations"][inv_id]["runs"][-1]["run"]
         result["launch"] = self._spawn_run(inv_id, run, credential)
         del credential
         return result
@@ -318,7 +318,7 @@ class Harness:
         return None
 
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         inv_id, inv, _ = require_invocation(state, invocation_token, None,
                                             archived=self.archive.archived_credential)
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
@@ -346,7 +346,7 @@ class Harness:
         return {e["id"]: e.get("result") for e in cache[work_unit] if e["producer"].get("run") == run}
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         if invocation and invocation not in state["invocations"]:  # the runs of an archived invocation (R7)
             state = self.archive.rehydrate_invocation(state, invocation) or state
         elif not invocation:  # and the runs of the most recently finished work (bounded: ``recent``)
@@ -418,7 +418,7 @@ class Harness:
         # The identity is taken before the read it stands for: a commit between the two then shows as a change and
         # costs one more parse, instead of being taken as already seen without its snapshot being examined.
         seen = self._control_identity()
-        state = self.k.store.read()
+        state = self.k.store.current()
         targets: dict[str, tuple[str, dict[str, Any], str | None]] = {}
         for run in names:
             inv_id, inv = self._find_run(state, run)
@@ -451,7 +451,7 @@ class Harness:
                 now = self._control_identity()
                 if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
                     seen = now
-                    fresh = self.k.store.read()
+                    fresh = self.k.store.current()
             if fresh is not None:
                 ended = ended_by_control(fresh)
                 if ended is not None:
@@ -481,7 +481,7 @@ class Harness:
         # The wait is over, so the control state is read once more, now: the run-record lane can return before a
         # commit since the last examined snapshot was looked at, and both the other runs' liveness and the next
         # action are answered from the state as it is (independent review of #79).
-        current = self.k.store.read()
+        current = self.k.store.current()
         if len(names) > 1:
             # Only the runs observed live in both lanes: a run whose record ended, or whose invocation the control
             # state shows ended, is not still running.
@@ -604,7 +604,7 @@ class Harness:
             raise UsageError("name an invocation, or pass --lead")
         if lead:
             return {"harness": harness, "target": "lead", **lead_projection()}
-        state = self.k.store.read()
+        state = self.k.store.current()
         inv = state["invocations"].get(invocation or "")
         if inv is None:
             raise NotFound(f"no invocation {invocation}")
@@ -730,7 +730,6 @@ class Harness:
         if not reasons:
             return None
         return f"{wid} cannot move on yet: {'; '.join(reasons)}. `aew gate show {wid}` shows what blocks it"
-
 
 
 def _launcher_code() -> dict[str, str]:

@@ -310,7 +310,7 @@ class SteeringLoop:
         if self._selected is None:
             return False
         try:
-            state = self.engine.store.read()
+            state = self.engine.store.current()
             if S.effective(state)["mode"] is None:
                 return False
             project, units = self._project(self.engine, self._ctx(), state)
@@ -376,13 +376,13 @@ class SteeringLoop:
 
     def _revision(self) -> int | None:
         try:
-            return int(self.engine.store.read()["revision"])
+            return int(self.engine.store.current()["revision"])
         except errors.AEWError:
             return None
 
     def _mode(self) -> str | None:
         try:
-            return S.effective(self.engine.store.read())["mode"]
+            return S.effective(self.engine.store.current())["mode"]
         except errors.AEWError:
             return None
 
@@ -399,7 +399,7 @@ class SteeringLoop:
         lost = self._authority_lost()
         if lost:
             return Stop(STALE_AUTHORITY, f"this Lead session no longer holds Lead authority: {lost}")
-        state = self.engine.store.read()
+        state = self.engine.store.current()
         now = S.effective(state)
         mode = now["mode"]
         if mode is None:
@@ -519,7 +519,7 @@ class SteeringLoop:
             by_rev.setdefault(int(s["revision"]), []).append(s["primitive"])
         if not by_rev:
             return None
-        state = self.engine.store.read()
+        state = self.engine.store.current()
         try:
             read = outbox.read_transitions(self.aew_root, min(by_rev) - 1, max(by_rev), outbox=state.get("outbox"))
             records = {int(r["revision"]): r for r in read if int(r["revision"]) in by_rev}
@@ -556,7 +556,7 @@ class SteeringLoop:
         from aew.engine.authority import require_lead
 
         try:
-            require_lead(self.engine.store.read(), self._token(), archived=self.engine.archived_credential)
+            require_lead(self.engine.store.current(), self._token(), archived=self.engine.archived_credential)
         except errors.StaleAuthority as exc:
             return exc.message
         except errors.AEWError:
@@ -586,7 +586,7 @@ class SteeringLoop:
         if stop.code in (OFF, STALE_AUTHORITY) or self._authority_lost():
             return
         try:
-            revision = int(self.engine.store.read()["revision"])
+            revision = int(self.engine.store.current()["revision"])
         except errors.AEWError:
             revision = -1
         data = {"schema": S.LOOP_SCHEMA, "generation": self.generation,

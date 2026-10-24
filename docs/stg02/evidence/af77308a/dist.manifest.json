@@ -1,0 +1,34 @@
+[
+  {
+    "path": "favicon.svg",
+    "sha256": "4b36423b9612fe050b423cc3f1d30c20168a5dfdad3957da144c7f1306e78c08"
+  },
+  {
+    "path": "index.html",
+    "sha256": "6299d32886305644c960c3a5c09c6027bffa1d7aafd3dc6bee5fad5071b10c12"
+  },
+  {
+    "path": "assets/additive-schema-D1qa9h8P.js",
+    "sha256": "77cefc12d9579d6aeff9b79bc610f20d00c48e8630f7c35da47081c3d30140ae"
+  },
+  {
+    "path": "assets/HistorySearch-Ccfk8bWI.js",
+    "sha256": "6fdb015dad6d24ac7fd80f83d1e36f7f3c3fec1aa80e8cc019719b1381122d95"
+  },
+  {
+    "path": "assets/index-CWv5_50T.css",
+    "sha256": "892fcadb68abd8963b39e52f81dbee965f8a1125e79a9cc2a6dc8b78e6212a1f"
+  },
+  {
+    "path": "assets/index-CxL_8N1E.js",
+    "sha256": "6e7fa22aa903dd1242a7b7c1e6cbe9c9a99a88bf8a12809293496aba6f1ed665"
+  },
+  {
+    "path": "assets/Maps-CbF7tref.js",
+    "sha256": "32131ef5a678a765c10472ff41df51c8ade996ca348ba75d159c7119a97735d8"
+  },
+  {
+    "path": "assets/maps-history-C6b8a31m.js",
+    "sha256": "7692cca9a1aeaa4c8a6b9aeb63294120d6e1abf48e4bbc0796c088a003bfbfa4"
+  }
+]

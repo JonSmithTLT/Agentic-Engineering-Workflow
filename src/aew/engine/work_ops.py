@@ -328,7 +328,6 @@ class WorkUnits:
                                         "`aew work redispatch` for a non-mutating Ticket)", dispatch_binding=problem)
 
 
-
 class WorkCommands:
     """Lead commands on work units and plans: create, propose, accept, transition, reconcile, show, list."""
 
@@ -688,7 +687,7 @@ class WorkCommands:
     def work_show(self, work_id: str) -> dict[str, Any]:
         """One unit, hot or archived (its record as it stands now, R7), with its children: hot ones, and archived ones
         found through the index."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         unit = self.units.view(state, work_id)
         record_path = self.k.aew_root / unit["record"]
         children = sorted({k for k, v in state["work"].items() if v.get("parent") == work_id}
@@ -710,7 +709,7 @@ class WorkCommands:
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
         """The hot units, and finished ones: the most recent (bounded) when unfiltered, and every archived unit in a
         finished state when that state is asked for (an explicit history query, proportional to its answer; R7)."""
-        state = self.k.store.read()
+        state = self.k.store.current()
         items = [
             {"id": wid, "kind": u["kind"], "state": u["state"], "title": u["title"], "parent": u.get("parent"),
              "risk_class": u["risk_class"], "blocked_by": u.get("blocked_by", [])}

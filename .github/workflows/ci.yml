@@ -5,9 +5,12 @@ name: ci
 #
 #   changes              the change's tier (tools/ci/tier.py, CI redesign P1, CI plan v7): docs, fast, web or full,
 #                        from the merge commit's diff against its first parent; fail closed to full. `decision` is
-#                        the tier the paths give; `tier` the one the run takes (in shadow mode, full for fast)
+#                        the tier the paths give; `tier` the one the run takes (in shadow mode, full for fast). It
+#                        also sizes the lanes (tools/ci/shard_plan.py, register E44): each lane's shard count, and
+#                        the durations its shards balance on, from the rolling history of main's green push runs
 #   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
-#   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only)
+#   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only),
+#                        in as many shards as the tier job computed; never written by hand
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
 #   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
@@ -15,7 +18,8 @@ name: ci
 #                        and static passed (the merge gate). It recomputes the tier, and refuses a reduced tier on
 #                        any event but a pull request: a push to main and a merge group always run in full. With a
 #                        changed fast-lane test module in a reduced tier it also requires the runtime lane check and
-#                        the coverage premise; in shadow mode it reports both without gating.
+#                        the coverage premise; in shadow mode it reports both without gating. On a green push to
+#                        main it adds the run's lane reports to the shard-durations history.
 
 on:
   pull_request:
@@ -49,6 +53,7 @@ jobs:
       decision: ${{ steps.tier.outputs.decision }}
       tier: ${{ steps.tier.outputs.tier }}
       modules: ${{ steps.tier.outputs.modules }}
+      lanes_matrix: ${{ steps.shards.outputs.lanes_matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -77,6 +82,30 @@ jobs:
           path: ${{ runner.temp }}/tier-decision/
           if-no-files-found: ignore
           retention-days: 30
+      # The shard sizing (register E44): only `main`'s green push runs save the history (the assurance job), so this
+      # restores the newest of them. The key itself is never saved; a miss falls back to the committed table and
+      # twice its counts (the nightly restores the history every night, so a quiet week does not evict it).
+      - name: The shard-durations history of main's green push runs (newest)
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/shard-history/history.json
+          key: shard-durations-restore-only
+          restore-keys: shard-durations-
+      - name: PyYAML, for the lanes job's deadline as ci.yml sets it (tests/helpers/bounds.py)
+        run: python -m pip install "PyYAML>=6.0" "pytest>=8"
+      - id: shards
+        name: Each lane's shard count, and the durations its shards balance on (tools/ci/shard_plan.py)
+        run: >-
+          python tools/ci/shard_plan.py --history "$RUNNER_TEMP/shard-history/history.json"
+          --seed tests/durations.json --durations-out "$RUNNER_TEMP/shard-durations/durations.json"
+          --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+      # One table for the whole run: every shard of a lane must cut the same partition (assurance proves it ran each
+      # test once).
+      - uses: actions/upload-artifact@v7
+        with:
+          name: shard-durations
+          path: ${{ runner.temp }}/shard-durations/
+          retention-days: 30
 
   core:
     name: core (${{ matrix.os }})
@@ -89,8 +118,14 @@ jobs:
           - os: windows-latest
             python: "3.13"   # developer workstation
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 24
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1200 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the spec-pin test verifies the frozen tag
@@ -104,16 +139,20 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
+      # Under xdist (strategy §5: everything but the serial lane may run in parallel). Single-process, this lane took
+      # most of the job's 1200 s on a good runner and left the serial lane too little on a slow one (2026-10-22).
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
-          -q -p no:cacheprovider -p no:xdist --durations=20 --lane fast --test-timeout 600
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
+          -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
+          --test-timeout 600 --session-deadline 1200
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
         if: success() || failure()
         run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
+          --session-deadline 1200
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -135,34 +174,18 @@ jobs:
     if: needs.changes.outputs.tier == 'full'
     strategy:
       fail-fast: false
-      matrix:
-        # Shard counts come from measured lane durations (strategy doc, "Runtime budgets").
-        include:
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 1, of: 5}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 2, of: 5}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 3, of: 5}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 4, of: 5}
-          - {os: ubuntu-latest, python: "3.11", lane: integration, shard: 5, of: 5}
-          - {os: ubuntu-latest, python: "3.11", lane: acceptance, shard: 1, of: 1}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 1, of: 4}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 2, of: 4}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 3, of: 4}
-          - {os: ubuntu-latest, python: "3.11", lane: regression, shard: 4, of: 4}
-          - {os: ubuntu-latest, python: "3.11", lane: adversarial, shard: 1, of: 1}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 1, of: 4}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 2, of: 4}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 3, of: 4}
-          - {os: windows-latest, python: "3.13", lane: integration, shard: 4, of: 4}
-          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 1, of: 2}
-          - {os: windows-latest, python: "3.13", lane: acceptance, shard: 2, of: 2}
-          - {os: windows-latest, python: "3.13", lane: regression, shard: 1, of: 3}
-          - {os: windows-latest, python: "3.13", lane: regression, shard: 2, of: 3}
-          - {os: windows-latest, python: "3.13", lane: regression, shard: 3, of: 3}
-          - {os: windows-latest, python: "3.13", lane: adversarial, shard: 1, of: 2}
-          - {os: windows-latest, python: "3.13", lane: adversarial, shard: 2, of: 2}
+      # Computed for this run by the tier job (tools/ci/shard_plan.py; strategy doc, "Runtime budgets"): per runner
+      # and lane, shards 1..N of N, N the fewest that fit the session deadline on a runner twice as slow.
+      matrix: ${{ fromJSON(needs.changes.outputs.lanes_matrix) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 34
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 1800 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -173,13 +196,21 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          name: shard-durations
+          path: ${{ runner.temp }}/shard-durations
+      # `--durations-file=`, one word: pytest picks its rootdir before the repository's plugin defines the option, so
+      # an existing file given as a separate word counts as a test path, and the rootdir becomes its common ancestor
+      # with the checkout, outside the repository (#235's first run: every lane job a usage error).
       - name: pytest --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider --durations=20
           --lane ${{ matrix.lane }} --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal
-          --test-timeout 600
-          --lane-report "${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
+          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
+          --test-timeout 600 --session-deadline 1800 --max-worker-restart 0
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -197,19 +228,25 @@ jobs:
 
   fastbase:
     # The coverage premise's base (CI plan v7 §5, V5-1): the whole fast lane at the base tip (GITHUB_SHA^1), under
-    # coverage, in the same run, with exactly the fast step's flags, so `assurance` can prove that a fast-tier change
-    # did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow run (which stays
-    # full) runs it too (V6-1), and only when a fast-lane test module changed: with only docs and durations there is
-    # no premise to check (PR #163 review, V7-2). Not a required check: `assurance` is, and requires its success only
+    # coverage, in the same run, with exactly the fast step's flags, xdist included (both sides measured the same way:
+    # review of #232, F1 and F6; test_ci_tools compares the two steps' flags), so `assurance` can prove that a
+    # fast-tier change did not lower the fast lane's footprint. Keyed on the mode-independent decision, so a shadow
+    # run (which stays full) runs it too (V6-1), and only when a fast-lane test module changed: with only docs and
+    # durations there is no premise to check (PR #163 review, V7-2). Not a required check: `assurance` is, and requires its success only
     # in the fast tier with a changed module. During shadow a red fastbase is evidence for PR 1b, never a merge blocker.
     name: fastbase
     needs: changes
     if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
     runs-on: ubuntu-latest
-    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 5.3 and 0.8 minutes); core's own
-    # 20-minute timeout is unchanged.
-    timeout-minutes: 15
+    # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 7.4 and 0.8 minutes), and
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 20
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 960 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0     # the base tip, and the spec-pin test verifies the frozen tag
@@ -226,7 +263,9 @@ jobs:
         env:
           PYTHONPATH: ${{ runner.temp }}/base/src
           COVERAGE_FILE: ${{ runner.temp }}/fastbase/.coverage
-        run: python -m coverage run -m pytest -q -p no:cacheprovider --lane fast -p no:xdist --test-timeout 600
+        run: >-
+          python -m coverage run -m pytest -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0
+          --lane fast --test-timeout 600 --session-deadline 960 "--hang-dir=${{ runner.temp }}/fastbase/hangs"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -259,6 +298,11 @@ jobs:
       - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
         if: success() || failure()
         run: ruff check --output-format github .
+      - name: Ruff blank-line rules E301-E306 (preview-only in the pinned Ruff, so run apart from the main config)
+        if: success() || failure()
+        # --select replaces the config's selection, so preview applies to these six rules only; the main config stays
+        # non-preview, so no stable rule's detection, fix or code-named output changes (review of #222, W1).
+        run: ruff check --preview --select E301,E302,E303,E304,E305,E306 --output-format github .
       - name: Pyright as Linux
         if: success() || failure()
         run: pyright --pythonplatform Linux
@@ -318,6 +362,11 @@ jobs:
         with:
           pattern: fastbase-coverage
           path: fastbase-data
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: shard-durations
+          path: shard-durations
+          merge-multiple: true
       - id: assure
         name: Every collected test of the tier's lanes ran exactly once and passed (pinned platform skips excepted); in a reduced tier, every test of a changed test module is fast or serial
         env:
@@ -327,6 +376,37 @@ jobs:
           python tools/ci/check_assurance.py lane-reports --skips tests/platform-skips.yaml
           --require linux,win32 --tier "$TIER" --event "$EVENT"
           --changed-modules "$RUNNER_TEMP/changed-modules.txt" --summary "$GITHUB_STEP_SUMMARY"
+      # The shard-durations history (register E44; tools/ci/shard_plan.py sizes every run's lanes from it). Only a
+      # push to main whose envelope is complete adds to it: every test ran once and passed, so a killed or failed
+      # session never moves a duration. How long the run took plays no part: a slow green run is recorded too, so a
+      # lane that outgrows its budget is measured and gets more shards. The history never fails the gate
+      # (continue-on-error), and a history the update could not write is never saved. A bad one is replaced by the next
+      # green run, whose update sets aside one not of a history's shape and starts again (review of #235, F2).
+      - name: The shard-durations history so far (main's green push runs only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: shard-history/history.json
+          key: shard-durations-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: shard-durations-
+      - id: durations
+        name: This run's durations join the history (each test keeps its last five; a re-run adds nothing)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+        continue-on-error: true
+        run: >-
+          python tools/ci/update_durations.py lane-reports --history shard-history/history.json
+          --seed tests/durations.json --out shard-history/durations.json
+          --run-label "${{ github.run_id }}/${{ github.run_attempt }} ${{ github.sha }}"
+      - name: Save the history for the next runs
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
+          && steps.durations.outcome == 'success'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: shard-history/history.json
+          key: shard-durations-${{ github.run_id }}-${{ github.run_attempt }}
       - id: premise
         name: The coverage premise (a changed fast-lane test module in a reduced tier; plan v7 §5)
         if: (success() || failure()) && steps.tier.outputs.tier != 'full' && steps.tier.outputs.modules == 'true'
@@ -395,8 +475,11 @@ jobs:
             fi
           fi
           mkdir -p cost-record
+          # the table this run's shards balanced on (the tier job's), or the committed one if it was not uploaded
+          durations=shard-durations/durations.json
+          [ -f "$durations" ] || durations=tests/durations.json
           python tools/ci/cost_record.py lane-reports --jobs "$RUNNER_TEMP/jobs.json" --run "$RUNNER_TEMP/run.json" \
-            --durations tests/durations.json "${changed[@]}" --out cost-record/cost-record.json \
+            --durations "$durations" "${changed[@]}" --out cost-record/cost-record.json \
             --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -412,6 +495,26 @@ jobs:
         run: >-
           python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
           --summary "$GITHUB_STEP_SUMMARY"
+      # D2, the discovery layer's output and text rules (tests/helpers/discovery): the findings every lane job wrote
+      # beside its lane report, decided against the allow-list. On a pull request a new key fails only when its rule
+      # is enforced, and the list may only shrink against the base (an accepted residual only with the operator-merge
+      # label, read live); on main a listed key no longer observed is stale. A capture error fails it.
+      - name: "D2: no new violation of an enforced output rule, and the allow-list only shrinks"
+        if: always()
+        env:
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base=()
+          if [ "$EVENT" = pull_request ]; then
+            if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
+              base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
+            fi
+          fi
+          python tools/ci/discovery_ratchet.py lane-reports --event "$EVENT" "${base[@]}" --repo "$REPO" --pr "$PR" \
+            --summary "$GITHUB_STEP_SUMMARY"
       - name: Every test job the tier requires succeeded (lanes are required unless the tier is known and reduced)
         if: always()
         env:

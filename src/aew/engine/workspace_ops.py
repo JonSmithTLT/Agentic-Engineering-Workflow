@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from aew.engine.ports import ContextPacksPort, DispatchPort, InputsPort, InvocationsPort, RolesPort, WorkUnitsPort
 
 
-
 class Invocations:
     """Evaluated snapshots and invocations: issue, pin, complete, the workspace an invocation may act in, and recording
     run 1 of a `--launch` dispatch (ADR-0009)."""
@@ -226,7 +225,6 @@ class Invocations:
     def card_ref(inv: dict[str, Any]) -> dict[str, Any] | None:
         card = inv.get("card")
         return {k: card[k] for k in ("id", "version", "sha256")} if card else None
-
 
 
 def mutating_cap(gates: dict[str, Any]) -> int:

@@ -702,3 +702,22 @@ def test_each_open_starts_a_fresh_session_with_no_state_left(tmp_path):
         assert json.loads((scripts / S.TUI_SCRIPT).read_text(encoding="utf-8"))["session"] == op.session_id
         (sync / "lead-state.json").write_text("{}", encoding="utf-8")  # the session's own state, removed next open
     assert len(ids) == 2 and "" not in ids and op.chat_errors_at_open == 1
+
+
+def test_a_scripted_lead_thread_that_dies_is_a_harness_fault_in_the_ledger():
+    """Review of #217, m3 (#213's G2): a thread of the scripted Lead that dies (childdiag's exception hook, through
+    the Lead's subscription) is recorded as `thread_died` with fault `harness`, and the ledger lists it among the
+    harness's faults, never as AEW's silence. The product ending under it stays the product's."""
+    from vertical import lead as V
+
+    lead = V.Lead.__new__(V.Lead)
+    events: list[dict] = []
+    lead.event = lambda kind, **facts: events.append({"kind": kind, **facts})
+    hook = V.recorded(lead)
+    hook("thread_exception", "vertical-chat", RuntimeError("synthetic"), {"stack": "Traceback ..."})
+    hook("thread_exception", "reader", RuntimeError(V.MCP_ENDED), {"stack": "Traceback ..."})
+    assert [(e["kind"], e["fault"]) for e in events] == [("thread_died", "harness"), ("thread_died", "product")]
+    led = L.Ledger("unit")
+    led.lead_event(events[0])
+    assert "harness faults: lead.thread_died" in led.summary()
+    assert "lead silent or ended" not in led.summary()

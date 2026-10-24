@@ -230,7 +230,7 @@ class Gates:
         return self.kinds.resolve_evidence_only(GATE_CONTEXT, self.units.unit(state, work_id))(state, work_id)
 
     def gate_show(self, work_id: str) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         if work_id not in state["work"]:  # an archived unit's gates, as they stood when it finished (R7)
             state = self.archive.rehydrate(state, work_id) or state
         gc = self.gate_context(state, work_id)
@@ -494,12 +494,11 @@ class Gates:
         return {"status": G.CURRENT}
 
     def work_roles(self, work_id: str) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         gc = self.gate_context(state, work_id)
         out = self.roles.effective_role_plan(state, work_id, gc)
         out["plan_gates"] = self.roles.plan_gates(self.units.unit(state, work_id))
         return out
-
 
 
 class EvidenceCommands:
@@ -532,18 +531,18 @@ class EvidenceCommands:
                 KindRegistration(CLASSIFY_VERIFICATION, NON_MUTATING, self._classify_ticket_verification)]
 
     def _handler(self, operation: str, work_id: str) -> Any:
-        return self.kinds.resolve(operation, self.units.unit(self.k.store.read(), work_id))
+        return self.kinds.resolve(operation, self.units.unit(self.k.store.current(), work_id))
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
                              launch: bool = False) -> dict[str, Any]:
-        handler = self.kinds.resolve_evidence_only(INVOKE, self.units.unit(self.k.store.read(), work_id))
+        handler = self.kinds.resolve_evidence_only(INVOKE, self.units.unit(self.k.store.current(), work_id))
         return handler(token=token, expect_rev=expect_rev, work_id=work_id, role=role, card=card, scope=scope,
                        execution_profile=execution_profile, launch=launch)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
-        handler = self.kinds.resolve_evidence_only(INGEST, self.units.unit(self.k.store.read(), work_id))
+        handler = self.kinds.resolve_evidence_only(INGEST, self.units.unit(self.k.store.current(), work_id))
         return handler(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id, kind=kind)
 
     def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
@@ -664,7 +663,7 @@ class EvidenceCommands:
         return {"ok": True, "revision": ctx.session.committed_revision}
 
     def invoke_show(self, invocation: str) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         inv = state["invocations"].get(invocation) or self.archive.archived_invocation(state, invocation)
         if inv is None:
             raise NotFound(f"no invocation {invocation}")

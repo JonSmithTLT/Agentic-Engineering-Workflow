@@ -394,7 +394,6 @@ def test_one_dashboard_server_per_project_and_cleanup_only_of_its_own_files(proj
     assert service.locate(engine.aew_root) is None
 
 
-
 def test_two_services_constructed_before_either_starts_publish_only_one(project: Project):
     """Two `serve` commands awaiting their operators both pass the construction check; the second to start is refused
     under the endpoint lock and releases its listener, so it can neither publish nor be stranded (lead developer's
@@ -460,6 +459,7 @@ def test_cleanup_holds_the_endpoint_lock_so_a_newer_server_publishes_only_after_
     finally:
         second.stop()
     assert service.locate(engine.aew_root) is None
+
 
 def test_an_occupied_port_fails_and_never_moves(project: Project):
     taken = socket.socket()

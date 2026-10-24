@@ -4,6 +4,19 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_store_read_committed.py::test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic: >-
+      POSIX rename is atomic, so a missing file is absent at once there; Windows retries it (F46.1 F1a, re-review R8).
+      Covered on Windows by test_an_absent_file_is_absent_only_after_the_retries_on_windows.
+    tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
+      the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
+      session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).
+      Covered on Linux.
+    tests/unit/test_hang_autopsy_units.py::test_a_forked_child_never_inherits_the_reapers_lock_held: >-
+      os.fork and the reaper's record of the controller's children are Linux's; Windows has no fork and no reaper.
+      Covered on Linux.
+    tests/unit/test_hang_autopsy_units.py::test_the_reaper_refuses_to_start_where_it_cannot_record_this_processs_children: >-
+      the reaper's record of the controller's own children wraps Linux's process creation (_posixsubprocess, os.fork);
+      Windows has no reaper. Covered on Linux.
     tests/integration/test_integration_stages.py::test_credential_holding_workers_never_import_from_the_project_tree[session_reaper-none]: >-
       the session helper is Linux's (procs.run_session_tree); the custody worker and run supervisor cases run on
       every platform. Covered on Linux.
@@ -207,6 +220,22 @@ skipped:
     tests/integration/test_containment.py::test_sigkill_of_the_owner_ends_the_contained_tree: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_from_a_worker_sandbox_the_control_lock_is_not_there_and_none_can_be_made: >-
+      Linux bubblewrap containment (STG-05 CB-09, CBF-1); Windows has no OS filesystem containment. Covered on
+      Linux (CI and the Rocky 8 lane); the layout itself (the .aew/local mask, the store check) is tested on every
+      platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_a_non_writer_in_a_worker_sandbox_reads_the_read_only_store_lock_free: >-
+      Linux bubblewrap containment (STG-05 CB-09, CBF-1); Windows has no OS filesystem containment. Covered on
+      Linux (CI and the Rocky 8 lane); the layout itself (the .aew/local mask, the store check) is tested on every
+      platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_its_own_reason: >-
+      Linux bubblewrap containment (STG-05 CB-09; review of #231, m7); Windows has no OS filesystem containment.
+      Covered on Linux (CI and the Rocky 8 lane); on Windows the same commands run outside a sandbox, judged by a
+      tree diff, in test_non_writer_reads.py::test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock.
+    tests/integration/test_non_writer_reads.py::test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces: >-
+      POSIX permission bits stand in for a sandbox's read-only bind (STG-05 CB-09); Windows has none. Covered on
+      Linux; on Windows the same reads run lock-free in
+      test_a_non_writers_reads_are_lock_free_and_take_nothing_from_the_lock.
     tests/integration/test_containment.py::test_a_check_runs_inside_the_runs_layout: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
@@ -236,8 +265,69 @@ skipped:
       local-only by design (F9-A plan v4, amendment 1, A9): in CI the account is the runner's, so the check runs on the
       author's machine before committing. CI runs the path and key guard on every platform
       (test_the_f9a_probe_evidence_holds_no_host_path_or_location_key).
+    tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask077]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask002]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask077]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask002]: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_changed_later: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_an_interrupted_migration_runs_again_until_the_control_file_has_the_mode: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_the_migration_changes_only_what_lacks_the_bits_and_finishes_past_a_path_it_may_not_change: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_path_the_compactor_prunes_during_a_walk_fails_neither_the_migration_nor_doctor: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_a_store_directory_that_is_a_link_still_gets_the_stores_modes: >-
+      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
+      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
+      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
+    tests/unit/test_store_read_committed.py::test_an_absent_file_is_absent_only_after_the_retries_on_windows: >-
+      only Windows reports a present file missing mid-replace, so only Windows retries a missing file (F46.1 F1a,
+      re-review R8). Covered on Linux by test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic.
+    tests/integration/test_configuration_projection.py::test_a_read_racing_a_replace_retries_and_never_misreads[project.yaml-reported_missing]: >-
+      the simulated collision is Windows's (a present file reported missing mid-replace); POSIX rename is atomic.
+      The sharing-violation variants run on every platform. Covered on Windows.
+    tests/integration/test_configuration_projection.py::test_a_read_racing_a_replace_retries_and_never_misreads[policy/execution.yaml-reported_missing]: >-
+      the simulated collision is Windows's (a present file reported missing mid-replace); POSIX rename is atomic.
+      The sharing-violation variants run on every platform. Covered on Windows.
+    tests/unit/test_hang_autopsy_units.py::test_a_session_job_lists_exactly_its_members_and_refuses_breakaway: >-
+      the session job object is Windows'; Linux defines the session's set by the subreaper and start times
+      (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
+      abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

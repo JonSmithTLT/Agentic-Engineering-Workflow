@@ -275,6 +275,7 @@ def test_paths_globs_and_check_ids_hash_exactly(field: str, group: str, authored
     """ADR-0016 §1.2 (TRV-04): paths, globs and check ids are exact. The text set would fold each pair below into one
     value, so two different scopes or check definitions could collide (review F4)."""
     assert TF.canonical_text(authored) == TF.canonical_text(folded)
+
     def text(value: str) -> str:
         if field == "scope_paths":
             return record_text(scope_paths=[value])

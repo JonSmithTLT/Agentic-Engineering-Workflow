@@ -5,8 +5,8 @@
 Reads the lane reports `assurance` already downloads and, when given, the run's jobs from the GitHub API, and writes
 what the run cost: queue delay and end-to-end wall clock, runner-minutes, wall time per lane and shard against the
 strategy's budgets, total pytest time, the slowest 20 tests, each test's share of its lane, `aew` CLI calls per test,
-the share of collected tests that `tests/durations.json` covers, and, for a pull request, the cost of the tests in the
-test files it changes.
+the share of collected tests that the run's durations table covers (the `shard-durations` table its shards balanced
+on: register E44), and, for a pull request, the cost of the tests in the test files it changes.
 
 It reports; it never fails the gate (operator, 2026-10-06: runner speed never fails a correct change; the job timeout
 is the only hard bound). CI-health findings are warnings:
@@ -14,7 +14,7 @@ is the only hard bound). CI-health findings are warnings:
 * a lane job over 20 minutes warns, over 25 minutes is a CI-health violation (CRD-11);
 * a test over 25% of its lane's test time, or a fast-lane test over 30 seconds, is a CI-health violation (E45).
 
-    python tools/ci/cost_record.py REPORT_DIR [--jobs JOBS.json] [--durations tests/durations.json]
+    python tools/ci/cost_record.py REPORT_DIR [--jobs JOBS.json] [--durations DURATIONS.json]
         [--changed-files PATHS.txt] [--summary FILE] [--out cost-record.json]
 """
 
@@ -35,7 +35,8 @@ from check_assurance import load_reports  # noqa: E402  (tools/ci/check_assuranc
 
 SCHEMA = "aew/ci-cost-record/v1"
 JOB_WARN_S = 20 * 60  # CRD-11: a shard over 20 minutes warns ...
-JOB_VIOLATION_S = 25 * 60  # ... over 25 is a CI-health violation; the 30-minute job timeout stays the hard bound
+JOB_VIOLATION_S = 25 * 60  # ... over 25 is a CI-health violation; each job's timeout (ci.yml) stays the hard bound
+CI_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 TEST_SHARE_VIOLATION = 0.25  # E45: one test over a quarter of its lane's test time
 FAST_TEST_VIOLATION_S = 30.0  # E45: a fast-lane test over 30 s (the lane's whole budget is 3 minutes, §8)
 # testing-and-ci-strategy.md §8's budgets, reported as warnings (CCI-01): the first CI signal (Linux `core`) within
@@ -106,6 +107,25 @@ def job_facts(jobs: list[dict[str, Any]], run: dict[str, Any] | None = None) -> 
     }
 
 
+def job_timeouts(workflow: Path = CI_WORKFLOW) -> dict[str, float]:
+    """Each test job's ``timeout-minutes`` as ``ci.yml`` sets it (``core``, ``lanes``): read, never restated, so the
+    record cannot go stale when a timeout moves (G3a raised them by the session deadline's clearance)."""
+    import yaml  # check_assurance needs PyYAML already
+
+    try:
+        jobs = (yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}).get("jobs") or {}
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+    return {name: float(job["timeout-minutes"]) for name, job in jobs.items()
+            if isinstance(job, dict) and job.get("timeout-minutes")}
+
+
+def timeout_note(job_name: str, timeouts: dict[str, float] | None = None) -> str:
+    """The timeout of the ci.yml job a run's job came from: ``core (…)`` is ``core``, a lane shard is ``lanes``."""
+    found = (job_timeouts() if timeouts is None else timeouts).get("core" if job_name.startswith("core ") else "lanes")
+    return f"its job's timeout is {found:g} minutes, ci.yml" if found else "its job's timeout: see ci.yml"
+
+
 def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """CRD-11 over the jobs that ran tests (core and the lane shards), and §8's first-signal budget for Linux core."""
     out = []
@@ -117,7 +137,7 @@ def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "detail": f"the first CI signal is over §8's {CORE_BUDGET_S // 60}-minute budget"})
         if r["run_s"] > JOB_VIOLATION_S:
             out.append({"level": "violation", "kind": "job_time", "job": r["name"], "seconds": round(r["run_s"]),
-                        "detail": f"over {JOB_VIOLATION_S // 60} minutes (the timeout is 30)"})
+                        "detail": f"over {JOB_VIOLATION_S // 60} minutes ({timeout_note(r['name'])})"})
         elif r["run_s"] > JOB_WARN_S:
             out.append({"level": "warning", "kind": "job_time", "job": r["name"], "seconds": round(r["run_s"]),
                         "detail": f"over {JOB_WARN_S // 60} minutes"})
@@ -232,12 +252,12 @@ def summary(record: dict[str, Any]) -> str:
     for platform, f in record["platforms"].items():
         lines += ["", f"### {platform}: {f['pytest_s'] / 60:.1f} min of pytest time, "
                       f"{f['cli_calls']['total']} `aew` calls through the test helper (`conftest.run_aew`; direct "
-                      "`python -m aew` starts and fake agents' calls are not counted), durations file covers "
-                      + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
+                      "`python -m aew` starts and fake agents' calls are not counted), the run's durations table "
+                      "covers " + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
                       + " of collected tests", ""]
         if "changed_tests" in f:
             n = f["changed_tests"]
-            lines += [f"New tests (in the files this change touches, unknown to `tests/durations.json`): "
+            lines += [f"New tests (in the files this change touches, unknown to the run's durations table): "
                       f"{n['new']['count']}, {n['new']['seconds']:.0f} s in all."]
             lines += [f"- {t['seconds']:.1f}s ({t['share_of_lane']:.0%} of {t['lane']}) `{t['id']}`"
                       for t in n["new"]["slowest"]]
@@ -262,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("reports", type=Path, help="directory searched recursively for lane reports")
     ap.add_argument("--jobs", type=Path, help="the run's jobs as the GitHub API returns them ({'jobs': [...]})")
     ap.add_argument("--run", type=Path, help="the run itself as the GitHub API returns it (its created_at)")
-    ap.add_argument("--durations", type=Path, help="tests/durations.json")
+    ap.add_argument("--durations", type=Path, help="the table the run's shards balanced on (shard-durations)")
     ap.add_argument("--changed-files", type=Path,
                     help="the change's changed paths, one per line (a pull request's diff against its base)")
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")

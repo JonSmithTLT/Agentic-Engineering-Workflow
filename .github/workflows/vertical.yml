@@ -2,19 +2,20 @@ name: vertical
 
 # The vertical UAT (docs/implementation/vertical-uat.md): a fresh project from setup to a published one-line fix, with
 # the burden ledger as its measurement. In shadow (`VERTICAL_MODE` in tests/helpers/vertical/ledger.py): it runs on
-# every pull request and on main, uploads each scenario's ledger and summary, and is honestly red while the ledger is
-# not zero. It is a workflow of its own, so ci.yml's conclusion stays the merge gate's (`assurance`); no required job
-# collects its tests (tests/helpers/lanes.py), so it never blocks a merge. Enforcing it is the operator's decision.
+# pushes to main and on dispatch, uploads each scenario's ledger and summary, and is honestly red while the ledger is
+# not zero. Not on pull requests (operator, 2026-10-23, on the designer's ruling that freezes it as a baseline): red on
+# main, its result on a pull request says nothing about that pull request, and main keeps the ledger's time series.
+# It is a workflow of its own, so ci.yml's conclusion stays the merge gate's (`assurance`); no required job collects
+# its tests (tests/helpers/lanes.py), so it never blocks a merge. Enforcing it is the operator's decision.
 
 on:
-  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: vertical-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: vertical-${{ github.ref }}
+  cancel-in-progress: false  # main's time series: a running run is never cancelled; GitHub keeps the newest pending
 
 permissions:
   contents: read
@@ -32,8 +33,14 @@ jobs:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 49
     steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 2700 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-aew
         with:
@@ -43,7 +50,8 @@ jobs:
           AEW_VERTICAL_OUT: ${{ runner.temp }}/vertical
         run: >-
           python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py
-          -n auto --dist worksteal --test-timeout 1800
+          -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0
+          "--hang-dir=${{ runner.temp }}/vertical/hangs"
       - name: The ledgers' one-screen summaries
         if: always()
         shell: bash

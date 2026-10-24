@@ -106,7 +106,7 @@ def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> 
 
 def _control_part(engine: Any, subject: str) -> dict[str, Any]:
     """Committed facts only: nothing here may read run telemetry, submitted evidence or repository inputs."""
-    state = engine.store.read()
+    state = engine.store.current()
     part: dict[str, Any] = {"revision": state["revision"],
                             "generation": int((state.get("lead") or {}).get("generation") or 0),
                             "subject": subject, "state": None, "unit": None, "actions": [], "decisions": [],
@@ -304,7 +304,7 @@ def _runs(engine: Any, subject: str) -> list[dict[str, Any]]:
     """Local run telemetry, read now: the latest run of every active invocation (of the subject)."""
     observed_at = utc_now()
     out = []
-    for r in engine.harness_resume(engine.store.read()):
+    for r in engine.harness_resume(engine.store.current()):
         if subject != "project" and r.get("work_unit") != subject:
             continue
         out.append({"run": str(r["run"]), "invocation": str(r["invocation"]), "work_unit": str(r["work_unit"]),

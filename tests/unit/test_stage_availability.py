@@ -29,7 +29,7 @@ class FakeEngine:
 
     def __init__(self, state: dict[str, Any], answers: dict[str, str] | None = None,
                  found: dict[str, dict[str, Any]] | None = None) -> None:
-        self.store = SimpleNamespace(read=lambda: state)
+        self.store = SimpleNamespace(current=lambda: state)
         self.answers = answers or {}
         self.found = found or {}
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
@@ -327,7 +327,6 @@ def test_recording_args_see_every_key_a_query_reads():
     assert args.get("reason") is None and args["to"] == "RUNNING" and "card" not in args
     args.setdefault("found", {})["rule"] = 1
     assert args.inputs_read() == {"reason", "to", "card"}
-
 
 
 @pytest.mark.parametrize("mode", ["checks", "verifier"])

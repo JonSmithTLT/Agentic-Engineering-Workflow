@@ -1,0 +1,6635 @@
+{
+  "$comment": "Proposal only: independent operator selection pending. A-23 v0.3.3 remains adopted without modification.",
+  "$defs": {
+    "ActivityData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "activity": {
+                "not": {
+                  "const": "benefit_evaluated"
+                }
+              }
+            },
+            "required": [
+              "activity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "basis_refs": {
+                "maxItems": 0
+              },
+              "benefit": {
+                "const": "not_evaluated"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "benefit": {
+                "enum": [
+                  "supported",
+                  "not_supported",
+                  "inconclusive"
+                ]
+              }
+            },
+            "required": [
+              "benefit"
+            ]
+          },
+          "then": {
+            "properties": {
+              "activity": {
+                "const": "benefit_evaluated"
+              },
+              "basis_refs": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "description": "Activity kind and benefit qualification are independent. Delivered/cited not proof of model used or was helped.",
+      "properties": {
+        "activity": {
+          "enum": [
+            "selected",
+            "prepared",
+            "delivered",
+            "cited",
+            "benefit_evaluated"
+          ],
+          "type": "string"
+        },
+        "agent_lineage": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "basis_refs": {
+          "items": {
+            "$ref": "#/$defs/SubjectRef"
+          },
+          "type": "array"
+        },
+        "benefit": {
+          "enum": [
+            "not_evaluated",
+            "supported",
+            "not_supported",
+            "inconclusive"
+          ],
+          "type": "string"
+        },
+        "knowledge_ref": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "observation_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "receipt_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "work": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "knowledge_ref",
+        "agent_lineage",
+        "work",
+        "activity",
+        "receipt_ref",
+        "observation_at",
+        "benefit",
+        "basis_refs"
+      ],
+      "type": "object"
+    },
+    "AssuranceData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "readiness": {
+                "const": "qualified_clear"
+              }
+            },
+            "required": [
+              "readiness"
+            ]
+          },
+          "then": {
+            "properties": {
+              "g1_conformance": {
+                "enum": [
+                  "CONFORMING",
+                  "not_applicable"
+                ]
+              },
+              "hold_closure": {
+                "properties": {
+                  "completeness": {
+                    "const": "qualified_complete"
+                  }
+                }
+              },
+              "hold_state": {
+                "const": "none_qualified"
+              },
+              "obligation_state": {
+                "const": "all_satisfied"
+              },
+              "roster_closure": {
+                "properties": {
+                  "completeness": {
+                    "const": "qualified_complete"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "Missing obligation is not HOLD. Empty visible hold list does not establish absence. Qualified-clear requires both qualified complete closures.",
+      "properties": {
+        "accepted_revision": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "applicable_hold_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "determination_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "g1_conformance": {
+          "enum": [
+            "CONFORMING",
+            "NONCONFORMING",
+            "NOT_ESTABLISHED",
+            "unavailable",
+            "not_applicable"
+          ],
+          "type": "string"
+        },
+        "hold_closure": {
+          "$ref": "#/$defs/Closure"
+        },
+        "hold_state": {
+          "enum": [
+            "none_qualified",
+            "outstanding",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "mandatory_obligations": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "obligation_state": {
+          "enum": [
+            "all_satisfied",
+            "missing_mandatory",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "readiness": {
+          "enum": [
+            "qualified_clear",
+            "blocked",
+            "not_established",
+            "historical"
+          ],
+          "type": "string"
+        },
+        "roster_closure": {
+          "$ref": "#/$defs/Closure"
+        },
+        "target": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "target",
+        "accepted_revision",
+        "obligation_state",
+        "hold_state",
+        "readiness",
+        "mandatory_obligations",
+        "determination_refs",
+        "applicable_hold_refs",
+        "g1_conformance",
+        "roster_closure",
+        "hold_closure"
+      ],
+      "type": "object"
+    },
+    "AttachmentData": {
+      "additionalProperties": false,
+      "description": "Closed AEW attachment does not mean model conversation or remote process killed.",
+      "properties": {
+        "aew_lead_authority": {
+          "enum": [
+            "active",
+            "revoked",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "attachment_state": {
+          "enum": [
+            "attached",
+            "closed",
+            "suspended",
+            "preparing",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "current_generation_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "custody": {
+          "enum": [
+            "held",
+            "draining",
+            "released",
+            "none",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "generation": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "harness_state": {
+          "enum": [
+            "observed_running",
+            "observed_stopped",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "held_result_refs": {
+          "items": {
+            "$ref": "#/$defs/SubjectRef"
+          },
+          "type": "array"
+        },
+        "lineage_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthorityLineageBasis"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "generation",
+        "attachment_state",
+        "aew_lead_authority",
+        "custody",
+        "harness_state",
+        "held_result_refs",
+        "current_generation_ref"
+      ],
+      "type": "object"
+    },
+    "AttentionData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "lane": {
+                "const": "agent_attention"
+              }
+            },
+            "required": [
+              "lane"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "enum": [
+                  "clarification",
+                  "direction_brief",
+                  "blocker"
+                ]
+              },
+              "priority": {
+                "enum": [
+                  "agent_normal",
+                  "agent_summarized"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "lane": {
+                "const": "owner_issued"
+              }
+            },
+            "required": [
+              "lane"
+            ]
+          },
+          "then": {
+            "properties": {
+              "priority": {
+                "enum": [
+                  "owner_time_critical",
+                  "owner_normal"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "Priority and lane are owner-derived; agent text never sets urgency. Per root lineage aggregated flood limits.",
+      "properties": {
+        "category": {
+          "enum": [
+            "decision_need",
+            "blocker",
+            "clarification",
+            "direction_brief",
+            "expiry"
+          ],
+          "type": "string"
+        },
+        "lane": {
+          "enum": [
+            "owner_issued",
+            "agent_attention"
+          ],
+          "type": "string"
+        },
+        "narrative": {
+          "$ref": "#/$defs/Attribution"
+        },
+        "priority": {
+          "enum": [
+            "owner_time_critical",
+            "owner_normal",
+            "agent_normal",
+            "agent_summarized"
+          ],
+          "type": "string"
+        },
+        "root_lineage_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "summary_of_excess": {
+          "type": "boolean"
+        },
+        "work": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "work",
+        "lane",
+        "category",
+        "root_lineage_ref",
+        "priority",
+        "summary_of_excess",
+        "narrative"
+      ],
+      "type": "object"
+    },
+    "Attribution": {
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "render": {
+          "const": "inert_text"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "provenance",
+        "render"
+      ],
+      "type": "object"
+    },
+    "AuthorityLineageBasis": {
+      "additionalProperties": false,
+      "properties": {
+        "authorship_roots": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "continuation": {
+          "enum": [
+            "same_root_handover",
+            "issuer_qualified_new_root",
+            "unknown"
+          ]
+        },
+        "qualification": {
+          "enum": [
+            "qualified",
+            "not_established"
+          ]
+        },
+        "root_grant_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_owner": {
+          "enum": [
+            "ADC",
+            "HEB"
+          ]
+        }
+      },
+      "required": [
+        "root_grant_ref",
+        "source_owner",
+        "qualification",
+        "continuation",
+        "authorship_roots"
+      ],
+      "type": "object"
+    },
+    "CNIImpactScopeComparison": {
+      "additionalProperties": false,
+      "description": "Exact CNI-issued comparability claim for the current impact field source, positively unaffected subset and bounded binding-coverage context. W0 checks internal consistency; W1 verifies the competent authentic source.",
+      "properties": {
+        "accepted_revision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "assessed_universe_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "binding_coverage_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "comparison_source": {
+          "$ref": "#/$defs/SourceStamp"
+        },
+        "impact_coverage_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "impact_fact_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "impact_source_epoch": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "impact_source_version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "outcome": {
+          "const": "qualified_comparable"
+        },
+        "subset_coverage_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subset_fact_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subset_source_epoch": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subset_source_version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "comparison_source",
+        "outcome",
+        "impact_fact_ref",
+        "impact_source_epoch",
+        "impact_source_version",
+        "impact_coverage_ref",
+        "subset_fact_ref",
+        "subset_source_epoch",
+        "subset_source_version",
+        "subset_coverage_ref",
+        "accepted_revision",
+        "assessed_universe_ref",
+        "binding_coverage_ref"
+      ],
+      "type": "object"
+    },
+    "CapabilityData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assessment_status": {
+                "const": "QUALIFIED"
+              }
+            },
+            "required": [
+              "assessment_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assessment_evidence_refs": {
+                "minItems": 1
+              },
+              "assessment_issuer_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "assessment_scope_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "assessment_source_epoch": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Read-only IF-13/S-01 profile-capability projection; status strings are not self-qualifying; protected admission belongs to governing sources.",
+      "properties": {
+        "assessment_evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "assessment_issuer_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assessment_scope_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assessment_source_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assessment_status": {
+          "enum": [
+            "QUALIFIED",
+            "FUNCTIONAL_ONLY",
+            "NOT_ESTABLISHED",
+            "UNAVAILABLE",
+            "UNSUPPORTED",
+            "STALE",
+            "REFUSED"
+          ]
+        },
+        "authority_effect": {
+          "const": "NOT_AN_EFFECT_GRANT"
+        },
+        "binding_epoch": {
+          "maxLength": 192,
+          "minLength": 1,
+          "type": "string"
+        },
+        "capability_id": {
+          "pattern": "^[A-Z][A-Z0-9_]{1,95}$",
+          "type": "string"
+        },
+        "capability_role": {
+          "enum": [
+            "FUNCTIONAL_PREREQUISITE",
+            "PROTECTED_EFFECT_GATE",
+            "OPTIONAL",
+            "UNSPECIFIED"
+          ]
+        },
+        "controller_qualification": {
+          "enum": [
+            "QUALIFIED",
+            "NOT_ESTABLISHED"
+          ]
+        },
+        "effective_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effective_state": {
+          "enum": [
+            "REQUESTED",
+            "CHECKING",
+            "HELD",
+            "APPLYING",
+            "EFFECTIVE",
+            "FAILED",
+            "UNKNOWN_EFFECT",
+            "SUPERSEDED",
+            "NOT_ESTABLISHED"
+          ]
+        },
+        "history_audit": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/HistoryAuditObservation"
+            }
+          ]
+        },
+        "installation_ref": {
+          "maxLength": 192,
+          "minLength": 1,
+          "type": "string"
+        },
+        "limitation_classes": {
+          "items": {
+            "enum": [
+              "host_isolation",
+              "operator_origin",
+              "effect_route",
+              "disclosure",
+              "resource_meter",
+              "history_integrity",
+              "source_unavailable",
+              "profile_transition",
+              "policy_pin_drift",
+              "manifest_pin_drift"
+            ]
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "observed_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_status": {
+          "enum": [
+            "FUNCTIONAL_ONLY",
+            "QUALIFIED",
+            "NOT_ESTABLISHED",
+            "UNAVAILABLE",
+            "UNSUPPORTED",
+            "STALE",
+            "REFUSED"
+          ]
+        },
+        "profile_definition_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requested_profile_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "capability_id",
+        "profile_definition_ref",
+        "requested_profile_ref",
+        "observed_profile_ref",
+        "effective_profile_ref",
+        "effective_state",
+        "controller_qualification",
+        "capability_role",
+        "observed_status",
+        "assessment_status",
+        "assessment_issuer_ref",
+        "assessment_evidence_refs",
+        "assessment_scope_ref",
+        "assessment_source_epoch",
+        "limitation_classes",
+        "history_audit",
+        "authority_effect",
+        "installation_ref",
+        "binding_epoch"
+      ],
+      "type": "object"
+    },
+    "ClaimData": {
+      "additionalProperties": false,
+      "description": "Research finding not engineering acceptance or scope authority.",
+      "properties": {
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/SubjectRef"
+          },
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "premise_use_refs": {
+          "items": {
+            "$ref": "#/$defs/SubjectRef"
+          },
+          "type": "array"
+        },
+        "qualification": {
+          "enum": [
+            "qualified",
+            "limited",
+            "challenged",
+            "historical",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "scope_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "qualification",
+        "scope_conditions",
+        "limitations",
+        "premise_use_refs",
+        "evidence_refs"
+      ],
+      "type": "object"
+    },
+    "Closure": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "domain": {
+                "enum": [
+                  "mandatory_obligation_roster",
+                  "applicable_hold_collection"
+                ]
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "const": "AEV"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "domain": {
+                "const": "accepted_revision_membership"
+              }
+            },
+            "required": [
+              "domain"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "const": "WIS"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Only governing owner can attest membership/absence. Scoped closure is never all-domain closure.",
+      "properties": {
+        "completeness": {
+          "enum": [
+            "qualified_complete",
+            "qualified_scoped",
+            "unknown",
+            "not_disclosable"
+          ],
+          "type": "string"
+        },
+        "coverage_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "domain": {
+          "enum": [
+            "accepted_revision_membership",
+            "mandatory_obligation_roster",
+            "applicable_hold_collection",
+            "source_visibility",
+            "other_governed_set"
+          ],
+          "type": "string"
+        },
+        "epoch": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "ADC",
+            "AEV",
+            "CNI",
+            "HEB",
+            "WIS",
+            "RESEARCH",
+            "KNOWLEDGE",
+            "IF13",
+            "RESOURCE_POLICY_ISSUER"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain",
+        "owner",
+        "epoch",
+        "version",
+        "coverage_ref",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "CoverageData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "qualification": {
+                "not": {
+                  "const": "not_tested"
+                }
+              }
+            },
+            "required": [
+              "qualification"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence_refs": {
+                "minItems": 1
+              },
+              "qualification_basis": {
+                "$ref": "#/$defs/QualifiedCoverageBasis"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Coverage values are evidence-bound. Never infer qualified from schema or fixture pass.",
+      "properties": {
+        "channel": {
+          "enum": [
+            "backend_api",
+            "private_website"
+          ],
+          "type": "string"
+        },
+        "commitment": {
+          "enum": [
+            "core_read",
+            "bounded_read",
+            "informational_only",
+            "degraded_only",
+            "not_committed"
+          ],
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gate_refs": {
+          "items": {
+            "enum": [
+              "G1",
+              "G2",
+              "G3",
+              "G4"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "implementation": {
+          "enum": [
+            "qualified_producer_available",
+            "implemented_unqualified",
+            "fixture_only",
+            "unsupported",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "journey": {
+          "enum": [
+            "J01",
+            "J02",
+            "J03",
+            "J04",
+            "J05",
+            "J06",
+            "J07",
+            "J08"
+          ],
+          "type": "string"
+        },
+        "qualification": {
+          "enum": [
+            "provider_tested",
+            "consumer_tested",
+            "composed_tested",
+            "runtime_qualified",
+            "not_tested"
+          ],
+          "type": "string"
+        },
+        "qualification_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualifiedCoverageBasis"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "journey",
+        "channel",
+        "commitment",
+        "implementation",
+        "qualification",
+        "evidence_refs",
+        "gate_refs",
+        "qualification_basis"
+      ],
+      "type": "object"
+    },
+    "Disclosure": {
+      "additionalProperties": false,
+      "description": "Per effective principal+lineage/assignment/subject context. Scope_ref is opaque non-secret qualified token, not bearer authority.",
+      "properties": {
+        "effective_recipient_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "form": {
+          "enum": [
+            "full",
+            "qualified_coarse",
+            "redacted",
+            "not_disclosable"
+          ],
+          "type": "string"
+        },
+        "policy_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "qualified_release": {
+          "type": "boolean"
+        },
+        "scope_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "form",
+        "policy_ref",
+        "scope_ref",
+        "effective_recipient_ref",
+        "qualified_release"
+      ],
+      "type": "object"
+    },
+    "FR_ContinuationVector": {
+      "additionalProperties": false,
+      "properties": {
+        "axes": {
+          "additionalProperties": false,
+          "properties": {
+            "ADC": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            },
+            "AEV": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            },
+            "HEB": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            },
+            "IF10": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            },
+            "R01": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            },
+            "WIS": {
+              "$ref": "#/$defs/FR_OwnerAxis"
+            }
+          },
+          "required": [
+            "HEB",
+            "ADC",
+            "WIS",
+            "AEV",
+            "R01",
+            "IF10"
+          ],
+          "type": "object"
+        },
+        "binding_ref": {
+          "type": "string"
+        },
+        "generation_ref": {
+          "type": "string"
+        },
+        "informational_only": {
+          "const": true
+        },
+        "operation": {
+          "const": "CONTINUE_ELIGIBLE_WORK"
+        },
+        "work_ref": {
+          "type": "string"
+        },
+        "work_revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_ref",
+        "work_ref",
+        "work_revision",
+        "generation_ref",
+        "operation",
+        "axes",
+        "informational_only"
+      ],
+      "type": "object"
+    },
+    "FR_HoldRecoveryProjection": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "options_completeness": {
+                "const": "qualified_scoped"
+              }
+            },
+            "required": [
+              "options_completeness"
+            ]
+          },
+          "then": {
+            "properties": {
+              "hold_state": {
+                "const": "held"
+              },
+              "options_source_basis": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "options_source_basis": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "options_source_basis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "hold_ref": {
+          "type": "string"
+        },
+        "hold_state": {
+          "enum": [
+            "held",
+            "not_established"
+          ]
+        },
+        "options": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "basis_ref": {
+                "type": "string"
+              },
+              "executable_authority": {
+                "const": false
+              },
+              "issuer_owner": {
+                "const": "AEV"
+              },
+              "kind": {
+                "enum": [
+                  "request_remediation",
+                  "request_review",
+                  "wait_for_external_event"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "option_ref": {
+                "type": "string"
+              },
+              "source_epoch": {
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "option_ref",
+              "label",
+              "issuer_owner",
+              "basis_ref",
+              "source_epoch",
+              "valid_until",
+              "kind",
+              "executable_authority"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options_completeness": {
+          "enum": [
+            "qualified_scoped",
+            "partial",
+            "unknown"
+          ]
+        },
+        "options_source_basis": {
+          "additionalProperties": false,
+          "properties": {
+            "aev_issuer_ref": {
+              "type": "string"
+            },
+            "hold_version": {
+              "type": "string"
+            },
+            "owner_epoch": {
+              "type": "string"
+            },
+            "recipient_ref": {
+              "type": "string"
+            },
+            "valid_until": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "aev_issuer_ref",
+            "hold_version",
+            "recipient_ref",
+            "valid_until",
+            "owner_epoch"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hold_ref",
+        "hold_state",
+        "options",
+        "options_completeness",
+        "options_source_basis"
+      ],
+      "type": "object"
+    },
+    "FR_OperationIndexEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "CLOSE_ATTACHMENT",
+            "SUSPEND_GRANT",
+            "LIFT_OPERATOR_SUSPENSION",
+            "ISSUE_STANDING_POLICY",
+            "REQUEST_PROFILE_CHANGE",
+            "DELEGATED_CANCEL",
+            "CONTINUE_ELIGIBLE_WORK",
+            "ATTACH_LEAD",
+            "REATTACH_LEAD",
+            "REAFFIRM_ELIGIBLE_CHILD_GRANTS"
+          ],
+          "type": "string"
+        },
+        "attachment_generation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail_path": {
+          "pattern": "^/o01/v0/owner-operations/(HEB|ADC|IF13|RESOURCE_POLICY_ISSUER)/[A-Za-z][A-Za-z0-9:._-]{2,127}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "operation_ref": {
+          "pattern": "^[A-Za-z][A-Za-z0-9:._-]{2,127}$",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "HEB",
+            "ADC",
+            "IF13",
+            "RESOURCE_POLICY_ISSUER"
+          ]
+        },
+        "owner_epoch": {
+          "type": "string"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "subject_ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "operation_ref",
+        "action",
+        "subject_ref",
+        "attachment_generation",
+        "issued_at",
+        "owner_epoch",
+        "source_version",
+        "detail_path"
+      ],
+      "type": "object"
+    },
+    "FR_OwnerAxis": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "ok",
+                  "blocked"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "basis_ref": {
+                "type": "string"
+              },
+              "observed_at": {
+                "type": "string"
+              },
+              "owner_epoch": {
+                "type": "string"
+              },
+              "qualification": {
+                "const": "qualified"
+              },
+              "source_version": {
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "qualification": {
+          "enum": [
+            "qualified",
+            "unqualified",
+            "not_established"
+          ]
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "ok",
+            "blocked",
+            "unknown"
+          ]
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "owner_epoch",
+        "source_version",
+        "basis_ref",
+        "observed_at",
+        "valid_until",
+        "qualification",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "FieldSource": {
+      "additionalProperties": false,
+      "description": "Explicit authoritative owner source for mixed-origin consequential data fields.",
+      "properties": {
+        "field_path": {
+          "pattern": "^data\\.[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,2}$",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceStamp"
+        }
+      },
+      "required": [
+        "field_path",
+        "source"
+      ],
+      "type": "object"
+    },
+    "HistoryAuditObservation": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "observation": {
+                "enum": [
+                  "OBSERVED_NO_FINDINGS",
+                  "BACKLOG",
+                  "OVER_POLICY"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "coverage_state": {
+                  "const": "NOT_ESTABLISHED"
+                }
+              }
+            },
+            "properties": {
+              "audit_run_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inspected_population_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inspected_scope_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inspection_epoch": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "inspection_period_end": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "inspection_period_start": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "observation_producer_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "observed_at": {
+                "format": "date-time",
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "observation": {
+                "const": "OBSERVED_NO_FINDINGS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "claim_scope": {
+                "enum": [
+                  "INSPECTED_SET_ONLY",
+                  "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protection_claim": {
+                "const": "TAMPER_DETECTION_ONLY"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "claim_scope": {
+                "enum": [
+                  "INSPECTED_SET_ONLY",
+                  "UNKNOWN"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_scope": {
+                "const": "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+              }
+            },
+            "required": [
+              "claim_scope"
+            ]
+          },
+          "then": {
+            "properties": {
+              "auditor_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "coverage_state": {
+                "const": "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+              },
+              "excluded_scope_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage_state": {
+                "const": "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+              }
+            },
+            "required": [
+              "coverage_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "auditor_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "claim_scope": {
+                "const": "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+              },
+              "excluded_scope_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protection_claim": {
+                "const": "QUALIFIED_PROTECTED_SCOPE"
+              }
+            },
+            "required": [
+              "protection_claim"
+            ]
+          },
+          "then": {
+            "properties": {
+              "auditor_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "claim_scope": {
+                "const": "REQUESTED_SCOPE_QUALIFIED_COMPLETE"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Auditor-origin bounded detection observation (not independent protection). No-findings always limited to attributable inspected set/period, with omissions and requested-scope incompleteness explicit. Null counters are withheld/unknown. Issuer qualification requires Layer B.",
+      "properties": {
+        "audit_run_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "audit_scope_ref": {
+          "type": "string"
+        },
+        "auditor_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backlog_count": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "claim_scope": {
+          "enum": [
+            "INSPECTED_SET_ONLY",
+            "REQUESTED_SCOPE_QUALIFIED_COMPLETE",
+            "UNKNOWN"
+          ]
+        },
+        "coverage_state": {
+          "enum": [
+            "INSPECTED_SET_BOUNDED",
+            "REQUESTED_SCOPE_QUALIFIED_COMPLETE",
+            "PARTIAL_WITH_OMISSIONS",
+            "NOT_ESTABLISHED"
+          ]
+        },
+        "excluded_scope_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspected_population_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspected_scope_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspection_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspection_period_end": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inspection_period_start": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "observation": {
+          "enum": [
+            "OBSERVED_NO_FINDINGS",
+            "BACKLOG",
+            "OVER_POLICY",
+            "UNKNOWN",
+            "UNAVAILABLE"
+          ]
+        },
+        "observation_producer_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "over_policy_count": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "protection_claim": {
+          "enum": [
+            "TAMPER_DETECTION_ONLY",
+            "NOT_ESTABLISHED",
+            "QUALIFIED_PROTECTED_SCOPE"
+          ]
+        }
+      },
+      "required": [
+        "audit_scope_ref",
+        "audit_run_ref",
+        "observation",
+        "protection_claim",
+        "auditor_basis_ref",
+        "observed_at",
+        "backlog_count",
+        "over_policy_count",
+        "limitations",
+        "observation_producer_ref",
+        "inspected_scope_ref",
+        "inspected_population_ref",
+        "inspection_period_start",
+        "inspection_period_end",
+        "inspection_epoch",
+        "coverage_state",
+        "excluded_scope_ref",
+        "claim_scope"
+      ],
+      "type": "object"
+    },
+    "ImpactAssessment": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "qualified_unaffected": {
+                "properties": {
+                  "refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "refs"
+                ]
+              }
+            },
+            "required": [
+              "qualified_unaffected"
+            ]
+          },
+          "then": {
+            "properties": {
+              "unaffected_scope_comparison": {
+                "$ref": "#/$defs/CNIImpactScopeComparison"
+              },
+              "unaffected_subset_basis": {
+                "$ref": "#/$defs/SourceStamp"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "accepted_revision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "assessed_universe_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "binding_coverage_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "impact_unknown": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "known_affected": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "qualification": {
+          "enum": [
+            "qualified_scoped",
+            "not_established"
+          ]
+        },
+        "qualified_unaffected": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "source_owner": {
+          "const": "CNI"
+        },
+        "unaffected_scope_comparison": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CNIImpactScopeComparison"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Mandatory CNI-qualified comparison for nonempty positive unaffected subset, including exact owner-issued binding coverage; null when no positive unaffected subset is asserted."
+        },
+        "unaffected_subset_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceStamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "CNI proof of exact disclosed unaffected subset; absence is not evidence of independence, especially when total affected universe is unknown."
+        }
+      },
+      "required": [
+        "accepted_revision",
+        "assessed_universe_ref",
+        "binding_coverage_ref",
+        "known_affected",
+        "qualified_unaffected",
+        "impact_unknown",
+        "source_owner",
+        "qualification",
+        "unaffected_subset_basis",
+        "unaffected_scope_comparison"
+      ],
+      "type": "object"
+    },
+    "JournalHistoryData": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_revision": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "admission": {
+          "const": "not_applicable"
+        },
+        "assessment_binding": {
+          "additionalProperties": false,
+          "description": "AEV-issued assessment work/scope/determination tuple, checked locally for exact consistency; actual issuance and authenticity are W1/W4.",
+          "properties": {
+            "accepted_revision": {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            "issuer_fact_ref": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "source_determination": {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            "work": {
+              "$ref": "#/$defs/SubjectRef"
+            }
+          },
+          "required": [
+            "source_determination",
+            "work",
+            "accepted_revision",
+            "issuer_fact_ref"
+          ],
+          "type": "object"
+        },
+        "basis_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "benefit": {
+          "const": "not_claimed"
+        },
+        "disposition": {
+          "const": "adverse"
+        },
+        "eligibility": {
+          "const": "source_owner_qualified"
+        },
+        "finality": {
+          "const": "finalized"
+        },
+        "source_determination": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "source_kind": {
+          "const": "aev_adverse_determination"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Attribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "source_determination",
+        "accepted_revision",
+        "work",
+        "source_kind",
+        "finality",
+        "disposition",
+        "eligibility",
+        "admission",
+        "benefit",
+        "basis_refs",
+        "summary",
+        "assessment_binding"
+      ],
+      "type": "object"
+    },
+    "JournalSelection": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "qualified_scoped"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner_source": {
+                "$ref": "#/$defs/SourceStamp"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "not_established"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner_source": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "description": "An independently scoped AEV-qualified JH-P01 eligible subset, not qualification of unrelated Knowledge records; absence of this producer is NOT a certified empty set.",
+      "properties": {
+        "owner_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceStamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "selection_kind": {
+          "const": "aev_finalized_adverse_determination"
+        },
+        "status": {
+          "enum": [
+            "qualified_scoped",
+            "not_established"
+          ]
+        }
+      },
+      "required": [
+        "selection_kind",
+        "status",
+        "owner_source",
+        "scope_ref"
+      ],
+      "type": "object"
+    },
+    "KnowledgeData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "admission": {
+                "const": "admitted"
+              }
+            },
+            "required": [
+              "admission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "admission_basis_ref": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "lesson"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "admission": {
+                "not": {
+                  "const": "not_established"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "Knowledge is a durable source-linked read projection. Case observation and Lesson interpretation remain distinct. No model-internal learning assertion.",
+      "properties": {
+        "admission": {
+          "enum": [
+            "admitted",
+            "candidate",
+            "held",
+            "rejected",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "admission_basis_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "raw_history",
+            "case",
+            "lesson"
+          ],
+          "type": "string"
+        },
+        "knowledge_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "challenged",
+            "superseded",
+            "historical",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "producer_lineage": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_evidence_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "serving": {
+          "enum": [
+            "eligible",
+            "held",
+            "restricted",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/Attribution"
+        },
+        "version": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "work_refs": {
+          "$ref": "#/$defs/MemberView"
+        }
+      },
+      "required": [
+        "knowledge_id",
+        "version",
+        "kind",
+        "admission",
+        "serving",
+        "lifecycle",
+        "work_refs",
+        "root_evidence_refs",
+        "producer_lineage",
+        "admission_basis_ref",
+        "limitations",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "Link": {
+      "additionalProperties": false,
+      "description": "Only currently recipient-eligible, exact resolvable, reauthorized links may be emitted. Restricted/unknown targets have no Link object and no per-hidden placeholder.",
+      "properties": {
+        "availability": {
+          "const": "navigable"
+        },
+        "relation": {
+          "enum": [
+            "parent",
+            "child",
+            "depends_on",
+            "package",
+            "evidence",
+            "determination",
+            "hold",
+            "claim",
+            "knowledge",
+            "work",
+            "received_by",
+            "produced_by",
+            "accepted_interface",
+            "source",
+            "historical_generation"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "relation",
+        "target",
+        "availability"
+      ],
+      "type": "object"
+    },
+    "MemberView": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "visibility": {
+                "enum": [
+                  "members_withheld",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "visibility"
+            ]
+          },
+          "then": {
+            "properties": {
+              "refs": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/SubjectRef"
+          },
+          "type": "array"
+        },
+        "visibility": {
+          "enum": [
+            "complete_visible",
+            "partial_visible",
+            "members_withheld",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "visibility",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "PackageData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "g1": {
+                "const": "CONFORMING"
+              }
+            },
+            "required": [
+              "g1"
+            ]
+          },
+          "then": {
+            "properties": {
+              "designation": {
+                "enum": [
+                  "provisional",
+                  "protected_accepted"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "G1 result is independently qualified under adopted D-02 when available; no assumed historical main baseline.",
+      "properties": {
+        "accepted_revision": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "baseline_limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "designation": {
+          "enum": [
+            "provisional",
+            "protected_accepted",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "g1": {
+          "enum": [
+            "CONFORMING",
+            "NONCONFORMING",
+            "NOT_ESTABLISHED",
+            "unavailable",
+            "not_applicable"
+          ],
+          "type": "string"
+        },
+        "source_closure_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "work",
+        "digest",
+        "designation",
+        "accepted_revision",
+        "g1",
+        "baseline_limitations",
+        "source_closure_ref"
+      ],
+      "type": "object"
+    },
+    "PageInfo": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "has_more": {
+                "const": true
+              }
+            },
+            "required": [
+              "has_more"
+            ]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "has_more": {
+                "const": false
+              }
+            },
+            "required": [
+              "has_more"
+            ]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Pagination end is scoped to authorized view, never a global absence claim. Cursors bound to effective recipient and entitlement.",
+      "properties": {
+        "has_more": {
+          "type": "boolean"
+        },
+        "membership": {
+          "enum": [
+            "qualified_scoped",
+            "unknown",
+            "not_disclosable"
+          ],
+          "type": "string"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_size": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "scope": {
+          "enum": [
+            "effective_recipient_view"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "page_size",
+        "next_cursor",
+        "has_more",
+        "scope",
+        "membership"
+      ],
+      "type": "object"
+    },
+    "Problem": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "invalid_request"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retry": {
+                "const": "never"
+              },
+              "status": {
+                "const": 400
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "authentication_unqualified"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retry": {
+                "const": "reauthenticate"
+              },
+              "status": {
+                "const": 401
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "not_found_or_not_disclosable"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retry": {
+                "const": "never"
+              },
+              "status": {
+                "const": 404
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "cursor_stale_or_unauthorized"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retry": {
+                "const": "refresh_read"
+              },
+              "status": {
+                "const": 409
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "owner_unavailable"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retry": {
+                "const": "when_source_recovers"
+              },
+              "status": {
+                "const": 503
+              }
+            }
+          }
+        }
+      ],
+      "description": "No hidden fact IDs, reason classes or counts in error details. 404 used for both hidden and nonexistent.",
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_request",
+            "authentication_unqualified",
+            "not_found_or_not_disclosable",
+            "cursor_stale_or_unauthorized",
+            "owner_unavailable"
+          ],
+          "type": "string"
+        },
+        "correlation_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "retry": {
+          "enum": [
+            "never",
+            "reauthenticate",
+            "refresh_read",
+            "when_source_recovers",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            400,
+            401,
+            404,
+            409,
+            503
+          ],
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "const": "about:blank"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "status",
+        "code",
+        "retry",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "Narrative always inert. No author text as authoritative decision.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "canonical_owner",
+            "qualified_derivation",
+            "agent_narrative",
+            "imported_narrative",
+            "service_observation"
+          ],
+          "type": "string"
+        },
+        "owner_or_author": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "source_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "owner_or_author",
+        "source_ref"
+      ],
+      "type": "object"
+    },
+    "QualifiedCoverageBasis": {
+      "additionalProperties": false,
+      "properties": {
+        "competence_status": {
+          "const": "source_qualified"
+        },
+        "evaluating_owner": {
+          "enum": [
+            "AEV",
+            "ADC",
+            "HEB",
+            "CNI",
+            "WIS",
+            "RESEARCH"
+          ]
+        },
+        "evaluation_profile_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "issuer_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "scope_ref": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_fact_ref": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "evaluating_owner",
+        "issuer_ref",
+        "evaluation_profile_ref",
+        "scope_ref",
+        "evidence_refs",
+        "source_fact_ref",
+        "competence_status"
+      ],
+      "type": "object"
+    },
+    "ReadAssuranceSubjectKindSubjectId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "assurance"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadAttachments": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "attachment"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadAttachmentsAttachmentId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "attachment"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadAttention": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "attention"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadCapabilities": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "capability"
+                  }
+                },
+                "required": [
+                  "resource_type"
+                ]
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "if": {
+            "properties": {
+              "page": {
+                "properties": {
+                  "membership": {
+                    "const": "qualified_scoped"
+                  }
+                },
+                "required": [
+                  "membership"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "page"
+            ]
+          },
+          "then": {
+            "properties": {
+              "collection_basis": {
+                "$ref": "#/$defs/SourceStamp",
+                "properties": {
+                  "authority_class": {
+                    "enum": [
+                      "qualified_observation",
+                      "governing_determination"
+                    ]
+                  },
+                  "observation_state": {
+                    "const": "present_current"
+                  },
+                  "owner_coverage_class": {
+                    "const": "qualified_source_basis"
+                  },
+                  "qualification": {
+                    "const": "qualified"
+                  }
+                }
+              },
+              "page": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "collection_basis"
+            ]
+          }
+        }
+      ]
+    },
+    "ReadContinuationVector": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/Resource"
+                  },
+                  {
+                    "properties": {
+                      "data": {
+                        "$ref": "#/$defs/FR_ContinuationVector"
+                      },
+                      "ref": {
+                        "properties": {
+                          "kind": {
+                            "const": "continuation_state"
+                          }
+                        }
+                      },
+                      "resource_type": {
+                        "const": "continuation_vector"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "ref",
+                      "data"
+                    ]
+                  }
+                ]
+              },
+              "maxItems": 1,
+              "minItems": 1
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "required": [
+            "mode",
+            "items"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Inherited D-01 source-stamped ReadResult; semantic oracle requires external owner witnesses and recipient binding."
+    },
+    "ReadCoverage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "coverage"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadHoldRecovery": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/Resource"
+                  },
+                  {
+                    "properties": {
+                      "data": {
+                        "$ref": "#/$defs/FR_HoldRecoveryProjection"
+                      },
+                      "ref": {
+                        "properties": {
+                          "kind": {
+                            "const": "hold_recovery"
+                          }
+                        }
+                      },
+                      "resource_type": {
+                        "const": "hold_recovery"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "ref",
+                      "data"
+                    ]
+                  }
+                ]
+              },
+              "maxItems": 1,
+              "minItems": 1
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "required": [
+            "mode",
+            "items"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Inherited D-01 source-stamped ReadResult; semantic oracle requires external owner witnesses and recipient binding."
+    },
+    "ReadKnowledge": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "enum": [
+                      "knowledge",
+                      "journal_history"
+                    ]
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "required": [
+            "journal_selection"
+          ],
+          "type": "object"
+        },
+        {
+          "if": {
+            "properties": {
+              "items": {
+                "contains": {
+                  "properties": {
+                    "resource_type": {
+                      "const": "journal_history"
+                    }
+                  },
+                  "required": [
+                    "resource_type"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "collection_basis": {
+                "$ref": "#/$defs/SourceStamp"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ReadKnowledgeKnowledgeIdVersionsVersionId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "knowledge"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadKnowledgeKnowledgeIdVersionsVersionIdActivity": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "knowledge_activity"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadOwnerOperations": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/Resource"
+                  },
+                  {
+                    "properties": {
+                      "data": {
+                        "$ref": "#/$defs/FR_OperationIndexEntry"
+                      },
+                      "ref": {
+                        "properties": {
+                          "kind": {
+                            "const": "owner_operation_index"
+                          }
+                        }
+                      },
+                      "resource_type": {
+                        "const": "owner_operation_index"
+                      }
+                    },
+                    "required": [
+                      "resource_type",
+                      "ref",
+                      "data"
+                    ]
+                  }
+                ]
+              },
+              "maxItems": 100,
+              "minItems": 0
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "required": [
+            "mode",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "if": {
+            "properties": {
+              "page": {
+                "properties": {
+                  "membership": {
+                    "const": "qualified_scoped"
+                  }
+                },
+                "required": [
+                  "membership"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "page"
+            ]
+          },
+          "then": {
+            "properties": {
+              "collection_basis": {
+                "$ref": "#/$defs/SourceStamp",
+                "properties": {
+                  "observation_state": {
+                    "const": "present_current"
+                  },
+                  "qualification": {
+                    "const": "qualified"
+                  }
+                }
+              }
+            },
+            "required": [
+              "collection_basis"
+            ]
+          }
+        }
+      ],
+      "description": "One operation per Resource. Only the outer page and collection_basis assert pagination and qualified recipient-scoped membership. Entries never assert independent closure."
+    },
+    "ReadResearchClaimsClaimId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "claim"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadResolve": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "subject_detail"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadResult": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "detail"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "maxItems": 1
+              },
+              "page": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "list"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "page": {
+                "$ref": "#/$defs/PageInfo"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "unavailable"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "continuity": {
+                "enum": [
+                  "revalidate_required",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "detail"
+              },
+              "outcome": {
+                "const": "provided"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "maxItems": 1,
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "detail"
+              },
+              "outcome": {
+                "const": "historical"
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "maxItems": 1,
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "continuity": {
+                "const": "source_qualified"
+              }
+            },
+            "required": [
+              "continuity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "items": {
+                  "properties": {
+                    "source": {
+                      "properties": {
+                        "observation_state": {
+                          "const": "present_current"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "detail"
+              },
+              "outcome": {
+                "enum": [
+                  "provided",
+                  "partial",
+                  "historical",
+                  "not_established"
+                ]
+              }
+            },
+            "required": [
+              "mode",
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "items": {
+                "maxItems": 1,
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "description": "Presence is explicit. List always has page; detail has null page. Failure of identity/disclosure is a Problem response, not a green empty set.",
+      "properties": {
+        "collection_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceStamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "continuity": {
+          "enum": [
+            "source_qualified",
+            "revalidate_required",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "correlation_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "effective_recipient_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Resource"
+          },
+          "type": "array"
+        },
+        "journal_selection": {
+          "$ref": "#/$defs/JournalSelection"
+        },
+        "limitations": {
+          "items": {
+            "enum": [
+              "redacted",
+              "partial_source",
+              "source_unqualified",
+              "source_unavailable",
+              "G1_unqualified",
+              "G2_unqualified",
+              "G3_unqualified",
+              "G4_unqualified",
+              "historical_only",
+              "knowledge_receipts_missing"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "list",
+            "detail"
+          ],
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "provided",
+            "partial",
+            "historical",
+            "not_established",
+            "unavailable",
+            "unsupported"
+          ],
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PageInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projection_as_of": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "wire_version": {
+          "const": "0.3.4"
+        }
+      },
+      "required": [
+        "wire_version",
+        "mode",
+        "outcome",
+        "projection_as_of",
+        "continuity",
+        "items",
+        "page",
+        "limitations",
+        "correlation_id",
+        "collection_basis",
+        "effective_recipient_ref"
+      ],
+      "type": "object"
+    },
+    "ReadRunDetail": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "run"
+                  }
+                },
+                "required": [
+                  "resource_type"
+                ]
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadRuns": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "run"
+                  }
+                },
+                "required": [
+                  "resource_type"
+                ]
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "if": {
+            "properties": {
+              "page": {
+                "properties": {
+                  "membership": {
+                    "const": "qualified_scoped"
+                  }
+                },
+                "required": [
+                  "membership"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "page"
+            ]
+          },
+          "then": {
+            "properties": {
+              "collection_basis": {
+                "$ref": "#/$defs/SourceStamp",
+                "properties": {
+                  "authority_class": {
+                    "enum": [
+                      "qualified_observation",
+                      "governing_determination"
+                    ]
+                  },
+                  "observation_state": {
+                    "const": "present_current"
+                  },
+                  "owner_coverage_class": {
+                    "const": "qualified_source_basis"
+                  },
+                  "qualification": {
+                    "const": "qualified"
+                  }
+                }
+              },
+              "page": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "collection_basis"
+            ]
+          }
+        }
+      ]
+    },
+    "ReadWaiting": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "waiting"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadWork": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "work"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadWorkWorkKindWorkId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "work"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "detail"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "ReadWorkWorkKindWorkIdPackages": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReadResult"
+        },
+        {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "resource_type": {
+                    "const": "package"
+                  }
+                }
+              }
+            },
+            "mode": {
+              "const": "list"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "Renewal": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "source_valid_until"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source_proof_ref": {
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source_proof_ref": {
+                "type": "null"
+              },
+              "valid_until": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "source_valid_until",
+                  "qualified_continuity"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "checked_at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "coverage_ref": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+                "type": "string"
+              },
+              "invalidation": {
+                "enum": [
+                  "expiry_or_revalidation_failure",
+                  "source_invalidated"
+                ]
+              },
+              "qualified_owner": {
+                "enum": [
+                  "ADC",
+                  "AEV",
+                  "CNI",
+                  "HEB",
+                  "WIS",
+                  "RESEARCH",
+                  "HOST_ASSESSOR",
+                  "IF10",
+                  "IF12",
+                  "AUDIT_OBSERVER",
+                  "IF13",
+                  "R01"
+                ],
+                "type": "string"
+              },
+              "source_epoch": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+                "type": "string"
+              },
+              "source_proof_ref": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "verification_method": {
+                "enum": [
+                  "source_attested_interval",
+                  "source_continuity_validation"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "checked_at": {
+                "type": "null"
+              },
+              "coverage_ref": {
+                "type": "null"
+              },
+              "invalidation": {
+                "const": "none"
+              },
+              "qualified_owner": {
+                "type": "null"
+              },
+              "source_epoch": {
+                "type": "null"
+              },
+              "verification_method": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Owner-issued renewal. Provider receipt timestamp never renews source conclusion.",
+      "properties": {
+        "checked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invalidation": {
+          "enum": [
+            "expiry_or_revalidation_failure",
+            "source_invalidated",
+            "none"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source_valid_until",
+            "qualified_continuity",
+            "none"
+          ],
+          "type": "string"
+        },
+        "qualified_owner": {
+          "anyOf": [
+            {
+              "enum": [
+                "ADC",
+                "AEV",
+                "CNI",
+                "HEB",
+                "WIS",
+                "RESEARCH",
+                "HOST_ASSESSOR",
+                "IF10",
+                "IF12",
+                "AUDIT_OBSERVER",
+                "IF13",
+                "R01"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_epoch": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_proof_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verification_method": {
+          "enum": [
+            "source_attested_interval",
+            "source_continuity_validation",
+            "none"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source_proof_ref",
+        "valid_until",
+        "qualified_owner",
+        "source_epoch",
+        "coverage_ref",
+        "verification_method",
+        "checked_at",
+        "invalidation"
+      ],
+      "type": "object"
+    },
+    "Resource": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "waiting"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/WaitingData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "waiting_condition"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "attention"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/AttentionData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "attention"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "attachment"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/AttachmentData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "attachment_generation"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "work"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/WorkData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "epic",
+                      "story",
+                      "ticket"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/PackageData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "package"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "assurance"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/AssuranceData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "assurance_basis"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "claim"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/ClaimData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "research_claim"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "knowledge"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/KnowledgeData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "knowledge_record"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "knowledge_activity"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/ActivityData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "knowledge_activity"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "coverage"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/CoverageData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "release_coverage"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "subject_detail"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/SubjectDetailData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "assurance_basis",
+                      "assurance_evidence",
+                      "assurance_determination",
+                      "hold",
+                      "composition_commitment",
+                      "dependency_conflict",
+                      "package"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "readiness": {
+                    "const": "qualified_clear"
+                  }
+                },
+                "required": [
+                  "readiness"
+                ]
+              },
+              "resource_type": {
+                "const": "assurance"
+              }
+            },
+            "required": [
+              "resource_type",
+              "data"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "hold_closure": {
+                    "properties": {
+                      "completeness": {
+                        "const": "qualified_complete"
+                      },
+                      "domain": {
+                        "const": "applicable_hold_collection"
+                      },
+                      "owner": {
+                        "const": "AEV"
+                      }
+                    }
+                  },
+                  "hold_state": {
+                    "const": "none_qualified"
+                  },
+                  "obligation_state": {
+                    "const": "all_satisfied"
+                  },
+                  "roster_closure": {
+                    "properties": {
+                      "completeness": {
+                        "const": "qualified_complete"
+                      },
+                      "domain": {
+                        "const": "mandatory_obligation_roster"
+                      },
+                      "owner": {
+                        "const": "AEV"
+                      }
+                    }
+                  }
+                }
+              },
+              "disclosure": {
+                "properties": {
+                  "form": {
+                    "enum": [
+                      "full",
+                      "qualified_coarse"
+                    ]
+                  },
+                  "qualified_release": {
+                    "const": true
+                  }
+                }
+              },
+              "source": {
+                "properties": {
+                  "observation_state": {
+                    "const": "present_current"
+                  },
+                  "owner": {
+                    "const": "AEV"
+                  },
+                  "qualification": {
+                    "const": "qualified"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.g1"
+                    },
+                    "source": {
+                      "properties": {
+                        "owner": {
+                          "const": "AEV"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ]
+                },
+                "minContains": 1
+              },
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "WIS"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "work"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.accepted_revision"
+                    },
+                    "source": {
+                      "properties": {
+                        "owner": {
+                          "const": "WIS"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "assurance"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "AEV"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "attachment"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "HEB"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "waiting"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "CNI"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "attention"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "CNI"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "claim"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "RESEARCH"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "work"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "CNI"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "knowledge"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "KNOWLEDGE"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "knowledge_activity"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "KNOWLEDGE"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "coverage"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "properties": {
+                  "owner": {
+                    "const": "RELEASE"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disclosure": {
+                "properties": {
+                  "form": {
+                    "const": "qualified_coarse"
+                  }
+                },
+                "required": [
+                  "form"
+                ]
+              }
+            },
+            "required": [
+              "disclosure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "disclosure": {
+                "properties": {
+                  "qualified_release": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disclosure": {
+                "properties": {
+                  "form": {
+                    "enum": [
+                      "redacted",
+                      "not_disclosable"
+                    ]
+                  }
+                },
+                "required": [
+                  "form"
+                ]
+              }
+            },
+            "required": [
+              "disclosure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "disclosure": {
+                "properties": {
+                  "qualified_release": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "designation": {
+                    "const": "protected_accepted"
+                  }
+                },
+                "required": [
+                  "designation"
+                ]
+              },
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type",
+              "data"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.designation"
+                    },
+                    "source": {
+                      "properties": {
+                        "authority_class": {
+                          "const": "governing_determination"
+                        },
+                        "owner": {
+                          "const": "HEB"
+                        },
+                        "qualification": {
+                          "const": "qualified"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "admission": {
+                    "const": "admitted"
+                  }
+                },
+                "required": [
+                  "admission"
+                ]
+              },
+              "resource_type": {
+                "const": "knowledge"
+              }
+            },
+            "required": [
+              "resource_type",
+              "data"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.admission"
+                    },
+                    "source": {
+                      "properties": {
+                        "authority_class": {
+                          "const": "governing_determination"
+                        },
+                        "qualification": {
+                          "const": "qualified"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "benefit": {
+                    "enum": [
+                      "supported",
+                      "not_supported",
+                      "inconclusive"
+                    ]
+                  }
+                },
+                "required": [
+                  "benefit"
+                ]
+              },
+              "resource_type": {
+                "const": "knowledge_activity"
+              }
+            },
+            "required": [
+              "resource_type",
+              "data"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.benefit"
+                    },
+                    "source": {
+                      "properties": {
+                        "authority_class": {
+                          "const": "governing_determination"
+                        },
+                        "qualification": {
+                          "const": "qualified"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "disclosure": {
+                "properties": {
+                  "form": {
+                    "const": "qualified_coarse"
+                  }
+                },
+                "required": [
+                  "form"
+                ]
+              }
+            },
+            "required": [
+              "disclosure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "links": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "journal_history"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/JournalHistoryData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "assurance_determination"
+                  }
+                }
+              },
+              "source": {
+                "properties": {
+                  "authority_class": {
+                    "const": "governing_determination"
+                  },
+                  "governing_owner": {
+                    "const": "AEV"
+                  },
+                  "owner": {
+                    "const": "AEV"
+                  },
+                  "qualification": {
+                    "const": "qualified"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "readiness": {
+                    "const": "qualified_clear"
+                  }
+                },
+                "required": [
+                  "readiness"
+                ]
+              },
+              "resource_type": {
+                "const": "assurance"
+              }
+            },
+            "required": [
+              "resource_type",
+              "data"
+            ]
+          },
+          "then": {
+            "properties": {
+              "field_sources": {
+                "contains": {
+                  "properties": {
+                    "field_path": {
+                      "const": "data.readiness"
+                    },
+                    "source": {
+                      "properties": {
+                        "authority_class": {
+                          "const": "governing_determination"
+                        },
+                        "owner": {
+                          "const": "AEV"
+                        },
+                        "owner_coverage_class": {
+                          "const": "qualified_source_basis"
+                        },
+                        "qualification": {
+                          "const": "qualified"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "field_path",
+                    "source"
+                  ],
+                  "type": "object"
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "capability"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/CapabilityData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "profile_capability"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "run"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/RunData"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "execution_activity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "continuation_vector"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/FR_ContinuationVector"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "continuation_state"
+                  }
+                }
+              }
+            },
+            "required": [
+              "data",
+              "ref"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "owner_operation_index"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/FR_OperationIndexEntry"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "owner_operation_index"
+                  }
+                }
+              }
+            },
+            "required": [
+              "data",
+              "ref"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "hold_recovery"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/FR_HoldRecoveryProjection"
+              },
+              "ref": {
+                "properties": {
+                  "kind": {
+                    "const": "hold_recovery"
+                  }
+                }
+              }
+            },
+            "required": [
+              "data",
+              "ref"
+            ]
+          }
+        }
+      ],
+      "description": "Resource-specific data required and separately typed by resource_type. Owner_operation_index resources contain one operation entry, NOT a collection. Collection closure is outer only.",
+      "properties": {
+        "data": {
+          "type": "object"
+        },
+        "disclosure": {
+          "$ref": "#/$defs/Disclosure"
+        },
+        "field_sources": {
+          "items": {
+            "$ref": "#/$defs/FieldSource"
+          },
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "type": "array"
+        },
+        "ref": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "resource_type": {
+          "enum": [
+            "waiting",
+            "attention",
+            "attachment",
+            "work",
+            "package",
+            "assurance",
+            "claim",
+            "knowledge",
+            "knowledge_activity",
+            "coverage",
+            "subject_detail",
+            "journal_history",
+            "capability",
+            "run",
+            "continuation_vector",
+            "owner_operation_index",
+            "hold_recovery"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceStamp"
+        }
+      },
+      "required": [
+        "resource_type",
+        "ref",
+        "source",
+        "disclosure",
+        "data",
+        "links",
+        "field_sources"
+      ],
+      "type": "object"
+    },
+    "RunData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "OBSERVED_ACTIVE",
+                  "OBSERVED_IDLE",
+                  "OBSERVED_FINISHED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "HEB_OBSERVED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "REPORTED_ACTIVE",
+                  "REPORTED_IDLE",
+                  "REPORTED_FINISHED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "AGENT_REPORTED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "INFERRED_ACTIVE",
+                  "INFERRED_IDLE",
+                  "INFERRED_FINISHED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "MODEL_INFERRED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "UNKNOWN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "UNKNOWN"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "WITHHELD"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "WITHHELD"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase_observation_class": {
+                "const": "HEB_OBSERVED"
+              }
+            },
+            "required": [
+              "phase_observation_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "phase_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stall_assessment": {
+                "enum": [
+                  "POSSIBLE_STALL",
+                  "NO_STALL_OBSERVED"
+                ]
+              }
+            },
+            "required": [
+              "stall_assessment"
+            ]
+          },
+          "then": {
+            "properties": {
+              "stall_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "wake_assessment": {
+                "enum": [
+                  "WAKE_OVERDUE",
+                  "NOT_OVERDUE_OBSERVED"
+                ]
+              }
+            },
+            "required": [
+              "wake_assessment"
+            ]
+          },
+          "then": {
+            "properties": {
+              "wake_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "remote_effect_state": {
+                "enum": [
+                  "UNKNOWN_EFFECT",
+                  "POSSIBLE_EFFECT",
+                  "NO_EFFECT_QUALIFIED",
+                  "SETTLED_OBSERVED"
+                ]
+              }
+            },
+            "required": [
+              "remote_effect_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "remote_effect_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "elapsed_observed_seconds": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "elapsed_observed_seconds"
+            ]
+          },
+          "then": {
+            "properties": {
+              "elapsed_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "custody_state": {
+                "enum": [
+                  "HEB_HELD",
+                  "HEB_DRAINING",
+                  "HEB_ATTACHED",
+                  "HEB_CLOSED"
+                ]
+              }
+            },
+            "required": [
+              "custody_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "custody_basis_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Distinct phase with typed provenance, stall and wake suspicion, possible external effect, HEB custody, R-01/IF-10 resource facts; simultaneous conditions are permitted. Schema strings never qualify an issuer or actor. No lifecycle effect.",
+      "properties": {
+        "attachment_ref": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/SubjectRef"
+            }
+          ]
+        },
+        "authority_effect": {
+          "const": "READ_ONLY_NO_LIFECYCLE_EFFECT"
+        },
+        "custody_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "custody_state": {
+          "enum": [
+            "HEB_HELD",
+            "HEB_DRAINING",
+            "HEB_ATTACHED",
+            "HEB_CLOSED",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "elapsed_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "elapsed_observed_seconds": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "invocation_ref": {
+          "$ref": "#/$defs/SubjectRef"
+        },
+        "last_progress_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "items": {
+            "enum": [
+              "cooperative_only",
+              "source_unqualified",
+              "historical_only",
+              "unknown_remote_effect",
+              "custody_withheld",
+              "private_usage_withheld",
+              "progress_suspected",
+              "partial_observation"
+            ]
+          },
+          "type": "array"
+        },
+        "non_model_effect_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "non_model_effect_state": {
+          "description": "Separately attributable HEB non-model external/tool effect uncertainty; no whole-domain clear state",
+          "enum": [
+            "NOT_ESTABLISHED",
+            "UNKNOWN_EFFECT",
+            "POSSIBLE_EFFECT",
+            "WITHHELD"
+          ]
+        },
+        "non_model_resource_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "non_model_resource_exposure": {
+          "description": "Separately attributable R-01 resource/tool exposure outside the model-delivery accounting domain",
+          "enum": [
+            "UNKNOWN",
+            "POSSIBLE_CHARGE",
+            "UNSETTLED",
+            "WITHHELD"
+          ]
+        },
+        "phase": {
+          "enum": [
+            "OBSERVED_ACTIVE",
+            "OBSERVED_IDLE",
+            "OBSERVED_FINISHED",
+            "REPORTED_ACTIVE",
+            "REPORTED_IDLE",
+            "REPORTED_FINISHED",
+            "INFERRED_ACTIVE",
+            "INFERRED_IDLE",
+            "INFERRED_FINISHED",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "phase_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase_observation_class": {
+          "enum": [
+            "HEB_OBSERVED",
+            "AGENT_REPORTED",
+            "MODEL_INFERRED",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "progress_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remote_effect_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remote_effect_domain": {
+          "const": "IF12_MODEL_DELIVERY_ONLY",
+          "description": "Model-provider effects across all IF-12 original model-delivery operations of this invocation, NEVER all non-model effects"
+        },
+        "remote_effect_state": {
+          "description": "Only remote effect across IF12_MODEL_DELIVERY_ONLY model-delivery calls; whole-invocation clearance remains NOT_ESTABLISHED",
+          "enum": [
+            "UNKNOWN_EFFECT",
+            "POSSIBLE_EFFECT",
+            "NO_EFFECT_QUALIFIED",
+            "SETTLED_OBSERVED",
+            "NOT_ESTABLISHED",
+            "WITHHELD"
+          ]
+        },
+        "resource_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resource_state": {
+          "$ref": "#/$defs/RunResourceSummary"
+        },
+        "source_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stall_assessment": {
+          "enum": [
+            "POSSIBLE_STALL",
+            "NO_STALL_OBSERVED",
+            "NOT_ESTABLISHED",
+            "WITHHELD"
+          ]
+        },
+        "stall_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wake_assessment": {
+          "enum": [
+            "WAKE_OVERDUE",
+            "NOT_OVERDUE_OBSERVED",
+            "NOT_ESTABLISHED",
+            "WITHHELD"
+          ]
+        },
+        "wake_basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "whole_invocation_effect_clearance": {
+          "const": "NOT_ESTABLISHED",
+          "description": "No selected all-effects issuer/universe; model-only qualification NEVER upgrades this"
+        },
+        "whole_invocation_resource_clearance": {
+          "const": "NOT_ESTABLISHED",
+          "description": "No selected all-resource accounting universe; model-only charge closure NEVER upgrades this"
+        },
+        "work_ref": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/SubjectRef"
+            }
+          ]
+        }
+      },
+      "required": [
+        "invocation_ref",
+        "work_ref",
+        "attachment_ref",
+        "phase",
+        "progress_basis_ref",
+        "started_at",
+        "last_progress_at",
+        "elapsed_observed_seconds",
+        "elapsed_basis_ref",
+        "custody_state",
+        "custody_basis_ref",
+        "resource_state",
+        "resource_basis_ref",
+        "source_epoch",
+        "limitations",
+        "authority_effect",
+        "phase_observation_class",
+        "phase_basis_ref",
+        "stall_assessment",
+        "stall_basis_ref",
+        "wake_assessment",
+        "wake_basis_ref",
+        "remote_effect_state",
+        "remote_effect_basis_ref",
+        "remote_effect_domain",
+        "non_model_effect_state",
+        "non_model_effect_basis_ref",
+        "non_model_resource_exposure",
+        "non_model_resource_basis_ref",
+        "whole_invocation_effect_clearance",
+        "whole_invocation_resource_clearance"
+      ],
+      "type": "object"
+    },
+    "RunResourceSummary": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "accounting_class": {
+                "const": "HARD_QUALIFIED"
+              }
+            },
+            "required": [
+              "accounting_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observation_class": {
+                "const": "SOURCE_QUALIFIED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "accounting_class": {
+                "const": "HARD_QUALIFIED"
+              },
+              "outstanding_exposure": {
+                "not": {
+                  "const": "NONE_QUALIFIED"
+                }
+              }
+            },
+            "required": [
+              "accounting_class",
+              "outstanding_exposure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "original_operation_ref": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Amounts may be omitted for confidentiality; null never means zero. Owner currentness and private parent scope still assessed independently.",
+      "properties": {
+        "accounting_class": {
+          "enum": [
+            "COOPERATIVE",
+            "HARD_QUALIFIED",
+            "NOT_APPLICABLE",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "accounting_domain": {
+          "const": "IF10_MODEL_DELIVERY_ONLY",
+          "description": "IF-10 accounting for model-delivery operations; not all other run resources or expenses"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monetary_amount": {
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,6})?$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observation_class": {
+          "enum": [
+            "SOURCE_QUALIFIED",
+            "PROVIDER_OBSERVED",
+            "GATEWAY_COOPERATIVE",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "original_operation_ref": {
+          "description": "Operation attributed usage, or null only when independent complete zero-operation run closure qualifies NONE_QUALIFIED.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outstanding_exposure": {
+          "description": "Only outstanding exposure in IF10_MODEL_DELIVERY_ONLY model-delivery accounting domain, never whole-run expenses",
+          "enum": [
+            "NONE_QUALIFIED",
+            "POSSIBLE_CHARGE",
+            "UNSETTLED",
+            "UNKNOWN",
+            "WITHHELD"
+          ]
+        },
+        "usage_units": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "accounting_class",
+        "monetary_amount",
+        "currency",
+        "usage_units",
+        "observation_class",
+        "outstanding_exposure",
+        "original_operation_ref",
+        "accounting_domain"
+      ],
+      "type": "object"
+    },
+    "SourceStamp": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "observation_state": {
+                "const": "present_current"
+              }
+            },
+            "required": [
+              "observation_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "qualification": {
+                "const": "qualified"
+              },
+              "renewal": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "source_valid_until",
+                      "qualified_continuity"
+                    ]
+                  },
+                  "source_proof_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_proof_ref"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "owner": {
+                "enum": [
+                  "KNOWLEDGE",
+                  "RELEASE"
+                ]
+              }
+            },
+            "required": [
+              "owner"
+            ]
+          },
+          "then": {
+            "properties": {
+              "authority_class": {
+                "enum": [
+                  "qualified_observation",
+                  "unqualified_report"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authority_class": {
+                "const": "governing_determination"
+              }
+            },
+            "required": [
+              "authority_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "governing_owner": {
+                "enum": [
+                  "ADC",
+                  "AEV",
+                  "CNI",
+                  "HEB",
+                  "WIS",
+                  "RESEARCH"
+                ],
+                "type": "string"
+              },
+              "owner_coverage_class": {
+                "const": "qualified_source_basis"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authority_class": {
+                "const": "governing_determination"
+              }
+            },
+            "required": [
+              "authority_class"
+            ]
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "enum": [
+                  "ADC",
+                  "AEV",
+                  "CNI",
+                  "HEB",
+                  "WIS",
+                  "RESEARCH"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "Source qualification is separate from transport uptime; exact stamp is owner-issued or qualification attributed, never frontend invented.",
+      "properties": {
+        "authority_class": {
+          "enum": [
+            "governing_determination",
+            "qualified_observation",
+            "unqualified_report"
+          ],
+          "type": "string"
+        },
+        "closures": {
+          "items": {
+            "$ref": "#/$defs/Closure"
+          },
+          "type": "array"
+        },
+        "coverage_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "fact_ref": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "governing_owner": {
+          "anyOf": [
+            {
+              "enum": [
+                "ADC",
+                "AEV",
+                "CNI",
+                "HEB",
+                "WIS",
+                "RESEARCH"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issuer_ref": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+          "type": "string"
+        },
+        "observation_state": {
+          "enum": [
+            "present_current",
+            "historical",
+            "stale",
+            "unknown",
+            "unavailable",
+            "unsupported"
+          ],
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "ADC",
+            "AEV",
+            "AUDIT_OBSERVER",
+            "CNI",
+            "HEB",
+            "HOST_ASSESSOR",
+            "IF10",
+            "IF12",
+            "IF13",
+            "KNOWLEDGE",
+            "R01",
+            "RELEASE",
+            "RESEARCH",
+            "WIS"
+          ],
+          "type": "string"
+        },
+        "owner_coverage_class": {
+          "enum": [
+            "qualified_source_basis",
+            "receipt_observation",
+            "accepted_operator_scope",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "qualification": {
+          "enum": [
+            "qualified",
+            "not_established",
+            "unqualified"
+          ],
+          "type": "string"
+        },
+        "renewal": {
+          "$ref": "#/$defs/Renewal"
+        },
+        "source_epoch": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "source_version": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "fact_ref",
+        "source_epoch",
+        "source_version",
+        "coverage_ref",
+        "observed_at",
+        "qualification",
+        "observation_state",
+        "renewal",
+        "closures",
+        "authority_class",
+        "governing_owner",
+        "issuer_ref",
+        "owner_coverage_class"
+      ],
+      "type": "object"
+    },
+    "SubjectDetailData": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "assurance_basis"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "obligation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "hold"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "hold"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "assurance_determination"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "determination"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "assurance_evidence"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "evidence"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "composition_commitment"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "accepted_interface"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "dependency_conflict"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "dependency_conflict"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "properties": {
+                  "kind": {
+                    "const": "package"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "target"
+            ]
+          },
+          "then": {
+            "properties": {
+              "record_kind": {
+                "const": "package"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "basis_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "record_kind": {
+          "enum": [
+            "obligation",
+            "hold",
+            "determination",
+            "evidence",
+            "accepted_interface",
+            "dependency_conflict",
+            "package"
+          ],
+          "type": "string"
+        },
+        "source_basis_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "qualified",
+            "limited",
+            "historical",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Attribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "target",
+        "record_kind",
+        "summary",
+        "basis_refs",
+        "status",
+        "source_basis_ref"
+      ],
+      "type": "object"
+    },
+    "SubjectRef": {
+      "additionalProperties": false,
+      "description": "Knowledge/coverage refs are auxiliary read projections, not new authority owners. Nullable disambiguators are explicitly null when inapplicable.",
+      "properties": {
+        "generation": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-/]{0,191}$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "epic",
+            "story",
+            "ticket",
+            "accepted_revision",
+            "composition_commitment",
+            "dependency_conflict",
+            "assignment",
+            "effect_grant",
+            "attachment_generation",
+            "execution_activity",
+            "package",
+            "assurance_basis",
+            "assurance_evidence",
+            "assurance_determination",
+            "hold",
+            "composed_outcome",
+            "inquiry",
+            "research_claim",
+            "experiment",
+            "premise_use",
+            "attention",
+            "protected_intent",
+            "fact_projection",
+            "coordination_message",
+            "waiting_condition",
+            "knowledge_record",
+            "knowledge_activity",
+            "release_coverage",
+            "profile_capability",
+            "continuation_state",
+            "owner_operation_index",
+            "hold_recovery"
+          ],
+          "type": "string"
+        },
+        "package_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:\\-]{0,191}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "revision",
+        "generation",
+        "package_digest"
+      ],
+      "type": "object"
+    },
+    "WaitingData": {
+      "additionalProperties": false,
+      "properties": {
+        "action_status": {
+          "enum": [
+            "read_only",
+            "no_qualified_response_path",
+            "unsupported"
+          ],
+          "type": "string"
+        },
+        "basis_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "cause": {
+          "enum": [
+            "mandatory_result",
+            "qualified_hold",
+            "dependency",
+            "resource_conflict",
+            "operator_need",
+            "authority",
+            "other_qualified",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "impact_assessment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImpactAssessment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "narrative": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Attribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "progress": {
+          "enum": [
+            "blocked",
+            "independent_work_allowed",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "responsible_owner": {
+          "enum": [
+            "ADC",
+            "AEV",
+            "CNI",
+            "HEB",
+            "WIS",
+            "RESEARCH"
+          ],
+          "type": "string"
+        },
+        "work": {
+          "$ref": "#/$defs/SubjectRef"
+        }
+      },
+      "required": [
+        "work",
+        "cause",
+        "basis_refs",
+        "responsible_owner",
+        "progress",
+        "action_status",
+        "narrative"
+      ],
+      "type": "object"
+    },
+    "WorkData": {
+      "additionalProperties": false,
+      "description": "Child completion never means qualified parent completion; no default all-work ready.",
+      "properties": {
+        "accepted_interface_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "accepted_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "child_refs": {
+          "$ref": "#/$defs/MemberView"
+        },
+        "completion": {
+          "enum": [
+            "qualified_complete",
+            "in_progress",
+            "blocked",
+            "not_established"
+          ],
+          "type": "string"
+        },
+        "composition": {
+          "enum": [
+            "accepted",
+            "provisional",
+            "blocked",
+            "not_established",
+            "not_applicable"
+          ],
+          "type": "string"
+        },
+        "narrative": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Attribution"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work_kind": {
+          "enum": [
+            "epic",
+            "story",
+            "ticket"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "work_kind",
+        "accepted_revision",
+        "parent",
+        "child_refs",
+        "accepted_interface_refs",
+        "composition",
+        "completion",
+        "narrative"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://aew.local/contracts/d01/read-v0.3.4-proposed.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ReadResult"
+    },
+    {
+      "$ref": "#/$defs/Problem"
+    }
+  ],
+  "title": "AEW D-01 v0.3.4 20-GET proposed exact-match successor"
+}

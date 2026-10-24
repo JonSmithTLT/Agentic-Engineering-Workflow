@@ -98,6 +98,9 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         return None, label(contained=False)
     settings = (policy or {}).get("containment") or {}
     try:
+        if project is None:  # the store check (STG-05 CB-07) and the control lock's mask (CBF-1) need it
+            raise ContainmentUnavailable("a contained run needs its project root, to keep its writable binds off "
+                                         "AEW's store and the control lock out of its sandbox; none was given")
         layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
                          bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
@@ -136,7 +139,7 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
             git.git("init", "-q", cwd=root / "ws")
             layout = for_run(role="reviewer", scope="ticket", workspace=str(root / "ws"), run_dir=root / "run",
                              scratch=str(root / "run" / "scratch"), bridge_dir=None,
-                             policy=(policy or {}).get("containment") or {})
+                             policy=(policy or {}).get("containment") or {}, project=root)
             test = probe.self_test(layout, sentinel_dir=root, sibling_dir=root)
             problem = None if test["ok"] else test["reason"]
         except AEWError as exc:  # ContainmentUnavailable, or the throwaway repository could not be made

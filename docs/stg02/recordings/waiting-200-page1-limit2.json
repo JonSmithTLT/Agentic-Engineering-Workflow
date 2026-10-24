@@ -1,0 +1,420 @@
+{
+ "request": {
+  "method": "GET",
+  "path": "/v1/read/waiting?limit=2",
+  "headers": {
+   "X-AEW-Wire-Version": "0.3.4"
+  },
+  "body": null
+ },
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json",
+   "cache-control": "private, no-store",
+   "x-aew-wire-version": "0.3.4"
+  },
+  "body": {
+   "collection_basis": {
+    "authority_class": "unqualified_report",
+    "closures": [],
+    "coverage_ref": "fixture:scope-slice",
+    "fact_ref": "fixture:cni-waiting-collection",
+    "governing_owner": null,
+    "issuer_ref": "fixture:issuer-cni",
+    "observation_state": "unknown",
+    "observed_at": "2026-10-20T02:32:37Z",
+    "owner": "CNI",
+    "owner_coverage_class": "not_established",
+    "qualification": "unqualified",
+    "renewal": {
+     "checked_at": null,
+     "coverage_ref": null,
+     "invalidation": "none",
+     "kind": "none",
+     "qualified_owner": null,
+     "source_epoch": null,
+     "source_proof_ref": null,
+     "valid_until": null,
+     "verification_method": "none"
+    },
+    "source_epoch": "fixture:cni-epoch-1",
+    "source_version": "fixture:cni-v1"
+   },
+   "continuity": "unknown",
+   "correlation_id": "corr:6333d5dfca514ee787f27df7ce2afea4",
+   "effective_recipient_ref": "fixture:recipient-operator",
+   "items": [
+    {
+     "data": {
+      "action_status": "read_only",
+      "basis_refs": {
+       "refs": [
+        {
+         "generation": null,
+         "id": "T-0001",
+         "kind": "ticket",
+         "package_digest": null,
+         "revision": null
+        }
+       ],
+       "visibility": "partial_visible"
+      },
+      "cause": "dependency",
+      "narrative": {
+       "provenance": {
+        "kind": "service_observation",
+        "owner_or_author": "aew:engine-state",
+        "source_ref": "aew:work:T-0002"
+       },
+       "render": "inert_text",
+       "text": "BLOCKED: created"
+      },
+      "progress": "blocked",
+      "responsible_owner": "WIS",
+      "work": {
+       "generation": null,
+       "id": "T-0002",
+       "kind": "ticket",
+       "package_digest": null,
+       "revision": "plan-1"
+      }
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [
+      {
+       "field_path": "data.work",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.cause",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.basis_refs",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      },
+      {
+       "field_path": "data.progress",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "aew:project:calc",
+        "fact_ref": "aew:work:T-0002",
+        "governing_owner": null,
+        "issuer_ref": "aew:engine-state",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "aew:project:calc",
+        "source_version": "aew:rev:9"
+       }
+      }
+     ],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "aew:waiting:T-0002",
+      "kind": "waiting_condition",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "waiting",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "aew:project:calc",
+      "fact_ref": "aew:waiting:T-0002",
+      "governing_owner": null,
+      "issuer_ref": "aew:engine-state",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T02:32:37Z",
+      "owner": "CNI",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "aew:project:calc",
+      "source_version": "aew:rev:9"
+     }
+    },
+    {
+     "data": {
+      "action_status": "read_only",
+      "basis_refs": {
+       "refs": [],
+       "visibility": "unknown"
+      },
+      "cause": "operator_need",
+      "narrative": {
+       "provenance": {
+        "kind": "service_observation",
+        "owner_or_author": "fixture:issuer-cni",
+        "source_ref": "fixture:cni-waiting-ticket-continue"
+       },
+       "render": "inert_text",
+       "text": "Waiting for the operator to select it to continue."
+      },
+      "progress": "blocked",
+      "responsible_owner": "HEB",
+      "work": {
+       "generation": null,
+       "id": "fixture:ticket-continue",
+       "kind": "ticket",
+       "package_digest": null,
+       "revision": "fixture:revision-1"
+      }
+     },
+     "disclosure": {
+      "effective_recipient_ref": "fixture:recipient-operator",
+      "form": "full",
+      "policy_ref": "fixture:policy-slice",
+      "qualified_release": false,
+      "scope_ref": "fixture:scope-slice"
+     },
+     "field_sources": [
+      {
+       "field_path": "data.work",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "fixture:wis-work-ticket-continue",
+        "governing_owner": null,
+        "issuer_ref": "fixture:issuer-wis",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "WIS",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "fixture:wis-epoch-1",
+        "source_version": "fixture:wis-v1"
+       }
+      },
+      {
+       "field_path": "data.cause",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "fixture:heb-cause-ticket-continue",
+        "governing_owner": null,
+        "issuer_ref": "fixture:issuer-heb",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "fixture:heb-epoch-1",
+        "source_version": "fixture:heb-v1"
+       }
+      },
+      {
+       "field_path": "data.progress",
+       "source": {
+        "authority_class": "unqualified_report",
+        "closures": [],
+        "coverage_ref": "fixture:scope-slice",
+        "fact_ref": "fixture:heb-progress-ticket-continue",
+        "governing_owner": null,
+        "issuer_ref": "fixture:issuer-heb",
+        "observation_state": "unknown",
+        "observed_at": "2026-10-20T02:32:37Z",
+        "owner": "HEB",
+        "owner_coverage_class": "not_established",
+        "qualification": "unqualified",
+        "renewal": {
+         "checked_at": null,
+         "coverage_ref": null,
+         "invalidation": "none",
+         "kind": "none",
+         "qualified_owner": null,
+         "source_epoch": null,
+         "source_proof_ref": null,
+         "valid_until": null,
+         "verification_method": "none"
+        },
+        "source_epoch": "fixture:heb-epoch-1",
+        "source_version": "fixture:heb-v1"
+       }
+      }
+     ],
+     "links": [],
+     "ref": {
+      "generation": null,
+      "id": "fixture:waiting-ticket-continue",
+      "kind": "waiting_condition",
+      "package_digest": null,
+      "revision": null
+     },
+     "resource_type": "waiting",
+     "source": {
+      "authority_class": "unqualified_report",
+      "closures": [],
+      "coverage_ref": "fixture:scope-slice",
+      "fact_ref": "fixture:cni-waiting-ticket-continue",
+      "governing_owner": null,
+      "issuer_ref": "fixture:issuer-cni",
+      "observation_state": "unknown",
+      "observed_at": "2026-10-20T02:32:37Z",
+      "owner": "CNI",
+      "owner_coverage_class": "not_established",
+      "qualification": "unqualified",
+      "renewal": {
+       "checked_at": null,
+       "coverage_ref": null,
+       "invalidation": "none",
+       "kind": "none",
+       "qualified_owner": null,
+       "source_epoch": null,
+       "source_proof_ref": null,
+       "valid_until": null,
+       "verification_method": "none"
+      },
+      "source_epoch": "fixture:cni-epoch-1",
+      "source_version": "fixture:cni-v1"
+     }
+    }
+   ],
+   "limitations": [
+    "source_unqualified"
+   ],
+   "mode": "list",
+   "outcome": "partial",
+   "page": {
+    "has_more": true,
+    "membership": "unknown",
+    "next_cursor": "c1.2.b88a18e4729d8220c393a8a47feff09e",
+    "page_size": 2,
+    "scope": "effective_recipient_view"
+   },
+   "projection_as_of": "2026-10-20T02:32:37Z",
+   "wire_version": "0.3.4"
+  }
+ }
+}

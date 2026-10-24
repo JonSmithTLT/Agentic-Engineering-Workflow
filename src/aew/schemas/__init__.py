@@ -71,6 +71,14 @@ def _validator(name: str) -> Draft202012Validator:
     return Draft202012Validator(_load(name), registry=_registry())
 
 
+def iter_errors(name: str, instance: Any) -> list[Any]:
+    """Every violation of schema ``name`` by ``instance``, as the validator's structured errors (``absolute_path``,
+    ``validator``, ``validator_value``, ``schema_path``), for a caller that renders them without quoting the instance:
+    the configuration projection (register F46.1, proposal §7 rule 1). Its messages quote the instance; never forward
+    them."""
+    return list(_validator(name).iter_errors(instance))
+
+
 def validate(name: str, instance: Any, *, source: str) -> None:
     """Raise ValidationFailed listing every schema violation with its location."""
     _raise(_validator(name), instance, f"{source}: does not match schema {name}")

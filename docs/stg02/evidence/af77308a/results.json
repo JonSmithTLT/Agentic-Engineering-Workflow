@@ -1,0 +1,39 @@
+{
+  "base": "http://127.0.0.1:4256",
+  "results": [
+    {
+      "width": 1440,
+      "waiting": true,
+      "runUnknown": true,
+      "continuation": true,
+      "nondisclosing404": true,
+      "unavailable503": true,
+      "protectedControlCount": 0,
+      "separateSelection": true,
+      "receipt202": true,
+      "reloadedOwner": true,
+      "emptyLimitedRuns": true,
+      "terminalCodesAcrossReload": 5,
+      "rejectedContradictoryOwner": true,
+      "collectionBasis": true,
+      "source": "compiled fixture build; source/build provenance must be recorded separately"
+    },
+    {
+      "width": 390,
+      "waiting": true,
+      "runUnknown": true,
+      "continuation": true,
+      "nondisclosing404": true,
+      "unavailable503": true,
+      "protectedControlCount": 0,
+      "separateSelection": true,
+      "receipt202": true,
+      "reloadedOwner": true,
+      "emptyLimitedRuns": true,
+      "terminalCodesAcrossReload": 5,
+      "rejectedContradictoryOwner": true,
+      "collectionBasis": true,
+      "source": "compiled fixture build; source/build provenance must be recorded separately"
+    }
+  ]
+}

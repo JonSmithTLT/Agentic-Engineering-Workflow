@@ -755,3 +755,127 @@ choices recorded in register F48.
 Dropping the operator endpoint's `dev` label once a platform is qualified (designer, 2026-10-12) concerns the
 endpoint, not this label: ADR-0005's amendment, owed with the slices that build the operator session and qualify
 each platform (register F47.3 and F48), records it.
+
+## Amendment 2026-10-21 — the store's path, the control lock and non-writers (STG-05 CS-1: CB-07, CB-09, CBF-1)
+
+This amends the M4-B amendment's bind order (2026-10-03) and how a contained process reaches the control state. It
+builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold exemption for CS-1 only.
+
+### Bind order: ancestors first (`layout.bind_order`)
+- **Before:** every writable bind came first, then every read-only re-bind.
+- **Now:** the writable binds, the read-only re-binds and the masks of `.aew/local` and the runs directory are applied
+  together, by depth, ancestors first. On one path a re-bind comes after a writable bind, and a mask after both.
+- **Why:** a bind holds for its whole subtree except where a deeper bind says otherwise. So a read-only re-bind under
+  a broad writable root still closes what it protects.
+- **A writable bind under a read-only re-bind is applied after it and stays writable.** The Lead's layout needs that
+  rule (CS-4).
+- **A reader's workspace is the exception.** It must stay read-only whole, so a policy root inside it is left out of
+  the reader's layout (review of #231, m3). Before, every re-bind came after every writable bind, so such a root was
+  read-only to a reader. An implementer still gets the root.
+- **One owner:** `bwrap_argv` emits the order and the store check reasons about it.
+
+### No writable bind may change the store's path (CB-07, ruling R-3)
+- **The predicate:** `for_run` checks it on the final layout, for every writable bind `W`, the role's own and the
+  policy's alike:
+  - `W` is not the store (`<project>/.aew/state`) and does not lie under it;
+  - if `W` contains the store, the first directory below `W` on the path to the store is re-bound read-only after `W`.
+    That re-bind is a mount point, which cannot be renamed, replaced or removed.
+- **Both spellings of the path:** the predicate is checked on the path the engine walks (the project's own
+  `.aew/state`, which `Kernel.locate` finds by name) and on the path it resolves to. A symlink on the walked path
+  cannot be protected by a re-bind, because a mount lands on the link's target and the link stays renamable. So a
+  writable bind over such a link is refused (review of #231, m1).
+- **On failure:** a layout that breaks the predicate is refused (`CONTAINMENT_UNAVAILABLE`, reason
+  `writable_bind_in_store`, `store_path_writable` or `store_path_symlink`), naming the bind and what it would need
+  instead.
+- **This is not the operator-root guard.** Run directories live under `.aew/local`, so the guard's own rule would
+  refuse every run.
+- **The project is required:** a contained run is refused when it has none, since the check needs it.
+
+### The control lock is not in an agent's layout (CBF-1)
+- **The mask:** the empty tmpfs that hid the runs directory now covers the project's whole `.aew/local`, plus the runs
+  directory if it lies elsewhere. Only the run's own directories are bound back. The mask is applied at its depth in
+  the bind order, so no bind above it (the R-2 shape's `.aew` re-bind, a reader's workspace that contains the project)
+  shows the host's `.aew/local` again (review of #231, m2). Once the run's own directories are bound back, the mask is
+  remounted read-only (`--remount-ro`, which bubblewrap 0.4.0 has; the bind-backs keep their own flags), so a
+  contained process cannot make a lock file of its own there (m5). A `.aew/local` that does not exist yet is created
+  first, so a lock a host writer creates later is hidden too (m4).
+- **The effect:** the control lock (`.aew/local/control.lock`) is not in the sandbox at all, and nothing can create a
+  file at that path there. The store (`.aew/state`) stays visible, read-only.
+- **`FileLock` opens the lock file for writing only.** The M4-B fallback is gone: it opened an existing lock file
+  read-only on a read-only mount and still took `LOCK_EX`, "so a contained reader still serializes with the engine's
+  writers". No reader needs the lock now (below), and a process that cannot open it for writing is not one that may
+  hold it.
+
+### Non-writers read lock-free (CB-09)
+- **The kinds:** `aew.process_kind` lists AEW's entry points and their kinds:
+  - **store writers:** the `aew` CLI, and the run supervisor. The Lead broker runs the CLI in its own process
+    without declaring, so it is a writer too, as it must be;
+  - **non-writers:** the CLI inside a worker's run (`AEW_AGENT_ENDPOINT` set), `aew lead mcp`, and
+    `aew dashboard serve`, which reads lock-free and serializes its publication with its own endpoint lock.
+- **The rule:** in a non-writer, `ControlStore.read`, `session` and `create` are refused before the lock is opened
+  (`PERMISSION_DENIED`, reason `non_writer_process`). Such a process reads only through `read_committed`,
+  `configuration.read_committed`, `outbox.LogView` and `outbox.read_transitions`, which take no lock and run no
+  recovery, so they work on the read-only store.
+- **One opener of the lock:** `ControlStore.control_lock` is the only place AEW opens the control lock, and it refuses
+  a non-writer. `read`, `session`, `create` and the log compactor's publish all take it there, and a test refuses a
+  `FileLock` on the lock's path anywhere else.
+- **The engine's reads choose by kind:** every read the engine makes goes through `ControlStore.current`. That is
+  `read` in a writer and `read_committed` in a non-writer, and `Kernel.manifest` makes the same choice. So the CLI's
+  reads work inside a worker's run, except the reader git gap below. A first version left the engine's reads on
+  `read` and refused every read command in the sandbox (review of #231, B1).
+- **The reader git gap, pinned and not fixed here.** A fingerprint read of a fresh or changed workspace runs
+  `git add -A` into a throwaway index, which writes or freshens blobs in the object store:
+  - **Inside a reader's sandbox,** where the real object store is read-only, `gate show` and `work roles` of such a
+    Ticket answer `GIT_ERROR`. The sandbox test pins exactly these (`READER_GIT_GAP`), recognised by their mechanism.
+  - **Outside a sandbox** (every worker run on Windows, and any non-writer run uncontained), the same read succeeds by
+    writing loose objects into the real repository's `.git/objects`. No test sees that face yet.
+  - The designer ruled the outcome (D-CS2-1): a reader never writes the real object store. CS-2 builds it (its outcome
+    7), for both faces.
+- **What a non-writer writes:** never the store, and never the lock. Under `.aew/local` it writes only the derived
+  history index's catch-up, as every reader of archived history does (the dashboard server among them). Every result
+  of that index is authenticated against the store's history root, and on a read-only view the index is a private
+  copy instead. A command whose purpose is a write there is refused. The commands a non-writer is refused are listed
+  with why in the test:
+  - `history audit` (the lock);
+  - `history compact` (the lock and `.aew/state/log`);
+  - `context pack` and `history reindex` (derived data under `.aew/local`).
+- **The bridge:** a worker's `whoami`, `check run` and `submit` already go through the run's bridge, where the
+  supervisor, a store writer, holds the credential and takes the lock.
+- **The declaration is behaviour, not the boundary.** An agent can unset the variable it is judged by. What holds
+  regardless is the layout: the read-only store, and the lock outside it.
+
+### Tests
+- **`tests/unit/test_containment_layout.py`:**
+  - the bind order;
+  - the predicate over every role in `WORKSPACE_ACCESS`, through what the run records of its layout;
+  - three planted bad binds refused: a workspace that is the project root, a scratch at `.aew`, and a harness
+    directory under the store;
+  - the second clause's ordering;
+  - a symlinked `.aew` under a writable bind refused;
+  - the masked-path invariant enumerated over the argv (no bind on or above a mask after it, the read-only remount
+    after the bind-backs), every role's layout and the R-2 shape;
+  - a policy root inside a reader's workspace left out, and a missing `.aew/local` made and hidden;
+  - a run without its project.
+- **`tests/integration/test_containment.py`** (Linux):
+  - from a worker sandbox the lock is absent, creating it fails with `EROFS`, and the run's bound-back harness
+    directory stays writable;
+  - every command a worker can run, inside a reviewer's sandbox, either works or is refused for a reason of its own,
+    with no crash. Nothing meets the read-only filesystem but the pinned reader git gap (`READER_GIT_GAP`, above), and
+    only `WRITER_ONLY` is refused as a non-writer's;
+  - a non-writer's lock-free reads work against the store on the read-only bind, and its locked read is refused as a
+    non-writer's.
+- **`tests/integration/test_non_writer_reads.py`:**
+  - the table;
+  - the refusals before the lock;
+  - the reads against a read-only store, with no `EROFS` or `EACCES`, and a writer's failure there;
+  - the CLI inside a worker run: its reads succeed, and a mutation is refused before the lock;
+  - `history compact`, `context pack` and `history reindex` refused as a non-writer's before they start;
+  - every command a worker can run (each parser leaf, and each surface-map probe, with an in-flight and a finished
+    Ticket) on a worked project: a stat snapshot of the whole `.aew` tree is unchanged but the history index's
+    catch-up, the lock is not created, nothing crashes, and only `WRITER_ONLY` is refused as a non-writer's;
+  - the reader git gap's classifier, on planted cases both ways;
+  - the one opener: no code outside `engine/store.py` names the control lock's path, found by import and by literal,
+    with a second, text-based detector that must agree on the tree and on planted cases;
+  - the entry-point table against the tree, both ways: every module that runs as a process is a row, and every row is
+    one;
+  - a guard that no code outside the store calls `store.read()` but the manifest reload.

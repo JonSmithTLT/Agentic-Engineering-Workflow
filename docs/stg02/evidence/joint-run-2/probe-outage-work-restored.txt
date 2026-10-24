@@ -1,0 +1,111 @@
+Waiting work & continuation
+
+STG-02 · adopted D-01 0.3.4 / O-01 0.2 · separate contract path
+
+Fixture investigation — unqualified preview. Recorded or explicitly derived synthetic facts; no live owner authority or protected operation is established here.
+
+Selected contract identity
+Waiting work
+Owner operations
+Read view
+Waiting work
+Run detail
+Continuation information
+Owner-operation index
+Owner observation
+Exact supplied ID (owner|operation for owner observation)
+Open exact read
+Refresh this read
+Read outcome: partial
+continuity
+unknown
+projection as of
+2026-10-21T00:54:39Z
+correlation id
+corr:0c3abd4cb2854f13a6dfe4b9246b3d2c
+
+Limitations: G3_unqualified · source_unavailable · source_unqualified
+
+Source observation time and validity belong to the supplied facts. Fetch time does not renew them.
+
+aew:continuation:T-0002 · continuation_vector
+
+Supplied source stamp: HEB · unavailable · not_established
+Last-known observation: 2026-10-21T00:54:39Z · Basis: unavailable:HEB
+Source validity bound: Not supplied. This recording does not establish current validity.
+
+Source and field attribution
+
+Information only — never permission to act. HEB independently decides command admission.
+
+ADC: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+ADC epoch and validity
+AEV: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+AEV epoch and validity
+HEB: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+HEB epoch and validity
+IF10: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+IF10 epoch and validity
+R01: unknown
+qualification
+not_established
+reason code
+SOURCE_UNAVAILABLE
+basis ref
+Not supplied
+observed at
+Not supplied
+R01 epoch and validity
+WIS: unknown
+qualification
+unqualified
+reason code
+SOURCE_UNQUALIFIED
+basis ref
+aew:work:T-0002
+observed at
+2026-10-21T00:54:39Z
+WIS epoch and validity
+Complete supplied record
+Protected actions — held
+
+Close attachment, reattach Lead, attach Lead and other PROTECTED_G3 actions are held: G3_unqualified. No protected command control or simulated operation is offered.
+
+Deliberately select work to continue
+
+This submits a separate CURRENT_DELEGATED_GRANT command to HEB. Continuation information does not enable or authorize it. Synthetic testing uses a labelled fixture delegation only.
+
+Review work supplied by the fixture delegation
+Inspect or supply the separate request

@@ -1,0 +1,8 @@
+{
+  "same_reviewed_wrapper": true,
+  "lifetime_seconds": 1852,
+  "previous_launcher_failure": "JSON DateTime coercion lost UTC before subtraction; invalid lifetime rejected before binding; corrected using raw JSON DateTimeOffset",
+  "pid": 28352,
+  "original_expires_utc": "2026-10-21T00:58:28.4863450+00:00",
+  "utc": "2026-10-21T00:27:37.0849132+00:00"
+}

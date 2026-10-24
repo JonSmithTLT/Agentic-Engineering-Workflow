@@ -65,6 +65,11 @@ SHARED = (
     # The contract 0.1.3 change note (register F20.8): its appendix's routes are probed by the dashboard's integration
     # tests (tests/helpers/dashboard_contract.py), and its status line sets how the contract is checked.
     "docs/design/proposals/dashboard-maps-and-history-search-v0.1.md",
+    # The contract 0.1.4 change note (register F46.1, slice F1b): read the same way, its appendix merged into 0.1.3.
+    "docs/design/proposals/dashboard-configuration-read-v0.1.md",
+    # The surface map: its probes are what a worker's agent can run, which the non-writer and containment integration
+    # tests run (tests/helpers/worker_surface.py; review of #231, m7).
+    "docs/implementation/surface-map.yaml",
 )
 # A Markdown file under one of these is not documentation. `eval/` joined in plan v7 (§3.3, V3-4): the dogfood
 # regression reads eval/m3/dogfood, Markdown included.

@@ -18,6 +18,11 @@ is a regression to find, never a reason to raise it.
 The stacks also go to a dump file in ``--hang-dir`` (default: the lane report's directory, which CI uploads even when
 a job fails; else the system temporary directory). Each process writes one file while a test runs and removes it when
 the test finishes, so a file left after a run is a hang.
+
+When it fires, the session's autopsy plugin (``autopsy.py``, the hang-and-flake diagnosis plan's G3 H1) collects the
+rest: on POSIX inside the alarm handler, before it raises; on Windows from a plain thread armed just after this
+watchdog's deadline and cancelled with it. Nothing else in the test process arms faulthandler. Without that plugin the
+watchdog works as before.
 """
 
 from __future__ import annotations
@@ -45,7 +50,7 @@ def addoption(parser: pytest.Parser) -> None:
 
 
 def hang_dir(config: pytest.Config) -> Path:
-    explicit = config.getoption("aew_hang_dir")
+    explicit = config.getoption("aew_hang_dir", None)  # None also where the watchdog's options are not added
     if explicit:
         return Path(explicit)
     report = config.getoption("aew_lane_report", None)
@@ -58,6 +63,7 @@ class HungTest(BaseException):
 
 class HangWatchdog:
     def __init__(self, config: pytest.Config, timeout: float) -> None:
+        self.config = config
         self.timeout = timeout
         self.dir = hang_dir(config)
         worker = getattr(config, "workerinput", {}).get("workerid", "main")
@@ -88,11 +94,18 @@ class HangWatchdog:
         f.flush()
         faulthandler.dump_traceback(file=f, all_threads=True)
         f.flush()
+        autopsy = self._autopsy()
+        if autopsy is not None and self._fired == 1:  # G3 H1: the autopsy, while the hung frame is still on the stack
+            autopsy.watchdog_fired(self.timeout)
         if self._fired > 1:  # the teardown hung too: nothing in this process can be trusted to finish
             os._exit(1)
         signal.setitimer(signal.ITIMER_REAL, self.timeout)  # one more period for the teardown
         f.seek(0)
         raise HungTest(f.read())
+
+    def _autopsy(self) -> Any:
+        """The autopsy plugin (autopsy.py), when the session has one: the watchdog works without it."""
+        return self.config.pluginmanager.get_plugin("aew-autopsy")
 
     def _header(self, item: pytest.Item) -> str:
         return f"{HEADER}{item.nodeid} was still running after {self.timeout:g}s; every thread's stack:\n"
@@ -108,6 +121,9 @@ class HangWatchdog:
         else:  # pragma: windows-only
             previous = None
             faulthandler.dump_traceback_later(self.timeout, file=f)
+            autopsy = self._autopsy()
+            if autopsy is not None:  # G3 H1: a plain thread, just after the dump is due; cancelled below
+                autopsy.arm(self.timeout)
         try:
             yield
         finally:
@@ -116,6 +132,9 @@ class HangWatchdog:
                 signal.signal(signal.SIGALRM, previous)
             else:  # pragma: windows-only
                 faulthandler.cancel_dump_traceback_later()
+                autopsy = self._autopsy()
+                if autopsy is not None:
+                    autopsy.disarm()
             if not USE_ALARM:  # pragma: windows-only (the dump, if it ran, is past the header)
                 if os.fstat(f.fileno()).st_size > armed_size:
                     self._fired = 1  # faulthandler wrote through the descriptor: only the size shows it

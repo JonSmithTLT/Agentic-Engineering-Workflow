@@ -120,9 +120,30 @@ STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
 
 # The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
 # claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).
-STAGE_CHOICES = ("continue", "abandon")
-DISPOSITION_CHOICES = ("accept_risk", "follow_up", "not_applicable")
-RESOLVE_CHOICES = (*STAGE_CHOICES, *DISPOSITION_CHOICES)
+#
+# RESOLVE_CHOICE_PRIMITIVE owns them (the A1 slice plan, reviewed CLEAR, §2.1 item 4 and §3.3): each (choice, subject
+# kind) a `resolve` call can take, and the one primitive that call runs. The choices, their order (the advertised enum,
+# byte-pinned), and `resolve`'s `expands_to` are derived from it. Internal: never advertised, so it costs no schema
+# bytes. The surface map's door proof checks a `resolve` home by its pair, so `resolve` is never accepted as the home
+# of an arbitrary primitive (G1). The subject kinds: a stage intent (`SI-n`), and the disposition record's subject
+# kinds (aew/schemas/disposition.schema.json, tested). A1a-2 and A2 add pairs.
+STAGE_SUBJECTS = ("stage_intent",)
+DISPOSITION_SUBJECTS = ("finding", "claim", "anomaly")
+RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
+    **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
+    **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
+       for kind in DISPOSITION_SUBJECTS},
+}
+
+
+def _choices_running(*primitives: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(c for (c, _), p in RESOLVE_CHOICE_PRIMITIVE.items()
+                               if not primitives or p in primitives))
+
+
+STAGE_CHOICES = _choices_running("stage.resolve")
+DISPOSITION_CHOICES = _choices_running("work.dispose")
+RESOLVE_CHOICES = _choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
@@ -223,7 +244,8 @@ TOOLS: dict[str, Tool] = _catalog(
               ("expect_rev", "subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
-         expands_to=("stage.resolve", "work.dispose"), required_judgments=("stage_resolution", "disposition"),
+         expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
+         required_judgments=("stage_resolution", "disposition"),
          mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,

@@ -406,7 +406,7 @@ class Probe:
         if not WINDOWS and os.environ.get("AEW_PROBE_BWRAP") == "1":  # AEW's own run containment (bubblewrap)
             from aew.harness.containment.layout import for_run
             self.layout = for_run(role="investigator", scope="probe", workspace=self.ws, run_dir=self.run_dir,
-                                  scratch=self.scratch, bridge_dir=None, policy=None)
+                                  scratch=self.scratch, bridge_dir=None, policy=None, project=self.out)
             self.result["contained"] = True
         self.tree = ProcessTree(self.layout) if self.layout is not None else ProcessTree()
         ad = ProbeAdapter(self.tree, self.run_dir, self.emit)

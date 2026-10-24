@@ -1,0 +1,12 @@
+{
+  "source": "operator-relayed backend UTC request log",
+  "entitlement": {
+    "restored_utc": "2026-10-21T00:56:24.764Z",
+    "withdrawn_utc": "2026-10-21T00:55:03.397Z"
+  },
+  "backend_commit": "966fc2c610c7b9e26c8d9d9f004139532c956520",
+  "outage": {
+    "restored_utc": "2026-10-21T00:54:13.737Z",
+    "armed_utc": "2026-10-21T00:52:00.164Z"
+  }
+}

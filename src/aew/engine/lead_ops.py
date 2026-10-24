@@ -169,7 +169,7 @@ class Lead:
                 revoke(state, token_id, reason)
 
     def lead_show(self) -> dict[str, Any]:
-        state = self.k.store.read()
+        state = self.k.store.current()
         lead = state["lead"]
         return {
             "revision": state["revision"],
@@ -279,7 +279,7 @@ class Lead:
     def lead_takeover(self, *, expect_rev: int, reason: str, session_label: str | None = None) -> dict[str, Any]:
         if not reason or not reason.strip():
             raise PermissionDenied("a takeover reason is required for provenance")
-        snapshot = self.k.store.read()
+        snapshot = self.k.store.current()
         lead = snapshot["lead"]
         if lead["status"] == "vacant":
             raise IllegalTransition("the Lead seat is vacant; use `aew lead acquire`")

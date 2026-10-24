@@ -21,12 +21,15 @@ from typing import Any
 
 import pytest
 
-LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical")
+LANES = ("fast", "integration", "acceptance", "regression", "adversarial", "serial", "live", "vertical", "discovery")
 LIVE_DIR = "tests/live/"
 # The vertical UAT (docs/implementation/vertical-uat.md): its own lane and CI job, in shadow. It is expected to fail
 # on today's main, so no required job may collect it (a collected test that did not run fails assurance; one that ran
 # red blocks the merge): it is collected only by `--lane vertical`, or when named on the command line.
 VERTICAL_PATH = "tests/acceptance/test_vertical_path.py"
+# The discovery layer (docs/implementation/vertical-uat.md, section 8): its own lane, excluded from every required
+# lane's collection the same way, collected only by `--lane discovery` or when named on the command line.
+DISCOVERY_DIR = "tests/discovery/"
 LANE_KEY = pytest.StashKey[str]()
 REPORT_SCHEMA = "aew/lane-report/v1"
 DURATIONS_SCHEMA = "aew/test-durations/v1"
@@ -42,6 +45,8 @@ def count_cli_call() -> None:
     current = os.environ.get("PYTEST_CURRENT_TEST")
     if current:
         CLI_CALLS[current.rsplit(" (", 1)[0]] += 1
+
+
 SERIAL_UNDER_XDIST = (
     "serial test collected by an xdist worker: its property is timing or real-process concurrency, so it "
     "must never share the machine with other tests. Run it with `pytest --lane serial -p no:xdist` "
@@ -64,6 +69,8 @@ def lane_of(path: str, markers: Iterable[str]) -> str:
         return "live"
     if path == VERTICAL_PATH:  # before its `acceptance` marker: the vertical UAT is never an acceptance-lane test
         return "vertical"
+    if path.startswith(DISCOVERY_DIR):
+        return "discovery"
     marks = set(markers)
     if "serial" in marks:
         return "serial"
@@ -93,16 +100,21 @@ def parse_shard(spec: str) -> tuple[int, int]:
     return k, n
 
 
-def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: int) -> list[list[str]]:
-    """Deterministic longest-processing-time partition into ``shards`` bins.
-
-    Every nodeid lands in exactly one bin whatever the durations say; durations only affect balance.
-    Tests without a recorded duration count as the mean of the recorded ones: the median of a suite of millisecond
-    tests is 0, which piled every new test into one shard (equal weights = round-robin by nodeid).
-    """
+def weights(nodeids: Sequence[str], durations: Mapping[str, float]) -> dict[str, float]:
+    """Each test's weight in :func:`partition`: its recorded duration, or the mean of the recorded ones. The median of
+    a suite of millisecond tests is 0, which piled every new test into one shard (equal weights = round-robin by
+    nodeid). ``tools/ci/shard_plan.py`` estimates shards with the same weights (review of #235, F6)."""
     known = [durations[n] for n in nodeids if n in durations]
     default = statistics.fmean(known) if known else 1.0
-    weight = {n: float(durations.get(n, default)) for n in nodeids}
+    return {n: float(durations.get(n, default)) for n in nodeids}
+
+
+def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: int) -> list[list[str]]:
+    """Deterministic longest-processing-time partition into ``shards`` bins, by :func:`weights`.
+
+    Every nodeid lands in exactly one bin whatever the durations say; durations only affect balance.
+    """
+    weight = weights(nodeids, durations)
     bins: list[list[str]] = [[] for _ in range(shards)]
     loads = [0.0] * shards
     for nid in sorted(nodeids, key=lambda n: (-weight[n], n)):
@@ -192,6 +204,12 @@ class LanePlugin:
         self.durations: dict[str, float] = {}
         self.cli_calls: dict[str, int] = {}
         self.started = time.perf_counter()
+        # How much of the CI job's deadline was left as the session started: the job's setup came out of it, and the
+        # shard sizer budgets for that setup on a slow runner (tools/ci/shard_plan.py; review of #235, F3).
+        import session_deadline
+
+        job_wall = session_deadline.job_deadline()
+        self.job_remaining_s = round(job_wall - time.time(), 1) if job_wall is not None else None
         self.guard_before: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ selection
@@ -278,6 +296,12 @@ class LanePlugin:
         import harness_diagnostics
 
         outs.append(harness_diagnostics.evidence_dir(self.config))  # None when there is nowhere to copy to
+        import watchdog
+
+        outs.append(watchdog.hang_dir(self.config) / harness_diagnostics.AUTOPSY_DIR)  # G3: autopsies, deadline marks
+        from discovery import capture
+
+        outs.append(capture.out_path(self.config))  # D2's findings, beside the lane report
         return [Path(p) for p in outs if p]
 
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
@@ -308,6 +332,7 @@ class LanePlugin:
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
             "wall_s": round(time.perf_counter() - self.started, 2),
+            "job_remaining_s": self.job_remaining_s,
             "collected": sorted(self.collected),
             "lanes": dict(sorted(self.lanes.items())),
             "results": {nid: {"outcome": outcome_of(ph), "duration": round(self.durations.get(nid, 0.0), 3)}
@@ -340,11 +365,14 @@ def process_isolation():
 
 def ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
     """``tests/live`` is collected only with ``--live``: CI never collects it, so assurance is unaffected. The vertical
-    UAT is collected only with ``--lane vertical`` (its shadow job), never by a required lane's job. A path named on
-    the command line is collected either way (pytest asks this hook only of what it finds)."""
+    UAT is collected only with ``--lane vertical`` (its shadow job), never by a required lane's job, and the discovery
+    layer's ``tests/discovery`` only with ``--lane discovery``. A path named on the command line is collected either
+    way (pytest asks this hook only of what it finds)."""
     root = Path(str(config.rootpath))
     if Path(collection_path).resolve() == (root / VERTICAL_PATH).resolve():
         return None if config.getoption("aew_lane") == "vertical" else True
+    if Path(collection_path).resolve() == (root / DISCOVERY_DIR).resolve():
+        return None if config.getoption("aew_lane") == "discovery" else True
     if config.getoption("aew_live"):
         return None
     live = root / LIVE_DIR
@@ -359,11 +387,11 @@ def addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("aew-lanes", "AEW CI lanes (docs/implementation/testing-and-ci-strategy.md)")
     group.addoption("--live", dest="aew_live", action="store_true", default=False,
                     help="also collect tests/live: real harness binaries and real models (opt-in; never CI)")
-    group.addoption("--lane", dest="aew_lane", choices=LANES, default=None,
+    group.addoption("--lane", dest="aew_lane", choices=LANES, default=None, metavar="LANE",
                     help="run only this lane's tests")
     group.addoption("--shard", dest="aew_shard", default=None, metavar="K/N",
                     help="run only shard K of N (deterministic, duration-balanced)")
-    group.addoption("--durations-file", dest="aew_durations_file", default=None,
+    group.addoption("--durations-file", dest="aew_durations_file", default=None, metavar="FILE",
                     help="recorded test durations used to balance shards (default tests/durations.json)")
     group.addoption("--lane-report", dest="aew_lane_report", default=None, metavar="PATH",
                     help="write the collected set and per-test outcomes as JSON (read by tools/ci/check_assurance.py)")

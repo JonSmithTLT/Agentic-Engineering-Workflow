@@ -634,6 +634,107 @@ def test_the_write_mechanism_is_not_a_writer_and_its_callers_are():
     assert {w.module for ws in a.writers.values() for w in ws} == {"aew.m"}
 
 
+# --------------------------------------------------------- values through destructuring, returns and the command line
+
+def test_a_tuple_assignment_binds_each_target_to_its_own_element():
+    """Placement PR: `a, b = x, y` is `a = x; b = y`, not both names to both values."""
+    a = analysed("def f(aew_root):\n    first, second = 'one', 'two'\n"
+                 "    (aew_root / 'state' / first).write_text('x')\n"
+                 "    (aew_root / 'local' / second).write_text('x')\n")
+    assert sorted(a.writers) == ["local/two", "state/one"] and a.unresolved == {}
+
+
+def test_a_tuple_assignment_to_self_attributes_is_what_the_class_assigns():
+    """`self.state_path, self.live_path = Path(state_path), Path(live_path) if ... else None` (the usage meter)."""
+    a = analysed("class M:\n    def __init__(self, state_path, live_path=None):\n"
+                 "        self.state_path, self.live_path = Path(state_path), live_path\n"
+                 "    def save(self):\n        atomic_write(self.state_path, 'x')\n\n"
+                 "def f(aew_root):\n    M(aew_root / 'local' / 'meter.json').save()\n")
+    assert sorted(a.writers) == ["local/meter.json"] and a.unresolved == {}
+
+
+def test_a_name_bound_by_a_starred_or_unreadable_destructuring_is_unknown_not_a_guess():
+    a = analysed("def f(aew_root, rows):\n    first, *rest = rows\n    (aew_root / 'state' / first).write_text('x')\n"
+                 "    one, two = mystery()\n    (aew_root / 'local' / two).write_text('x')\n")
+    assert sorted(a.writers) == ["local/{}", "state/{}"], "the unknown element is a computed segment, not a value"
+
+
+def test_the_element_of_a_tuple_a_call_returns_is_read_in_the_function_that_returns_it():
+    a = analysed("def mk(wid):\n    return wid, f'work/{wid}/record.md'\n\n"
+                 "def f(aew_root):\n    wid, rel = mk('W1')\n    (aew_root / rel).write_text('x')\n")
+    assert sorted(a.writers) == ["work/W1/record.md"] and a.unresolved == {}
+
+
+def test_a_function_that_returns_something_else_than_a_tuple_leaves_its_element_unknown():
+    a = analysed("def mk():\n    return 'state/x'\n\ndef f(aew_root):\n    first, second = mk()\n"
+                 "    (aew_root / second).write_text('x')\n")
+    assert a.writers == {} and any("first directory or file name is computed" in r for r in reasons(a))
+
+
+def test_a_key_of_a_dict_a_call_returns_is_its_value_whether_the_dict_is_named_or_returned_in_a_tuple():
+    a = analysed("def draft(wid):\n    unit: dict = {'record': f'work/{wid}/record.md', 'other': 'state/o'}\n"
+                 "    return wid, unit, 'text'\n\n"
+                 "def solo():\n    return {'path': 'local/p'}\n\n"
+                 "def f(aew_root):\n    wid, unit, text = draft('W1')\n"
+                 "    (aew_root / unit['record']).write_text(text)\n"
+                 "    (aew_root / solo()['path']).write_text('x')\n")
+    assert sorted(a.writers) == ["local/p", "work/W1/record.md"] and a.unresolved == {}
+
+
+def test_a_computed_key_of_a_dict_constant_is_each_of_its_values():
+    a = analysed("NAMES = {'a': 'ticket.md', 'b': 'story.md'}\n\n"
+                 "def f(aew_root, kind):\n    (aew_root / 'work' / NAMES[kind]).write_text('x')\n")
+    assert sorted(a.writers) == ["work/story.md", "work/ticket.md"]
+
+
+def test_a_dict_from_a_parameter_is_not_read():
+    a = analysed("def f(aew_root, unit):\n    (aew_root / unit['record']).write_text('x')\n")
+    assert a.writers == {} and any("first directory or file name is computed" in r for r in reasons(a))
+
+
+def test_a_loop_over_literal_rows_takes_the_element_of_each_row_for_each_target():
+    a = analysed("def f(aew_root):\n    for name, text in (('a', '1'), ('b', '2')):\n"
+                 "        (aew_root / 'state' / name).write_text(text)\n")
+    assert sorted(a.writers) == ["state/a", "state/b"]
+
+
+# A value on the command line: the supervisor reads `--run-dir`, and the start of it spells the value.
+SUPERVISOR = ("import argparse\nfrom pathlib import Path\n\n"
+              "def write_it(run_dir):\n    (run_dir / 'heartbeat').write_text('x')\n\n"
+              "def main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--run-dir')\n"
+              "    args = parser.parse_args()\n    write_it(Path(args.run_dir))\n")
+START = ("import sys\n\ndef launch(aew_root):\n    directory = aew_root / 'local' / 'runs' / 'r'\n"
+         "    spawn([sys.executable, '-m', 'aew.sup', '--run-dir', str(directory)])\n")
+
+
+def test_a_value_on_the_command_line_is_what_the_start_of_that_process_spells():
+    a = analysed(START, extra={"aew.sup": SUPERVISOR})
+    assert sorted(a.writers) == ["local/runs/r/heartbeat"] and a.unresolved == {}
+    again = "\ndef again(aew_root):\n    spawn(['-m', 'aew.sup', '--run-dir', str(aew_root / 'local' / 's')])\n"
+    two = analysed(START + again, extra={"aew.sup": SUPERVISOR})
+    assert sorted(two.writers) == ["local/runs/r/heartbeat", "local/s/heartbeat"]
+
+
+STARTS = {
+    "another process": "spawn(['-m', 'aew.other', '--run-dir', str(aew_root / 'local' / 'r')])",
+    "another flag": "spawn(['-m', 'aew.sup', '--state-dir', str(aew_root / 'local' / 'r')])",
+    "no flag": "spawn(['-m', 'aew.sup'])",
+    "no start": "pass",
+}
+
+
+@pytest.mark.parametrize("start", [f"def launch(aew_root):\n    {body}\n" for body in STARTS.values()],
+                         ids=list(STARTS))
+def test_a_command_line_value_no_start_of_the_process_passes_is_named_by_its_starter_and_unresolved(start):
+    a = analysed(start, extra={"aew.sup": SUPERVISOR})
+    assert a.writers == {} and any("which no AEW start of it passes" in r for r in reasons(a))
+
+
+def test_an_attribute_of_something_that_is_not_parsed_arguments_is_not_a_command_line_value():
+    a = analysed("def f(aew_root, args):\n    (aew_root / args.name).write_text('x')\n")
+    assert a.writers == {} and all("no AEW start" not in r for r in reasons(a))
+
+
 # ------------------------------------------------------------------------------------------------ the declared set
 
 def test_the_first_entry_of_every_placed_path_is_what_the_declared_set_is_held_to():

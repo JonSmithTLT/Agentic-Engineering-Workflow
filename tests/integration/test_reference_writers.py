@@ -302,6 +302,11 @@ KNOWN = {
     ("state/handoffs/H-{}.md", "aew.engine.lead_ops", "Lead.write_handoff"),
     ("knowledge/PROJECT.md", "aew.engine.store", "ControlStore.create"),
     ("local/control.lock", "aew.engine.lock", "FileLock._open"),
+    # placed by the command-line, destructuring and returned-dict rules (the placement pull request)
+    ("local/harness/runs/{}/run.json", "aew.harness.runlog", "write_record"),
+    ("local/harness/runs/{}/heartbeat", "aew.harness.runlog", "beat"),
+    ("work/{}/plan-v{}.md", "aew.engine.work_ops", "WorkUnits.propose"),
+    ("history/audits/{}.yaml", "aew.history.store", "History.write_record"),
 }
 
 

@@ -2,12 +2,12 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 335
+      "lower-bound": 344
     },
     "by_family": {
       "entry-points": 6,
       "modules": 174,
-      "writers": 161
+      "writers": 170
     },
     "by_family_and_coverage": {
       "entry-points": {
@@ -17,12 +17,12 @@
         "lower-bound": 174
       },
       "writers": {
-        "lower-bound": 161
+        "lower-bound": 170
       }
     },
-    "digest": "sha256:e9398857e2949ffadca96bc00ca4c8f1e51ac0b5bee5039d6fed8ce6aa3b32e1",
-    "records": 341,
-    "unresolved": 69
+    "digest": "sha256:d59936d95ab916305d40bb46937337c158918cbb024cce3443197ae5c14d1c21",
+    "records": 350,
+    "unresolved": 54
   },
   "gaps": [
     {
@@ -101,7 +101,7 @@
       "family": "writers",
       "module": "aew.engine.faults",
       "symbol": "pause",
-      "why": "open of a path this reading cannot place: `path` is bound by a `with`, an unpacking or an `except`"
+      "why": "open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
@@ -160,56 +160,14 @@
     {
       "family": "writers",
       "module": "aew.engine.work_ops",
-      "symbol": "WorkCommands.work_create",
-      "why": "session.write of a path this reading cannot place: a subscript, `unit['record']`"
-    },
-    {
-      "family": "writers",
-      "module": "aew.engine.work_ops",
       "symbol": "WorkUnits.propose",
-      "why": "session.write of a path this reading cannot place: `path` is bound by a `with`, an unpacking or an `except`"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.bridge",
-      "symbol": "stop_listener",
-      "why": "shutil.rmtree of a path this reading cannot place: `self._private_dir` is not assigned in its class"
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
     },
     {
       "family": "writers",
       "module": "aew.harness.broker_liveness",
       "symbol": "write",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.containment.layout",
-      "symbol": "for_run",
-      "why": "Path.mkdir of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.containment.layout",
-      "symbol": "for_run",
-      "why": "Path.write_bytes of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.containment.layout",
-      "symbol": "private_git",
-      "why": "Path.mkdir of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.containment.layout",
-      "symbol": "private_git",
-      "why": "shutil.copy2 of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.containment.layout",
-      "symbol": "retire_private_git",
-      "why": "shutil.rmtree of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
     },
     {
       "family": "writers",
@@ -233,13 +191,13 @@
       "family": "writers",
       "module": "aew.harness.containment.probe",
       "symbol": "self_test",
-      "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
+      "why": "Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
     },
     {
       "family": "writers",
       "module": "aew.harness.containment.probe",
       "symbol": "self_test",
-      "why": "Path.write_bytes of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`"
+      "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
     },
     {
       "family": "writers",
@@ -285,33 +243,9 @@
     },
     {
       "family": "writers",
-      "module": "aew.harness.operator_endpoint",
-      "symbol": "OperatorEndpoint.close",
-      "why": "shutil.rmtree of a path this reading cannot place: nothing assigns it a path"
-    },
-    {
-      "family": "writers",
       "module": "aew.harness.runlog",
       "symbol": "_open_append",
-      "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.runlog",
-      "symbol": "beat",
-      "why": "Path.touch of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.runlog",
-      "symbol": "beat",
-      "why": "atomic_write of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.runlog",
-      "symbol": "beat",
-      "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
     },
     {
       "family": "writers",
@@ -323,13 +257,7 @@
       "family": "writers",
       "module": "aew.harness.runlog",
       "symbol": "write_live",
-      "why": "atomic_write of a path this reading cannot place: `self.live_path` is not assigned in its class"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.runlog",
-      "symbol": "write_record",
-      "why": "atomic_write of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
+      "why": "atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call"
     },
     {
       "family": "writers",
@@ -342,12 +270,6 @@
       "module": "aew.harness.supervisor",
       "symbol": "Supervisor.start",
       "why": "Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.supervisor",
-      "symbol": "Supervisor.start",
-      "why": "Path.write_text of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
     },
     {
       "family": "writers",
@@ -365,25 +287,13 @@
       "family": "writers",
       "module": "aew.harness.usage_live",
       "symbol": "Meter._persist",
-      "why": "atomic_write of a path this reading cannot place: `self.state_path` is not assigned in its class"
+      "why": "atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds"
     },
     {
       "family": "writers",
       "module": "aew.history.store",
       "symbol": "History.append",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
-    },
-    {
-      "family": "writers",
-      "module": "aew.history.store",
-      "symbol": "History.write_record",
-      "why": "session.write of a path this reading cannot place: `rel` is bound by a `with`, an unpacking or an `except`"
-    },
-    {
-      "family": "writers",
-      "module": "aew.history.store",
-      "symbol": "prewrite",
-      "why": "create_exclusive of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
     },
     {
       "family": "writers",
@@ -407,19 +317,19 @@
       "family": "writers",
       "module": "aew.stg02.ledger",
       "symbol": "Ledger.__init__",
-      "why": "Path.mkdir of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow"
+      "why": "Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
     },
     {
       "family": "writers",
       "module": "aew.stg02.ledger",
       "symbol": "Ledger._connect",
-      "why": "sqlite3.connect of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow"
+      "why": "sqlite3.connect of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
     },
     {
       "family": "writers",
       "module": "aew.stg02.server",
       "symbol": "_main",
-      "why": "Path.write_text of a path this reading cannot place: the attribute `a.write_driver_config` is not a value this reading can follow"
+      "why": "Path.write_text of a path this reading cannot place: `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
     },
     {
       "family": "writers",
@@ -437,7 +347,7 @@
       "family": "writers",
       "module": "aew.workspace.worktrees",
       "symbol": "remove",
-      "why": "shutil.rmtree of a path this reading cannot place: `int_ws['path']`, from a value that is not a dict literal; `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `ws['path']`, from a value that is not a dict literal; a subscript, `unit['workspace']['path']`; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
+      "why": "shutil.rmtree of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
     }
   ],
   "records": {
@@ -5320,6 +5230,197 @@
       },
       "family": "writers"
     },
+    "writers:history/audits/{}.yaml": {
+      "anchor": {
+        "module": "aew.history.store",
+        "symbol": "History.write_record"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "history",
+        "named_by": [],
+        "prefix": "history/audits/{}.yaml",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "store-transaction",
+            "module": "aew.history.store",
+            "symbol": "History.write_record",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:history/lead": {
+      "anchor": {
+        "module": "aew.history.store",
+        "symbol": "prewrite"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "history",
+        "named_by": [],
+        "prefix": "history/lead",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.history.store",
+            "symbol": "prewrite",
+            "via": [
+              "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.history.store",
+              "symbol": "prewrite",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:history/lead/{}.yaml": {
+      "anchor": {
+        "module": "aew.history.store",
+        "symbol": "History.write_record"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "history",
+        "named_by": [],
+        "prefix": "history/lead/{}.yaml",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "store-transaction",
+            "module": "aew.history.store",
+            "symbol": "History.write_record",
+            "via": [
+              "session.write"
+            ]
+          },
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.history.store",
+            "symbol": "prewrite",
+            "via": [
+              "create_exclusive"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.history.store",
+              "symbol": "prewrite",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:history/seg-{}.yaml": {
       "anchor": {
         "module": "aew.history.store",
@@ -7065,6 +7166,412 @@
       },
       "family": "writers"
     },
+    "writers:local/harness/runs/R-{}-{}/.aew-mask": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/.aew-mask",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "for_run",
+            "via": [
+              "Path.write_bytes"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/events.jsonl": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "_open_append"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/events.jsonl",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "_open_append",
+            "via": [
+              "os.open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.harness.runlog",
+              "symbol": "_open_append",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/git": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "retire_private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/git",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "retire_private_git",
+            "via": [
+              "shutil.rmtree"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/harness": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/harness",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "for_run",
+            "via": [
+              "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/heartbeat": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "beat"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/heartbeat",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "beat",
+            "via": [
+              "Path.touch",
+              "atomic_write",
+              "os.open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/prompt.md": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": "Supervisor.start"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/prompt.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.supervisor",
+            "symbol": "Supervisor.start",
+            "via": [
+              "Path.write_text"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/R-{}-{}/run.json": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "write_record"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/run.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "write_record",
+            "via": [
+              "atomic_write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:local/harness/runs/R-{}-{}/scratch": {
       "anchor": {
         "module": "aew.harness.containment.layout",
@@ -7307,6 +7814,479 @@
       },
       "family": "writers"
     },
+    "writers:local/harness/runs/{}/.aew-mask": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/.aew-mask",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "for_run",
+            "via": [
+              "Path.write_bytes"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/events.jsonl": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "_open_append"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/events.jsonl",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "_open_append",
+            "via": [
+              "os.open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.harness.runlog",
+              "symbol": "_open_append",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/git": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "retire_private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/git",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "retire_private_git",
+            "via": [
+              "shutil.rmtree"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/git/index": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/git/index",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "private_git",
+            "via": [
+              "shutil.copy2"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/git/objects": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/git/objects",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "private_git",
+            "via": [
+              "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/harness": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/harness",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.containment.layout",
+            "symbol": "for_run",
+            "via": [
+              "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/heartbeat": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "beat"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/heartbeat",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "beat",
+            "via": [
+              "Path.touch",
+              "atomic_write",
+              "os.open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/prompt.md": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": "Supervisor.start"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/prompt.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.supervisor",
+            "symbol": "Supervisor.start",
+            "via": [
+              "Path.write_text"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:local/harness/runs/{}/requests": {
       "anchor": {
         "module": "aew.harness.runlog",
@@ -7421,6 +8401,241 @@
               "module": "aew.process_kind",
               "symbol": "require_writer",
               "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/requests/{}-{}-interrupt.json": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "deliver_request"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/requests/{}-{}-interrupt.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "deliver_request",
+            "via": [
+              "atomic_write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/requests/{}-{}-send.json": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "deliver_request"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/requests/{}-{}-send.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "deliver_request",
+            "via": [
+              "atomic_write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/requests/{}-{}-stop.json": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "deliver_request"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/requests/{}-{}-stop.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "deliver_request",
+            "via": [
+              "atomic_write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/{}/run.json": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "write_record"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/{}/run.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "write_record",
+            "via": [
+              "atomic_write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             }
           ]
         }
@@ -11742,14 +12957,14 @@
           {
             "module": "aew.engine.faults",
             "symbol": "pause",
-            "why": "open of a path this reading cannot place: `path` is bound by a `with`, an unpacking or an `except`"
+            "why": "open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "open",
-        "reason": "`path` is bound by a `with`, an unpacking or an `except`"
+        "reason": "element 2 of `item.partition(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -11845,190 +13060,6 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.engine.work_ops:WorkCommands.work_create:session.write": {
-      "anchor": {
-        "module": "aew.engine.work_ops",
-        "symbol": "WorkCommands.work_create"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.work_ops",
-            "symbol": "WorkCommands.work_create",
-            "why": "session.write of a path this reading cannot place: a subscript, `unit['record']`"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "store-transaction",
-        "primitive": "session.write",
-        "reason": "a subscript, `unit['record']`"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.engine.work_ops:WorkUnits.propose:session.write": {
-      "anchor": {
-        "module": "aew.engine.work_ops",
-        "symbol": "WorkUnits.propose"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.work_ops",
-            "symbol": "WorkUnits.propose",
-            "why": "session.write of a path this reading cannot place: `path` is bound by a `with`, an unpacking or an `except`"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "store-transaction",
-        "primitive": "session.write",
-        "reason": "`path` is bound by a `with`, an unpacking or an `except`"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.bridge:stop_listener:shutil.rmtree": {
-      "anchor": {
-        "module": "aew.harness.bridge",
-        "symbol": "stop_listener"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.bridge",
-            "symbol": "stop_listener",
-            "why": "shutil.rmtree of a path this reading cannot place: `self._private_dir` is not assigned in its class"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "shutil.rmtree",
-        "reason": "`self._private_dir` is not assigned in its class"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.containment.layout:for_run:Path.mkdir": {
-      "anchor": {
-        "module": "aew.harness.containment.layout",
-        "symbol": "for_run"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.layout",
-            "symbol": "for_run",
-            "why": "Path.mkdir of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.mkdir",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.containment.layout:for_run:Path.write_bytes": {
-      "anchor": {
-        "module": "aew.harness.containment.layout",
-        "symbol": "for_run"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.layout",
-            "symbol": "for_run",
-            "why": "Path.write_bytes of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.write_bytes",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.containment.layout:private_git:Path.mkdir": {
-      "anchor": {
-        "module": "aew.harness.containment.layout",
-        "symbol": "private_git"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.layout",
-            "symbol": "private_git",
-            "why": "Path.mkdir of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.mkdir",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.containment.layout:private_git:shutil.copy2": {
-      "anchor": {
-        "module": "aew.harness.containment.layout",
-        "symbol": "private_git"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.layout",
-            "symbol": "private_git",
-            "why": "shutil.copy2 of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "shutil.copy2",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.containment.layout:retire_private_git:shutil.rmtree": {
-      "anchor": {
-        "module": "aew.harness.containment.layout",
-        "symbol": "retire_private_git"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.layout",
-            "symbol": "retire_private_git",
-            "why": "shutil.rmtree of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "shutil.rmtree",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
     "writers:unresolved:aew.harness.containment.probe:_markers:Path.mkdir": {
       "anchor": {
         "module": "aew.harness.containment.probe",
@@ -12110,14 +13141,14 @@
           {
             "module": "aew.harness.containment.probe",
             "symbol": "self_test",
-            "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
+            "why": "Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.unlink",
-        "reason": "`integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
+        "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
       },
       "family": "writers"
     },
@@ -12133,14 +13164,14 @@
           {
             "module": "aew.harness.containment.probe",
             "symbol": "self_test",
-            "why": "Path.write_bytes of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`"
+            "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.write_bytes",
-        "reason": "`integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`"
+        "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
       },
       "family": "writers"
     },
@@ -12236,121 +13267,6 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.operator_endpoint:OperatorEndpoint.close:shutil.rmtree": {
-      "anchor": {
-        "module": "aew.harness.operator_endpoint",
-        "symbol": "OperatorEndpoint.close"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.operator_endpoint",
-            "symbol": "OperatorEndpoint.close",
-            "why": "shutil.rmtree of a path this reading cannot place: nothing assigns it a path"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "shutil.rmtree",
-        "reason": "nothing assigns it a path"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:_open_append:os.open": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "_open_append"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "_open_append",
-            "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "os.open",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:beat:Path.touch": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "beat"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "beat",
-            "why": "Path.touch of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.touch",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:beat:atomic_write": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "beat"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "beat",
-            "why": "atomic_write of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "atomic_write",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:beat:os.open": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "beat"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "beat",
-            "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "os.open",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
     "writers:unresolved:aew.harness.runlog:take_requests:Path.unlink": {
       "anchor": {
         "module": "aew.harness.runlog",
@@ -12386,37 +13302,14 @@
           {
             "module": "aew.harness.runlog",
             "symbol": "write_live",
-            "why": "atomic_write of a path this reading cannot place: `self.live_path` is not assigned in its class"
+            "why": "atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "atomic_write",
-        "reason": "`self.live_path` is not assigned in its class"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:write_record:atomic_write": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "write_record"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "write_record",
-            "why": "atomic_write of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "atomic_write",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
+        "reason": "`run_dir` of `HarnessAdapter.__init__` is not passed at a call"
       },
       "family": "writers"
     },
@@ -12443,29 +13336,6 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.supervisor:Supervisor.start:Path.write_text": {
-      "anchor": {
-        "module": "aew.harness.supervisor",
-        "symbol": "Supervisor.start"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.supervisor",
-            "symbol": "Supervisor.start",
-            "why": "Path.write_text of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.write_text",
-        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
-      },
-      "family": "writers"
-    },
     "writers:unresolved:aew.harness.usage_live:Meter._persist:atomic_write": {
       "anchor": {
         "module": "aew.harness.usage_live",
@@ -12478,60 +13348,14 @@
           {
             "module": "aew.harness.usage_live",
             "symbol": "Meter._persist",
-            "why": "atomic_write of a path this reading cannot place: `self.state_path` is not assigned in its class"
+            "why": "atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "atomic_write",
-        "reason": "`self.state_path` is not assigned in its class"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.history.store:History.write_record:session.write": {
-      "anchor": {
-        "module": "aew.history.store",
-        "symbol": "History.write_record"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.history.store",
-            "symbol": "History.write_record",
-            "why": "session.write of a path this reading cannot place: `rel` is bound by a `with`, an unpacking or an `except`"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "store-transaction",
-        "primitive": "session.write",
-        "reason": "`rel` is bound by a `with`, an unpacking or an `except`"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.history.store:prewrite:create_exclusive": {
-      "anchor": {
-        "module": "aew.history.store",
-        "symbol": "prewrite"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.history.store",
-            "symbol": "prewrite",
-            "why": "create_exclusive of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "create_exclusive",
-        "reason": "under `.aew`, but its first directory or file name is computed"
+        "reason": "`run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds"
       },
       "family": "writers"
     },
@@ -12570,14 +13394,14 @@
           {
             "module": "aew.stg02.ledger",
             "symbol": "Ledger.__init__",
-            "why": "Path.mkdir of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow"
+            "why": "Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.mkdir",
-        "reason": "the attribute `a.state_dir` is not a value this reading can follow"
+        "reason": "`--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
       },
       "family": "writers"
     },
@@ -12593,14 +13417,14 @@
           {
             "module": "aew.stg02.ledger",
             "symbol": "Ledger._connect",
-            "why": "sqlite3.connect of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow"
+            "why": "sqlite3.connect of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "sqlite3.connect",
-        "reason": "the attribute `a.state_dir` is not a value this reading can follow"
+        "reason": "`--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
       },
       "family": "writers"
     },
@@ -12616,14 +13440,14 @@
           {
             "module": "aew.stg02.server",
             "symbol": "_main",
-            "why": "Path.write_text of a path this reading cannot place: the attribute `a.write_driver_config` is not a value this reading can follow"
+            "why": "Path.write_text of a path this reading cannot place: `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.write_text",
-        "reason": "the attribute `a.write_driver_config` is not a value this reading can follow"
+        "reason": "`--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it"
       },
       "family": "writers"
     },
@@ -12685,14 +13509,14 @@
           {
             "module": "aew.workspace.worktrees",
             "symbol": "remove",
-            "why": "shutil.rmtree of a path this reading cannot place: `int_ws['path']`, from a value that is not a dict literal; `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `ws['path']`, from a value that is not a dict literal; a subscript, `unit['workspace']['path']`; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
+            "why": "shutil.rmtree of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "shutil.rmtree",
-        "reason": "`int_ws['path']`, from a value that is not a dict literal; `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `ws['path']`, from a value that is not a dict literal; a subscript, `unit['workspace']['path']`; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
+        "reason": "`integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -12746,6 +13570,186 @@
               "module": "aew.history.store",
               "symbol": "prewrite",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:work/{}-{}/epic.md": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkCommands.work_create"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "work",
+        "named_by": [],
+        "prefix": "work/{}-{}/epic.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "store-transaction",
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_create",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:work/{}-{}/story.md": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkCommands.work_create"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "work",
+        "named_by": [],
+        "prefix": "work/{}-{}/story.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "store-transaction",
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_create",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:work/{}-{}/ticket.md": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkCommands.work_create"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "work",
+        "named_by": [],
+        "prefix": "work/{}-{}/ticket.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "store-transaction",
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_create",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13347,6 +14351,62 @@
             {
               "module": "aew.engine.disposition_ops",
               "symbol": "Dispositions._write",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:work/{}/plan-v{}.md": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkUnits.propose"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "work",
+        "named_by": [],
+        "prefix": "work/{}/plan-v{}.md",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "store-transaction",
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkUnits.propose",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.engine.work_ops",
+              "symbol": "WorkUnits.propose",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
             }
           ]

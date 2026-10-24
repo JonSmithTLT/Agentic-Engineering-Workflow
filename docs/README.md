@@ -226,6 +226,7 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
 | [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |
 | [`index.json`](reference/index.json) | The machine index: every record by id, with its anchor, basis and coverage label, and the measured counts |
+| [`state-machines.md`](reference/state-machines.md) | The Ticket state machine (`aew.engine.transitions`): every state, edge, guard and reason rule, which edges code that does not ask the table can take; the configuration and live-usage state sets |
 | [`writers.md`](reference/writers.md) | Every path under `.aew` that AEW code writes, the module and function that writes it, its mechanism and the entry points that reach it; the writes the reading could not place |
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))

@@ -1253,9 +1253,11 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   there; its reason now says so.
 
 ### The shim (F28 §3.2; `containment/shim.py`)
-- **What it is:** standard library only, run by its file path with `-I`, as the harness's parent in the one sandbox
-  (each bubblewrap call has a namespace of its own). It never execs away, passes its standard streams to the harness,
-  forwards `SIGTERM`, `SIGINT` and `SIGHUP`, and exits with the harness's status.
+- **What it is:** standard library only, its file's text run with `python -I -c` as the self-test's probe is, as the
+  harness's parent in the one sandbox (each bubblewrap call has a namespace of its own). It never execs away, passes
+  its standard streams to the harness, forwards `SIGTERM`, `SIGINT` and `SIGHUP`, and exits with the harness's status.
+  It is not an AEW entry point (`aew.process_kind`): it imports nothing of AEW and never opens the store, so it has no
+  `__main__` block and declares nothing.
 - **Its legs:** in, `shim/server.sock` to the harness server's `127.0.0.1:4100` (the supervisor reaches the server
   this way); out, `127.0.0.1:4101` to `relay.sock` and, with egress, `127.0.0.1:4102` to `egress.sock`. Bytes move
   both ways as they come, with half-closes passed on. A leg it cannot set up ends it before the harness starts (exit

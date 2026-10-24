@@ -5,6 +5,7 @@ network inside the sandbox is tests/integration/test_containment.py's (Linux).""
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import replace
@@ -150,4 +151,6 @@ def test_the_shim_spec_forwards_the_server_in_and_the_relay_and_egress_out_on_fi
                     "out": [{"port": netns.PROVIDER_PORT, "unix": os.path.join("/n", netns.RELAY)},
                             {"port": netns.EGRESS_PORT, "unix": os.path.join("/n", netns.EGRESS)}]}
     argv = netns.shim_argv(spec, ["opencode", "serve"])
-    assert argv[:3] == [sys.executable, "-I", netns.SHIM] and argv[-3:] == ["--", "opencode", "serve"]
+    assert argv[:3] == [sys.executable, "-I", "-c"] and argv[-3:] == ["--", "opencode", "serve"]
+    with open(netns.SHIM, encoding="utf-8") as f:  # the shim's own text, run with an explicit call to its main
+        assert argv[3] == f.read() + "\nsys.exit(main(sys.argv[1:]))\n" and json.loads(argv[4]) == spec

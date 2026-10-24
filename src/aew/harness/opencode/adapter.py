@@ -287,8 +287,8 @@ class OpenCodeAdapter(HarnessAdapter):
                                           "harness's environment or configuration, so the harness was not started; "
                                           "keep the provider's key out of every other variable and setting",
                                           reason="provider_secret_in_sandbox", variables=leaked)
-        self.server = Server.start(functools.partial(self.tree.spawn, network_shim=True), command, env=env,
-                                   cwd=self.directory, log_path=self.state_dir / "server.log",
+        spawn = self.tree.spawn if network is None else functools.partial(self.tree.spawn, network_shim=True)
+        self.server = Server.start(spawn, command, env=env, cwd=self.directory, log_path=self.state_dir / "server.log",
                                    **({"port": netns.SERVER_PORT, "unix": network.server_socket}
                                       if network is not None else {}))
         del env

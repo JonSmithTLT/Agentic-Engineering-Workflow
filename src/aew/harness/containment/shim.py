@@ -13,11 +13,13 @@ the layout binds in (``layout.Layout.net_dir``):
 It holds no credential and no authority: it moves bytes, both ways, as they come (a ``sendall`` that blocks is the
 backpressure; one side's end of stream is passed on as a half-close, and the connection ends when both have ended).
 
-It runs as the harness's parent inside the one sandbox, so the two share its network namespace: ``python -I shim.py
-<spec> -- <harness argv>``. Its listeners are bound before the harness starts, it passes its standard streams to the
-harness, and it exits with the harness's status. It never execs away: the run's process tree ends both together
-(F28 §3.2). Standard library only, run by its file path with ``-I``: what runs in the sandbox is this file, whatever
-an environment variable or the working directory says.
+It runs as the harness's parent inside the one sandbox, so the two share its network namespace: ``python -I -c
+<this file's text> <spec> -- <harness argv>`` (``netns.shim_argv``). Its listeners are bound before the harness
+starts, it passes its standard streams to the harness, and it exits with the harness's status. It never execs away:
+the run's process tree ends both together (F28 §3.2). Standard library only, and run as the self-test's probe is,
+from its text with ``-I``: what runs in the sandbox is this file, whatever an environment variable or the working
+directory says. It is not an AEW entry point (``aew.process_kind``): it imports nothing of AEW and never opens the
+store, so it declares nothing and has no ``__main__`` block.
 """
 
 from __future__ import annotations
@@ -139,7 +141,3 @@ def main(argv: list[str]) -> int:
         signal.signal(sig, lambda s, _f: proc.send_signal(s))
     code = proc.wait()
     return 128 - code if code < 0 else code
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

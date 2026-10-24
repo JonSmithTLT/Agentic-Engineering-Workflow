@@ -23,6 +23,7 @@ operator's own proxy variables there are the relay's, for its upstream.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -118,8 +119,15 @@ def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | 
 
 
 def shim_argv(spec: Mapping[str, Any], argv: list[str]) -> list[str]:
-    """``argv`` under the shim: run by its file path, isolated, with the interpreter AEW runs on."""
-    return [sys.executable, "-I", SHIM, json.dumps(spec, separators=(",", ":")), "--", *argv]
+    """``argv`` under the shim: its text run with ``-c``, isolated, by the interpreter AEW runs on (as the self-test's
+    probe is; the shim's own docstring says why it is not an entry point)."""
+    return [sys.executable, "-I", "-c", _shim_source(), json.dumps(spec, separators=(",", ":")), "--", *argv]
+
+
+@functools.cache
+def _shim_source() -> str:
+    with open(SHIM, encoding="utf-8") as f:
+        return f.read() + "\nsys.exit(main(sys.argv[1:]))\n"
 
 
 def listen(path: str) -> socket.socket:

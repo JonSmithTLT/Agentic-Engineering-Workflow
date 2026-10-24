@@ -1126,6 +1126,18 @@ skipped:
       writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
       test_doctor.py, and the group rule through
       test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_walk_refused_the_group_keeps_the_record_off_while_its_owner_only_walk_leaves_a_path: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_create_over_a_store_directory_holding_a_file_it_cannot_change_publishes_the_record_off: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
     tests/integration/test_store_group.py::test_a_store_path_the_walk_cannot_change_at_the_target_leaves_the_record_there_and_wis_met: >-
       POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
       store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's

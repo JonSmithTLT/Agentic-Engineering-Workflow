@@ -30,7 +30,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
 import group_host as gh  # noqa: E402
-from store_model import init, make_store, one_transaction  # noqa: E402
+from store_model import declared, init, make_store, one_transaction  # noqa: E402
 
 from aew.engine import store as store_mod  # noqa: E402
 from aew.engine import store_group as sg  # noqa: E402
@@ -1323,6 +1323,67 @@ def test_the_record_counts_only_a_control_file_that_is_a_file_with_one_name_of_o
     assert store._at(target)
     monkeypatch.setattr(store_mod.os, "geteuid", lambda: os.getuid() + 1)  # as another account's process sees it
     assert not store._at(target)
+
+
+@posix
+def test_a_walk_refused_the_group_keeps_the_record_off_while_its_owner_only_walk_leaves_a_path(tmp_path, monkeypatch):
+    """D-CS1-1's erratum, its third amendment (1), through the refused-group fallback: root adds the local AEW group
+    while a session is open, so the commit's comparison walks toward it; the file system refuses the group on a path
+    of this process's, so the process lacks it and walks to the owner-only target instead (P3, G4); that walk leaves a
+    file with a second name. The comparison takes the owner-only walk's result: the commit publishes the control file
+    at the in-progress mode, and the next commit keeps it there until a walk changes every path."""
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid, user_private=False))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    record, control = root / "state" / "log" / "000001.yaml", root / "state" / "control.yaml"
+    os.link(record, tmp_path / "snapshot.yaml")
+    os.chmod(record, 0o640)  # off the owner-only target, and the walk cannot narrow a file with two names
+    real = os.fchown
+
+    def fchown(fd, uid, gid):
+        if gid == s:
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        return real(fd, uid, gid)
+
+    store = make_store(root)
+    with store.session() as session:  # the open: the record is at the owner-only target, so nothing is walked
+        host.host = gh.make_host(primary=egid, user_private=False, aew=s)
+        monkeypatch.setattr(store_mod.os, "fchown", fchown)
+        k = session.state["counters"]["n"] + 1
+        session.state["counters"]["n"] = k
+        session.commit(store_mod.Transition(op="bump", actor={"kind": "test"}, events=declared(k)))
+    assert store._registration is not None and store._registration.refused == s  # the walk was refused the group
+    assert stat.S_IMODE(os.lstat(control).st_mode) == store_mod.WALKING_FILE_MODE
+    one_transaction(store)
+    assert stat.S_IMODE(os.lstat(control).st_mode) == store_mod.WALKING_FILE_MODE
+    os.unlink(tmp_path / "snapshot.yaml")
+    one_transaction(store)
+    assert at(root, egid, OWNER_ONLY) == {}
+
+
+@posix
+def test_create_over_a_store_directory_holding_a_file_it_cannot_change_publishes_the_record_off(tmp_path, monkeypatch):
+    """D-CS1-1's erratum, its third amendment (3), at ``create``: over a store directory an earlier attempt left,
+    holding a file with a second name off the target, the walk is incomplete, so revision 0's control file is published
+    at the in-progress mode, and the record is at no target until a walk changes every path."""
+    egid, s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid, user_private=False, aew=s))
+    root = tmp_path / ".aew"
+    (root / "state").mkdir(parents=True, mode=0o700)
+    left = root / "state" / "left.md"
+    left.write_bytes(b"left\n")
+    os.chmod(left, 0o600)
+    os.link(left, tmp_path / "snapshot.md")
+    store = init(root)
+    control = root / "state" / "control.yaml"
+    assert stat.S_IMODE(os.lstat(control).st_mode) == store_mod.WALKING_FILE_MODE
+    assert not store.record_at(store.group_view().target)
+    assert ("state/left.md", "a file with 2 names") in store.walk_refusals()
+    os.unlink(tmp_path / "snapshot.md")
+    one_transaction(store)
+    assert at(root, s, GROUP_READ) == {}
 
 
 @posix

@@ -89,3 +89,16 @@ def test_a_missing_control_file_is_an_error_at_once_not_a_retry(tmp_path, monkey
     with pytest.raises(FileNotFoundError):
         load_control(tmp_path)
     assert len(reads) == 1 and sleeps == []
+
+
+def test_the_racing_read_patch_reaches_only_the_tests_own_thread(tmp_path, monkeypatch):
+    """A thread an earlier test left running reads for real while the patch is on, and its read is not counted
+    (review of #242 at 8d75ea4c, N1)."""
+    other = tmp_path / "other.bin"
+    other.write_bytes(b"1")
+    reads, _ = _racing_reads(monkeypatch, None)  # every read of the test's own thread fails
+    seen: list[bytes] = []
+    thread = threading.Thread(target=lambda: seen.append(other.read_bytes()))
+    thread.start()
+    thread.join(10)
+    assert seen == [b"1"] and reads == []

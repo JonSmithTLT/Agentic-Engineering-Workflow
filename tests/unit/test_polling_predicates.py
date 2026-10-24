@@ -3,9 +3,8 @@
 A file another thread or process replaces can fail to read for a moment on Windows: ``os.replace`` over a file a reader
 has open fails with a sharing violation, and a read of the old file while it is delete-pending raises
 ``PermissionError``. A predicate polled by ``until`` must then answer "not yet", and a test whose predicate raises
-instead fails at random. The class has two forms, a lambda passed to a polling helper (``until``, ``wait_for``,
-``wait_until``, and the private ones the tests define: ``_wait_for``, ``bounded_wait``, ``waiting``, ``_retrying``)
-that:
+instead fails at random. The class has two forms, a lambda passed to a polling helper named in ``POLLERS`` (``until``,
+``wait_for``, ``wait_until``, ``_wait_for``, ``bounded_wait``, ``waiting``, ``_retrying``: a list by hand) that:
 - reads a file raw, with ``.read_text(``, ``.read_bytes(`` or the builtin ``open(``: ``PermissionError`` at that moment
   (#241's run at b9c4a6b6, ``integration 12/16 (windows-latest)``, test_steering_loop.py reading
   ``.aew/local/steering/loop.json`` while the steering loop replaced it). Read through tests/helpers/racing_read.py,
@@ -30,6 +29,8 @@ detectors written separately enumerate the invariant over every test file, and m
   names of the functions in src/aew whose return annotation, as written, ends in ``| None``.
 
 What both miss (pinned below), each a defect the reviewer reads for, and neither detector claims it:
+- a poller not in ``POLLERS``, which nothing finds: ``Chat.receive(timeout, gone=...)`` (tests/helpers/vertical/chat.py)
+  calls ``gone`` in a sleeping loop and is not listed; no caller of it reads a file;
 - a predicate that is a named function (``until(ready)``) or a lambda bound to a name (``pred = lambda: ...``): a raw
   read inside it is not seen;
 - a predicate given by a keyword its poller's definition does not call (``until(cond=lambda: ...)``: ``cond`` is
@@ -42,11 +43,12 @@ What both miss (pinned below), each a defect the reviewer reads for, and neither
   ``load_control``): the commonest spelling of the class here. A name-based scan (an over-approximation) finds about 45
   polled predicates that call a function that reads raw. Most read a file that is only appended to, which no replace
   races; ``load_control``, which reads a replaced file, retries the engine's own way (tests/helpers/invariants.py).
-A lambda spread over several lines, a lambda in parentheses, and a read whose argument is itself a call
-(``read(path(x))["k"]``) are seen by the AST detector only: the scan still fails on them, and so does the agreement
-test. The text detector also reads the whole line of the poll, so a raw read named in a string or a comment on that
-line is its alone (pinned too, and the agreement test fails on it). This module is exempt from the text detector alone,
-because it plants the banned forms below as strings; the AST detector scans it like any other file.
+A lambda spread over several lines, a lambda in parentheses (given by position or by keyword), an argument before the
+predicate that holds a call or a comma (``bounded_wait(f"t.{name()}", lambda: ...)``), and a read whose argument is
+itself a call (``read(path(x))["k"]``) are seen by the AST detector only: the scan still fails on them, and so does
+the agreement test. The text detector also reads the whole line of the poll, so a raw read named in a string or a
+comment on that line is its alone (pinned too, and the agreement test fails on it). This module is exempt from the text
+detector alone, because it plants the banned forms below as strings; the AST detector scans it like any other file.
 
 A read that is not polled is outside this mechanism: whether a writer is live while it runs is semantic. Such a read of
 a record a live writer rewrites waits for a whole record, ``until(lambda: read(root))``, as test_notifier.py does.
@@ -66,10 +68,11 @@ from racing_read import read_json_or_none, read_text_or_none
 
 ROOT = Path(__file__).resolve().parents[2]
 EXEMPT = {Path(__file__).resolve()}  # this module plants the banned forms below as strings: the text detector skips it
-# The polling helpers, by name. `wait_until` is defined by no test; the others are: `until` (tests/helpers/notifier.py
-# and HarnessLab), `wait_for` (test_usage_live_run.py), `_wait_for` (test_integration_stages.py), `bounded_wait`
-# (tests/helpers/bounds.py), `waiting` (test_harness_wait_any.py) and `_retrying` (tests/helpers/vertical/lead.py, a
-# write retried on OSError: it takes a lambda by the same rule).
+# The polling helpers, by name; a poller not named here is not scanned (the module docstring). `wait_until` is defined
+# by no test; the others are: `until` (tests/helpers/notifier.py and HarnessLab), `wait_for` (test_usage_live_run.py),
+# `_wait_for` (test_integration_stages.py), `bounded_wait` (tests/helpers/bounds.py), `waiting`
+# (test_harness_wait_any.py) and `_retrying` (tests/helpers/vertical/lead.py, a write retried on OSError: it takes a
+# lambda by the same rule).
 POLLERS = {"until", "wait_for", "wait_until", "_wait_for", "bounded_wait", "waiting", "_retrying"}
 RAW_METHODS = {"read_text", "read_bytes"}  # with the builtin open: the raw reads, the spellings of the class
 
@@ -347,6 +350,7 @@ PLANTED_RIGHT = [
     'until(lambda: (broker_liveness.read(root) or first).get("beat_at"))',
 ]
 BOTH_MISS = [
+    "chat.receive(5, gone=lambda: p.read_text())",  # a poller not in POLLERS
     "def ready():\n    return broker_liveness.read(root)['beat_at'] > t\nuntil(ready)",
     'until(lambda: self.store.read()["revision"] > 3)',
     'import aew.harness.runlog\nuntil(lambda: aew.harness.runlog.read_live(d)["prompt_state"])',
@@ -365,6 +369,8 @@ AST_ONLY = [
     'until(lambda: broker_liveness.read(project.root())["beat_at"] > t)',
     "until(lambda: (\n    p.read_text().strip()))",
     "until((lambda: p.read_text()), 5)",
+    'bounded_wait("t", ready=(lambda: p.read_text()))',  # a keyword's lambda in parentheses
+    'bounded_wait(f"t.{name()}", lambda: p.read_text(), seconds=5)',  # an argument before the predicate holds a call
     'until(lambda: "beat_at" in broker_liveness.read(project.root()))',
     'until(lambda: broker_liveness.read(project.root()).get("closed_at"))',
 ]

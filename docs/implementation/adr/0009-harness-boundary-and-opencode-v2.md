@@ -1241,8 +1241,9 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
 - **The label's `network`** is an object: `mode`, `provider_relay` (`configured` or `none`), with the relay its
   `provider_upstream` (and `provider_upstream_proxy` when the operator's proxy carries it), with egress its
   `egress_allow` and `limits` (R-6's stated residual), and at the run's end `decisions`: what the relay and the egress
-  proxy decided, counted by outcome. A record from before CS-3b holds the mode as a string, which `normalize` reads as
-  `{mode, provider_relay: none}`.
+  proxy decided, counted by outcome. Every label has `provider_relay`: a contained run whose network started no relay
+  (integration validation's) says `none`. A record from before CS-3b holds the mode as a string, which `normalize`
+  reads as `{mode, provider_relay: none}`.
 - **The run's network directory** (`netns.private_dir`): a fresh 0700 directory under the host's `/tmp`, bound
   read-only, with its `shim/` subdirectory bound writable (the one place the sandbox may bind a socket). The relay and
   the egress proxy listen there, 0600. The run's process tree owns it: killing or closing the tree closes both and
@@ -1299,6 +1300,11 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   a pinned model the catalog does not offer is still refused at launch, saying why it is listed.
 - **The server** listens on `127.0.0.1:4100` inside (`serve --port`, whose announcement must match), and the
   supervisor's client, event stream and meter reach it over the shim's socket file.
+- **The agent is told** (the system text, from the run's label): a run on a network of its own gets one line naming
+  its mode and what it reaches (the provider, and through `HTTPS_PROXY` the allowlist's hosts), that every other
+  connection is refused by design, and to name in its report the `host:port` it needed, so the Lead can ask the
+  operator to add it to `containment.network.egress_allow` (#257's review, F3). The upstream and the stated limits are
+  not in it.
 - **Row 6 before the start:** the server's environment and configuration are checked for every provider variable's
   value; one found refuses the launch (`HARNESS_INCOMPATIBLE`, reason `provider_secret_in_sandbox`), naming the
   variable, never the value. The files a contained run can read hold no key: the provider configuration locations and
@@ -1343,10 +1349,26 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   first, so most finished steps were counted too (6 of run 1's 7). The count now waits for the response's end, as
   the streaming bullet above says.
 
+### ripgrep (the designer's rulings RG-1 and RG-4, and the operator's decision, 2026-10-24)
+- OpenCode's glob and grep tools run ripgrep. With none on the `PATH`, 2.0.18 downloads it from github.com, which a
+  `proxy_only` run's egress proxy refuses (github.com is on no allowlist), so in the live lane those tools failed in
+  two of the three runs, which still ended with evidence. The Rocky VM has no ripgrep.
+- **`aew doctor`'s `ripgrep` line (RG-1):** the containment line's own sandbox looks for `rg` on the launching
+  environment's `PATH`, from inside, so the line says what a contained run sees, not only what the host has. It
+  passes naming where, or warns naming the tools that fail (glob, grep), the cause (the harness cannot download
+  ripgrep on a network of its own or offline) and the fix: CAP-1, and until then an `rg` runs can see, naming a host
+  `rg` the sandbox cannot see when there is one.
+- **No egress widening** for the download (RG-4): the workers' allowlist stays as adopted.
+- **The fix is CAP-1** (the operator's decision of 2026-10-24: AEW brings its own tools, through the capability
+  register): the register's first slice puts a pinned ripgrep into every contained context, and its provider health
+  replaces the `ripgrep` line. RG-2 (binding a host `rg` the sandbox cannot see) is withdrawn for it.
+
 ### What this does not claim
-- **OpenCode's glob and grep tools need ripgrep on the host's `PATH`.** Without it 2.0.18 downloads ripgrep from
-  github.com, which a `proxy_only` run's egress proxy refuses (github.com is on no allowlist), so in the live lane
-  those tools failed in two of the three runs, which still ended with evidence. The Rocky VM has no ripgrep.
+- **ripgrep where a run finds none:** AEW bringing ripgrep itself is CAP-1's, right after this. Until then a host
+  without ripgrep on a `PATH` runs can see has glob and grep failing in contained runs, and `aew doctor` says so.
+- **A card's web capability** (the researcher's `documentation_lookup`, which allows `webfetch` and `websearch`)
+  reaches nothing under `proxy_only` unless the policy's `egress_allow` names the hosts: the egress proxy refuses
+  every other fetch (403). The system text tells the agent so, and how to ask for a host.
 - **The Lead's harness** on `proxy_only` (F28 decision 2, with the any-public egress policy) is CS-4's. Until then
   only worker runs have a network of their own.
 - **A check's route out** through the run's egress proxy (`proxy_only` for a check) is not built.
@@ -1375,3 +1397,11 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   key in its sentinel's place (register V1's rotation); a model the catalog lists only from AEW's configuration
   refused; a key that would reach the sandbox another way refusing the launch.
 - `tests/integration/test_validation_checks.py` (Linux): a contained check's evidence records `network: isolated`.
+- `tests/unit/test_containment_layout.py`, and `test_containment.py`'s `establish` (Linux, the label integration
+  validation records): a contained run's label without a relay says `provider_relay: none`.
+- `tests/unit/test_opencode_units.py`: the system text's network line for `proxy_only` and `isolated`, without the
+  upstream or the limits, and none on the host's network; `test_opencode_adapter.py` on Linux: the line from the run's
+  label reaching the server's configuration.
+- `tests/unit/test_containment_probe.py`: `aew doctor`'s `ripgrep` line from the containment line's sandbox, passing
+  and warning, absent when that sandbox failed; its wording both ways. `tests/integration/test_containment.py`
+  (Linux): the probe finding `rg` on a directory the sandbox sees, and not finding one the sandbox masks.

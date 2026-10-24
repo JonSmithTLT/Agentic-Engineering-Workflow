@@ -95,7 +95,7 @@ PROBE_SERVER, PROBE_RELAY, PROBE_EGRESS = f"{NET_SHIM}/probe-server.sock", "prob
 # Standard library only, and isolated (-I): it runs in the sandbox. Its definitions come first, so a test can read them
 # without running it (``exec`` with another ``__name__``).
 _PAYLOAD = r"""
-import errno, json, os, re, stat, sys, time
+import errno, json, os, re, shutil, stat, sys, time
 def append(p):
     try:
         fd = os.open(p, os.O_WRONLY | os.O_APPEND)
@@ -343,6 +343,7 @@ if __name__ == "__main__":
         "hide_runs": {p: listing(p) for p in spec["hide_runs"]},
         "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
         "network": network(net, server) if net else None,
+        "tools": {"rg": shutil.which("rg", path=spec["path"])},
     }))
 """
 
@@ -489,11 +490,12 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
               env: Mapping[str, str] | None = None, egress_policy: Any = None,
               bridge: str | None = None) -> dict[str, Any]:
-    """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, ...}``; never raises
-    for a containment failure (the caller decides by policy). ``own`` holds the run's own socket directories (its
-    bridge, its network directory); ``env`` is the launching environment the socket classes read (default: this
-    process's). For row 1: ``egress_policy`` is the run's egress allowlist (None: the run has no egress proxy), and
-    ``bridge`` the run's bridge socket, which must answer inside."""
+    """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
+    never raises for a containment failure (the caller decides by policy). ``tools`` says where, on the launching
+    environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
+    ``own`` holds the run's own socket directories (its bridge, its network directory); ``env`` is the launching
+    environment the socket classes read (default: this process's). For row 1: ``egress_policy`` is the run's egress
+    allowlist (None: the run has no egress proxy), and ``bridge`` the run's bridge socket, which must answer inside."""
     with _network(layout, egress_policy=egress_policy, bridge=bridge) as net:
         return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net)
 
@@ -521,7 +523,10 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             # the markers a mask hides: a sibling run's, and the temporary directory's when it is /tmp (TMPDIR may
             # name a directory the read-only root shows; the bridge sockets live under /tmp whatever it says)
             "markers": [str(m) for m in markers if any(_within(str(m), h) for h in (SANDBOX_TMP, *layout.hide_runs))],
-            "network": net["inside"] if net else None}
+            "network": net["inside"] if net else None,
+            # the PATH a run's harness gets (the launching environment's), on which the probe looks for the tools a
+            # harness needs from the host: ripgrep, which OpenCode otherwise downloads (the designer's RG-1)
+            "path": (os.environ if env is None else env).get("PATH", "")}
     result: dict[str, Any] = {"ok": False, "reason": None, "probe": name}
     argv = [sys.executable, "-I", "-c", _PAYLOAD]
     echo: threading.Thread | None = None
@@ -557,7 +562,8 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
         rows = _rows(layout, {**seen, "inventory": inventory}, written=(sentinel, content), sibling=sibling,
                      name=name, net=net)
         problems = [f"row {n} ({row['name']}): {row['reason']}" for n, row in rows.items() if not row["ok"]]
-        result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"), rows=rows)
+        result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"), rows=rows,
+                      tools=seen.get("tools") or {})
         return result
     finally:
         for m in markers:

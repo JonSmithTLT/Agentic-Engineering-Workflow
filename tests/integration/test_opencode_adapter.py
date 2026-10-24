@@ -126,6 +126,10 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
         assert network["egress_allow"] == ["models.opencode.ai:443"]
         assert set(network["decisions"]) == {"relay", "egress"}  # counted at the run's end
         assert not Path(record["containment"]["layout"]["net_dir"]).exists()  # closed with the run
+        # the agent is told its network and how to ask for more (#257's review, F3)
+        assert projection.network_text(network) in config["agents"][projection.AGENT]["system"]
+    else:
+        assert "network of its own" not in config["agents"][projection.AGENT]["system"]
 
 
 @pytest.mark.parametrize("profile", [{"provider": "fakeprov", "model": "fakeprov/fake-model", "effort": "high"},

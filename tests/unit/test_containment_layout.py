@@ -226,6 +226,8 @@ def test_a_contained_runs_label_names_its_layouts_network_and_what_its_network_h
                   net={"provider_relay": "configured", "egress_allow": ["a.example:443"]})
     assert got["network"] == {"mode": "proxy_only", "provider_relay": "configured", "egress_allow": ["a.example:443"]}
     assert got["layout"]["network"] == "proxy_only" and got["layout"]["net_dir"] == "/tmp/aew-net-x"
+    # a contained run whose network started nothing (integration validation's) still says it has no relay
+    assert C.label(contained=True, layout=layout)["network"] == {"mode": "proxy_only", "provider_relay": "none"}
 
 
 def test_policy_mode_defaults_to_required_where_containment_exists():

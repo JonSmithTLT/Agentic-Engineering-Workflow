@@ -213,6 +213,10 @@ skipped:
     tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_finds_rg_where_a_run_sees_it_and_not_where_only_the_host_has_it: >-
+      Linux bubblewrap containment (the designer's RG-1, 2026-10-24): the probe looks for rg inside the sandbox;
+      Windows has no sandbox and runs see the host's PATH. Covered on Linux (CI and the Rocky 8 lane); the doctor's
+      judgement on every platform in tests/unit/test_containment_probe.py.
     tests/integration/test_containment.py::test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

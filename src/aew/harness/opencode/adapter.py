@@ -262,13 +262,14 @@ class OpenCodeAdapter(HarnessAdapter):
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
+        network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
         config = projection.invocation_config(
             contract, private_dirs=projection.private_output_dirs(
                 os.path.realpath(self.state_dir), os.sep,
-                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""))
+                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
+            network=network.describe() if network is not None else None)  # the agent is told what it reaches
         self.skills = projection.skills(contract)
         rules = config["permissions"]
-        network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None
         if base is not None:

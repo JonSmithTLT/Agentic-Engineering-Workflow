@@ -80,9 +80,8 @@ def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str,
         ownership = "pid_namespace"
     else:
         ownership = "job_object" if sys.platform == "win32" else "process_group"
-    net_label: dict[str, Any] = {"mode": layout.network if contained and layout is not None else network()}
-    if net_label["mode"] in (SHARED, NOT_PROVIDED):
-        net_label["provider_relay"] = "none"
+    net_label: dict[str, Any] = {"mode": layout.network if contained and layout is not None else network(),
+                                 "provider_relay": "none"}  # a run whose network started a relay says so in ``net``
     net_label.update(net or {})
     out: dict[str, Any] = {"filesystem": CONTAINED if contained else WORKDIR_ONLY,
                            "process_ownership": ownership, "network": net_label, "mechanism": mechanism}
@@ -166,8 +165,46 @@ def recorded(test: dict[str, Any]) -> dict[str, Any]:
 
 
 def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str]:
-    """``(status, detail)`` for ``aew doctor``: a live sandbox, built and self-tested in a throwaway directory, with
-    the policy's network."""
+    """``(status, detail)`` for ``aew doctor``'s ``containment`` line (:func:`doctor_checks`)."""
+    status, detail, _ = _doctor(policy, note_unsupported)
+    return status, detail
+
+
+def doctor_checks(policy: dict[str, Any] | None, note_unsupported: str) -> list[tuple[str, str, str]]:
+    """``aew doctor``'s containment lines, ``(check, status, detail)``: ``containment``, and, where its sandbox ran
+    and passed, ``ripgrep`` from what that sandbox found (:func:`ripgrep_check`)."""
+    from aew.harness.containment import netns
+
+    status, detail, test = _doctor(policy, note_unsupported)
+    out = [("containment", status, detail)]
+    if test.get("ok") and "rg" in (test.get("tools") or {}):
+        out.append(("ripgrep", *ripgrep_check(test["tools"]["rg"], netns.mode(policy), host=shutil.which("rg"))))
+    return out
+
+
+def ripgrep_check(found: str | None, net_mode: str, *, host: str | None = None) -> tuple[str, str]:
+    """``aew doctor``'s ``ripgrep`` line: where a contained run finds ``rg`` on its ``PATH`` (``found``; None:
+    nowhere), and ``host``, where this host's own ``PATH`` has it. OpenCode's glob and grep tools run ripgrep, and
+    without one on the ``PATH`` OpenCode downloads it, which a run on a network of its own or an offline host cannot
+    (the designer's ruling RG-1, 2026-10-24). CAP-1, the capability register's first slice, is the fix: AEW brings a
+    pinned ripgrep into every contained context, and its provider health replaces this line (the operator's decision
+    of 2026-10-24)."""
+    if found:
+        return "PASS", f"a contained run finds ripgrep at {found}, for OpenCode's glob and grep tools"
+    why = (f"OpenCode then downloads it, which a run on a network of its own (containment.network.mode: {net_mode}) "
+           "cannot" if net_mode in (PROXY_ONLY, ISOLATED) else "OpenCode then downloads it for each run, which an "
+           "offline host cannot")
+    meanwhile = (f"this host's {host} is on the PATH but in a directory runs cannot see, so install ripgrep elsewhere "
+                 "(runs see neither /tmp, /run nor the masked secret directories)" if host
+                 else "install ripgrep (`rg`) on this host, on the PATH")
+    return "WARN", (f"a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: "
+                    f"{why}. Fix: CAP-1 (AEW bringing its own tools, next in STG-05) will put a pinned ripgrep in "
+                    f"every contained run; until then, {meanwhile}")
+
+
+def _doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str, dict[str, Any]]:
+    """The ``containment`` line and the self-test behind it (``{}`` where none ran): a live sandbox, built and
+    self-tested in a throwaway directory, with the policy's network."""
     import tempfile
 
     from aew.harness.containment import netns, probe, sockets
@@ -176,8 +213,8 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
     if not supported():
         if wanted == REQUIRED:
             return "FAIL", (f"containment.mode: required, and this platform ({sys.platform}) has no filesystem "
-                            "containment: harness launches are refused")
-        return "WARN", note_unsupported
+                            "containment: harness launches are refused"), {}
+        return "WARN", note_unsupported, {}
     net_mode = netns.mode(policy)
     with tempfile.TemporaryDirectory(prefix="aew-doctor-") as tmp:
         root = Path(tmp)
@@ -206,7 +243,7 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
                             f"(filesystem integrity; the host stays readable), and their network is {net_mode}: a "
                             "namespace of their own, without the host's loopback ports or abstract sockets"
                             + ("; their only routes out are the provider relay and the egress allowlist"
-                               if net_mode == PROXY_ONLY else "; with no route out"))
+                               if net_mode == PROXY_ONLY else "; with no route out")), test
         detail = (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
                   "(filesystem integrity; the host stays readable), and their network is the host's "
                   "(containment.network.mode: shared)")
@@ -215,8 +252,8 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
         shared = sorted({s["class"] for s in test["rows"]["2"]["abstract"]["sockets"] if s["class"] in sockets.FAILING})
         if shared:
             return "WARN", detail + "; " + "; ".join(f"abstract {c} socket on the shared network; the default "
-                                                     "network mode (proxy_only) closes it" for c in shared)
-        return "PASS", detail
+                                                     "network mode (proxy_only) closes it" for c in shared), test
+        return "PASS", detail, test
     if wanted == REQUIRED:
-        return "FAIL", f"containment unavailable, so harness launches are refused: {problem}"
-    return "WARN", f"containment unavailable; policy allows weaker runs ({WORKDIR_ONLY}): {problem}"
+        return "FAIL", f"containment unavailable, so harness launches are refused: {problem}", test
+    return "WARN", f"containment unavailable; policy allows weaker runs ({WORKDIR_ONLY}): {problem}", test

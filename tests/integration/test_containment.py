@@ -283,6 +283,22 @@ def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_ove
     assert not list(lab.root.glob(".aew-containment-probe-*"))
 
 
+def test_the_self_test_finds_rg_where_a_run_sees_it_and_not_where_only_the_host_has_it(lab):
+    """The designer's RG-1: the probe looks for ``rg`` from inside the sandbox, on the launching environment's PATH,
+    so ``aew doctor`` reports what a run sees. One the sandbox masks (here in a secret directory) is not found."""
+    seen, hidden = lab.outside / "bin", lab.home / ".ssh" / "bin"
+    for directory in (seen, hidden):
+        directory.mkdir()
+        (directory / "rg").write_text("#!/bin/sh\nexit 0\n")
+        (directory / "rg").chmod(0o755)
+    layout = lab.layout()
+    found = probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root, env={"PATH": f"{hidden}:{seen}"})
+    assert found["ok"] is True and found["tools"] == {"rg": str(seen / "rg")}
+    missing = probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root, env={"PATH": str(hidden)})
+    assert missing["ok"] is True and missing["tools"] == {"rg": None}
+    assert os.access(hidden / "rg", os.X_OK)  # the host has it all along
+
+
 UNSAFE_ROOTS = ("project", "tmp", "aew_tmp", "runs", "home", "workspaces", "python")
 
 
@@ -346,8 +362,10 @@ def test_establish_labels_a_contained_run_truthfully(lab):
                                 project=str(lab.repo))
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
-    # F28 decision 1: a contained run's network is a namespace of its own by default, and row 1 says so
-    assert label["network"] == {"mode": "proxy_only"} and label["mechanism"].startswith("bubblewrap")
+    # F28 decision 1: a contained run's network is a namespace of its own by default, and row 1 says so; with no relay
+    # started (integration validation's label is this one), it says so too (#257's review, F4)
+    assert label["network"] == {"mode": "proxy_only", "provider_relay": "none"}
+    assert label["mechanism"].startswith("bubblewrap")
     assert label["self_test"]["ok"] is True and label["layout"]["workspace_access"] == "read"
     assert label["self_test"]["rows"]["1"]["ok"] is True and label["self_test"]["rows"]["1"]["mode"] == "proxy_only"
     shutil.rmtree(layout.net_dir or "", ignore_errors=True)

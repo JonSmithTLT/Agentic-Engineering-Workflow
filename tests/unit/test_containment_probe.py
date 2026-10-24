@@ -379,6 +379,45 @@ def test_doctor_warns_of_each_failing_class_of_abstract_socket_on_the_shared_net
                                "network mode (proxy_only) closes it")
 
 
+@pytest.mark.parametrize(("tools", "ok", "lines"), [
+    ({"rg": "/usr/bin/rg"}, True, [("ripgrep", "PASS")]),
+    ({"rg": None}, True, [("ripgrep", "WARN")]),
+    ({"rg": None}, False, []),  # the sandbox failed its self-test: the containment line says so, and runs differ
+    ({}, True, []),             # a sandbox that reported no tools
+])
+def test_doctor_reports_whether_a_contained_run_finds_ripgrep_from_the_same_sandbox(monkeypatch, tools, ok, lines):
+    """The designer's RG-1: one sandbox, the containment line's, also says whether a contained run finds ``rg``."""
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
+    monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {
+        "ok": ok, "reason": None if ok else "row 3 (terminal): failed", "tools": tools,
+        "rows": {"2": {"abstract": {"network": "shared", "sockets": []}}}})
+    monkeypatch.setattr(probe, "mechanism", lambda _layout: "bubblewrap 0.4.0")
+    policy = {"containment": {"mode": "allow_weaker", "network": {"mode": "shared"}}}
+    got = C.doctor_checks(policy, "unsupported")
+    assert got[0][0] == "containment" and [(name, status) for name, status, _ in got[1:]] == lines
+    assert C.doctor(policy, "unsupported") == got[0][1:]
+
+
+def test_the_ripgrep_line_names_where_a_run_finds_it_or_the_failing_tools_the_cause_and_the_fix():
+    """RG-1: a WARN names the tools that fail (glob, grep), why (OpenCode would download ripgrep, which a run on its
+    own network cannot, nor one offline), and the fix: CAP-1, and until then an ``rg`` runs can see, naming the
+    host's when the sandbox cannot see it (the operator's decision of 2026-10-24)."""
+    assert C.ripgrep_check("/usr/bin/rg", "proxy_only") == (
+        "PASS", "a contained run finds ripgrep at /usr/bin/rg, for OpenCode's glob and grep tools")
+    status, detail = C.ripgrep_check(None, "proxy_only")
+    assert status == "WARN" and detail == (
+        "a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: OpenCode then "
+        "downloads it, which a run on a network of its own (containment.network.mode: proxy_only) cannot. Fix: CAP-1 "
+        "(AEW bringing its own tools, next in STG-05) will put a pinned ripgrep in every contained run; until then, "
+        "install ripgrep (`rg`) on this host, on the PATH")
+    assert "for each run, which an offline host cannot" in C.ripgrep_check(None, "shared")[1]
+    status, detail = C.ripgrep_check(None, "isolated", host="/tmp/tools/rg")
+    assert status == "WARN" and detail.endswith(
+        "until then, this host's /tmp/tools/rg is on the PATH but in a directory runs cannot see, so install ripgrep "
+        "elsewhere (runs see neither /tmp, /run nor the masked secret directories)")
+
+
 @pytest.mark.parametrize(("change", "says"), [
     ({"terminal": {"tty_nr": 34816, "dev_tty": "opened", "session_leader": True}}, "controlling terminal"),
     ({"terminal": {"tty_nr": 0, "dev_tty": "opened", "session_leader": False}}, "controlling terminal"),

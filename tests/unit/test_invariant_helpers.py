@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
 from invariants import cap_violations, load_control
+from sleep_patch import patch_sleep
 from store_model import init
 
 from aew.engine import store as S
@@ -35,20 +37,22 @@ def test_the_concurrency_cap_check_reads_an_engine_custodian_without_a_role(tmp_
 def _racing_reads(monkeypatch: pytest.MonkeyPatch, failures: int | None) -> tuple[list[Path], list[float]]:
     """``Path.read_bytes`` fails with the PermissionError of a read that races a replace (the old file is
     delete-pending) ``failures`` times, always when None, then reads; and every sleep is counted, not slept. Returns
-    (reads, sleeps)."""
+    (reads, sleeps). Both patches reach only the test's own thread, as ``sleep_patch`` requires: another thread's reads
+    and sleeps stay real."""
     real = Path.read_bytes
+    owner = threading.get_ident()
     reads: list[Path] = []
-    sleeps: list[float] = []
 
     def read_bytes(self: Path) -> bytes:
+        if threading.get_ident() != owner:
+            return real(self)
         reads.append(self)
         if failures is None or len(reads) <= failures:
             raise PermissionError(13, "Permission denied: the old file is delete-pending")
         return real(self)
 
     monkeypatch.setattr(Path, "read_bytes", read_bytes)
-    monkeypatch.setattr(S.time, "sleep", sleeps.append)
-    return reads, sleeps
+    return reads, patch_sleep(monkeypatch, S)
 
 
 def _control_root(tmp_path: Path) -> Path:

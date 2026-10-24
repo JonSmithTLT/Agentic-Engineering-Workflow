@@ -279,10 +279,13 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkey
                     record = broker_liveness.read(root)
                     assert broker_liveness.judge(record, generation=generation, poll_s=poll) is None, record
                     time.sleep(poll / 4)
-                record = broker_liveness.read(root)
-                assert record is not None and time.time() - record["watchdog_tick_at"] > 3 * poll  # it really waited
+                # The beat goes on under the control lock, so any read here can race its rewrite: wait for a whole one
+                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
+                assert time.time() - record["watchdog_tick_at"] > 3 * poll  # it really waited
             tick = record["watchdog_tick_at"]
-            until(lambda: broker_liveness.read(root)["watchdog_tick_at"] > tick, 10, "the watchdog to go on")
+            # A read racing the broker's rewrite is None for a moment on Windows: that moment is "not yet"
+            until(lambda: (broker_liveness.read(root) or record)["watchdog_tick_at"] > tick, 10,
+                  "the watchdog to go on")
         else:
             hold = tmp_path / "wedge"
             hold.write_text("hold", encoding="utf-8")
@@ -292,7 +295,7 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkey
                 verdict = until(lambda: broker_liveness.judge(broker_liveness.read(root), generation=generation,
                                                               poll_s=poll), 10, "the wedge to be judged")
                 assert verdict.reason == "stale" and ":tick:" in verdict.occurrence
-                record = broker_liveness.read(root)
+                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
                 assert time.time() - record["beat_at"] < 2 * poll + 1  # the beat went on: only the watchdog stopped
             finally:
                 hold.unlink()

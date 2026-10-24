@@ -2,12 +2,12 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 345
+      "lower-bound": 344
     },
     "by_family": {
       "entry-points": 6,
       "modules": 174,
-      "writers": 171
+      "writers": 170
     },
     "by_family_and_coverage": {
       "entry-points": {
@@ -17,12 +17,12 @@
         "lower-bound": 174
       },
       "writers": {
-        "lower-bound": 171
+        "lower-bound": 170
       }
     },
-    "digest": "sha256:7c5fec5795c3c093e04ed18b78e515e57e0e96434041ef22aa11fe65c30e5104",
-    "records": 351,
-    "unresolved": 52
+    "digest": "sha256:c40d1d007f9f43bbd7d8713b96dfb59ce22e89f795b8954f5d4d68087bc40c7b",
+    "records": 350,
+    "unresolved": 51
   },
   "gaps": [
     {
@@ -126,12 +126,6 @@
       "module": "aew.engine.stage_intents",
       "symbol": "StageIntents._end",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
-    },
-    {
-      "family": "writers",
-      "module": "aew.engine.store",
-      "symbol": "ControlStore._apply",
-      "why": "write_file of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
     },
     {
       "family": "writers",
@@ -13197,29 +13191,6 @@
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.unlink",
-        "reason": "under `.aew`, but its first directory or file name is computed"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.engine.store:ControlStore._apply:write_file": {
-      "anchor": {
-        "module": "aew.engine.store",
-        "symbol": "ControlStore._apply"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.store",
-            "symbol": "ControlStore._apply",
-            "why": "write_file of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "write_file",
         "reason": "under `.aew`, but its first directory or file name is computed"
       },
       "family": "writers"

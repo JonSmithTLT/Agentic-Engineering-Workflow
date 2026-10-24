@@ -151,8 +151,8 @@ def test_a_name_spelled_aew_root_is_the_dot_aew_directory_by_forms_this_test_pin
 
 
 def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
-    """`aew.util` and the store's `write_file` are excluded as writers because their callers are the writers: each must
-    exist, and each must make the writes (else the exclusion hides nothing and should go)."""
+    """`aew.util`, the store's `write_file` and its apply step are excluded as writers because they write for others:
+    each must exist, and each must make the writes (else the exclusion hides nothing and should go)."""
     counts = W.primitive_counts(PROGRAM)
     for module in sorted(W.MECHANISM_MODULES):
         assert module in PROGRAM.modules and sum(counts[module].values()) > 0, module
@@ -161,6 +161,7 @@ def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
         func = mod.funcs[qual]
         # `write_file` picks its primitive in a conditional callee, which neither reader sees as a call: it names them
         names = {mod.aliases.resolve(n) for n in ast.walk(func.node) if isinstance(n, (ast.Name, ast.Attribute))}
+        names |= {f"{module}.{n}" for n in names if n in mod.funcs}  # a function of the module, called by its bare name
         assert names & set(W.CALL_PRIMITIVES), (module, qual)
 
 

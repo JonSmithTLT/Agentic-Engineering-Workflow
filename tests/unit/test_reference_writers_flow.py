@@ -257,6 +257,19 @@ def test_a_sibling_with_a_fixed_name_is_a_file_of_its_own():
                                  "local/operator/endpoint.tmp", "local/operator/endpoint2.json"]
 
 
+def test_the_stores_apply_step_is_the_write_mechanism_and_not_a_writer():
+    """Placement PR: `ControlStore._apply` writes what a transaction staged (data from the redo record); the staging
+    sites are the writers. Another function of the store that writes a path of its own is a writer."""
+    store = ("def write_file(store, path, data):\n    pass\n\n"
+             "class ControlStore:\n    def _abs(self, rel):\n        return self.root / rel\n\n"
+             "    def _apply(self, staged):\n        for w in staged:\n"
+             "            write_file(self.store_dir, self._abs(w['path']), w['content'])\n\n"
+             "    def log(self, aew_root):\n        write_file(aew_root, aew_root / 'state' / 'log', 'x')\n")
+    a = analysed("pass\n", extra={"aew.engine.store": store})
+    assert sorted(a.writers) == ["state/log"] and a.unresolved == {}
+    assert [w.symbol for w in a.writers["state/log"]] == ["ControlStore.log"]
+
+
 def test_a_sibling_named_from_the_paths_own_name_suffix_or_stem_with_a_fixed_end_is_a_file_of_its_own():
     """Quick check of #254, P2: the f-string and `.suffix +` spellings of the forms the fixed-name rule already has."""
     a = analysed("def f(aew_root):\n"

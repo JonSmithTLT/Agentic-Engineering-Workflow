@@ -61,9 +61,11 @@ TOP_LEVEL: tuple[str, ...] = (".gitignore", "coordination", "decisions", "eviden
                               "policy", "pricing", "project.yaml", "records", "roles", "state", "work")
 
 # `aew.util` is the write mechanism: its callers are the writers, so a path written inside it is its caller's. So is the
-# store's own `write_file` (every write into the store goes through it: its docstring says so).
+# store's own `write_file` (every write into the store goes through it: its docstring says so). So is the store's apply
+# step, `ControlStore._apply`: it writes the files the transactions staged, whose paths are the `session.write` sites'
+# (the writers, and records here); its own target is data read from the redo record, which no reading follows.
 MECHANISM_MODULES = frozenset({"aew.util"})
-MECHANISM_FUNCTIONS = frozenset({("aew.engine.store", "write_file")})
+MECHANISM_FUNCTIONS = frozenset({("aew.engine.store", "write_file"), ("aew.engine.store", "ControlStore._apply")})
 STORE = "aew.engine.store"
 
 UTIL = "aew.util"
@@ -730,7 +732,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         "(through assignments, constants, `self` attributes, parameters and the functions that build paths). A path is "
         "a template: `{}` is a segment computed at run time. `named_by` lists the module-level constants that spell "
         "the path exactly. A writer's `mechanism` is `store-transaction` (it stages the file in the control store's "
-        "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives.", "",
+        "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives. The "
+        "store's apply step writes whatever the transactions staged, so the staging sites are the writers and it is "
+        "not.", "",
         "The list is a lower bound. A write whose destination this reading could not place is its own record, below "
         "and in [gaps.md](gaps.md), and any of those may write any path here. A call whose `open` mode or `os.open` "
         "flags cannot be read is one of those records too (its primitive ends in `?`): whether it writes is not "

@@ -78,7 +78,7 @@ from aew.util import (
     create_exclusive,
     dump_yaml,
     fsync_dir,
-    load_own_yaml,
+    load_yaml,
     replace_with_retry,
     sha256_bytes,
     sha256_file,
@@ -223,7 +223,7 @@ class Transition:
 
 
 def serialize_control(state: dict[str, Any]) -> bytes:
-    body = dump_yaml(state)
+    body = dump_yaml(state, source="control state")
     return (body + f"{CHECKSUM_PREFIX}{sha256_bytes(body.encode('utf-8'))}\n").encode("utf-8")
 
 
@@ -236,7 +236,7 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
     expected = trailer[len(CHECKSUM_PREFIX):].strip()
     if sha256_bytes(body.encode("utf-8")) != expected:
         raise IntegrityError(f"{source}: checksum mismatch (damaged or edited outside AEW)")
-    state = load_own_yaml(body, source=source)  # checked against its checksum above
+    state = load_yaml(body, source=source)  # bounded too: the checksum keeps out damage, not a writer
     validate("control", state, source=source)
     return state
 
@@ -544,7 +544,7 @@ class ControlStore:
             listing = [{"path": rel, "sha256": digest} for rel, digest in sorted(prewritten.items())]
             if listing:
                 record["prewritten"] = listing
-            txn_bytes = dump_yaml(record).encode("utf-8")
+            txn_bytes = dump_yaml(record, source="the transaction's redo record").encode("utf-8")
             txn_ref = {
                 "path": f"{TXN_DIR}/{revision:06d}.yaml",
                 "sha256": sha256_bytes(txn_bytes),
@@ -712,7 +712,7 @@ class ControlStore:
             ) from None
         if sha256_bytes(raw) != txn_ref["sha256"]:
             raise IntegrityError(f"redo record {txn_ref['path']} is damaged")
-        return load_own_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]  # its pinned sha256 matched
+        return load_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]  # its pinned sha256 matched
 
     def _apply(self, staged: list[dict[str, Any]], *, inject: bool = False,
                fault_after: list[str | None] | None = None) -> None:

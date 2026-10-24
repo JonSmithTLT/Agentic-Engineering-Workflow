@@ -89,19 +89,29 @@ _SafeDumperBase = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
 # no depth check: on Windows it overflows the stack and kills the process, with no RecursionError to catch, from about
 # 2,660 levels on Python 3.11 and 3,970 on 3.13 (measured 2026-10-23, PyYAML 6.0.3, the main thread; the nightly's
 # Python 3.11 job had crashed on a 3,000-level hostile document every night since 2026-10-13). The pure-Python
-# composer raises RecursionError from about 330. The deepest document AEW has is 13 levels (the dashboard contract),
-# and a test keeps every YAML file in the repository within the bound. AEW's writer holds the same bound, so nothing
-# AEW wrote is ever refused when it is read back: control state has free-form objects, and with a bound on reading
-# alone one deep value committed there would make the project's own store unreadable.
+# composer raises RecursionError from about 490 levels (two frames a level; fewer from a deeper call stack), and the
+# pure-Python representer from about 330. The deepest document AEW has is 13 levels (the dashboard contract), and a
+# test keeps every YAML file in the repository within the bound. AEW's writer holds the same bound, so nothing AEW
+# wrote is ever refused when it is read back: control state has free-form objects, and with a bound on reading alone
+# one deep value committed there would make the project's own store unreadable.
+#
+# The bound is on the document's syntax: one level per mapping or sequence opened. An alias is a leaf, so a value built
+# from aliases can be deeper than the document that holds it; nothing that reads YAML may assume a value's depth is
+# within the bound (review of #236, N2).
 YAML_MAX_DEPTH = 64
 YAML_TOO_DEEP = "yaml_too_deep"  # the reason code a ValidationFailed carries for a document past the bound
 _OPENS = (yaml.SequenceStartEvent, yaml.MappingStartEvent)
 _CLOSES = (yaml.SequenceEndEvent, yaml.MappingEndEvent)
 
 
+class _TooDeepToWrite(Exception):
+    """Raised inside the representer; :func:`_bounded_dump` turns it into the refusal, which names the document."""
+
+
 class _Bounded(yaml.representer.SafeRepresenter):
     """A representer that refuses a collection nested deeper than :data:`YAML_MAX_DEPTH`: AEW never writes a document
-    it would not read back. It counts as reading does, one level per mapping or sequence."""
+    it would not read back. It counts as reading does, one level per mapping or sequence written; an object written
+    again is an alias, a leaf."""
 
     _depth = 0
 
@@ -123,9 +133,7 @@ class _Bounded(yaml.representer.SafeRepresenter):
         self._depth += 1
         if self._depth > YAML_MAX_DEPTH:
             self._depth -= 1
-            raise ValidationFailed(f"the data nests deeper than {YAML_MAX_DEPTH} levels: AEW does not write a YAML "
-                                   "document it would not read back; give it less nesting", reason=YAML_TOO_DEEP,
-                                   limit=YAML_MAX_DEPTH)
+            raise _TooDeepToWrite
 
 
 class _Dumper(_Bounded, _SafeDumperBase):  # type: ignore[valid-type,misc]
@@ -149,25 +157,57 @@ def _str_representer(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
 _Dumper.add_representer(str, _str_representer)
 
 
-def dump_yaml(data: Any) -> str:
+def dump_yaml(data: Any, *, source: str | None = None) -> str:
     """``data`` as YAML in AEW's layout; nesting deeper than :data:`YAML_MAX_DEPTH` is a ValidationFailed (reason
-    :data:`YAML_TOO_DEEP`), raised before anything is written."""
-    return yaml.dump(
-        data, Dumper=_Dumper, sort_keys=False, allow_unicode=True, default_flow_style=False, width=100
-    )
+    :data:`YAML_TOO_DEEP`), raised before anything is written. ``source`` names the document in that refusal."""
+    return _bounded_dump(data, source, Dumper=_Dumper, sort_keys=False, allow_unicode=True, default_flow_style=False,
+                         width=100)
 
 
-def safe_dump_yaml(data: Any) -> str:
+def safe_dump_yaml(data: Any, *, source: str | None = None) -> str:
     """``data`` as YAML in PyYAML's own ``safe_dump`` layout, byte for byte, with :func:`dump_yaml`'s bound. The
     disposition records and ended stage intents have always been written in this layout, and their hashes are pinned
     where they are cited."""
-    return yaml.dump(data, Dumper=_PyYAMLLayoutDumper, sort_keys=False, allow_unicode=True)
+    return _bounded_dump(data, source, Dumper=_PyYAMLLayoutDumper, sort_keys=False, allow_unicode=True)
+
+
+def _bounded_dump(data: Any, source: str | None, **options: Any) -> str:
+    try:
+        return yaml.dump(data, **options)
+    except _TooDeepToWrite:
+        # Named here, not in the representer: the refusal says what was refused (review of #236, F3). The key is found
+        # again only on this path, so writing costs nothing for it.
+        key = _top_level_key_too_deep(data)
+        where = f" under its top-level key {key!r}" if key is not None else ""
+        raise ValidationFailed(f"{source + ': ' if source else ''}the data nests deeper than {YAML_MAX_DEPTH} levels"
+                               f"{where}: AEW does not write a YAML document it would not read back; give that value "
+                               "less nesting", reason=YAML_TOO_DEEP, limit=YAML_MAX_DEPTH) from None
+
+
+def _top_level_key_too_deep(data: Any) -> Any:
+    """The first top-level key of a mapping whose value nests past the bound as the writer counts, or None. Walked with
+    a stack, not recursion: the data may be nested far deeper than Python's recursion limit."""
+    if not isinstance(data, dict):
+        return None
+    seen: set[int] = set()  # an object met again is an alias, a leaf, as the writer writes it
+    for key, value in data.items():
+        stack = [(value, 2)]  # the top-level mapping is level 1
+        while stack:
+            obj, depth = stack.pop()
+            if not isinstance(obj, (dict, list, set)) or id(obj) in seen:
+                continue
+            seen.add(id(obj))
+            if depth > YAML_MAX_DEPTH:
+                return key
+            stack.extend((child, depth + 1) for child in (obj.values() if isinstance(obj, dict) else obj))
+    return None
 
 
 def yaml_too_deep(text: str, *, loader: Any = _SafeLoader, limit: int = YAML_MAX_DEPTH) -> int | None:
     """The 1-based line where ``text`` first nests deeper than ``limit``, or None. It reads the event stream, which
     libyaml and PyYAML both parse without recursing, so it is safe on a document that composing would crash on. Call
-    it before composing anything that may be hostile; a syntax error raises ``yaml.YAMLError`` as composing would."""
+    it before composing anything that may be hostile; a syntax error raises ``yaml.YAMLError`` as composing would. The
+    bound is syntactic: an alias counts as a leaf, so the value composed may be deeper than ``limit``."""
     depth = 0
     for event in yaml.parse(text, Loader=loader):  # noqa: S506 - events only, nothing is constructed
         if isinstance(event, _OPENS):
@@ -181,27 +221,18 @@ def yaml_too_deep(text: str, *, loader: Any = _SafeLoader, limit: int = YAML_MAX
 
 def load_yaml(text: str, *, source: str = "<yaml>") -> Any:
     """``text`` as YAML, safely: a syntax error, or a nesting deeper than :data:`YAML_MAX_DEPTH` (reason
-    :data:`YAML_TOO_DEEP`), is a ValidationFailed, never a crash."""
+    :data:`YAML_TOO_DEEP`), is a ValidationFailed, never a crash. Every read in AEW passes the bound, the control
+    store's own files included: their checksums keep out damage, not a writer (a same-account process, a worker on
+    Windows, or a git checkout can write them and recompute the hash), so skipping the pass would turn a deep file into
+    a process killed with no error (review of #236, F1). The pass costs about 40% of a parse, once per file a process
+    reads: 39 ms at 50 units, 379 ms at 500 (control state, Windows, libyaml, 2026-10-23)."""
     try:
         line = yaml_too_deep(text)
         if line is not None:
             raise ValidationFailed(f"{source}: the YAML nests deeper than {YAML_MAX_DEPTH} levels (at line {line}): "
-                                   "AEW does not read a document that deep", reason=YAML_TOO_DEEP,
-                                   limit=YAML_MAX_DEPTH, line=line)
-        return yaml.load(text, Loader=_SafeLoader)  # noqa: S506 (_SafeLoader is a SafeLoader subclass)
-    except yaml.YAMLError as exc:
-        raise ValidationFailed(f"{source}: invalid YAML: {exc}") from exc
-
-
-def load_own_yaml(text: str, *, source: str) -> Any:
-    """``text`` as YAML without :func:`load_yaml`'s depth pass, for the control store's own files only. Their bytes are
-    checked against the hash recorded with them before this is called (control state's checksum trailer, a redo
-    record's sha256 in control state), and only :func:`dump_yaml` writes them, which never nests past the bound, so the
-    pass could not refuse them. It is skipped for its cost, which is linear in the file and paid by every command: 39 ms
-    on an 89 ms parse at 50 units, 379 ms on 1.34 s at 500 (measured 2026-10-23, Windows, libyaml). The hash keeps out
-    damage, not a writer: a process that could replace the files could recompute it, and the store's permissions keep
-    other writers out. The callers are listed, with their reasons, in tests/unit/test_yaml_depth.py."""
-    try:
+                                   f"AEW does not read a document that deep; flatten it to at most {YAML_MAX_DEPTH} "
+                                   "levels of mappings and sequences", reason=YAML_TOO_DEEP, limit=YAML_MAX_DEPTH,
+                                   line=line)
         return yaml.load(text, Loader=_SafeLoader)  # noqa: S506 (_SafeLoader is a SafeLoader subclass)
     except yaml.YAMLError as exc:
         raise ValidationFailed(f"{source}: invalid YAML: {exc}") from exc

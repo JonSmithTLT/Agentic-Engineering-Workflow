@@ -498,7 +498,7 @@ class Dispositions:
         unit = state["work"].get(wid) if wid else None
         archived = wid is not None and unit is None and self.archive.bundle(state, wid) is not None
         rel = cold_rel(record["id"], wid if (unit is not None or archived) else None)
-        text = safe_dump_yaml(record)
+        text = safe_dump_yaml(record, source=f"disposition record {record['id']}")
         ctx.session.write(rel, text, immutable=True)
         sha = sha256_bytes(text.encode("utf-8"))
         subject = record["subject"]["id"]

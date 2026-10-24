@@ -588,7 +588,11 @@ def test_a_tunnel_ends_both_ways_even_while_a_direction_is_mid_send(ending):
                     assert ended(client)
                 else:
                     proxy.close()
-                    assert ended(far)
+                    # Neither side reads, so nothing unblocks the relays but the shutdown: each side's send then
+                    # fails at once, long before its socket's own timeout.
+                    for writer in writers:
+                        writer.join(TIMEOUT / 2)
+                    assert not [writer for writer in writers if writer.is_alive()]
             finally:
                 proxy.close()  # closing the tunnel's sockets wakes the writers at once, on Windows too
                 for writer in writers:

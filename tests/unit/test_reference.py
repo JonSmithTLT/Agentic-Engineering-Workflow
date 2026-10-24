@@ -454,7 +454,7 @@ def test_without_an_importable_aew_the_generator_refuses_with_exit_2_not_a_trace
 
 
 def test_an_index_problem_states_the_fault_not_the_rule():
-    """An error message is behaviour (AGENTS.md): it says what is wrong, not the opposite (review of #241, F8)."""
+    """An error message is behaviour (review guide §3): it says what is wrong, not the opposite (#241's review, F8)."""
     broken = small_index()
     broken["records"]["modules:aew.a"]["anchor"]["symbol"] = "x"
     problems = C.index_problems(broken)

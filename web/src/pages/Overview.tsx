@@ -77,7 +77,7 @@ export function OverviewPage() {
                   </h2>
                   <Link to={'/work' + routeLocation.search}>Inspect work</Link>
                 </div>
-                <div className="table-scroll">
+                <div className="table-scroll overview-scroll" role="region" aria-label="Active work records" tabIndex={0}>
                   <table>
                     <thead>
                       <tr>
@@ -130,6 +130,7 @@ export function OverviewPage() {
                     Needs attention <span>{data.counts.attention}</span>
                   </h2>
                 </div>
+                <div className="overview-scroll" role="region" aria-label="Attention items" tabIndex={0}>
                 {data.attention.map((a) => (
                   <article className="attention-item" key={a.id}>
                     <span className="attention-marker" aria-hidden="true">
@@ -151,6 +152,7 @@ export function OverviewPage() {
                 {!data.attention.length && (
                   <p className="empty">No attention items reported.</p>
                 )}
+                </div>
               </section>
               <section className="panel">
                 <div className="panel-heading">
@@ -158,6 +160,7 @@ export function OverviewPage() {
                     Running now <span>{data.counts.runs}</span>
                   </h2>
                 </div>
+                <div className="overview-scroll" role="region" aria-label="Reported running invocations" tabIndex={0}>
                 {data.runs.map((r) => (
                   <article className="run-item" key={r.id}>
                     <div>
@@ -175,11 +178,13 @@ export function OverviewPage() {
                 {!data.runs.length && (
                   <p className="empty">No active runs reported.</p>
                 )}
+                </div>
               </section>
               <section className="panel">
                 <div className="panel-heading">
                   <h2>Recent activity</h2>
                 </div>
+                <div className="overview-scroll" role="region" aria-label="Recent activity items" tabIndex={0}>
                 {data.activity.map((a) => (
                   <article className="activity-item" key={a.id}>
                     <time>{new Date(a.occurred_at).toLocaleTimeString()}</time>
@@ -189,6 +194,8 @@ export function OverviewPage() {
                     </div>
                   </article>
                 ))}
+                {!data.activity.length && <p className="empty">No recent activity reported.</p>}
+                </div>
               </section>
             </div>
             <section className="panel">
@@ -200,7 +207,7 @@ export function OverviewPage() {
                 Archived records are historical references, never current
                 evidence.
               </p>
-              <div className="table-scroll">
+              <div className="table-scroll overview-scroll" role="region" aria-label="Recently finished work records" tabIndex={0}>
                 <table>
                   <thead>
                     <tr>

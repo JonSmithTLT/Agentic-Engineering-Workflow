@@ -11,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
+from sleep_patch import patch_sleep  # noqa: E402
 from store_model import init, make_store, one_transaction  # noqa: E402
 
 from aew.engine.lock import FileLock  # noqa: E402
@@ -78,11 +79,11 @@ def test_read_committed_sees_each_commit_as_a_whole(tmp_path):
 
 
 def _counting_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The store's sleeps on this test's thread only: a thread another test left running keeps its own (#237's run
+    40035060397 counted a stray thread's sleeps here)."""
     from aew.engine import store as S
 
-    sleeps: list[float] = []
-    monkeypatch.setattr(S.time, "sleep", sleeps.append)
-    return sleeps
+    return patch_sleep(monkeypatch, S)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX rename is atomic; Windows retries a missing file")

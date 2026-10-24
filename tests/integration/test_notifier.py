@@ -22,6 +22,7 @@ import pytest
 from aewflow import create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
 from notifier import Console, adopt, dead_pid, hidden, raise_to, received, recorder, request, script, takeover, until
+from racing_read import read_json_or_none
 
 from aew.dashboard.projections import Projector
 from aew.dashboard.reader import StateReader
@@ -218,10 +219,14 @@ def test_notifier_child_inherits_no_endpoint_handle(project, tmp_path, serve, mo
     ep, _ = serve()
     monkeypatch.setattr(subprocess, "Popen", spy)
     request(project, "raise")
-    until(report.exists, what="the notifier's report")
+
+    def whole_report() -> list[Any] | None:  # the child's json.dump opens the file empty before it writes
+        found = read_json_or_none(report)
+        return None if found is None else [found]
+
+    [found] = until(whole_report, what="the notifier's whole report")
     [call] = [c for c in spawned if c["argv"] == command]
     assert call.get("close_fds") is True
-    found = json.loads(report.read_text())
     inherited = [(fd, target) for fd, target in found if fd > 2 and not str(target).startswith("/proc/")]
     if sys.platform.startswith("linux"):
         assert not [t for _, t in inherited if "endpoint" in t or t.startswith("socket:")], inherited

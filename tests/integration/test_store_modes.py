@@ -168,8 +168,9 @@ def test_an_interrupted_migration_runs_again_until_the_control_file_has_the_targ
 @posix
 def test_the_migration_sets_exact_modes_and_finishes_past_a_path_it_may_not_change(tmp_path, umask, monkeypatch):
     """A path owned by another account (``chmod`` is EPERM for a non-owner, even to the mode it has) never stops a
-    command: the migration leaves it, finishes, and `aew doctor` names it. A path wider than the target is narrowed
-    (WIS-00's bound), not kept as CS-1 kept it."""
+    command: the migration leaves it, finishes every other path, and `aew doctor` names it. The record then stays at
+    no target, through the commits too, until a walk changes every path it lists (D-CS1-1's erratum, its third
+    amendment). A path wider than the target is narrowed (WIS-00's bound), not kept as CS-1 kept it."""
     umask(0o022)
     egid, _s = gh.held()
     gh.install(monkeypatch, gh.make_host(primary=egid))
@@ -186,12 +187,21 @@ def test_the_migration_sets_exact_modes_and_finishes_past_a_path_it_may_not_chan
             raise PermissionError(errno.EPERM, "Operation not permitted", str(foreign))
         return real_fchmod(fd, m)
 
-    monkeypatch.setattr(store_mod.os, "fchmod", fchmod)
+    control = root / "state" / "control.yaml"
+    with monkeypatch.context() as m:
+        m.setattr(store_mod.os, "fchmod", fchmod)
+        store = make_store(root)
+        store.read()  # the open walks, and does not fail
+        assert mode(wide) == sg.GROUP_READ[0]
+        assert mode(control) == store_mod.WALKING_FILE_MODE  # the record is at no target while a path is left
+        one_transaction(store)
+        assert mode(control) == store_mod.WALKING_FILE_MODE  # and a commit publishes it there too
+        assert store.path_problems(store.group_view().target) == [("state/control.yaml", egid, 0o400),
+                                                                  ("state/log/000001.yaml", egid, 0o600)]
     store = make_store(root)
-    store.read()  # the open walks, and does not fail
-    assert mode(wide) == sg.GROUP_READ[0]
-    assert mode(root / "state" / "control.yaml") == sg.GROUP_READ[0]  # the migration finished
-    assert store.path_problems(store.group_view().target) == [("state/log/000001.yaml", egid, 0o600)]
+    store.read()  # the path can be changed now: the next walk finishes
+    assert mode(control) == sg.GROUP_READ[0]
+    assert store.path_problems(store.group_view().target) == []
 
 
 @posix

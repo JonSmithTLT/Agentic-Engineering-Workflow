@@ -596,6 +596,522 @@ skipped:
       writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
       test_doctor.py, and the group rule through
       test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_directory_alone_under_another_group_is_walked_at_the_next_open: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_file_the_walk_leaves_is_walked_once_it_can_be[False]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_file_the_walk_leaves_is_walked_once_it_can_be[True]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_walk_back_cut_at_any_step_is_finished_whatever_links_the_control_file_has[a_second_link]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_walk_back_cut_at_any_step_is_finished_whatever_links_the_control_file_has[a_symbolic_link]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_walk_back_cut_at_any_step_is_finished_whatever_links_the_control_file_has[one_link]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-aew-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[owner_only-user_private-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-owner_only-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[aew-user_private-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-owner_only-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-none]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-second_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-second_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-second_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-second_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-symbolic_link-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-symbolic_link-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-symbolic_link-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-symbolic_link-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-other_account-control-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-other_account-control-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-other_account-store_file-persistent]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed[user_private-aew-other_account-store_file-swept]: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_the_record_counts_only_a_control_file_that_is_a_file_with_one_name_of_ones_own: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_doctor_names_a_store_path_the_walk_cannot_change_and_wis_waits_for_it: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
     tests/integration/test_store_modes.py::test_every_store_path_has_exactly_the_target_group_and_modes_under_each_kind_of_group_whatever_the_umask[user_private-umask077]: >-
       POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
       store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's

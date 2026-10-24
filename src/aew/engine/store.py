@@ -280,11 +280,24 @@ def _temp_args(target: store_group.Target | None) -> dict[str, Any]:
     return {"mode": target.file_mode, "group": target.gid, "require_group": target.group_readable}
 
 
+def _refusal(st: os.stat_result, is_dir: bool) -> str | None:
+    """Why the walk cannot change the store path ``st`` (its ``lstat``) describes, or None: it is another account's,
+    or it is a file with another name, which may be outside the store, where AEW changes nothing (D-CS1-1's erratum,
+    its third amendment). The record counts the control file only where this is None (``ControlStore._at``)."""
+    if sys.platform == "win32":  # pragma: windows-only (no store walk on Windows)
+        return None
+    if st.st_uid != os.geteuid():  # pragma: posix-only
+        return f"another account's (uid {st.st_uid})"
+    if not is_dir and st.st_nlink != 1:
+        return f"a file with {st.st_nlink} names"
+    return None
+
+
 def _open_listed(path: Path, st: os.stat_result, is_dir: bool) -> int | None:
     """A descriptor on the file ``st`` describes, opened at ``path`` without following a link, or None where ``path``
-    is gone, is not that file now, is a file with more than one link (the store publishes every file by a rename, so
-    it holds one link to each), or cannot be opened (a mode with neither the owner's read nor, for a file, its
-    write). The walk changes a path only through it (``ControlStore._step``)."""
+    is gone, is not that file now, is a file with more than one name (:func:`_refusal`), or cannot be opened (a mode
+    with neither the owner's read nor, for a file, its write). The walk changes a path only through it
+    (``ControlStore._step``)."""
     if sys.platform == "win32":  # pragma: windows-only
         raise NotImplementedError("no store walk on Windows")
     flags = os.O_NOFOLLOW | os.O_NONBLOCK | os.O_NOCTTY | (os.O_DIRECTORY if is_dir else 0)  # pragma: posix-only
@@ -297,7 +310,7 @@ def _open_listed(path: Path, st: os.stat_result, is_dir: bool) -> int | None:
             return None
         now = os.fstat(fd)
         if ((now.st_dev, now.st_ino, stat.S_IFMT(now.st_mode)) == (st.st_dev, st.st_ino, stat.S_IFMT(st.st_mode))
-                and (is_dir or now.st_nlink == 1)):
+                and _refusal(now, is_dir) is None):
             return fd
         os.close(fd)
         return None
@@ -526,6 +539,7 @@ class ControlStore:
         self._lock: _ControlLock | None = None  # the control lock this process holds for the open session
         self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
         self._target: store_group.Target | None = None  # set under the control lock only (``_compare``)
+        self._walk_done = True  # whether ``_compare``'s walk, if it walked, put every path it listed at ``_target``
         self._registered = False
         self._registration: store_writers.Registration | None = None
         self._register_problem: str | None = None
@@ -607,19 +621,26 @@ class ControlStore:
         before its next publication (C2-1), and a walk cut at any step runs again at the next comparison (C2-2). A
         store with no control file yet is walked too, so an interrupted ``create`` leaves nothing behind."""
         if sys.platform == "win32":  # pragma: windows-only
-            self._target = None
+            self._target, self._walk_done = None, True
             return
-        want = self.group_view().target  # pragma: posix-only
+        want, done = self.group_view().target, True  # pragma: posix-only
         if not self._at(want) and self.store_dir.is_dir():
-            want = self._walk(want)
-        self._target = want
+            want, done = self._walk(want)
+        self._target, self._walk_done = want, done
+
+    @property
+    def _control_file(self) -> Path:
+        """The control file in the resolved store directory: the record's file, which the walk steps first and last."""
+        return self.store_dir / Path(CONTROL_REL).name
 
     def _at(self, want: store_group.Target) -> bool:  # pragma: posix-only
         """Whether the record is at ``want``. The record (D-CS1-1's erratum, 2026-10-24) is the group and mode of the
         store directory and of every directory under it (:meth:`_store_directories`), and of the control file. The
         walk's first step puts the control file at a mode no target has and its last step puts it at the target
         (:meth:`_walk`), so a walk cut at any step leaves the record at no target, and the next comparison walks
-        whatever the target is then. Every store directory an
+        whatever the target is then. A control file the walk cannot change (:func:`_refusal`), or that is not a file
+        (a link, which ``lstat`` does not follow), is at no target: the record vouches only for a walk it shows (the
+        erratum's third amendment). Every store directory an
         earlier version made, under whatever umask, is compared too, so it is brought within WIS-00's bound at the
         first comparison: no version made a store file wider than this build's target (they came from ``mkstemp`` at
         0600 before CS-1, and at the exact mode since)."""
@@ -631,25 +652,29 @@ class ControlStore:
             if (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.dir_mode):
                 return False
         try:
-            st = os.stat(self.store_dir / Path(CONTROL_REL).name)
+            st = os.lstat(self._control_file)
         except FileNotFoundError:
             return False
-        return (st.st_gid, stat.S_IMODE(st.st_mode)) == (want.gid, want.file_mode)
+        return (stat.S_ISREG(st.st_mode) and _refusal(st, False) is None
+                and (st.st_gid, stat.S_IMODE(st.st_mode)) == (want.gid, want.file_mode))
 
-    def _walk(self, want: store_group.Target) -> store_group.Target:  # pragma: posix-only
+    def _walk(self, want: store_group.Target) -> tuple[store_group.Target, bool]:  # pragma: posix-only
         """Bring every store path to ``want`` (``store_group.steps``) under the control lock: the control file first to
         :data:`WALKING_FILE_MODE`, then the store directory, the other directories and the files, and the control file
-        last to ``want``. A path pruned meanwhile (the compactor prunes without the lock) is skipped, and so is one this
-        process may not change (another account's), which `aew doctor` names. If the file system refuses this process
-        the store's group on a path of its own, the process lacks it: it says so in its entry, and walks to the
-        owner-only target instead. Returns the target the store was walked to."""
-        control = self.store_dir / Path(CONTROL_REL).name
+        last to ``want``. A path pruned meanwhile (the compactor prunes without the lock) is skipped. A path the walk
+        cannot change (:func:`_refusal`, or another file now) is left as it is, and `aew doctor` names it; the walk
+        then ends with the control file still at :data:`WALKING_FILE_MODE`, so the record stays at no target until a
+        walk changes every path it lists (the erratum's third amendment). If the file system refuses this process the
+        store's group on a path of its own, the process lacks it: it says so in its entry, and walks to the owner-only
+        target instead. Returns the target the store was walked to, and whether the walk put every path it listed
+        there."""
+        control = self._control_file
         try:
             self._mark_walking(control)
-            first = True
+            done, first = True, True
             for path, st, is_dir in self._store_paths():
                 if path != control:
-                    self._step(path, st, is_dir, want)
+                    done = self._step(path, st, is_dir, want) and done
                     if first:
                         first = False
                         faults.pause("store.walk.mid")  # tests hold a walk here while a second writer tries to open
@@ -657,18 +682,20 @@ class ControlStore:
             try:
                 st = os.lstat(control)
             except FileNotFoundError:
-                return want
-            self._step(control, st, False, want)
+                return want, done
+            if done:
+                done = self._step(control, st, False, want)
         except GroupRefused:
             self._refuse(want.gid)
             return self._walk(self.group_view().target)  # owner-only now, which needs no group but the primary
-        return want
+        return want, done
 
     @staticmethod
     def _mark_walking(control: Path) -> None:
         """The walk's first step: the control file to :data:`WALKING_FILE_MODE` under its own group, through a
         descriptor on it (:func:`_open_listed`). From here to the walk's last step the record is at no target, so a walk
-        cut anywhere between is walked again at the next comparison, whatever the target is then."""
+        cut anywhere between is walked again at the next comparison, whatever the target is then. A control file this
+        step cannot change is one the record never counts (:meth:`_at`), and the walk's last step reports it."""
         if sys.platform == "win32":  # pragma: windows-only (no store walk on Windows)
             return
         try:  # pragma: posix-only
@@ -688,18 +715,19 @@ class ControlStore:
             os.close(fd)
 
     @staticmethod
-    def _step(path: Path, st: os.stat_result, is_dir: bool, want: store_group.Target) -> None:
+    def _step(path: Path, st: os.stat_result, is_dir: bool, want: store_group.Target) -> bool:
         """Bring ``path``, as it was listed (``st``), to ``want`` in the step rule's order, through a descriptor on that
-        very file (:func:`_open_listed`): a path that is gone, is another file now, or that this process cannot open is
-        left as it is, and `aew doctor` names it."""
+        very file (:func:`_open_listed`). False where the path is still there and is left as it is: it is another file
+        now, or this process cannot open or change it, and `aew doctor` names it. A path that is gone counts as done
+        (the compactor prunes log records without the control lock)."""
         if sys.platform == "win32":  # pragma: windows-only (no groups or modes to walk)
-            return
+            return True
         steps = store_group.steps(st.st_gid, stat.S_IMODE(st.st_mode), want, is_dir)  # pragma: posix-only
         if not steps:
-            return
+            return True
         fd = _open_listed(path, st, is_dir)
         if fd is None:
-            return
+            return not os.path.lexists(path)
         try:
             for op, value in steps:
                 try:
@@ -710,23 +738,33 @@ class ControlStore:
                 except PermissionError as exc:
                     if op == "group" and want.group_readable and st.st_uid == os.geteuid():
                         raise GroupRefused(exc.errno, f"group {value} refused for {path}") from exc
-                    return  # another account's path, or a primary group this process does not hold: left, and reported
+                    return False  # another account's path, or a primary group this process does not hold
         finally:
             os.close(fd)
+        return True
 
     def _refuse(self, gid: int) -> None:
         if self._registration is not None:
             self._registration.refuse(gid)
 
+    def _publication_args(self, path: Path, target: store_group.Target | None) -> dict[str, Any]:
+        """``write_temp``'s group and mode for ``path`` at ``target``: the target's (:func:`_temp_args`), except for the
+        control file after a comparison whose walk left a path it listed as it was. That control file is published at
+        :data:`WALKING_FILE_MODE`, so no publication puts the record at a target until a walk completes (the erratum's
+        third amendment)."""
+        if path == self._control_file and not self._walk_done:
+            return {**_temp_args(target), "mode": WALKING_FILE_MODE}
+        return _temp_args(target)
+
     def publish(self, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
-        """Publish ``path`` (resolved, in the store) at the target: only for the holder of the control lock, which
-        ``write_file`` routes to. If the file system refuses the store's group, this process lacks it: the store
-        goes owner-only (``_refuse``, ``_compare``) and the file is published owner-only."""
+        """Publish ``path`` (resolved, in the store) at the target (:meth:`_publication_args`): only for the holder of
+        the control lock, which ``write_file`` routes to. If the file system refuses the store's group, this process
+        lacks it: the store goes owner-only (``_refuse``, ``_compare``) and the file is published owner-only."""
         while True:
             target = self._target
             try:
                 store_dirs(self.store_dir, path.parent, target)
-                (create_exclusive if exclusive else atomic_write)(path, data, **_temp_args(target))
+                (create_exclusive if exclusive else atomic_write)(path, data, **self._publication_args(path, target))
                 return
             except GroupRefused:
                 if target is None or not target.group_readable:
@@ -735,11 +773,12 @@ class ControlStore:
                 self._compare()
 
     def _publish_temp(self, data: bytes, prefix: str) -> Path:
-        """The control file's temp, at the target, as :meth:`publish` makes every other store file."""
+        """The control file's temp, as :meth:`publish` makes the control file (:meth:`_publication_args`)."""
         while True:
             target = self._target
             try:
-                return write_temp(self.store_dir, data, prefix=prefix, **_temp_args(target))
+                return write_temp(self.store_dir, data, prefix=prefix,
+                                  **self._publication_args(self._control_file, target))
             except GroupRefused:
                 if target is None or not target.group_readable:
                     raise
@@ -1133,6 +1172,24 @@ class ControlStore:
                 out.append((self._rel(path, False), st.st_gid, st.st_mode))
             elif (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.mode(is_dir)):
                 out.append((self._rel(path, is_dir), st.st_gid, stat.S_IMODE(st.st_mode)))
+        return sorted(out)
+
+    def walk_refusals(self) -> list[tuple[str, str]] | None:
+        """``(path, why)`` for each store path the walk cannot change (:func:`_refusal`), and for a control file that
+        is not a file: while one is there, the record is at no target and every comparison walks the store again (the
+        erratum's third amendment), so WIS cannot be qualified. Changes nothing. None on Windows, which has no walk."""
+        if sys.platform == "win32":  # pragma: windows-only
+            return None
+        out = []  # pragma: posix-only
+        for path, st, is_dir in self._store_paths():
+            why = _refusal(st, is_dir)
+            if why is not None:
+                out.append((self._rel(path, is_dir), why))
+        try:
+            if stat.S_ISLNK(os.lstat(self._control_file).st_mode):
+                out.append((self._rel(self._control_file, False), "a symbolic link"))
+        except FileNotFoundError:
+            pass
         return sorted(out)
 
     def _rel(self, path: Path, is_dir: bool) -> str:  # pragma: posix-only

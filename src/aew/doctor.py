@@ -97,11 +97,12 @@ def _yaml() -> dict[str, str]:
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
 
 
-def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list[dict[str, str]]:
+def store_checks(view: Any, problems: list[tuple[str, int, int]] | None,
+                 refused: list[tuple[str, str]] | None) -> list[dict[str, str]]:
     """The store's group, its running writers, its paths, and whether WIS can be qualified here as far as the store
-    goes (STG-05 CB-08; WIS-01a and D-CS1-11 as A-36 amends them). ``view`` is ``ControlStore.group_view()``; doctor
-    itself is a store writer, so it is one of the writers it reports on. For WIS-Q02 only PASS counts as met
-    (D-CS1-5)."""
+    goes (STG-05 CB-08; WIS-01a and D-CS1-11 as A-36 amends them). ``view`` is ``ControlStore.group_view()``, and
+    ``problems`` and ``refused`` are the store's ``path_problems`` and ``walk_refusals``; doctor itself is a store
+    writer, so it is one of the writers it reports on. For WIS-Q02 only PASS counts as met (D-CS1-5)."""
     from aew.engine import store_group as sg
 
     found, target, host = view.answer, view.target, view.host
@@ -149,19 +150,30 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list
                           f"{rel} (gid {g}, {m:04o}{', above the bound' if rel in bound else ''})"
                           for rel, g, m in problems[:5])
         by_hand = "; ".join(_by_hand(rel, g, m, target) for rel, g, m in problems[:5])
-        checks.append(_check("store-modes", "WARN" if problems else "PASS",
-                             f"{len(problems)} path(s) in the store are not at its target, gid {target.gid} with "
-                             f"{modes}: {shown}{' ...' if len(problems) > 5 else ''}. AEW walks the store again only "
-                             "when its record (the store's directories and its control file) differs from the target, "
-                             "so set these by hand, each path's commands in the order given, as the walk steps "
-                             f"(narrow, then the group, then widen): {by_hand}"
-                             f"{'; and the rest the same way' if len(problems) > 5 else ''} (a path another account "
-                             "owns needs that account). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
-                             if problems else f"every path in the store is at its target: gid {target.gid}, {modes}"))
+        refused = refused or []
+        off = (f"{len(problems)} path(s) in the store are not at its target, gid {target.gid} with "
+               f"{modes}: {shown}{' ...' if len(problems) > 5 else ''}. AEW walks the store again only "
+               "when its record (the store's directories and its control file) differs from the target, "
+               "so set these by hand, each path's commands in the order given, as the walk steps "
+               f"(narrow, then the group, then widen): {by_hand}"
+               f"{'; and the rest the same way' if len(problems) > 5 else ''} (a path another account "
+               "owns needs that account). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
+               if problems else "")
+        cannot = (f"AEW cannot change {len(refused)} path(s) in the store: "
+                  f"{', '.join(f'{rel} ({why})' for rel, why in refused[:5])}{' ...' if len(refused) > 5 else ''}. "
+                  "While one is there, the store's record is at no target, so every command walks the store again "
+                  "and WIS cannot be qualified. Have another account's path given to you or removed, and remove a "
+                  "file's other names, which may be outside the store (`find / -xdev -samefile PATH` lists them); "
+                  "a symbolic link at the control file is replaced by the next commits" if refused else "")
+        checks.append(_check("store-modes", "WARN" if problems or refused else "PASS",
+                             ". ".join(x for x in (off, cannot) if x) or
+                             f"every path in the store is at its target: gid {target.gid}, {modes}"))
     if found.gid is None:
         why = f"no group is private to you (WIS-01a {_parts(found)}; see store-group)"
     elif lacking:
         why = "a running store writer lacks the store's group (see store-writers)"
+    elif refused:
+        why = "AEW cannot change some store paths, so its record of the store is at no target (see store-modes)"
     elif problems:
         why = "some store paths are not at the store's group and modes (see store-modes)"
     else:

@@ -353,16 +353,17 @@ def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
     where none is configured (glibc's default). Every source outside :data:`LOCAL_SOURCES` cannot be listed,
     configured and idle alike, and so is `compat` when the files hold NIS lines.
 
-    Each line is read as glibc reads it: the database's name ends at whitespace or a colon, then whitespace and colons
-    are skipped, and every word after them that is not an action is a source. A line whose first word starts with
-    ``#`` names no database. A ``#`` later in a line ends it on some glibc versions and not on others, so the words
-    after it count as sources too: a word that is no source is one that cannot be listed, which fails closed."""
+    Each line, which ends at a newline only, is read as glibc reads it: the database's name ends at whitespace or a
+    colon, then whitespace and colons are skipped, and every word after them that is not an action is a source. A line
+    whose first word starts with ``#`` names no database. A ``#`` later in a line ends it on some glibc versions and
+    not on others, so the words after it count as sources too: a word that is no source is one that cannot be listed,
+    which fails closed."""
     try:
-        text = nsswitch.read_text(encoding="utf-8", errors="replace")
+        lines = _lines(nsswitch)
     except FileNotFoundError:
         return {FILES: True}
     found: dict[str, bool] = {}
-    for raw in text.splitlines():
+    for raw in lines:
         line = raw.lstrip()
         db = re.split(r"[\s:]", line, maxsplit=1)[0]
         rest = line[len(db):].lstrip(string.whitespace + ":")
@@ -373,11 +374,18 @@ def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
     return found or {FILES: True}
 
 
+def _lines(path: Path) -> list[str]:
+    """The lines of ``nsswitch.conf`` or of a files database, as glibc reads them: each ends at a newline only. The
+    file is read as bytes, because a text read ends a line at a lone carriage return too, and ``str.splitlines`` at
+    nine more characters."""
+    return path.read_bytes().decode("utf-8", errors="replace").split("\n")
+
+
 def _nis_lines(etc: Path) -> bool:
     """Whether ``passwd`` or ``group`` under ``etc`` has a NIS ``+``/``-`` line, which `compat` resolves remotely."""
     for name in ("passwd", "group"):
         try:
-            lines = (etc / name).read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = _lines(etc / name)
         except OSError:
             continue
         if any(line.startswith(("+", "-")) for line in lines):
@@ -389,10 +397,10 @@ def _fields(path: Path, count: int) -> list[list[str]]:
     """The colon-separated lines of a files database with at least ``count`` fields; NIS lines and comments skipped."""
     out = []
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        lines = _lines(path)
     except FileNotFoundError:
         return out
-    for line in text.splitlines():
+    for line in lines:
         if not line or line.startswith(("#", "+", "-")):
             continue
         parts = line.split(":")

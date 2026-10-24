@@ -285,7 +285,8 @@ class ProjectAdmin:
             from aew.doctor import store_checks
 
             view = self.k.store.group_view()
-            checks.extend(store_checks(view, self.k.store.path_problems(view.target)))
+            checks.extend(store_checks(view, self.k.store.path_problems(view.target),
+                                       self.k.store.walk_refusals()))
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")

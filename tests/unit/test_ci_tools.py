@@ -153,6 +153,7 @@ def test_a_re_runs_newer_passing_report_supersedes_its_earlier_failure(tmp_path)
     failed report. Through the command line, as CI calls it: a tree of every attempt's artifacts."""
     runs = good_run()  # attempt 1, recording no attempt (an older plugin's report counts as the first)
     failed = attempt(runs[1], 1, "failed")
+    del failed["attempt"]  # the superseded failure records no attempt either: it is the first, not the newest
     runs[1] = attempt(runs[1], 2)
     for i, r in enumerate([*runs, failed]):
         (tmp_path / "reports" / f"lane-report-{i}").mkdir(parents=True)
@@ -181,6 +182,31 @@ def test_a_missing_shard_of_the_latest_plan_fails_though_an_earlier_plan_was_com
     found = judged(earlier + newer)
     assert "linux: all: shard 3/3 has no report (its job did not run, failed to start or did not upload)" in found
     assert "linux: never ran: tests/regression/test_b.py::t3" in found
+
+
+def test_re_running_one_failed_shard_of_several_turns_the_gate_green():
+    """PR #243's shape (review of #251, F3): Re-run failed jobs re-runs one shard of a sharded lane, the others keep
+    their first attempt's reports, and the gate passes."""
+    runs = sharded_reference_run(shards=3)
+    runs[1] = attempt(runs[1], 1, "failed")  # linux 2/3
+    assert any(p.startswith("linux: session linux/all shard 2/3 exited 1") for p in judged(runs))
+    assert judged([*runs, attempt(sharded_reference_run(shards=3)[1], 2)]) == []
+
+
+@pytest.mark.parametrize("newer", ["failed", "lost"])
+def test_a_re_plan_to_fewer_shards_judges_the_smaller_newer_plan(newer):
+    """Review of #251, F2: Re-run all jobs re-planned 3 shards to 2. The latest attempt's failed or missing shard is a
+    problem, whatever the earlier, larger plan reported, complete and passing."""
+    earlier = [attempt(r, 1) for r in sharded_reference_run(shards=3)]
+    newest = [attempt(r, 2) for r in sharded_reference_run(shards=2)]
+    if newer == "failed":
+        newest[0] = attempt(newest[0], 2, "failed")  # linux 1/2
+    else:
+        newest.pop(1)  # linux 2/2
+    expected = ("linux: session linux/all shard 1/2 exited 1" if newer == "failed"
+                else "linux: all: shard 2/2 has no report")
+    found = judged(earlier + newest)
+    assert any(p.startswith(expected) for p in found), found
 
 
 def test_re_running_all_jobs_with_a_new_shard_plan_judges_only_the_new_plan():

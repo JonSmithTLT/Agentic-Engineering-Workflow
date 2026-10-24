@@ -72,21 +72,21 @@ def latest_attempts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def attempt(r: dict[str, Any]) -> int:
         return int(r.get("attempt") or 1)
 
-    def lane(r: dict[str, Any]) -> tuple[str, str | None]:
-        return r["platform"], r.get("lane")
+    def lane(r: dict[str, Any]) -> tuple[str | None, str | None]:
+        return r.get("platform"), r.get("lane")
 
     def count(r: dict[str, Any]) -> str | None:
         return r["shard"].split("/")[1] if r.get("shard") else None
 
-    newest: dict[tuple[str, str | None], int] = defaultdict(int)
+    newest: dict[tuple[str | None, str | None], int] = defaultdict(int)
     for r in reports:
         newest[lane(r)] = max(newest[lane(r)], attempt(r))
-    counts: dict[tuple[str, str | None], set[str | None]] = defaultdict(set)
+    counts: dict[tuple[str | None, str | None], set[str | None]] = defaultdict(set)
     for r in reports:
         if attempt(r) == newest[lane(r)]:
             counts[lane(r)].add(count(r))
     planned = [r for r in reports if count(r) in counts[lane(r)]]
-    latest: dict[tuple[str, str | None, str | None], int] = defaultdict(int)
+    latest: dict[tuple[str | None, str | None, str | None], int] = defaultdict(int)
     for r in planned:
         latest[(*lane(r), r.get("shard"))] = max(latest[(*lane(r), r.get("shard"))], attempt(r))
     return [r for r in planned if attempt(r) == latest[(*lane(r), r.get("shard"))]]

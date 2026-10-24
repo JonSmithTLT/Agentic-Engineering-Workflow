@@ -636,6 +636,30 @@ def test_a_lanes_findings_lost_on_the_way_fail_the_ratchet(tmp_path, capsys, fin
         assert why is None or why in out
 
 
+def test_an_earlier_attempts_capture_error_does_not_outlive_the_re_run_that_passed(tmp_path, capsys):
+    """Review of #251, F1: every attempt's lane-report artifact is downloaded, each under its own name, and only each
+    shard's latest attempt counts, as in the gate's lane-report check. The latest attempt's own error still fails."""
+    reports = tmp_path / "reports"
+
+    def attempt(n: int, errors: dict[str, int]) -> None:
+        job = reports / f"lane-report-Linux-integration-6-attempt-{n}"
+        job.mkdir(parents=True)
+        report = job / "Linux-integration-6.json"
+        report.write_text(json.dumps({"schema": "aew/lane-report/v1", "platform": "linux", "lane": "integration",
+                                      "shard": "6/12", "attempt": n, "collected": []}), encoding="utf-8")
+        allowed.findings_path_for(report).write_text(json.dumps(
+            {"schema": capture.SCHEMA, "outputs": 1, "findings": {}, "errors": errors}), encoding="utf-8")
+
+    lost = {"RuntimeError: gw0 went down without its findings": 1}
+    args = [str(reports), "--event", "pull_request", "--allowlist", str(tmp_path / "none.yaml")]
+    attempt(1, lost)
+    assert _ratchet().main(args) == 1
+    attempt(2, {})
+    assert _ratchet().main(args) == 0, capsys.readouterr().out
+    attempt(3, lost)
+    assert _ratchet().main(args) == 1
+
+
 def test_the_ratchet_and_the_plugin_share_their_schemas():
     import lanes
 

@@ -180,7 +180,7 @@ def _bounded_dump(data: Any, source: str | None, **options: Any) -> str:
         key = _top_level_key_too_deep(data)
         try:
             where = f" under its top-level key {key!r}" if key is not None else ""
-        except RecursionError:  # a tuple key nested past Python's recursion limit has no repr: refuse without naming it
+        except RecursionError:  # a key nested past the interpreter's own limit has no repr: refuse without naming it
             where = ""
         raise ValidationFailed(f"{source + ': ' if source else ''}the data nests deeper than {YAML_MAX_DEPTH} levels"
                                f"{where}: AEW does not write a YAML document it would not read back; give that value "

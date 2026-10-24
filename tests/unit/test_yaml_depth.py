@@ -534,7 +534,8 @@ def _shared_cases() -> list[dict]:
             {"a": (nested(70),), "b": 1},  # a tuple is a sequence: the writer refuses a
             {"a": {tupled(70): 1}, "b": nested(70)},  # a mapping's key is written before its value
             {"s": 1, tupled(70): 1, "z": nested(70)},  # a top-level key is written under the mapping too
-            {"a": [()], "b": over(63, ())}]  # the empty tuple is never an alias: written again at level 65
+            {"a": [()], "b": over(63, ())},  # the empty tuple is never an alias: written again at level 65
+            {"a": [(t30 := tupled(30)), over(40, t30)], "c": nested(70)}]  # any other tuple is (R4-N1)
 
 
 def _random_dags(count: int, seed: int = 236) -> list[dict]:
@@ -580,10 +581,17 @@ def test_a_write_refusal_names_the_key_the_writer_refused_under_when_the_data_sh
 
 
 def test_a_write_refusal_still_refuses_when_the_key_it_would_name_has_no_repr():
-    """A tuple key nested past Python's recursion limit hashes but cannot be written as text: the refusal stays a
-    ValidationFailed and leaves the key unnamed (review of #236, R3-F1)."""
-    key: object = ()
-    for _ in range(5_000):
+    """A tuple key nested past the interpreter's own limit hashes but has no repr, a limit that differs by version and
+    platform (from 3.12, C's: 3,000 on Windows, 10,000 elsewhere). The refusal stays a ValidationFailed and leaves the
+    key unnamed (review of #236, R3-F1). The key's innermost leaf raises as such a repr does, so the case holds on any
+    interpreter (R4-F1); the writer refuses at level 65, before it reaches the leaf."""
+
+    class NoRepr:
+        def __repr__(self) -> str:
+            raise RecursionError("maximum recursion depth exceeded while getting the repr of an object")
+
+    key: object = NoRepr()
+    for _ in range(70):
         key = (key,)
     with pytest.raises(ValidationFailed) as refused:
         util.dump_yaml({"s": 1, key: 1})

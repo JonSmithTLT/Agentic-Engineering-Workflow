@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { timestamp } from '../api/schema';
 const item = z.object({
   id: z.string().min(1).max(512),
   state: z.string().max(256).nullable(),
@@ -7,7 +8,7 @@ export const savedView = z.object({
   project: z.string().max(512),
   scope: z.string().max(4096),
   revision: z.string().regex(/^(0|[1-9][0-9]*)$/),
-  at: z.iso.datetime(),
+  at: timestamp,
   items: z.array(item).max(100),
 });
 export type SavedView = z.infer<typeof savedView>;

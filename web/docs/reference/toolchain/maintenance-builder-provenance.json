@@ -1,0 +1,24 @@
+{
+  "artifact_version": "1.0.0",
+  "date": "2026-10-24",
+  "image_id": "sha256:f63a4e3d892d50147c364a9b57cb97af840e2c0212558da43d53794b38882c45",
+  "registry_digest": null,
+  "platform": "linux/amd64 glibc",
+  "node": "22.22.2",
+  "npm": "10.9.7",
+  "base_image_id": "sha256:14e051132580dc72266926a9c91023e1be7f71211c0086dd5e5a4d9252360b8b",
+  "source_baseline": "b3ed08aa9e061030c7b1dcf1261506e2f2c26b71",
+  "lockfile_sha256": "7004847f33bf98f079da5a03812f6a137614f02b293df55e57f6918bcbcffcf9",
+  "manifest_sha256": "bc34fd09a3be315dff8b187f310685c937e92bc9a19dfc4d6756a4cd4b1365de",
+  "checksums_sha256": "812d94282cd4f6f98c12de9107ab30ac993e56ffab23ae3d2fdcf3dc648cb5bd",
+  "package_count": 438,
+  "archive_name": "aew-web-maintenance-7004847f33bf.tar",
+  "archive_sha256": "a6600c6a5cccd52ed3a42c91a43127b12ef8e839bf677af6f50b804dd921a6e8",
+  "archive_bytes": 1208361472,
+  "operator_approval": {
+    "date": "2026-10-24",
+    "scope": "New offline builder and rebuild for dependency maintenance; adoption remains subject to validation, independent review and normal merge gates.",
+    "packaged_frontend_baseline_changed": false
+  },
+  "validation_evidence": "Carrier staging baseline and lock digest identify inputs, not runtime acceptance. Exact source/tree and build inventories must be recorded by each committed-source freeze."
+}

@@ -8,22 +8,27 @@ attempt failed and that the host is byte-identical afterwards.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from aew.harness import containment as C
 from aew.harness import procs
-from aew.harness.containment import probe
+from aew.harness.containment import layout as L
+from aew.harness.containment import probe, sockets
 
 pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
                                 reason="Linux bubblewrap containment (Windows: workdir separation only)")
@@ -83,13 +88,14 @@ class Lab:
                          scratch=str(self.run / "scratch"), bridge_dir=None, policy=kw.pop("policy", None),
                          home=str(self.home), project=str(self.repo), runs=str(self.run.parent))
 
-    def sh(self, layout: C.Layout, script: str, *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    def sh(self, layout: C.Layout, script: str, *, cwd: Path | None = None,
+           env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         tree = procs.ProcessTree(layout=layout)
         try:
             proc = tree.spawn(["sh", "-c", script], cwd=str(cwd or self.ws), stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
                               env={"PATH": os.environ["PATH"], "HOME": str(self.home), "LANG": "C.UTF-8",
-                                   **layout.env})
+                                   **layout.env, **(env or {})})
             out, err = proc.communicate(timeout=60)
             return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
         finally:
@@ -355,27 +361,36 @@ def _wait_file(path: Path, timeout: float = 30) -> str:
     raise AssertionError(f"{path} never written")
 
 
+def _session(pid: int) -> int:
+    return int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[3])
+
+
 @pytest.mark.parametrize("escape", ["setsid", "double_fork"])
 def test_killing_the_tree_ends_every_process_even_one_that_left_the_group(lab, escape):
+    """And under bubblewrap's --new-session (STG-05 CB-05), the contained command leads a session of its own, outside
+    the tree's process group, and the kill still ends it: the PID namespace ends with bubblewrap."""
     layout = lab.layout()
-    pidfile = lab.run / "scratch" / "pids"
+    pidfile, topfile = lab.run / "scratch" / "pids", lab.run / "scratch" / "top"
     start = ("setsid sleep 300 & echo $! > {f}; wait" if escape == "setsid"
              else "(sleep 300 & echo $! > {f}) ; sleep 300").format(f=pidfile)
     tree = procs.ProcessTree(layout=layout)
-    proc = tree.spawn(["sh", "-c", start], cwd=str(lab.ws), stdin=subprocess.DEVNULL,
+    proc = tree.spawn(["sh", "-c", f"echo $$ > {topfile}; {start}"], cwd=str(lab.ws), stdin=subprocess.DEVNULL,
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={"PATH": os.environ["PATH"]})
     ns_pid = int(_wait_file(pidfile).split()[0])
     host = procs.host_pid(ns_pid, under=proc.pid)
     assert host != ns_pid  # it lives in the run's PID namespace
-    watch = procs.Watch(host)
-    assert watch.alive()
+    top = procs.host_pid(int(_wait_file(topfile).split()[0]), under=proc.pid)
+    assert _session(top) != os.getpgid(proc.pid)  # the command's own session, not the tree's group
+    watches = [procs.Watch(host), procs.Watch(top)]
+    assert all(w.alive() for w in watches)
     tree.kill()
     deadline = time.monotonic() + 15
-    while watch.alive() and time.monotonic() < deadline:
+    while any(w.alive() for w in watches) and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert not watch.alive()
+    assert not any(w.alive() for w in watches)
     tree.close()
-    watch.close()
+    for w in watches:
+        w.close()
 
 
 def _descendants(root: int) -> list[tuple[int, list[int]]]:
@@ -568,8 +583,8 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     compaction window: every command a worker's agent can run (``worker_surface.commands``) works or is refused for a
     reason of its own, with no crash and nothing met read-only, and only WRITER_ONLY is refused as a non-writer's
     (review of #231, m7: `context pack` crashed on the mask, and `history reindex` blamed "another AEW process").
-    The one class that still meets the read-only filesystem, a fingerprint read's git writing objects, is pinned as
-    ``worker_surface.READER_GIT_GAP``, with why."""
+    A fingerprint read's git writing objects met the read-only store until STG-05 CS-2 (D-CS2-1): the pin,
+    ``worker_surface.READER_GIT_GAP``, is empty now, and the real object store is unchanged across the run."""
     import json
     from concurrent.futures import ThreadPoolExecutor
 
@@ -594,8 +609,10 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
         return argv, subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180,
                                     stdin=subprocess.DEVNULL)
 
+    objects = worker_surface.objects(w.p.root)
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(run_one, worker_surface.commands(w)))
+    assert worker_surface.objects(w.p.root) == objects  # D-CS2-1: a reader never writes the real object store
     gap = {worker_surface.words(a) for a, r in results if worker_surface.git_object_store_refused(r.stderr)}
     met = {" ".join(a): r.stderr[-300:] for a, r in results
            if any(sign in r.stderr for sign in worker_surface.WRITE_FAILURES)
@@ -611,3 +628,373 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
 
     refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
     assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)
+
+
+# ------------------------------------------------------------------ STG-05 CS-2: a workspace fingerprint is a read
+
+_READER_FINGERPRINT = """
+import json, sys
+from pathlib import Path
+from aew import process_kind
+from aew.snapshot import fingerprint
+process_kind.declare("aew (worker run)")
+ws = Path(sys.argv[1])
+print(json.dumps({"fingerprint": fingerprint.relevant_inputs_fingerprint(ws), "tree": fingerprint.working_tree_id(ws)}))
+"""
+
+
+@pytest.mark.parametrize("state", ["uncommitted_edits", "fresh_worktree"])
+def test_a_readers_fingerprint_in_its_sandbox_equals_the_writers(lab, state):
+    """D-CS2-1: in a reader's sandbox, where the real object store is read-only, a fingerprint read works, for a
+    workspace with uncommitted edits and for a worktree just made (its index racily clean, so every file is read
+    again); its value is the one a writer computes for the same tree; and the real object store is unchanged."""
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import worker_surface
+
+    from aew.snapshot import fingerprint
+
+    ws = lab.ws
+    if state == "uncommitted_edits":
+        (ws / "f.txt").write_text("edited, not committed\n")
+        (ws / "new.txt").write_text("untracked\n")
+    else:
+        ws = lab.root / "fresh"
+        assert git("worktree", "add", "-q", "--detach", str(ws), cwd=lab.repo).returncode == 0
+    lab.run.mkdir(parents=True, exist_ok=True)
+    layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=lab.run,
+                       scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None, home=str(lab.home),
+                       project=str(lab.repo), runs=str(lab.run.parent))
+    objects = worker_surface.objects(lab.repo)
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    res = lab.sh(layout, f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} {sys.executable} -c '{_READER_FINGERPRINT}' "
+                         f"{ws}", cwd=ws)
+    assert res.returncode == 0, res.stderr
+    assert worker_surface.objects(lab.repo) == objects
+    seen = json.loads(res.stdout)
+    assert seen == {"fingerprint": fingerprint.relevant_inputs_fingerprint(ws),  # the writer's, on the host
+                    "tree": fingerprint.working_tree_id(ws)}
+
+
+# ------------------------------------------------------------------ STG-05 CS-2: the masks, through the self-test
+# Each test asserts what the real launch self-test records (CB-12's rows 2 to 5), plus plain reads from inside. What a
+# test plants is synthetic and its own: files and sockets in its `visible` directory (outside /tmp, which is private
+# inside a sandbox; removed after the test), each socket with its own listener, closed in a finally. The launching
+# environment is a dict built from scratch. Fail-closed is shown by taking one protection out of the self-test's
+# sandbox: the row that covers it fails, `required` refuses the launch, and `allow_weaker` labels it.
+
+
+@contextlib.contextmanager
+def listening(path: Path) -> Iterator[socket.socket]:
+    """A synthetic filesystem socket at ``path``, with its own listener; closed and removed afterwards."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.settimeout(10)
+    try:
+        server.bind(str(path))
+        server.listen(1)
+        yield server
+    finally:
+        server.close()
+        path.unlink(missing_ok=True)
+
+
+def establish(lab: Lab, monkeypatch, *, env: dict[str, str] | None = None, mode: str | None = None):
+    """``containment.establish`` for a reviewer of the lab's workspace: the lab's synthetic home as HOME, and a
+    launching environment built from scratch."""
+    monkeypatch.setenv("HOME", str(lab.home))
+    lab.run.mkdir(parents=True, exist_ok=True)
+    return C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
+                       scratch=str(lab.run / "scratch"), bridge_dir=None,
+                       policy={"containment": {"mode": mode}} if mode else None, project=str(lab.repo),
+                       env=env or {})
+
+
+def without(monkeypatch, *steps: tuple[str, ...]) -> None:
+    """The self-test's sandbox without one protection: each of ``steps`` (a run of argv words) taken out of it."""
+    real = probe.bwrap_argv
+
+    def argv(layout, cmd, **kw):
+        out = real(layout, cmd, **kw)
+        for step in steps:
+            end = out.index("--")
+            at = next((i for i in range(end - len(step) + 1) if tuple(out[i:i + len(step)]) == step), None)
+            assert at is not None, f"{step} is not on the argv"
+            out = out[:at] + out[at + len(step):]
+        return out
+
+    monkeypatch.setattr(probe, "bwrap_argv", argv)
+
+
+def test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
+    """CB-12's rows 2 to 5 pass on the real layout and are on the label with their facts: /run a read-only tmpfs
+    holding nothing the layout did not put there, the kernel's socket table read with the probe's own listener in it
+    and no reachable socket of a failing class (D-CS2-2), what the table cannot show named (D-CS2-3), no display
+    credential or variable, no controlling terminal, and every bind and mask holding. The table's size and the
+    check's time are printed: its cost, on CI and on the Rocky VM (`-s`)."""
+    layout, label = establish(lab, monkeypatch)
+    assert layout is not None and label["filesystem"] == "os_readonly_roots"
+    rows = label["self_test"]["rows"]
+    assert sorted(rows) == ["2", "3", "4", "5"]
+    assert {n: r["reason"] for n, r in rows.items() if not r["ok"]} == {}
+    assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
+    assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)
+    assert rows["2"]["abstract"]["network"] == "shared"
+    assert [s for s in rows["2"]["sockets"] if s["class"] in sockets.FAILING] == []
+    assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"]) == (0, "ENXIO")
+    print(f"socket table: {rows['2']['table']} entries, {rows['2']['checked']} path sockets checked, "
+          f"{len(rows['2']['sockets'])} reachable, {len(rows['2']['abstract']['sockets'])} abstract, "
+          f"{len(rows['2']['unresolved'])} unresolved, {len(rows['2']['relative'])} relative; seconds "
+          f"{rows['2']['seconds']}")
+
+
+def test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts(lab, monkeypatch):
+    """A site's ordinary services never block a run: a socket no class names is reported, not refused."""
+    path = lab.outside / "service" / "svc.sock"
+    with listening(path):
+        layout, label = establish(lab, monkeypatch)
+    assert layout is not None
+    found = [(s["path"], s["class"]) for s in label["self_test"]["rows"]["2"]["sockets"]]
+    assert (str(path), sockets.REPORTED) in found
+
+
+def test_a_planted_socket_the_launching_environment_names_as_its_agent_fails_the_launch(lab, monkeypatch):
+    """A socket that reaches a credential fails the launch wherever it lives: here a synthetic socket that the launching
+    environment's SSH_AUTH_SOCK names (so no other test's sandbox, reading the same socket table, counts it as one).
+    `required` refuses the launch; `allow_weaker` starts it uncontained, labelled, with the rows."""
+    path = lab.outside / "agent" / "synthetic.sock"
+    env = {"SSH_AUTH_SOCK": str(path)}
+    with listening(path):
+        with pytest.raises(C.ContainmentUnavailable, match="credential socket is reachable") as refused:
+            establish(lab, monkeypatch, env=env)
+        layout, label = establish(lab, monkeypatch, env=env, mode="allow_weaker")
+    row = refused.value.details["self_test"]["rows"]["2"]
+    assert row["ok"] is False and (str(path), sockets.CREDENTIAL) in [(s["path"], s["class"]) for s in row["sockets"]]
+    assert layout is None and label["filesystem"] == "workdir_separation_only"
+    assert label["self_test"]["rows"]["2"]["ok"] is False
+
+
+def test_a_socket_on_a_read_only_bind_can_still_be_connected_to(lab):
+    """The hand-off's question on outcome 2, answered as a property (fact a): a read-only mount refuses writes to
+    files, directories and links, not a socket's connect, which is why the inventory matters. A synthetic listener on
+    the host, seen through the sandbox's read-only root, answers a contained client."""
+    path = lab.outside / "ro" / "echo.sock"
+    with listening(path) as server:
+        def answer() -> None:
+            with contextlib.suppress(OSError):
+                conn, _ = server.accept()
+                with conn:
+                    conn.sendall(b"answered")
+
+        thread = threading.Thread(target=answer, daemon=True)
+        thread.start()
+        client = (f"{sys.executable} -c \"import socket; s = socket.socket(socket.AF_UNIX); s.settimeout(10); "
+                  f"s.connect('{path}'); print(s.recv(16).decode())\"")
+        done = lab.sh(lab.layout("reviewer"), client)
+        thread.join(15)
+    assert done.returncode == 0 and done.stdout.strip() == "answered", done.stderr
+
+
+@pytest.mark.serial  # its socket has a credential class's name, and every concurrent sandbox's socket table lists it
+def test_a_credential_cache_socket_in_its_default_place_is_masked_and_the_run_starts(lab, monkeypatch):
+    """git's credential-cache daemon keeps its socket under ~/.cache/git/credential, which is masked (the Lead,
+    2026-10-23): a host that uses the cache still launches, and row 2 never finds the socket inside."""
+    path = lab.home / ".cache" / "git" / "credential" / "socket"
+    with listening(path):
+        layout, label = establish(lab, monkeypatch)
+    assert layout is not None
+    assert [s for s in label["self_test"]["rows"]["2"]["sockets"] if s["path"] == str(path)] == []
+
+
+def test_the_sandboxes_resolv_conf_resolves_to_a_readable_file_whenever_the_hosts_does(lab):
+    """The operator's ruling (2026-10-24): with /run masked, the target of /etc/resolv.conf under /run (a
+    systemd-resolved host, CI's runners among them) is bound back read-only, so name resolution keeps its
+    configuration until CS-3."""
+    try:
+        host: str | None = Path(L.RESOLV_CONF).read_text()
+    except OSError:
+        host = None
+    done = lab.sh(lab.layout("reviewer"), f"cat {L.RESOLV_CONF}")
+    assert (done.returncode == 0) is (host is not None), done.stderr
+    assert host is None or done.stdout == host
+
+
+def test_what_a_harness_needs_runs_under_the_run_mask(lab):
+    """What a harness needs from the host works with /run masked (outcome 1, fact c): the user database, git in the
+    workspace, Python's TLS, and a name lookup wherever the host itself can resolve one (through the exception above,
+    on a systemd-resolved host); OpenCode's version where it is installed (the Rocky VM)."""
+    layout = lab.layout("reviewer")
+    checks = ["getent passwd $(id -u) >/dev/null", "git status --porcelain >/dev/null",
+              f"{sys.executable} -c 'import ssl, socket'"]
+    with contextlib.suppress(OSError):
+        socket.getaddrinfo("github.com", 443)
+        checks.append(f"{sys.executable} -c \"import socket; socket.getaddrinfo('github.com', 443)\"")
+    if shutil.which("opencode"):
+        checks.append("opencode --version >/dev/null")
+    for check in checks:
+        done = lab.sh(layout, check)
+        assert done.returncode == 0, (check, done.stderr)
+
+
+def test_display_credentials_and_variables_never_reach_a_contained_process(lab, monkeypatch):
+    """CB-04: the display's credential files (synthetic here) read empty from inside, the one XAUTHORITY names
+    included; and no display, session-bus or ssh-agent variable reaches a contained process, even one its launcher
+    hands them to. Row 3 records both."""
+    for name in L.DISPLAY_FILES:
+        (lab.home / name).write_text("SYNTHETIC-COOKIE\n")
+    xauth = lab.outside / "xauth-synthetic"
+    xauth.write_text("SYNTHETIC-COOKIE\n")
+    layout, label = establish(lab, monkeypatch, env={"XAUTHORITY": str(xauth)})
+    row = label["self_test"]["rows"]["3"]
+    assert row["ok"] and row["env_set"] == []
+    expected = {os.path.realpath(p) for p in (lab.home / ".Xauthority", lab.home / ".ICEauthority", xauth)}
+    assert set(row["files"]) == expected and set(row["files"].values()) == {"empty"}
+    done = lab.sh(layout, f"cat {xauth} {lab.home}/.Xauthority; env", env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
+    assert done.returncode == 0 and "SYNTHETIC" not in done.stdout, done.stderr
+    assert {line.split("=", 1)[0] for line in done.stdout.splitlines()} & set(L.DISPLAY_ENV) == set()
+
+
+def test_no_credential_reaches_git_inside_the_sandbox(lab):
+    """The credential route, output-side, with synthetic files only: git's store helper finds the synthetic credential
+    on the host (the control), and nothing from inside, where its two files are masked."""
+    stored = "https://" + "synthetic-user:" + "SYNTHETIC-PASS" + "@example.invalid\n"
+    (lab.home / ".git-credentials").write_text(stored)
+    (lab.home / ".config" / "git").mkdir(parents=True)
+    (lab.home / ".config" / "git" / "credentials").write_text(stored)
+    ask = ("printf 'protocol=https\\nhost=example.invalid\\n\\n' | GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 "
+           "git -c credential.helper=store credential fill")
+    host = subprocess.run(["sh", "-c", ask], capture_output=True, text=True, timeout=60,
+                          env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8"})
+    assert "SYNTHETIC-PASS" in host.stdout, host.stderr  # the control: there is a credential to find
+    inside = lab.sh(lab.layout("reviewer"), ask)
+    assert "SYNTHETIC" not in inside.stdout + inside.stderr
+
+
+FAIL_CLOSED = ("row2-run", "row3-file", "row3-env", "row5-mask")
+
+
+@pytest.mark.parametrize("case", FAIL_CLOSED)
+def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, case):
+    """Each row checks the sandbox, not the layout's word for it: with one protection taken out of the self-test's
+    sandbox, the row that covers it fails, `required` refuses the launch, and `allow_weaker` starts the run labelled
+    workdir_separation_only, with the rows. Row 2's failing socket has tests of its own, and row 4 has the
+    pseudo-terminal launcher's (test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one), since a
+    launcher with no controlling terminal, as every other test's, cannot show a missing session."""
+    xauth = lab.home / ".Xauthority"
+    xauth.write_text("SYNTHETIC-COOKIE\n")
+    real = os.path.realpath
+    row, steps = {
+        "row2-run": ("2", [("--tmpfs", L.RUN), ("--remount-ro", L.RUN)]),
+        "row3-file": ("3", [("--ro-bind", str(lab.run / L.MASK_FILE), real(xauth))]),
+        "row3-env": ("3", [("--unsetenv", "DISPLAY")]),
+        "row5-mask": ("5", [("--tmpfs", real(lab.home / ".ssh"))]),
+    }[case]
+    without(monkeypatch, *steps)
+    with pytest.raises(C.ContainmentUnavailable, match=f"row {row} ") as refused:
+        establish(lab, monkeypatch)
+    assert refused.value.details["self_test"]["rows"][row]["ok"] is False
+    layout, label = establish(lab, monkeypatch, mode="allow_weaker")
+    assert layout is None and label["self_test"]["rows"][row]["ok"] is False
+
+
+# A launcher with a controlling terminal: it leads a new session (start_new_session) and opens a pseudo-terminal the
+# test made, so that terminal becomes its own. It then runs the launch self-test in the run's layout, rebuilt from JSON
+# as eval's scoring child rebuilds one, and prints row 4. ``drop`` takes one word out of the sandbox's argv.
+TERMINAL_LAUNCHER = """
+import json, os, sys
+from pathlib import Path
+from aew.harness.containment import layout as L, probe
+terminal = os.open(sys.argv[1], os.O_RDWR)
+os.close(os.open("/dev/tty", os.O_RDONLY))  # the control: this launcher has a controlling terminal
+spec = json.loads(sys.argv[2])
+layout = L.Layout(**{k: tuple(v) if isinstance(v, list) else v for k, v in spec["layout"].items()})
+if spec["drop"]:
+    real = probe.bwrap_argv
+    probe.bwrap_argv = lambda lay, cmd, **kw: [a for a in real(lay, cmd, **kw) if a != spec["drop"]]
+test = probe.self_test(layout, sentinel_dir=Path(spec["dir"]), sibling_dir=Path(spec["dir"]), env={})
+print(json.dumps(test["rows"]["4"]))
+"""
+
+
+@pytest.mark.parametrize("drop", [None, "--new-session"], ids=["contained", "without_new_session"])
+def test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one(lab, drop):
+    """CB-05 (ruling R-7), checked on the process started in the run's layout (the designer's condition on Q7): a
+    launcher that has a controlling terminal starts the self-test's probe, which has none (``tty_nr`` 0, ``/dev/tty``
+    gives ENXIO). Without --new-session the probe inherits the launcher's terminal, and row 4 fails."""
+    import json
+    import pty
+
+    spec = {"layout": dataclasses.asdict(lab.layout("reviewer")), "drop": drop, "dir": str(lab.outside)}
+    env = {"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8"}
+    if os.environ.get("PYTHONPATH"):
+        env["PYTHONPATH"] = os.environ["PYTHONPATH"]  # the code under test, where it is not the installed package
+    controller, terminal = pty.openpty()
+    proc = None
+    try:
+        proc = subprocess.Popen([sys.executable, "-c", TERMINAL_LAUNCHER, os.ttyname(terminal), json.dumps(spec)],
+                                start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, env=env)
+        out, err = proc.communicate(timeout=90)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=10)
+        os.close(controller)
+        os.close(terminal)
+    assert proc.returncode == 0, err
+    row = json.loads(out.strip().splitlines()[-1])
+    if drop is None:
+        assert row["ok"] and (row["tty_nr"], row["dev_tty"]) == (0, "ENXIO"), row
+    else:
+        assert row["ok"] is False and "controlling terminal" in row["reason"], row
+
+
+@pytest.fixture
+def media_lab(visible, monkeypatch):
+    """A lab whose project and workspaces are on removable media under a stand-in for /run: a directory of the test's
+    own, masked as /run is (both are this test's host masks). The run directory is where AEW keeps it, under the
+    project's .aew/local."""
+    run_root = visible / "run"
+    base = run_root / "media" / "u" / "d"
+    base.mkdir(parents=True)
+    masks = (*L.host_masks(), os.path.realpath(run_root))
+    monkeypatch.setattr(L, "host_masks", lambda: masks)
+    monkeypatch.setattr(probe, "host_masks", lambda: masks)
+    lab = Lab(base)
+    (lab.repo / ".aew").mkdir()
+    lab.run = lab.repo / ".aew" / "local" / "harness" / "runs" / "R-1"
+    return lab, os.path.realpath(run_root)
+
+
+def test_a_project_under_run_is_bound_back_and_row_2_allows_exactly_that(media_lab, monkeypatch):
+    """The operator's ruling of 2026-10-23 on R-1, condition 5: the project and its workspace are bound back into the
+    mask, each recorded with the ruling as its reason, and row 2 finds the mask holding exactly them. Nothing else
+    on the media comes back: another workspace, the media's other files. Taken out of the sandbox, the mask fails
+    row 2."""
+    lab, run_root = media_lab
+    layout, label = establish(lab, monkeypatch)
+    assert layout is not None
+    rows = label["self_test"]["rows"]
+    assert rows["2"]["ok"], rows["2"]["reason"]
+    assert rows["2"]["host_masks"][run_root] == {"type": "tmpfs", "readonly": True, "extra": []}
+    back = {b["path"]: b["why"] for b in label["layout"]["bound_back"]}
+    assert back[os.path.realpath(lab.repo)] == back[os.path.realpath(lab.ws)] == L.RUN_BIND_BACK
+    done = lab.sh(layout, f"git status --porcelain >/dev/null && test ! -e {lab.other} && test ! -e {lab.outside}")
+    assert done.returncode == 0, done.stderr
+    without(monkeypatch, ("--tmpfs", run_root), ("--remount-ro", run_root))
+    with pytest.raises(C.ContainmentUnavailable, match="row 2 "):
+        establish(lab, monkeypatch)
+
+
+def test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory(media_lab, monkeypatch):
+    """Condition 4: the inventory is checked in the finished sandbox, after the bind-back, so a socket inside the
+    project tree that reaches a credential (here a synthetic one the launching environment names as its agent) still
+    fails the launch."""
+    lab, _ = media_lab
+    path = lab.repo / "tools" / "synthetic.sock"
+    with listening(path):
+        with pytest.raises(C.ContainmentUnavailable, match="credential socket is reachable") as refused:
+            establish(lab, monkeypatch, env={"SSH_AUTH_SOCK": str(path)})
+    row = refused.value.details["self_test"]["rows"]["2"]
+    assert (str(path), sockets.CREDENTIAL) in [(s["path"], s["class"]) for s in row["sockets"]]

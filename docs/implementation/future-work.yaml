@@ -2571,6 +2571,16 @@ sections:
       gate before internal alpha) and F37: an outbound sanitiser does not close the boundary while the shell or the network
       can bypass it'
 
+  - '#': F52
+    Work: 'The masks'' host-only residuals: every socket a contained process can reach is masked, or found and judged, also
+      on the hosts where the four known limits of ADR-0009''s CS-2 amendment apply (the GSS-API proxy set up another way,
+      socket names and the launcher''s locale, shared listening sockets, a socket linked into place)'
+    Source (governing): STG-05 CS-2 (#244); ADR-0009's amendment of 2026-10-23, "What this does not claim"
+    Belongs to or gated by: '**Unscheduled.** Stated as known limits, not fixed, in #244''s final review round (2026-10-24);
+      the next containment triage it fits may pull it in'
+    Notes: 'Each limit is stated with its precondition and worst case in that amendment and in #244''s known limits. Every
+      precondition is the host''s own: root''s configuration, or the operator''s own locale or processes.'
+
   - '#': STG-05
     Work: 'Agent containment, built in slices (CS-1 to CS-5): the store''s path and the control lock kept out of agents''
       reach, the store''s modes and group, the masks (`/run`, sockets, display credentials, the terminal), the network namespace

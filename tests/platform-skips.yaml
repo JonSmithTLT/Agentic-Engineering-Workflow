@@ -394,7 +394,23 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
-    tests/integration/test_store_modes.py::test_an_interrupted_narrowing_runs_again_until_the_control_file_is_owner_only: >-
+    tests/integration/test_store_modes.py::test_an_interrupted_narrowing_runs_again_until_the_store_directory_is_owner_only: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[does_nothing]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[eperm]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[eopnotsupp]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_a_control_file_that_is_a_link_is_never_followed_and_doctor_names_it: >-
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.

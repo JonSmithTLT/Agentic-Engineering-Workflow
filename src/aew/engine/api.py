@@ -280,11 +280,16 @@ class ProjectAdmin:
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
         wide = self.k.store.mode_problems()  # the store is owner-only; None where there are no such modes (Windows)
-        if wide is not None:
+        if wide is not None and self.k.store.modes_kept is False:  # said once, not for every path (review of #256, F1)
+            add("store-modes", "WARN", "the file system that holds the store keeps no permission bits (`chmod` "
+                "changes nothing there), so AEW cannot make the store owner-only, and other accounts on this host may "
+                "read it. Keep the project on a file system that keeps them (ext4 or xfs; under WSL, a Linux path, or "
+                "a Windows drive mounted with `metadata`)")
+        elif wide is not None:
             add("store-modes", "WARN" if wide else "PASS",
-                f"{len(wide)} path(s) in the store have group or other permission bits, so accounts other than yours "
-                f"may read them: {', '.join(wide[:5])}{' ...' if len(wide) > 5 else ''}. AEW writes the store "
-                f"owner-only ({STORE_FILE_MODE:04o} files, {STORE_DIR_MODE:04o} directories); narrow them with "
+                f"{len(wide)} path(s) in the store are not owner-only, so accounts other than yours may read them: "
+                f"{', '.join(wide[:5])}{' ...' if len(wide) > 5 else ''}. AEW writes the store owner-only "
+                f"({STORE_FILE_MODE:04o} files, {STORE_DIR_MODE:04o} directories); narrow them with "
                 "`chmod -R go-rwx .aew/state` (a path owned by another account needs that account, or `chown`)"
                 if wide else
                 "every path in the store is owner-only (no group or other permission bits)")

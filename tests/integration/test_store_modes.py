@@ -161,18 +161,73 @@ def test_a_store_written_wider_is_narrowed_once_and_doctor_reports_a_path_widene
 
 
 @posix
-def test_an_interrupted_narrowing_runs_again_until_the_control_file_is_owner_only(tmp_path, umask):
+def test_an_interrupted_narrowing_runs_again_until_the_store_directory_is_owner_only(tmp_path, umask):
     umask(0o022)
     p = sample_project(tmp_path)
     aew = p.root / ".aew"
     wider(aew, CS1_FILE, CS1_DIR)
-    # Part-way: some paths narrowed, the store directory among them; the control file (last) not yet.
-    os.chmod(aew / "state", OWNER_DIR)
+    # Part-way: the control file (first) and some paths narrowed; the store directory (last) not yet.
+    os.chmod(aew / "state" / "control.yaml", OWNER_FILE)
     os.chmod(aew / "state" / "CURRENT.md", OWNER_FILE)
     p.ok("status", "--json")
     assert mode(aew / "state" / "log" / "000000.yaml") == OWNER_FILE
-    assert mode(aew / "state" / "control.yaml") == OWNER_FILE
+    assert mode(aew / "state") == OWNER_DIR
     assert not_exact(store_modes(aew)) == {}
+
+
+@posix
+@pytest.mark.parametrize("refusal", [None, errno.EPERM, errno.EOPNOTSUPP], ids=["does_nothing", "eperm", "eopnotsupp"])
+def test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once(
+        tmp_path, umask, monkeypatch, refusal):
+    """A file system that keeps no permission bits (drvfs without `metadata`, vfat, CIFS without Unix extensions) shows
+    every path wide, and its `chmod` changes nothing, raising nothing or a refusal (vfat with `fmask`: EPERM). The
+    narrowing tries the control file, sees it stay wide, and stops: no open walks the store, and `store-modes` says
+    once why the store cannot be owner-only, instead of naming every path (review of #256, F1 and F4)."""
+    from conftest import make_git_repo
+
+    from aew.engine.api import Engine
+
+    umask(0o022)
+    e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
+    wider(e.aew_root, 0o777, 0o777)  # how every path reads there
+    touched = []
+
+    def chmod(path, m, *a, **kw):
+        touched.append(Path(path).name)
+        if refusal is not None:
+            raise OSError(refusal, os.strerror(refusal), str(path))
+
+    monkeypatch.setattr(store_mod.os, "chmod", chmod)
+    modes = {c["check"]: c for c in e.doctor_checks()}["store-modes"]
+    store_mod.ControlStore(e.aew_root).read()  # another open, by another process's store
+    assert touched and set(touched) == {"control.yaml"}, touched  # the narrowing's first step at each open, no walk
+    assert modes["status"] == "WARN" and "keeps no permission bits" in modes["detail"], modes
+    assert "state/" not in modes["detail"], modes
+
+
+@posix
+def test_a_control_file_that_is_a_link_is_never_followed_and_doctor_names_it(tmp_path, umask):
+    """The narrowing never follows a link out of the store (review of #256, F3): a control file that is one, made by
+    hand, is left as it is, and so is the file it names; `aew doctor` names it. The next commit replaces it with a
+    file, and the next open narrows the store."""
+    umask(0o022)
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    wider(root, CS1_FILE, CS1_DIR)
+    control, outside = root / "state" / "control.yaml", tmp_path / "control-elsewhere.yaml"
+    os.replace(control, outside)
+    os.chmod(outside, 0o644)
+    control.symlink_to(outside)
+    store = make_store(root)
+    store.read()
+    assert mode(outside) == 0o644
+    named = [rel for rel in store.mode_problems() or [] if rel.startswith("state/control.yaml")]
+    assert named == ["state/control.yaml (a symbolic link, which AEW never follows: the next commit replaces it with a "
+                     "file)"], store.mode_problems()
+    one_transaction(store)
+    assert not control.is_symlink()
+    store.read()
+    assert not_exact(store_modes(root)) == {}
 
 
 @posix

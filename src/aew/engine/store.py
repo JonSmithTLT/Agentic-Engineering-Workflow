@@ -59,6 +59,7 @@ from __future__ import annotations
 import copy
 import os
 import stat
+import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -162,11 +163,12 @@ def store_dirs(store: Path, directory: Path) -> None:
 
 
 def _chmod_if_allowed(path: Path, mode: int) -> None:  # pragma: posix-only
-    """``chmod``, except where this process may not change the path (another account's file) or it has gone: the
-    migration then leaves it, and `aew doctor` names it."""
+    """``chmod``, except where this process may not change the path (another account's file), it has gone, or the file
+    system refuses (read-only, or no ``chmod`` at all): the narrowing is best-effort, so it then leaves the path, and
+    `aew doctor` names it (review of #256, F4)."""
     try:
         os.chmod(path, mode)
-    except (PermissionError, FileNotFoundError):
+    except OSError:
         pass
 
 
@@ -385,6 +387,9 @@ class ControlStore:
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
         self._lock: FileLock | None = None  # the control lock this process holds for the open session
         self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
+        # False once the narrowing found that the file system holding the store keeps no permission bits (``chmod``
+        # changes nothing there), for `aew doctor` to say so; None until then (``_migrate_modes``).
+        self.modes_kept: bool | None = None
 
     # ------------------------------------------------------------------ paths
 
@@ -682,27 +687,45 @@ class ControlStore:
         """Narrow a store written group-readable (STG-05 CS-1's CB-08 modes, ``0640``/``0750``), or one from before
         CS-1 whose directories the umask left wider, to owner-only, once, under the control lock: every path loses its
         group and other permission bits. The store directory's and the control file's own modes are the record that it
-        ran: both are owner-only from the start (``store_dirs``, ``write_temp``), and this narrows them last, so a store
-        whose two are owner-only was narrowed (or written owner-only), and a narrowing interrupted part-way runs again.
-        A path this process may not change (another account's file) is left as it is and the narrowing still finishes,
-        so it never stops a command; `aew doctor` (``store-modes``) names it. If the store directory or the control
-        file is such a path, the record is never written and every recovery walks the store again (review of #230,
-        N4)."""
-        if IS_WINDOWS:  # pragma: windows-only
+        ran: both are owner-only from the start (``store_dirs``, ``write_temp``). The control file is narrowed first and
+        the store directory last, so a store whose two are owner-only was narrowed (or written owner-only), and a
+        narrowing interrupted part-way runs again. A path this process may not change (another account's file) is left
+        as it is and the narrowing still finishes, so it never stops a command; `aew doctor` (``store-modes``) names it.
+        If the store directory is such a path, the record is never written and every recovery walks the store again
+        (review of #230, N4).
+
+        Neither record path is followed if it is a link: a control file that is one is left for `aew doctor` to name,
+        and the next commit replaces it with a file (review of #256, F3). If the control file is still wide after it is
+        narrowed, whether or not ``chmod`` raised, walking the store would change nothing either, at every open: the
+        file system keeps no permission bits (drvfs without ``metadata``, vfat, CIFS without Unix extensions), and
+        `aew doctor` says so once (:attr:`modes_kept`), or the control file is another account's, and doctor names it
+        (review of #256, F1)."""
+        # sys.platform, not IS_WINDOWS: Pyright narrows a platform branch only on sys.platform, and os.geteuid is
+        # POSIX-only (review of #230, m8)
+        if sys.platform == "win32":  # pragma: windows-only
             return
         control = self.store_dir / Path(CONTROL_REL).name  # pragma: posix-only
         try:
-            record = [(path, stat.S_IMODE(os.stat(path).st_mode)) for path in (self.store_dir, control)]
+            top, ctl = os.lstat(self.store_dir), os.lstat(control)
         except FileNotFoundError:
             return
-        if not any(mode & _GROUP_OTHER for _path, mode in record):
+        if stat.S_ISLNK(ctl.st_mode):
             return
+        top_mode, ctl_mode = stat.S_IMODE(top.st_mode), stat.S_IMODE(ctl.st_mode)
+        if not (top_mode | ctl_mode) & _GROUP_OTHER:
+            return
+        if ctl_mode & _GROUP_OTHER:
+            _chmod_if_allowed(control, ctl_mode & ~_GROUP_OTHER)
+            after = os.lstat(control)
+            if stat.S_IMODE(after.st_mode) & _GROUP_OTHER:
+                if after.st_uid == os.geteuid():
+                    self.modes_kept = False
+                return
         for path, mode, _is_dir in self._store_modes():
             if path not in (self.store_dir, control) and mode & _GROUP_OTHER:
                 _chmod_if_allowed(path, mode & ~_GROUP_OTHER)
-        for path, mode in record:
-            if mode & _GROUP_OTHER:
-                _chmod_if_allowed(path, mode & ~_GROUP_OTHER)
+        if top_mode & _GROUP_OTHER:
+            _chmod_if_allowed(self.store_dir, top_mode & ~_GROUP_OTHER)
 
     def applied(self, revision: int) -> bool:
         """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
@@ -794,15 +817,19 @@ class ControlStore:
     # ------------------------------------------------------------------ helpers for tests/doctor
 
     def mode_problems(self) -> list[str] | None:
-        """The store's paths (``state/...``; a directory ends in ``/``) with a group or other permission bit, without
-        modifying anything: the store is owner-only. None on Windows, which has no such modes: there is nothing to
-        report either way."""
+        """The store's paths (``state/...``; a directory ends in ``/``) that are not owner-only, without modifying
+        anything: those with a group or other permission bit, and a control file that is a link, which the narrowing
+        never follows (``_migrate_modes``). None on Windows, which has no such modes: there is nothing to report either
+        way."""
         if IS_WINDOWS:  # pragma: windows-only
             return None
         out = []  # pragma: posix-only
         for path, mode, is_dir in self._store_modes():
             if mode & _GROUP_OTHER:
                 out.append(self._rel(path, is_dir))
+        if (self.store_dir / Path(CONTROL_REL).name).is_symlink():
+            out.append(f"{CONTROL_REL} (a symbolic link, which AEW never follows: the next commit replaces it with a "
+                       "file)")
         return sorted(out)
 
     def _rel(self, path: Path, is_dir: bool) -> str:  # pragma: posix-only

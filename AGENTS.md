@@ -19,6 +19,19 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
   coverage. A claim that the class is fully fixed needs evidence from a reproducible check at the relevant revision. A
   semantic class that no mechanism enumerates reliably gets documented reasoning for its coverage instead, and is
   never claimed to be mechanically complete.
+- **Proportion in a test-only pull request** (operator, 2026-10-24; M1 stands). A pull request that changes only tests,
+  test helpers and CI test tooling, and no product code:
+  - **The fix is proven, not assumed.** The review undoes the fix on a copy, and the test the pull request names must
+    fail. For an intermittent failure, the pull request names how it is reproduced (a loop count, an injected delay or
+    a pinned seed), and the undone fix fails under it. The changed tests also run with their neighbours (the modules
+    that share the changed helper, fixture or file), not only alone.
+  - **A gap in the pull request's enumeration of its defect class is a finding only when the reviewer shows a live
+    instance at that commit:** a site the stated invariant covers that is still broken. A gap with no live instance (a
+    spelling, binding or helper the detectors cannot see) is a nit. Its fix names the gap among the stated limits, as
+    M1 requires, and changes no behaviour. When the review's other points are nits too, the verdict is CLEAR, and the
+    fix takes the short delta review of "Nits after a CLEAR".
+  - **Not covered:** a pull request that deletes, skips, marks as expected to fail or loosens a test, adds a platform
+    skip, or changes which tests CI runs or requires. It keeps the full review, because it can hide a failure.
 - **A nit** is a point whose fix changes no behaviour and breaks no guarantee: wording in docs, a comment, a docstring,
   a test name, a stale reference. Changing text that tests or operators rely on, such as an error message or a reason
   code, is behaviour and never a nit. The review's own label decides. The author cannot relabel a point, and an

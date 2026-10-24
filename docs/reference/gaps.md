@@ -47,7 +47,7 @@ Unresolved items: **69**.
 - `aew.harness.containment.probe:_markers`: Path.mkdir of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers`: Path.write_bytes of a path this reading cannot place: a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:self_test`: Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read
-- `aew.harness.containment.probe:self_test`: Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the keys of `seen.get('writable') or {}`, a mapping this reading cannot read
+- `aew.harness.containment.probe:self_test`: Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read
 - `aew.harness.containment.probe:self_test`: Path.write_bytes of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`
 - `aew.harness.event_spool:Reader.retire`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.notify:DeliveryLog.record`: no static call chain from any entry point's declaring function reaches this writer

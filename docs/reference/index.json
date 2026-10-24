@@ -2,11 +2,11 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 334
+      "lower-bound": 335
     },
     "by_family": {
       "entry-points": 6,
-      "modules": 173,
+      "modules": 174,
       "writers": 161
     },
     "by_family_and_coverage": {
@@ -14,14 +14,14 @@
         "complete-by-construction": 6
       },
       "modules": {
-        "lower-bound": 173
+        "lower-bound": 174
       },
       "writers": {
         "lower-bound": 161
       }
     },
-    "digest": "sha256:b42508ac9a9401228431e9df0422b09385d25cdaff8947d734c8f8a49e6a714a",
-    "records": 340,
+    "digest": "sha256:9aa22a25d771a38571749e35bfab1151df795308a89f512feeff9144d9b936fe",
+    "records": 341,
     "unresolved": 69
   },
   "gaps": [
@@ -239,7 +239,7 @@
       "family": "writers",
       "module": "aew.harness.containment.probe",
       "symbol": "self_test",
-      "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the keys of `seen.get('writable') or {}`, a mapping this reading cannot read"
+      "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
     },
     {
       "family": "writers",
@@ -2931,6 +2931,7 @@
         "aew.errors",
         "aew.harness.containment.layout",
         "aew.harness.containment.probe",
+        "aew.harness.containment.sockets",
         "aew.workspace.git"
       ]
     },
@@ -3007,8 +3008,26 @@
       },
       "family": "modules",
       "imports": [
-        "aew.harness.containment.layout"
+        "aew.harness.containment.layout",
+        "aew.harness.containment.sockets"
       ]
+    },
+    "modules:aew.harness.containment.sockets": {
+      "anchor": {
+        "module": "aew.harness.containment.sockets",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/sockets.py"
+      },
+      "family": "modules",
+      "imports": []
     },
     "modules:aew.harness.contract": {
       "anchor": {
@@ -4222,6 +4241,7 @@
       "family": "modules",
       "imports": [
         "aew.errors",
+        "aew.process_kind",
         "aew.workspace.git"
       ]
     },
@@ -12498,14 +12518,14 @@
           {
             "module": "aew.harness.containment.probe",
             "symbol": "self_test",
-            "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the keys of `seen.get('writable') or {}`, a mapping this reading cannot read"
+            "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.unlink",
-        "reason": "`integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the keys of `seen.get('writable') or {}`, a mapping this reading cannot read"
+        "reason": "`integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
       },
       "family": "writers"
     },

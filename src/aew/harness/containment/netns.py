@@ -219,8 +219,10 @@ class RunNetwork:
 
     def harness_env(self, env: dict[str, str]) -> dict[str, str]:
         """The harness's environment with each provider variable's value replaced by its sentinel, the operator's
-        proxy variables (the relay's) removed, and, with an egress proxy, the proxy variables set to the shim's egress
-        port, loopback excepted. The values are never in what is returned."""
+        proxy variables (the relay's) removed, and, with an egress proxy, ``HTTPS_PROXY`` set to the shim's egress
+        port, loopback excepted. Only the HTTPS one: the egress proxy serves CONNECT only (CS-3a), and the provider's
+        ``baseURL`` is plain HTTP to loopback, which must never be sent to it. The values are never in what is
+        returned."""
         out = {k: v for k, v in env.items() if k.upper() not in PROXY_NAMES}
         for name, value in self.sentinels.items():
             for key in [k for k in out if k == name or (sys.platform == "win32" and k.upper() == name.upper())]:
@@ -228,7 +230,7 @@ class RunNetwork:
             out[name] = value
         if self.egress is not None:
             url = f"http://127.0.0.1:{EGRESS_PORT}"
-            out.update({"HTTP_PROXY": url, "HTTPS_PROXY": url, "http_proxy": url, "https_proxy": url})
+            out.update({"HTTPS_PROXY": url, "https_proxy": url})
             agentenv.bypass_proxy_for_loopback(out)
         return out
 
@@ -251,6 +253,11 @@ class RunNetwork:
             out["egress_allow"] = self.egress.policy.describe().get("allow", [])
             out["limits"] = [EGRESS_RESIDUAL]
         return out
+
+    def decisions(self) -> dict[str, dict[str, int]]:
+        """What the relay and the egress proxy decided, counted by outcome, for the run's record at its end."""
+        return {name: service.counts() for name, service in (("relay", self.relay), ("egress", self.egress))
+                if service is not None}
 
     def close(self) -> None:
         """Stop the relay and the egress proxy and remove the run's network directory. Idempotent."""

@@ -497,6 +497,8 @@ class Supervisor:
         if self.bridge is not None:
             self.record["bridge"].update(requests=self.bridge.requests, refused=self.bridge.refused,
                                          outcomes=self.bridge.outcomes)
+        if self.tree.network is not None:  # closed with the tree; its counts stay
+            self.record["containment"]["network"]["decisions"] = self.tree.network.decisions()
         self._event("ended", status=status, reason=reason)
         self._drop_credential()
         try:

@@ -161,6 +161,9 @@ class FakeOpenCode:
                                                              "OPENCODE_DISABLE_AUTOUPDATE", "XDG_CONFIG_HOME",
                                                              "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                                                              "TEMP")},
+                   # the variables whose value is a relay sentinel (F28 §3.6 row 6): a name, never a value
+                   "sentinel_names": sorted(k for k, v in os.environ.items() if v.startswith("aew-relay-")),
+                   "proxy": {k: os.environ.get(k) for k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")},
                    "cwd": os.getcwd()}
         (self.data_home.parent / "fake-server.json").write_text(json.dumps(started, indent=1), encoding="utf-8")
         self.config = started["config"] or {}
@@ -429,7 +432,16 @@ class FakeOpenCode:
             self.catalog_asked = now
         if now - self.catalog_asked < float(self.knobs.get("catalog_delay_s") or 0):
             return []
-        return self.knobs.get("models") or DEFAULT_MODELS
+        offered = list(self.knobs.get("models") or DEFAULT_MODELS)
+        # As 2.0.18 does (measured, 2026-10-24): a model the configuration names is listed even when the catalog does
+        # not offer it, made up from the provider's defaults: no family, no release time, its name its id.
+        known = {(m.get("providerID"), m.get("id")) for m in offered}
+        for provider, entry in (self.config.get("providers") or {}).items():
+            for model in (entry.get("models") or {}):
+                if (provider, model) not in known:
+                    offered.append({"id": model, "providerID": provider, "name": model, "enabled": True,
+                                    "time": {"released": 0}, "variants": []})
+        return offered
 
     def route(self, method: str, path: str, query: dict[str, list[str]], body: Any) -> tuple[int, Any]:
         m = re.fullmatch(r"/api/session/(ses[^/]+)(/.*)?", path)

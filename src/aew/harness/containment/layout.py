@@ -103,6 +103,7 @@ RUN_PROTECTED = ("aew-*", "user", "dbus", "systemd")
 # needs it (GSS_USE_PROXY is off by default; the kernel's NFS client does not use the sandbox's view).
 GSSPROXY = "/var/lib/gssproxy"
 RESOLV_CONF = "/etc/resolv.conf"
+RESOLV_WHY = "name resolution on the shared network (the operator, 2026-10-24); a private one resolves none"
 MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Linux include/linux/namei.h)
 # Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
 # home directory whose name starts with one of these is masked too. Only the home directory itself is listed.
@@ -142,10 +143,11 @@ def run_exceptions() -> tuple[tuple[str, str], ...]:
 def _resolv_exception(resolv: str = RESOLV_CONF, run: str = RUN) -> tuple[tuple[str, str], ...]:
     """The operator's ruling (2026-10-24, on CS-2's plan): on a systemd-resolved host ``/etc/resolv.conf`` links into
     ``/run`` (``/run/systemd/resolve/stub-resolv.conf``), and with ``/run`` masked a contained harness could not
-    resolve its provider's name until CS-3 gives it a network namespace. So the first path on the link chain that
-    lies under ``/run`` is bound back read-only, by that name, when the chain ends at a regular file; otherwise there
-    is no exception (a missing source would fail the launch). Followed as the kernel follows it, at most
-    :data:`MAXSYMLINKS` links."""
+    resolve its provider's name on the host's network. So the first path on the link chain that lies under ``/run`` is
+    bound back read-only, by that name, when the chain ends at a regular file; otherwise there is no exception (a
+    missing source would fail the launch). Followed as the kernel follows it, at most :data:`MAXSYMLINKS` links. A
+    private network (CS-3b) resolves no names, its routes out being the relay and the egress proxy, which resolve on
+    the host; the file is then read and unused."""
     path = resolv
     for _ in range(MAXSYMLINKS + 1):
         if _within(path, run):
@@ -155,7 +157,7 @@ def _resolv_exception(resolv: str = RESOLV_CONF, run: str = RUN) -> tuple[tuple[
         path = os.path.normpath(os.path.join(os.path.realpath(os.path.dirname(path)), os.readlink(path)))
     else:
         return ()
-    return ((path, "name resolution until CS-3 (the operator, 2026-10-24)"),) if os.path.isfile(path) else ()
+    return ((path, RESOLV_WHY),) if os.path.isfile(path) else ()
 
 
 @dataclass(frozen=True)

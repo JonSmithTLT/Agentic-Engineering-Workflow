@@ -163,12 +163,13 @@ def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[st
 
 def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:
     """``config`` with the pinned provider pointed at the run's provider relay (F28 §3.5): its ``baseURL`` at the
-    relay's loopback port inside the sandbox, over plain HTTP requests (2.0.18's OpenAI provider otherwise opens a
-    WebSocket first). Set for the provider and for the pinned model, whose catalog entry may carry its own ``baseURL``,
-    which wins over the provider's (every ``opencode/*`` model's does; measured on 2.0.18, 2026-10-24)."""
-    settings = {"baseURL": base_url, "transport": "http"}
+    relay's loopback port inside the sandbox, over plain HTTP requests (the provider's ``transport``: 2.0.18's OpenAI
+    provider otherwise opens a WebSocket first). The ``baseURL`` is set for the provider and for the pinned model, whose
+    catalog entry may carry its own, which wins over the provider's (every ``opencode/*`` model's does). Both measured
+    on 2.0.18, 2026-10-24."""
     return {**config, "providers": {str(profile["provider"]): {
-        "settings": dict(settings), "models": {str(profile["model"]): {"settings": dict(settings)}}}}}
+        "settings": {"baseURL": base_url, "transport": "http"},
+        "models": {str(profile["model"]): {"settings": {"baseURL": base_url}}}}}}
 
 
 def session_body(contract: LaunchContract, directory: str, rules: list[dict[str, str]]) -> dict[str, Any]:

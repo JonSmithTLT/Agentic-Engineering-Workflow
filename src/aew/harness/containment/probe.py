@@ -87,6 +87,9 @@ OUTSIDE, OUTSIDE6 = "192.0.2.1", "2001:db8::1"
 UNREACHABLE = ("ENETUNREACH", "EHOSTUNREACH")
 UNLISTED = "aew-probe.invalid:443"
 SERVER_WAIT_S = 10.0
+# How long the host waits for its echo thread once the sandbox has ended: its connection then ends at once (the shim is
+# gone), so this bounds only a thread between two attempts.
+ECHO_JOIN_S = 2.0
 PROBE_SERVER, PROBE_RELAY, PROBE_EGRESS = f"{NET_SHIM}/probe-server.sock", "probe-relay.sock", "probe-egress.sock"
 
 # Standard library only, and isolated (-I): it runs in the sandbox. Its definitions come first, so a test can read them
@@ -411,14 +414,14 @@ def _probe_upstream(listener: socket.socket, token: str, seen: list[str | None])
                 continue
 
 
-def _echo(path: str, deadline: float, out: dict[str, Any]) -> None:
+def _echo(path: str, deadline: float, out: dict[str, Any], ended: threading.Event) -> None:
     """Row 1's leg in: connect to the shim's socket, as the supervisor does, until the probe echoes a token. The probe
     accepts after its other checks, so a connection the shim made waits in its backlog until then: the wait for the
     echo is the whole deadline. One the shim could not forward yet (no probe listening) ends at once, and is retried;
-    the probe passes over such a one, arriving empty."""
+    the probe passes over such a one, arriving empty. Nothing is retried once the sandbox has ended (``ended``)."""
     token = secrets.token_hex(8).encode()
     out["server"] = "no_answer"
-    while time.monotonic() < deadline:
+    while not ended.is_set() and time.monotonic() < deadline:
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:  # pyright: ignore[reportAttributeAccessIssue]
                 s.settimeout(max(0.1, deadline - time.monotonic()))
@@ -522,9 +525,10 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
     result: dict[str, Any] = {"ok": False, "reason": None, "probe": name}
     argv = [sys.executable, "-I", "-c", _PAYLOAD]
     echo: threading.Thread | None = None
+    probed = threading.Event()  # the sandbox has ended: the echo has its answer, or never will
     if net:  # under the run's shim, in the one sandbox, as the harness runs (F28 §3.2)
         argv = netns.shim_argv(net["shim"], argv)
-        echo = threading.Thread(target=_echo, args=(net["server_socket"], time.monotonic() + TIMEOUT_S, net),
+        echo = threading.Thread(target=_echo, args=(net["server_socket"], time.monotonic() + TIMEOUT_S, net, probed),
                                 name="aew-probe-echo", daemon=True)
         echo.start()
     try:
@@ -536,8 +540,10 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
         except (OSError, subprocess.TimeoutExpired) as exc:
             result["reason"] = f"the sandbox could not run: {type(exc).__name__}: {exc}"
             return result
-        if echo is not None:
-            echo.join(TIMEOUT_S)
+        finally:
+            probed.set()
+            if echo is not None:
+                echo.join(ECHO_JOIN_S)
         if done.returncode != 0:
             err = (done.stderr or "").strip().splitlines()
             last = err[-1] if err else "no output"
@@ -568,7 +574,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
 def _rows(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], sibling: Path,
           name: str, net: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """CB-12's rows 1 to 5, judged on the host from what the probe saw. Each row says what it checked."""
-    return {"1": _row1(layout, seen, net), "2": _row2(layout, seen), "3": _row3(seen), "4": _row4(seen),
+    return {"1": _row1(layout, seen, net), "2": _row2(layout, seen, net), "3": _row3(seen), "4": _row4(seen),
             "5": _row5(layout, seen, written=written, sibling=sibling, name=name)}
 
 
@@ -644,7 +650,7 @@ def _host_masks(layout: Layout) -> tuple[str, ...]:
     return tuple(dict.fromkeys((*host_masks(), *layout.hide_host)))
 
 
-def _row2(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
+def _row2(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None = None) -> dict[str, Any]:
     """``/run`` masked, and the socket inventory (D-CS2-2): fails closed on a table that cannot be read or does not
     list the control, and on a check inside that errors; a reachable path socket of a failing class fails it. An
     abstract socket the host holds fails it when it is listed inside a network of the run's own, and is a fact, with
@@ -681,7 +687,8 @@ def _row2(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
     # checked at their own paths only: no mount of their filesystem above them on the host (review of #244)
     untranslated = [{"path": c["path"], "class": c["class"]} for c in classes.values()
                     if c.get("fspath") is None and (c.get("real") or {}).get("fspath") is None]
-    held = inventory.get("abstract") or []
+    planted = f"@{net['abstract']}" if net and net.get("abstract") else None  # row 1's own, held for the probe
+    held = [s for s in inventory.get("abstract") or [] if s["name"] != planted]
     abstract: dict[str, Any] = {"network": layout.network, "sockets": held}
     if layout.private_network:  # D-CS2-5: the host's abstract sockets are not in a network of the run's own
         listed = (seen.get("network") or {}).get("abstract")

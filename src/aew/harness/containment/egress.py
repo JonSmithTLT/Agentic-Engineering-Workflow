@@ -25,13 +25,15 @@ and host-local addresses looks like rebinding or split-horizon tricks, and refus
 picking among its answers. A refusal is ``403`` with a stable reason code in ``X-AEW-Refusal``. It names the refused
 address class, never the address: under any-public, the address would let the model map the host's private DNS.
 
-**Not here:** the AF_UNIX listener and its bind into the sandbox, the shim that forwards to it, the label and the
-self-test row are CS-3b's. The proxy serves whatever listening socket it is given.
+**Where it sits** (CS-3b): a run's proxy listens on ``egress.sock`` in the run's network directory
+(:mod:`aew.harness.containment.netns`), which the in-sandbox shim reaches from loopback inside; the label and the
+self-test's network row are netns's and probe's. The proxy serves whatever listening socket it is given.
 
 **Known limits:**
 
-- The number of concurrent tunnels is unbounded. F28 gives no number, and the shim, its only client, is CS-3b's. A
-  connection that cannot get a thread is closed unserved (``overloaded``), and the proxy goes on serving.
+- The number of concurrent tunnels is unbounded. F28 gives no number; the shim, its only client, opens one per
+  connection made inside. A connection that cannot get a thread is closed unserved (``overloaded``), and the proxy
+  goes on serving.
 - An established tunnel has no idle timeout: it lasts until either side ends it, or :meth:`EgressProxy.close`.
 - Under any-public, the names the model asks for reach the host's resolver, and so the DNS.
 - :meth:`EgressProxy.close` starts no new connect, but a connect already in flight is not interrupted. It ends within
@@ -261,6 +263,11 @@ class Service:
     def _count(self, outcome: str) -> None:
         with self._lock:
             self.decisions[outcome] = self.decisions.get(outcome, 0) + 1
+
+    def counts(self) -> dict[str, int]:
+        """A copy of :attr:`decisions`."""
+        with self._lock:
+            return dict(self.decisions)
 
     def _track(self, sock: socket.socket) -> bool:
         with self._lock:

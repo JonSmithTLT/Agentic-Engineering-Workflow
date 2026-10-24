@@ -185,6 +185,16 @@ def new_message_id() -> str:
     return "msg_" + secrets.token_hex(12)
 
 
+def declared_only(model: dict[str, Any]) -> bool:
+    """Whether a catalog entry is one the server made from AEW's own configuration rather than one it offers: 2.0.18
+    lists any model its configuration names, made up from the provider's defaults (measured on the Rocky VM,
+    2026-10-24). Such an entry has no family and no release time, and its name is its id; an offered one has its
+    catalog's. So the pinned model, which ``projection.relayed`` names to point it at the relay, is still refused at
+    launch when the catalog does not offer it, as it was before the relay."""
+    return not model.get("family") and not (model.get("time") or {}).get("released") and model.get("name") == model.get(
+        "id")
+
+
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
@@ -236,6 +246,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self._monitor: threading.Thread | None = None
         self.meter: Meter | None = None
         self.meter_errors = 0
+        self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
         self._meter_thread: threading.Thread | None = None
@@ -259,6 +270,7 @@ class OpenCodeAdapter(HarnessAdapter):
         rules = config["permissions"]
         network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
         base = network.provider_base() if network is not None else None
+        self._relayed = base is not None
         if base is not None:
             config = projection.relayed(config, contract.execution_profile, base)
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
@@ -443,11 +455,16 @@ class OpenCodeAdapter(HarnessAdapter):
         t0 = time.monotonic()
         first_seen: float | None = None
         catalog: list[dict[str, Any]] = []
+        declared = False
         while True:
             catalog = (self.client.get("/api/model", location(self.directory)) or {}).get("data") or []
             match = next((m for m in catalog if m.get("providerID") == ref["providerID"] and m.get("id") == ref["id"]),
                          None)
             now = time.monotonic()
+            # Listed only because the relay projection names it: not offered, so wait for the catalog as if absent.
+            declared = match is not None and self._relayed and declared_only(match)
+            if declared:
+                match = None
             if match is not None:
                 variants = [v.get("id") for v in match.get("variants") or []]
                 if "variant" in ref and ref["variant"] not in variants:
@@ -464,8 +481,10 @@ class OpenCodeAdapter(HarnessAdapter):
                 providers = sorted({str(m.get("providerID")) for m in catalog})
                 raise HarnessIncompatible(
                     f"model {ref['providerID']}/{ref['id']} is not offered by this OpenCode "
-                    f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s); check the "
-                    "execution policy and the provider variables it names", model=ref,
+                    f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s"
+                    + ("; it is listed only because AEW names it in the server's configuration, to send it through "
+                       "the run's provider relay (F28 §3.5)" if declared else "")
+                    + "); check the execution policy and the provider variables it names", model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)

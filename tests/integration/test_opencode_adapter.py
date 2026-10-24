@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, 
 from proxy_env import RecordingProxy, proxy_env
 
 from aew.harness import runlog
+from aew.harness.containment import netns
 from aew.harness.opencode import projection
 from aew.util import dump_yaml, load_yaml
 
@@ -112,6 +114,18 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert record["launch"]["health"]["version"] == "2.0.18" and record["launch"]["health"]["tested"]
     assert record["result"]["effective"] == [{"provider": "fakeprov", "model": "fake-model", "effort": "high"}]
     assert record["model_check"]["status"] == "match" and record["result"]["prompts"] == 1
+    if record["containment"]["network"]["mode"] == "proxy_only":  # Linux (F28 §3.5): the provider through the relay
+        relayed = f"http://127.0.0.1:{netns.PROVIDER_PORT}/v1"
+        assert config["providers"]["fakeprov"]["settings"] == {"baseURL": relayed, "transport": "http"}
+        assert config["providers"]["fakeprov"]["models"]["fake-model"]["settings"] == {"baseURL": relayed}
+        assert started["sentinel_names"] == ["OPENAI_API_KEY"]  # the key's variable holds a sentinel, not the key
+        assert started["proxy"]["HTTPS_PROXY"] == f"http://127.0.0.1:{netns.EGRESS_PORT}"  # the catalog's egress
+        assert started["proxy"]["HTTP_PROXY"] is None and "127.0.0.1" in started["proxy"]["NO_PROXY"].split(",")
+        network = record["containment"]["network"]
+        assert network["provider_relay"] == "configured" and network["provider_upstream"] == lab.provider.url
+        assert network["egress_allow"] == ["models.opencode.ai:443"]
+        assert set(network["decisions"]) == {"relay", "egress"}  # counted at the run's end
+        assert not Path(record["containment"]["layout"]["net_dir"]).exists()  # closed with the run
 
 
 @pytest.mark.parametrize("profile", [{"provider": "fakeprov", "model": "fakeprov/fake-model", "effort": "high"},
@@ -187,10 +201,30 @@ def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab
 
 
 def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
+    """On Linux the relay projection names the pinned model in the server's configuration, so the server lists it even
+    though its catalog does not offer it (as 2.0.18 does): the launch still refuses it, and says why it is listed."""
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, models=[{"id": "cheaper-model", "providerID": "other", "enabled": True, "variants": []}])
     # Timing-dependent (the catalog's wait ran out), so never a lasting incompatibility (M4-E E8a; PR #185, F1).
-    assert "fakeprov/fake-model is not offered" in refused_launch(lab, tmp_path, reason_code="unknown")
+    message = refused_launch(lab, tmp_path, reason_code="unknown")
+    assert "fakeprov/fake-model is not offered" in message
+    relayed = lab.record(RUN)["containment"]["network"]["mode"] == "proxy_only"
+    assert ("listed only because AEW names it" in message) == relayed, message
+
+
+def test_on_linux_a_provider_key_that_would_reach_the_sandbox_another_way_refuses_the_launch(lab, tmp_path):
+    """F28 §3.6, row 6: in a run's own network the key's variable holds a sentinel; the same value in any other
+    variable the server is given (here a locale variable) would put the key in the sandbox, so the server is not
+    started, and the refusal names the provider variable, never the value. Elsewhere there is no relay, and the run
+    goes on as before."""
+    lab.env["LC_AEW_TEST"] = PROVIDER_SECRET
+    script(lab, IMPLEMENT)
+    if not sys.platform.startswith("linux"):
+        _, _, run = launch(lab, tmp_path)
+        assert lab.wait(run)["status"] == "ended_with_evidence"
+        return
+    message = refused_launch(lab, tmp_path)
+    assert "the value of OPENAI_API_KEY would reach the run's sandbox" in message and PROVIDER_SECRET not in message
 
 
 def test_a_missing_effort_variant_fails_closed(lab, tmp_path):
@@ -392,6 +426,7 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
         # relay gave the provider each key in its place, the one the launch read
         assert list(dict.fromkeys(lab.provider.seen)) == [hashlib.sha256(k.encode()).hexdigest()
                                                          for k in (expired, fresh)]
+        assert record["containment"]["network"]["decisions"]["relay"].get("allowed", 0) >= 1
     # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote, its server log (the
     # harness's stderr) included: only the variable's name. OpenCode's own private state (its XDG directories, with
     # its database) keeps what the provider said.

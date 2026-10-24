@@ -282,9 +282,26 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/integration/test_containment.py::test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run: >-
-      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
-      the Rocky 8 lane); the rows' judgement is tested on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run: >-
+      Linux bubblewrap containment (STG-05 CS-2, CS-3b); Windows has no OS filesystem or network containment. Covered
+      on Linux (CI and the Rocky 8 lane); the rows' judgement is tested on every platform in
+      tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_a_check_has_no_network_unless_it_asks_and_its_run_has_the_hosts: >-
+      Linux bubblewrap containment (STG-05 CS-3b); Windows has no network containment. Covered on Linux (CI and
+      the Rocky 8 lane); a check's network is decided on every platform in tests/unit/test_containment_netns.py.
+    tests/integration/test_containment.py::test_establish_on_the_hosts_network_says_so_and_claims_nothing: >-
+      Linux bubblewrap containment (STG-05 CS-3b); Windows has no network containment and labels its runs'
+      network not_provided (tests/regression/test_m3_dogfood_findings.py). Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_network_shim.py::test_each_leg_forwards_both_ways_and_passes_on_an_end_of_stream_and_the_shim_exits_with_its_harness: >-
+      the shim's socket files are AF_UNIX, and it runs only in a Linux run's network of its own (STG-05 CS-3b);
+      Windows has no network containment. Covered on Linux; the shim's spec is tested on every platform in
+      tests/unit/test_containment_netns.py.
+    tests/integration/test_network_shim.py::test_a_leg_that_cannot_be_set_up_stops_the_harness_from_starting: >-
+      the shim runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has no network containment.
+      Covered on Linux.
+    tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
+      the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
+      no network containment. Covered on Linux.
     tests/integration/test_containment.py::test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the socket classes are tested on every platform in tests/unit/test_containment_sockets.py.
@@ -316,6 +333,9 @@ skipped:
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the store helper's files are in the layout's masks on every platform
       (tests/unit/test_containment_layout.py).
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row1-netns]: >-
+      Linux bubblewrap containment (STG-05 CS-3b); Windows has no network containment. Covered on Linux (CI and
+      the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
     tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row2-run]: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.

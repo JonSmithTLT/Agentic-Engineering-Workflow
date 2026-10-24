@@ -114,8 +114,8 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
     the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
     environment, for the credential paths and sockets it names (default: this process's). The layout's network is the
     policy's (:func:`.netns.mode`), with a fresh network directory when it is a namespace of its own (removed again
-    when the launch is refused); ``bridge`` (the run's bridge socket) and ``egress_policy`` (its egress allowlist, or
-    None) are what the self-test's row 1 checks."""
+    when the launch is refused, and otherwise the caller's to remove); ``bridge`` (the run's bridge socket) and
+    ``egress_policy`` (its egress allowlist, or None) are what the self-test's row 1 checks."""
     from aew.harness.containment import netns, probe
 
     wanted = mode(policy)
@@ -152,6 +152,10 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if wanted == REQUIRED:
             raise
         return None, label(contained=False, reason=exc.message, self_test=exc.details.get("self_test"))
+    except BaseException:
+        if net_dir:
+            shutil.rmtree(net_dir, ignore_errors=True)
+        raise
     return layout, label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
 
 

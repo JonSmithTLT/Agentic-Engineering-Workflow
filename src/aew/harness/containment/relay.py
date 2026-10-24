@@ -338,7 +338,7 @@ class ProviderRelay(Service):
                 ready = set() if pending else {key.fileobj for key, _ in selector.select()}
                 if self._wake_r in ready:
                     return
-                if conn in ready and not conn.recv(CHUNK):  # the client went away: a cancelled turn
+                if conn in ready and _gone(conn):  # the client went away: a cancelled turn
                     self._count("cancelled")
                     return
                 if pending or upstream in ready:
@@ -394,6 +394,15 @@ class _Reader:
         end = self.buffer.index(b"\r\n\r\n") + 4
         out, self.buffer = self.buffer[:end], self.buffer[end:]
         return out
+
+
+def _gone(conn: socket.socket) -> bool:
+    """Whether a client the relay is streaming to has closed (or reset) its connection. Anything it sends meanwhile is
+    not relayed: one request per connection."""
+    try:
+        return not conn.recv(CHUNK)
+    except ConnectionError:
+        return True
 
 
 def _read_head(conn: socket.socket, timeout: float) -> tuple[bytes, bytes]:

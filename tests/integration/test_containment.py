@@ -28,7 +28,7 @@ import pytest
 from aew.harness import containment as C
 from aew.harness import procs
 from aew.harness.containment import layout as L
-from aew.harness.containment import probe, sockets
+from aew.harness.containment import netns, probe, sockets
 
 pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
                                 reason="Linux bubblewrap containment (Windows: workdir separation only)")
@@ -362,6 +362,28 @@ def test_establish_on_the_hosts_network_says_so_and_claims_nothing(lab):
     assert label["network"]["mode"] == "shared"
     assert label["self_test"]["rows"]["1"] == {"name": "network", "ok": True, "reason": None, "mode": "shared",
                                                "claim": "none: the run shares the host's network"}
+
+
+OFFLINE = ("import socket, sys\n"
+           "try:\n    socket.create_connection(('192.0.2.1', 9), timeout=5)\n"
+           "except OSError as e:\n    sys.exit(0 if e.errno in (101, 113) else 3)\n"  # ENETUNREACH, EHOSTUNREACH
+           "sys.exit(4)")
+
+
+def test_a_check_has_no_network_unless_it_asks_and_its_run_has_the_hosts(lab):
+    """F28 §3.8: a check in a contained run is isolated by default, whatever its run's network, and says so in its
+    log; ``network: shared`` gets the host's network only from a run that has it."""
+    from aew.policy import checks
+
+    run = dataclasses.replace(lab.layout("reviewer"), network=L.PROXY_ONLY, net_dir=None)
+    for asked in (None, "shared"):  # a run with routes of its own: a check gets none of them, nor the host's
+        out = checks.run({"command": [sys.executable, "-I", "-c", OFFLINE], **({"network": asked} if asked else {})},
+                         lab.ws, layout=run)
+        assert (out["exit_code"], out["network"]) == (0, L.ISOLATED), out["log"]
+        assert "(network: none; a check that needs the network declares `network: shared`" in out["log"]
+    shared = dataclasses.replace(run, network=L.SHARED)
+    out = checks.run({"command": [sys.executable, "-I", "-c", "pass"], "network": "shared"}, lab.ws, layout=shared)
+    assert (out["exit_code"], out["network"]) == (0, L.SHARED) and "(network:" not in out["log"]
 
 
 # ------------------------------------------------------------------ process ownership (E13)
@@ -756,6 +778,14 @@ def test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run(lab, mo
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
     assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)
     assert rows["2"]["abstract"]["network"] == "proxy_only" and rows["2"]["abstract"]["visible_inside"] == []
+    # the hand-off's outcome 4: a namespace other than the launcher's (and PID 1's, where it can be read), no host
+    # abstract socket or loopback port reachable inside, and nothing listening there but the shim's legs
+    one = rows["1"]
+    assert one["netns"]["inside"] and one["netns"]["inside"] != one["netns"]["launcher"]
+    assert one["checks"]["host_abstract"] != "connected" and one["checks"]["host_port"] != "connected"
+    assert {tuple(p) for p in one["listening"]} <= {("tcp", netns.SERVER_PORT), ("tcp", netns.PROVIDER_PORT),
+                                                     ("tcp", netns.EGRESS_PORT)}
+    assert one["checks"]["direct"] in probe.UNREACHABLE and one["server"] == "echoed"
     assert [s for s in rows["2"]["sockets"] if s["class"] in sockets.FAILING] == []
     assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"]) == (0, "ENXIO")
     print(f"socket table: {rows['2']['table']} entries, {rows['2']['checked']} path sockets checked, "
@@ -886,7 +916,7 @@ def test_no_credential_reaches_git_inside_the_sandbox(lab):
     assert "SYNTHETIC" not in inside.stdout + inside.stderr
 
 
-FAIL_CLOSED = ("row2-run", "row3-file", "row3-env", "row5-mask")
+FAIL_CLOSED = ("row1-netns", "row2-run", "row3-file", "row3-env", "row5-mask")
 
 
 @pytest.mark.parametrize("case", FAIL_CLOSED)
@@ -900,6 +930,7 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     xauth.write_text("SYNTHETIC-COOKIE\n")
     real = os.path.realpath
     row, steps = {
+        "row1-netns": ("1", [("--unshare-net",)]),  # the run's own network (F28 §3.6; the hand-off's outcome 4)
         "row2-run": ("2", [("--tmpfs", L.RUN), ("--remount-ro", L.RUN)]),
         "row3-file": ("3", [("--ro-bind", str(lab.run / L.MASK_FILE), real(xauth))]),
         "row3-env": ("3", [("--unsetenv", "DISPLAY")]),

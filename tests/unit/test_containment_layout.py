@@ -521,7 +521,7 @@ def test_the_resolv_conf_exception_is_the_first_path_under_run_on_its_chain_when
     assert exception(None) == ()  # NetworkManager's regular file (the Rocky VM): nothing under /run to keep
     stub = run / "systemd" / "resolve" / "stub-resolv.conf"
     stub.write_text("nameserver 127.0.0.53\n")
-    assert exception(stub) == ((str(stub), "name resolution until CS-3 (the operator, 2026-10-24)"),)
+    assert exception(stub) == ((str(stub), L.RESOLV_WHY),)
     (run / "resolvconf" / "resolv.conf").symlink_to(stub)
     assert exception(run / "resolvconf" / "resolv.conf")[0][0] == str(run / "resolvconf" / "resolv.conf")  # the first
     assert exception(run / "systemd" / "resolve" / "missing.conf") == ()  # dangling: binding it would fail the launch

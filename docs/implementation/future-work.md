@@ -1379,11 +1379,11 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 ### STG-05
 
-**Work:** Agent containment, built in slices (CS-1 to CS-5): the store's path and the control lock kept out of agents' reach, the store's modes and group, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
+**Work:** Agent containment, built in slices (CS-1 to CS-5): the store's path and the control lock kept out of agents' reach, the store's modes, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
 
 **Source (governing):** the designer's STG-05 hand-offs and rulings (D-CS1-1 to D-CS1-13, and the amended D-CS1-10 and D-CS1-11); ADR-0009 and its amendments from 2026-10-21
 
-**Belongs to or gated by:** **Stage.** STG-05, in the slice order the designer set: CS-1 (#230 and #231 merged; its CB-08 group follow-up next), then CS-2 to CS-5 in the map's order
+**Belongs to or gated by:** **Stage.** STG-05, in the slice order the designer set: CS-1 (#230 and #231 merged; the CB-08 group follow-up closed when the operator cut the WIS issuer, 2026-10-24, and the store is owner-only again, #256), CS-2 (#244 merged), CS-3 (CS-3a, #246, merged; CS-3b wires it in), then CS-4 and CS-5 in the map's order
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23). CS-1's notes moved here from the closed F2 row.
 

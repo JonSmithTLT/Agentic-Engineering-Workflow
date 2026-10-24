@@ -261,9 +261,10 @@ def take_requests(directory: Path) -> list[tuple[str, str]]:
 
 
 def end_supervisor(directory: Path) -> bool:
-    """Kill a run's supervisor process, if it is still the one that took custody (pids are reused). Its job object
-    or process group then ends the harness tree. For teardown by the operator's own tooling, which can end any of
-    its processes anyway; it needs no request and leaves no state behind (the run shows as lost)."""
+    """Kill a run's supervisor process, if it is still the one that took custody (pids are reused: its start id names
+    it, or, in a record from before start ids, a start no later than its custody time). Its job object or process
+    group then ends the harness tree. For teardown by the operator's own tooling, which can end any of its processes
+    anyway; it needs no request and leaves no state behind (the run shows as lost)."""
     from aew.harness import procs
 
     record = read_record(directory) or {}
@@ -275,7 +276,7 @@ def end_supervisor(directory: Path) -> bool:
         custody_epoch = calendar.timegm(time.strptime(custody, "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return False
-    if not procs.same_process(pid, custody_epoch):
+    if not procs.same_process(pid, procs.recorded(record.get("supervisor_start_id"), custody_epoch)):
         return False
     procs.kill_pid(pid)
     return True

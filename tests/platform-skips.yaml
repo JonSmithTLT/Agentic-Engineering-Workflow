@@ -7,6 +7,10 @@ skipped:
     tests/unit/test_store_read_committed.py::test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic: >-
       POSIX rename is atomic, so a missing file is absent at once there; Windows retries it (F46.1 F1a, re-review R8).
       Covered on Windows by test_an_absent_file_is_absent_only_after_the_retries_on_windows.
+    tests/unit/test_process_identity.py::test_a_wall_clock_step_moves_the_epoch_start_time_but_never_the_start_id_on_linux: >-
+      btime (/proc/stat) is Linux's, and a wall-clock step moves it (ADR-0009 amendment 2026-10-23); Windows' process
+      creation time is absolute, so no step moves it. Covered on Linux; every reader's preference for the start id is
+      tested on every platform in the same file, with the step applied to each epoch start time.
     tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
       the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
       session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).

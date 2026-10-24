@@ -170,6 +170,8 @@ class Custody:
             inv = ctx.state["invocations"][custodian]
             inv["worker"] = {"host_pid": pid, "started_at": procs.started_at(pid) or time.time(),
                              "host": socket.gethostname(), "registered_at": utc_now()}
+            if (start := procs.start_id(pid)) is not None:  # unknown: judged by its start time (legacy)
+                inv["worker"]["start_id"] = start
             ctx.refs.append(f"invocation:{custodian}")
             ctx.summary = f"custodian {custodian}'s custody worker registered (pid {pid})"
         return {"ok": True, "custodian": custodian, "pid": pid, "revision": ctx.session.committed_revision}

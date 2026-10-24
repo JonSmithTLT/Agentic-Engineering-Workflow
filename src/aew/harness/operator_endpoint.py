@@ -156,6 +156,7 @@ class OperatorEndpoint:
         self.pid = os.getpid()
         self.started_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._started = procs.started_at(self.pid)
+        self._start_id = procs.start_id(self.pid)
         self._locator = locator_path(engine.aew_root)
         self._closed = threading.Event()
         self._authorizing = threading.Lock()  # one challenge at a time
@@ -251,8 +252,8 @@ class OperatorEndpoint:
 
     def _locator_data(self) -> dict[str, Any]:
         return {"schema": LOCATOR_SCHEMA, "address": self.address, "family": self.family, "pid": self.pid,
-                "process_started": self._started, "started_at": self.started_at, "uid": self.uid,
-                "guarantee": GUARANTEE}
+                "process_started": self._started, "start_id": self._start_id, "started_at": self.started_at,
+                "uid": self.uid, "guarantee": GUARANTEE}
 
     def _write_locator(self) -> None:
         data = self._locator_data()

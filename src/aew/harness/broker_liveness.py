@@ -5,8 +5,9 @@ The operator endpoint tells the operator when the Lead's broker is gone (``gener
 broker keeps current:
 
 - **A beat thread of its own** (:class:`Beat`), started and stopped with the broker's watchdog, writes
-  ``{pid, process_started, generation, beat_at, watchdog_tick_at, wedge_after_s}`` atomically every ``POLL_S``. It
-  never reads the store, so a watchdog iteration waiting on the control lock never stops the beat (R2-m3).
+  ``{pid, process_started, start_id, generation, beat_at, watchdog_tick_at, wedge_after_s}`` atomically every
+  ``POLL_S`` (``start_id``: ADR-0009 amendment 2026-10-23). It never reads the store, so a watchdog iteration
+  waiting on the control lock never stops the beat (R2-m3).
 - ``watchdog_tick_at`` is when the watchdog loop last completed an iteration, read from memory. A beat whose tick is
   older than the wedge threshold, ``store.lock_timeout + 2 × POLL_S`` of the broker's own engine store, is a wedged
   watchdog: past any lock wait it can legitimately be in (R3-n2, R4-m1). The broker records the threshold, so the
@@ -14,7 +15,7 @@ broker keeps current:
 - ``close()``, and the watchdog's return on supersession, write ``closed_at``: a clean end, never a crash.
 
 **Judged** (:func:`judge`) only for a record whose ``generation`` is the current Lead generation: ``closed`` when it
-has ``closed_at``; ``crash`` when its process is gone, by the endpoint locator's own pid-and-start-time check; ``stale``
+has ``closed_at``; ``crash`` when its process is gone, by the endpoint locator's own pid-and-start-id check; ``stale``
 when it is alive with no beat for 2 × ``POLL_S``, or its watchdog is wedged.
 
 **Trust.** The record is local state under ``.aew/local/``, never control state. A same-uid process can forge it (the
@@ -64,6 +65,7 @@ class Beat:
         self.wedge_after_s = wedge_after_s
         self.pid = os.getpid()
         self.process_started = procs.started_at(self.pid)
+        self.start_id = procs.start_id(self.pid)
         self._tick_at = time.time()
         self._stop = threading.Event()
         self._mu = threading.Lock()  # a beat and the closing write never interleave
@@ -86,7 +88,8 @@ class Beat:
                 return
             self._closed = True
             current = read(self.aew_root)
-            if current is None or (current["pid"], current["process_started"]) == (self.pid, self.process_started):
+            if current is None or (current["pid"], current.get("start_id"), current["process_started"]) == (
+                    self.pid, self.start_id, self.process_started):
                 self._write_locked(time.time())
         if self._thread.is_alive() and threading.current_thread() is not self._thread:
             self._thread.join(max(1.0, 2 * self.poll_s))
@@ -102,7 +105,7 @@ class Beat:
 
     def _write_locked(self, closed_at: float | None) -> None:
         record: dict[str, Any] = {"schema": SCHEMA, "pid": self.pid, "process_started": self.process_started,
-                                  "generation": self.generation, "beat_at": time.time(),
+                                  "start_id": self.start_id, "generation": self.generation, "beat_at": time.time(),
                                   "watchdog_tick_at": self._tick_at, "wedge_after_s": self.wedge_after_s}
         if closed_at is not None:
             record["closed_at"] = closed_at
@@ -162,6 +165,7 @@ def read(aew_root: Path) -> dict[str, Any] | None:
             and all(_number(data.get(k)) for k in ("beat_at", "watchdog_tick_at"))
             and _number(data.get("wedge_after_s"), high=MAX_WEDGE_S * 1000)
             and (data.get("process_started") is None or _number(data["process_started"]))
+            and (data.get("start_id") is None or isinstance(data["start_id"], str))
             and (data.get("closed_at") is None or _number(data["closed_at"]))):
         return None
     return data

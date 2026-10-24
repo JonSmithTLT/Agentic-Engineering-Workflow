@@ -103,6 +103,10 @@ STORE_REL = "state"
 # ``_commit_unprofiled`` writes at the same target before it replaces the control file.
 STORE_FILE_MODE, STORE_DIR_MODE = store_group.GROUP_READ
 OWNER_FILE_MODE, OWNER_DIR_MODE = store_group.OWNER_ONLY
+# The control file's mode from a walk's first step to its last (D-CS1-1's erratum, its second amendment): no target's
+# mode, so an interrupted walk always leaves the store marked for repair. It narrows every target's mode, so it stays
+# within WIS-00's bound, and the owner can still read the control file.
+WALKING_FILE_MODE = 0o400
 CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
@@ -269,7 +273,8 @@ def _temp_args(target: store_group.Target | None) -> dict[str, Any]:
 
 def _open_listed(path: Path, st: os.stat_result, is_dir: bool) -> int | None:
     """A descriptor on the file ``st`` describes, opened at ``path`` without following a link, or None where ``path``
-    is gone, is not that file now, or cannot be opened (a mode with neither the owner's read nor, for a file, its
+    is gone, is not that file now, is a file with more than one link (the store publishes every file by a rename, so
+    it holds one link to each), or cannot be opened (a mode with neither the owner's read nor, for a file, its
     write). The walk changes a path only through it (``ControlStore._step``)."""
     if sys.platform == "win32":  # pragma: windows-only
         raise NotImplementedError("no store walk on Windows")
@@ -282,7 +287,8 @@ def _open_listed(path: Path, st: os.stat_result, is_dir: bool) -> int | None:
         except OSError:  # gone, or a link now
             return None
         now = os.fstat(fd)
-        if (now.st_dev, now.st_ino, stat.S_IFMT(now.st_mode)) == (st.st_dev, st.st_ino, stat.S_IFMT(st.st_mode)):
+        if ((now.st_dev, now.st_ino, stat.S_IFMT(now.st_mode)) == (st.st_dev, st.st_ino, stat.S_IFMT(st.st_mode))
+                and (is_dir or now.st_nlink == 1)):
             return fd
         os.close(fd)
         return None
@@ -598,9 +604,10 @@ class ControlStore:
 
     def _at(self, want: store_group.Target) -> bool:  # pragma: posix-only
         """Whether the record is at ``want``. The record (D-CS1-1's erratum, 2026-10-24) is the group and mode of the
-        store directory and of every directory under it (:meth:`_store_directories`), and of the control file. The walk
-        sets the store directory first and the control file last, so a walk cut at any step between leaves the record
-        at no single target, and the next comparison walks whatever the target is then. Every store directory an
+        store directory and of every directory under it (:meth:`_store_directories`), and of the control file. The
+        walk's first step puts the control file at a mode no target has and its last step puts it at the target
+        (:meth:`_walk`), so a walk cut at any step leaves the record at no target, and the next comparison walks
+        whatever the target is then. Every store directory an
         earlier version made, under whatever umask, is compared too, so it is brought within WIS-00's bound at the
         first comparison: no version made a store file wider than this build's target (they came from ``mkstemp`` at
         0600 before CS-1, and at the exact mode since)."""
@@ -618,13 +625,15 @@ class ControlStore:
         return (st.st_gid, stat.S_IMODE(st.st_mode)) == (want.gid, want.file_mode)
 
     def _walk(self, want: store_group.Target) -> store_group.Target:  # pragma: posix-only
-        """Bring every store path to ``want`` (``store_group.steps``), the control file last, under the control lock.
-        A path pruned meanwhile (the compactor prunes without the lock) is skipped, and so is one this process may not
-        change (another account's), which `aew doctor` names. If the file system refuses this process the store's
-        group on a path of its own, the process lacks it: it says so in its entry, and walks to the owner-only target
-        instead. Returns the target the store was walked to."""
+        """Bring every store path to ``want`` (``store_group.steps``) under the control lock: the control file first to
+        :data:`WALKING_FILE_MODE`, then the store directory, the other directories and the files, and the control file
+        last to ``want``. A path pruned meanwhile (the compactor prunes without the lock) is skipped, and so is one this
+        process may not change (another account's), which `aew doctor` names. If the file system refuses this process
+        the store's group on a path of its own, the process lacks it: it says so in its entry, and walks to the
+        owner-only target instead. Returns the target the store was walked to."""
         control = self.store_dir / Path(CONTROL_REL).name
         try:
+            self._mark_walking(control)
             first = True
             for path, st, is_dir in self._store_paths():
                 if path != control:
@@ -642,6 +651,29 @@ class ControlStore:
             self._refuse(want.gid)
             return self._walk(self.group_view().target)  # owner-only now, which needs no group but the primary
         return want
+
+    @staticmethod
+    def _mark_walking(control: Path) -> None:
+        """The walk's first step: the control file to :data:`WALKING_FILE_MODE` under its own group, through a
+        descriptor on it (:func:`_open_listed`). From here to the walk's last step the record is at no target, so a walk
+        cut anywhere between is walked again at the next comparison, whatever the target is then."""
+        if sys.platform == "win32":  # pragma: windows-only (no store walk on Windows)
+            return
+        try:  # pragma: posix-only
+            st = os.lstat(control)
+        except FileNotFoundError:  # an interrupted ``create``: nothing to mark, and the comparison walks anyway
+            return
+        if not stat.S_ISREG(st.st_mode) or stat.S_IMODE(st.st_mode) == WALKING_FILE_MODE:
+            return
+        fd = _open_listed(control, st, False)
+        if fd is None:
+            return
+        try:
+            os.fchmod(fd, WALKING_FILE_MODE)
+        except PermissionError:  # another account's control file: left, and reported
+            pass
+        finally:
+            os.close(fd)
 
     @staticmethod
     def _step(path: Path, st: os.stat_result, is_dir: bool, want: store_group.Target) -> None:
@@ -969,11 +1001,12 @@ class ControlStore:
             except OSError:  # gone, or not readable: its own mode is compared above
                 continue
 
-    def _store_paths(self) -> Iterator[tuple[Path, os.stat_result, bool]]:  # pragma: posix-only
+    def _store_paths(self, *, every: bool = False) -> Iterator[tuple[Path, os.stat_result, bool]]:  # pragma: posix-only
         """(path, its ``lstat``, whether it is a directory) for the store directory and every directory and regular
-        file under it. Anything else is skipped: a symbolic link (the store's paths are the files and directories in
-        it, never what a link names), and a path that vanished after it was listed (the compactor prunes log records
-        without the control lock, ``log_compact``)."""
+        file under it, and with ``every`` (for `aew doctor`) every other path in it too, such as a FIFO or a socket,
+        which the walk never opens. Skipped always: a symbolic link (the store's paths are the files and directories
+        in it, never what a link names), and a path that vanished after it was listed (the compactor prunes log
+        records without the control lock, ``log_compact``)."""
         for d, dirs, files in os.walk(self.store_dir):
             names = [""] if Path(d) == self.store_dir else []
             for name in [*names, *dirs, *files]:
@@ -982,7 +1015,7 @@ class ControlStore:
                     st = os.lstat(path)
                 except FileNotFoundError:
                     continue
-                if stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode):
+                if stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode) or (every and not stat.S_ISLNK(st.st_mode)):
                     yield path, st, stat.S_ISDIR(st.st_mode)
 
     def applied(self, revision: int) -> bool:
@@ -1070,13 +1103,18 @@ class ControlStore:
     def path_problems(self, want: store_group.Target) -> list[tuple[str, int, int]] | None:
         """``(path, group, mode)`` for each store path (``state/...``; a directory ends in ``/``) that is not exactly at
         ``want``, without modifying anything: a path the walk could not change (another account's), or a file changed
-        after the record was written, which the walk does not revisit while the record is at the target. None on
-        Windows, which has no such modes or groups."""
+        after the record was written, which the walk does not revisit while the record is at the target. A path that is
+        neither a file nor a directory (a FIFO, a socket, a device) is never at a target: its mode keeps its file type
+        bits (``stat.S_IFMT``), so a reader can tell it apart. None on Windows, which has no such modes or groups."""
         if sys.platform == "win32":  # pragma: windows-only
             return None
-        return sorted((self._rel(path, is_dir), st.st_gid, stat.S_IMODE(st.st_mode))  # pragma: posix-only
-                      for path, st, is_dir in self._store_paths()
-                      if (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.mode(is_dir)))
+        out = []  # pragma: posix-only
+        for path, st, is_dir in self._store_paths(every=True):
+            if not (is_dir or stat.S_ISREG(st.st_mode)):
+                out.append((self._rel(path, False), st.st_gid, st.st_mode))
+            elif (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.mode(is_dir)):
+                out.append((self._rel(path, is_dir), st.st_gid, stat.S_IMODE(st.st_mode)))
+        return sorted(out)
 
     def _rel(self, path: Path, is_dir: bool) -> str:  # pragma: posix-only
         rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()

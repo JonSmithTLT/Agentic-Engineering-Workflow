@@ -8,6 +8,7 @@ from __future__ import annotations
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -144,7 +145,8 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list
         for rel, _g, m in problems:
             if m & ~(sg.GROUP_READ[1] if rel.endswith("/") else sg.GROUP_READ[0]):
                 bound.add(rel)
-        shown = ", ".join(f"{rel} (gid {g}, {m:04o}{', above the bound' if rel in bound else ''})"
+        shown = ", ".join(f"{rel} ({stat.filemode(m)}, neither a file nor a directory)" if stat.S_IFMT(m) else
+                          f"{rel} (gid {g}, {m:04o}{', above the bound' if rel in bound else ''})"
                           for rel, g, m in problems[:5])
         by_hand = "; ".join(_by_hand(rel, g, m, target) for rel, g, m in problems[:5])
         checks.append(_check("store-modes", "WARN" if problems else "PASS",
@@ -174,10 +176,13 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list
 
 def _by_hand(rel: str, gid: int, mode: int, target: Any) -> str:
     """The commands that bring one store path (``state/...``, a directory ending in ``/``) to ``target``, in the order
-    the walk steps it (``store_group.steps``), from the project's directory."""
+    the walk steps it (``store_group.steps``), from the project's directory. A path that is neither a file nor a
+    directory (its ``mode`` keeps its file type) has no place in the store: the command removes it."""
     from aew.engine import store_group as sg
 
     path = f".aew/{rel}"
+    if stat.S_IFMT(mode):
+        return f"`rm {path}`"
     return ", ".join(f"`chmod {value:04o} {path}`" if op == "mode" else f"`chgrp {value} {path}`"
                      for op, value in sg.steps(gid, mode, target, rel.endswith("/")))
 

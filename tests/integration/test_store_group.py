@@ -90,6 +90,24 @@ def test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds(m
             assert (want.gid, (want.file_mode, want.dir_mode)) == model["publish"](h, w), (name, w["name"])
 
 
+def test_the_control_files_mode_during_a_walk_is_no_targets_and_narrows_every_target(model):
+    """D-CS1-1's erratum, its second amendment: the mode a walk gives the control file from its first step to its last
+    is a mode no target has, so a walk cut anywhere leaves the record at no target; and it grants nothing any target
+    withholds (WIS-00's bound), while its owner can still read it. The targets are those ``store_group.target`` gives on
+    every host and writer of the reference model, both branches included."""
+    file_modes = set()
+    for h in model["HOSTS"].values():
+        found = sg.answer(model_host(model, h))
+        running = [w for w in h["writers"] if w["running"]]
+        for w in running:
+            want = sg.target(found, model["primary_of"](h), writer(w), [writer(x) for x in running if x is not w])
+            file_modes.add(want.file_mode)
+    assert file_modes == {GROUP_READ[0], OWNER_ONLY[0]}, file_modes  # a new target must be seen here
+    walking = store_mod.WALKING_FILE_MODE
+    assert walking not in file_modes and walking & stat.S_IRUSR
+    assert all(walking & ~m == 0 for m in file_modes)
+
+
 def test_the_step_rule_grants_nothing_beyond_its_start_and_end_and_ends_at_the_target(model):
     """WIS-00's bound at every step (SG1-2), for every start the walk can meet (above the bound included) and both
     targets, judged bit by bit (the model's ``grants`` compares whole bit sets, which is coarser); and where the model
@@ -281,7 +299,8 @@ def test_name_service_sources_outside_this_hosts_files_cannot_be_listed_running_
     (etc / "passwd").write_text("root:x:0:0::/root:/bin/sh\n", encoding="utf-8")
     conf.write_text("# passwd: ldap\npasswd:     files sss systemd\nshadow: files\n"
                     "group:  files [SUCCESS=merge] sss winbind # trailing\nhosts: files dns\n", encoding="utf-8")
-    assert sg.nss_sources(conf, etc) == {"files": True, "sss": False, "systemd": True, "winbind": False}
+    assert sg.nss_sources(conf, etc) == {"files": True, "sss": False, "systemd": True, "winbind": False,
+                                         "#": False, "trailing": False}  # glibc 2.35 reads on past a `#` in a line
     conf.write_text("passwd: files systemd\ngroup: files compat\n", encoding="utf-8")
     assert sg.nss_sources(conf, etc) == {"files": True, "systemd": True, "compat": True}
     (etc / "group").write_text("wheel:x:10:\n+@netgroup\n", encoding="utf-8")  # NIS lines: `compat` goes remote
@@ -298,6 +317,37 @@ def test_every_database_that_gives_an_account_its_groups_is_a_source(tmp_path):
     assert sg.nss_sources(conf, etc) == {"files": True, "sss": False}
     conf.write_text("passwd: files\ngroup: files\ninitgroups: files\n", encoding="utf-8")
     assert sg.nss_sources(conf, etc) == {"files": True}
+
+
+@pytest.mark.parametrize(("line", "sources"), [
+    ("group files sss", {"sss"}),
+    ("group\tfiles sss", {"sss"}),
+    ("initgroups files sss", {"sss"}),
+    ("passwd files sss", {"sss"}),
+    ("passwd\t sss", {"sss"}),
+    ("  group:sss", {"sss"}),
+    ("group :sss", {"sss"}),
+    ("group:: sss", {"sss"}),
+    ("group files: sss", {"files:", "sss"}),
+    ("group: files # sss", {"#", "sss"}),
+    ("group: files #sss", {"#sss"}),
+    ("group: files#sss", {"files#sss"}),
+    ("group: files [NOTFOUND=return] sss", {"sss"}),
+    ("group: files [ NOTFOUND = return ] sss", {"sss"}),
+    ("group: files[SUCCESS=merge]sss", {"sss"}),
+    ("Group: sss", set()),  # glibc's database names are case-sensitive: no database
+    ("# group: sss", set()),
+    ("group", set()),
+])
+def test_each_line_of_the_name_service_file_is_read_as_glibc_reads_it(tmp_path, line, sources):
+    """The sources of a line are those glibc reads from it (the colon after the database's name is optional, and a
+    word after a ``#`` inside a line counts), so a source glibc consults is never missed. Each line here also has
+    ``files``, through the line itself or the ``passwd: files`` before it."""
+    conf, etc = tmp_path / "nsswitch.conf", tmp_path / "etc"
+    etc.mkdir()
+    conf.write_text(f"passwd: files\n{line}\n", encoding="utf-8")
+    found = sg.nss_sources(conf, etc)
+    assert {s for s, listable in found.items() if not listable} == sources and found["files"] is True, found
 
 
 class _G:
@@ -506,6 +556,8 @@ def replay(root: Path, start: dict[str, tuple[int, int]], calls: list[tuple[str,
 @pytest.mark.parametrize("direction", ["up", "down", "sideways"])
 def test_the_walk_in_each_direction_grants_nothing_beyond_its_start_and_end_and_moves_the_control_file_last(
         tmp_path, monkeypatch, direction):
+    """SG1-2 at every step of a real walk, and its order (D-CS1-1's erratum, its second amendment): the control file
+    first to the walking mode, then the store's directories and files, and the control file last to the target."""
     egid, s = gh.held()
     owner_only = gh.make_host(primary=egid, user_private=False)
     private = gh.make_host(primary=egid)
@@ -531,8 +583,9 @@ def test_the_walk_in_each_direction_grants_nothing_beyond_its_start_and_end_and_
     for s_ in states:
         assert grants(s_) <= grants(start) | grants(target), s_
     names = [Path(c[0]).name for c in walked]
-    first_control = names.index("control.yaml")
-    assert first_control > 0 and set(names[first_control:]) == {"control.yaml"}, names  # the control file last
+    assert walked[0][1:] == ("mode", store_mod.WALKING_FILE_MODE) and names[0] == "control.yaml", walked[0]
+    last_control = names.index("control.yaml", 1)
+    assert last_control > 1 and set(names[last_control:]) == {"control.yaml"}, names  # and the control file last
 
 
 @posix
@@ -600,8 +653,9 @@ def test_a_change_of_mode_alone_at_the_same_group_is_a_migration(tmp_path, monke
 @posix
 @pytest.mark.parametrize("then", ["same", "other"])
 def test_a_walk_interrupted_before_the_control_file_resumes_at_the_next_comparison(tmp_path, monkeypatch, then):
-    """C2-2, with D-CS1-1's erratum (2026-10-24): the walk sets the store directory first and the control file last,
-    so a walk cut between them is walked again at the next open, whichever target it has then."""
+    """C2-2, with D-CS1-1's erratum (2026-10-24) and its second amendment: the walk's first step puts the control file
+    at the walking mode, and only its last step at the target, so a walk cut before that is walked again at the next
+    open, whichever target it has then."""
     from aew.engine.faults import InjectedFault
 
     egid, s = gh.held()
@@ -617,7 +671,7 @@ def test_a_walk_interrupted_before_the_control_file_resumes_at_the_next_comparis
     with pytest.raises(InjectedFault):
         make_store(root).read()
     cut = state_of(root)
-    assert cut["state/control.yaml"] == (egid, GROUP_READ[0])  # the control file is still at the first target
+    assert cut["state/control.yaml"] == (egid, store_mod.WALKING_FILE_MODE)  # at no target, under its first group
     assert {rel for rel, (g, _m) in cut.items() if g != s} == {"state/control.yaml"}
     monkeypatch.delenv("AEW_FAULT")
     end = (s, GROUP_READ)
@@ -687,6 +741,13 @@ def cut_walk(monkeypatch, root: Path, step: int) -> bool:
 TARGETS = ("owner_only", "aew", "user_private")
 
 
+def copy_store(source: Path, root: Path) -> None:
+    """A copy of the store at ``source`` at ``root``, its groups as well as its modes (a copy keeps only the modes)."""
+    shutil.copytree(source, root, symlinks=True)
+    for rel, (gid, _mode) in state_of(source).items():
+        os.chown(root / rel, -1, gid)
+
+
 @posix
 @pytest.mark.parametrize(("first", "second"), list(itertools.permutations(TARGETS, 2)))
 def test_a_walk_cut_at_any_step_is_finished_by_the_next_comparison(tmp_path, monkeypatch, first, second):
@@ -700,14 +761,11 @@ def test_a_walk_cut_at_any_step_is_finished_by_the_next_comparison(tmp_path, mon
     host = Host(monkeypatch, hosts[first])
     template = tmp_path / "template" / ".aew"
     one_transaction(init(template))
-    start = state_of(template)
     cases = 0
     for then in (first, second, next(t for t in TARGETS if t not in (first, second))):
         for step in itertools.count(1):
             root = tmp_path / f"{then}-{step}" / ".aew"
-            shutil.copytree(template, root, symlinks=True)
-            for rel, (gid, _mode) in start.items():  # the copy keeps the modes; give it the groups too
-                os.chown(root / rel, -1, gid)
+            copy_store(template, root)
             host.host = hosts[second]
             if not cut_walk(monkeypatch, root, step):
                 break
@@ -717,6 +775,57 @@ def test_a_walk_cut_at_any_step_is_finished_by_the_next_comparison(tmp_path, mon
             later.read()
             assert later.path_problems(later.group_view().target) == [], (first, second, step, then)
     assert cases >= 3 * 4, cases  # each walk has at least four steps: the test proves something
+
+
+@posix
+@pytest.mark.parametrize(("first", "second"), list(itertools.permutations(TARGETS, 2)))
+def test_a_walk_cut_after_a_cut_walk_is_finished_by_the_next_comparison(tmp_path, monkeypatch, first, second):
+    """D-CS1-1's erratum and its second amendment, as ruling 4's property over two cuts: for each ordered pair of
+    targets, a walk from the first to the second cut at each of its steps, then a walk toward each target cut at each
+    of its own steps, then the next open toward each target, and a commit: every store path is then exactly at the
+    target. One cut is the property above. More cuts reduce to the last walk's: every walk's first step leaves the
+    record at no target, and a walk cut before it has changed nothing."""
+    egid, s = gh.held()
+    hosts = {"owner_only": gh.make_host(primary=egid, user_private=False),
+             "aew": gh.make_host(primary=egid, user_private=False, aew=s),
+             "user_private": gh.make_host(primary=egid)}
+    host = Host(monkeypatch, hosts[first])
+    template = tmp_path / "template" / ".aew"
+    one_transaction(init(template))
+    # Its subject is the store's groups and modes. The schema checks and the fsyncs of its two thousand or so commits,
+    # which other tests cover, were nine tenths of its time.
+    monkeypatch.setattr(store_mod, "validate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(os, "fsync", lambda _fd: None)
+    cases = 0
+    for step in itertools.count(1):
+        once = tmp_path / f"{step}" / ".aew"
+        copy_store(template, once)
+        host.host = hosts[second]
+        if not cut_walk(monkeypatch, once, step):
+            break
+        for toward in TARGETS:
+            for again in itertools.count(1):
+                twice = tmp_path / f"{step}-{toward}-{again}" / ".aew"
+                copy_store(once, twice)
+                host.host = hosts[toward]
+                cut = cut_walk(monkeypatch, twice, again)
+                for then in TARGETS if cut else ():
+                    root = tmp_path / f"{step}-{toward}-{again}-{then}" / ".aew"
+                    copy_store(twice, root)
+                    host.host = hosts[then]
+                    later = make_store(root)
+                    later.read()
+                    case = (first, second, step, toward, again, then)
+                    assert later.path_problems(later.group_view().target) == [], case
+                    one_transaction(later)
+                    assert later.path_problems(later.group_view().target) == [], case
+                    cases += 1
+                    shutil.rmtree(root.parent)
+                shutil.rmtree(twice.parent)
+                if not cut:
+                    break
+        shutil.rmtree(once.parent)
+    assert cases >= 3 * 4 * 3, cases  # every first cut is followed by second cuts: the test proves something
 
 
 @posix
@@ -749,6 +858,100 @@ def test_a_store_from_an_earlier_version_is_brought_within_the_bound_at_its_firs
     assert at(root, egid, GROUP_READ) == {}, at(root, egid, GROUP_READ)
 
 
+def store_at_target_with(tmp_path: Path, monkeypatch, change) -> tuple[Path, int]:
+    """A store at its target on a user-private host, then ``change(root, gid)`` made to it, then one open. Returns the
+    store's root and the target's group."""
+    egid, _s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    assert at(root, egid, GROUP_READ) == {}
+    change(root, egid)
+    make_store(root).read()
+    return root, egid
+
+
+@posix
+def test_a_later_directory_alone_off_the_target_is_walked_at_the_next_open(tmp_path, monkeypatch):
+    """Review of #243 at 7f1b9411, P1: the record is every directory in the store, not a list of the layout's: a
+    directory another module makes, alone off the target (every other directory and the control file at it)."""
+    def later(root: Path, gid: int) -> None:
+        (root / "state" / "handoffs").mkdir(mode=0o755)
+        os.chmod(root / "state" / "handoffs", 0o755)  # noqa: S103 (a directory off the target is the condition)
+
+    root, gid = store_at_target_with(tmp_path, monkeypatch, later)
+    assert at(root, gid, GROUP_READ) == {} and "state/handoffs/" in state_of(root)
+
+
+@posix
+def test_a_directory_two_levels_down_alone_off_the_target_is_walked_at_the_next_open(tmp_path, monkeypatch):
+    """Review of #243 at 7f1b9411, P1: the record reaches every level, with every first-level directory at the
+    target."""
+    def nested(root: Path, gid: int) -> None:
+        inner = root / "state" / "log" / "older"
+        inner.mkdir(mode=0o755)
+        os.chmod(inner, 0o755)  # noqa: S103 (a directory off the target is the condition)
+
+    root, gid = store_at_target_with(tmp_path, monkeypatch, nested)
+    assert at(root, gid, GROUP_READ) == {} and "state/log/older/" in state_of(root)
+
+
+@posix
+def test_a_set_group_id_store_directory_is_walked_to_the_target_at_the_next_open(tmp_path, monkeypatch):
+    """Review of #243 at 7f1b9411, P1: the record compares a directory's whole mode, its set-group-ID bit too (a store
+    made in a set-group-ID directory owned by the target's group)."""
+    def set_group_id(root: Path, gid: int) -> None:
+        os.chmod(root / "state" / "log", 0o2750)  # noqa: S103 (the set-group-ID bit is the condition under test)
+
+    root, gid = store_at_target_with(tmp_path, monkeypatch, set_group_id)
+    assert at(root, gid, GROUP_READ) == {}, at(root, gid, GROUP_READ)
+
+
+@posix
+def test_the_record_is_the_stores_own_directories(tmp_path, monkeypatch):
+    """The store's directories are those in it, never what a link in it names: a link to a directory outside, wider
+    than the bound, is not compared, so it is not changed and does not make every comparison walk."""
+    outside = tmp_path / "outside"
+
+    def linked(root: Path, gid: int) -> None:
+        outside.mkdir()
+        os.chmod(outside, 0o777)  # noqa: S103 (a directory wider than the bound, outside the store)
+        (root / "state" / "elsewhere").symlink_to(outside, target_is_directory=True)
+
+    root, gid = store_at_target_with(tmp_path, monkeypatch, linked)
+    assert stat.S_IMODE(os.stat(outside).st_mode) == 0o777 and at(root, gid, GROUP_READ) == {}
+    calls = record_walk(monkeypatch)
+    make_store(root).read()
+    store_dir = (root / "state").resolve()
+    assert [c for c in calls if Path(c[0]).is_relative_to(store_dir)] == [], calls  # at the target: nothing walked
+
+
+@posix
+def test_doctor_names_a_path_in_the_store_that_is_neither_a_file_nor_a_directory(tmp_path, monkeypatch):
+    """Review of #243 at 7f1b9411, P2: the walk leaves a FIFO, a socket or a device alone, and `aew doctor` names one
+    in the store, which is never at a target (WIS-00's bound has files and directories only), with its remedy."""
+    from aew.doctor import store_checks
+
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    fifo = root / "state" / "log" / "a.fifo"
+    os.mkfifo(fifo)
+    os.chmod(fifo, 0o666)  # noqa: S103 (a path above the bound is the condition under test)
+    host.host = gh.make_host(primary=egid, user_private=False, aew=s)
+    store = make_store(root)
+    store.read()  # the open walks, past the FIFO
+    st = os.lstat(fifo)
+    assert stat.S_ISFIFO(st.st_mode) and (st.st_gid, stat.S_IMODE(st.st_mode)) == (egid, 0o666)
+    assert set(at(root, s, GROUP_READ)) == {"state/log/a.fifo"}, at(root, s, GROUP_READ)
+    view = store.group_view()
+    checks = {c["check"]: c for c in store_checks(view, store.path_problems(view.target))}
+    assert checks["store-modes"]["status"] == "WARN" and checks["wis-store"]["status"] == "WARN", checks
+    assert "state/log/a.fifo (prw-rw-rw-" in checks["store-modes"]["detail"], checks["store-modes"]
+    assert "`rm .aew/state/log/a.fifo`" in checks["store-modes"]["detail"], checks["store-modes"]
+
+
 @posix
 def test_a_link_in_the_store_is_neither_walked_nor_reported(tmp_path, monkeypatch):
     """Review of #243, P3 (G1): the store's paths are its files and directories, never what a link in it names."""
@@ -772,7 +975,8 @@ def test_a_link_in_the_store_is_neither_walked_nor_reported(tmp_path, monkeypatc
 @posix
 def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
     """The walk changes a path through a descriptor on the very file it listed, so a path that is another file by the
-    time it is stepped is left as it is, and so is that other file."""
+    time it is stepped is left as it is, and so is that other file. So is a file with a second link, which the store
+    never makes (it publishes by a rename), and `aew doctor` names it."""
     egid, s = gh.held()
     host = Host(monkeypatch, gh.make_host(primary=egid))
     root = tmp_path / ".aew"
@@ -817,6 +1021,18 @@ def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
             before.st_ino, before.st_gid, stat.S_IMODE(before.st_mode)), swap.__name__
         path.unlink()
         path.write_text("a handoff\n", encoding="utf-8")
+    # A file the store does not hold alone is not the store's to change, even where it was there at the listing.
+    outside = tmp_path / "outside-linked.txt"
+    outside.write_text("not the store's\n", encoding="utf-8")
+    os.chmod(outside, 0o604)
+    before = os.stat(outside)
+    a_hard_link_to(path, outside)
+    host.host = hosts[1]
+    store = make_store(root)
+    store.read()
+    after = os.stat(outside)
+    assert (after.st_gid, stat.S_IMODE(after.st_mode)) == (before.st_gid, 0o604)
+    assert ("state/handoffs/h-1.md", before.st_gid, 0o604) in store.path_problems(store.group_view().target)
 
 
 @posix

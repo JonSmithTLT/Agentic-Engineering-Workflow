@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
+import string
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -349,19 +351,24 @@ def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
     """The name-service sources for accounts and groups, each ``True`` where it can be listed: the sources of every
     database in ``nsswitch`` that resolves an account or the groups it holds (:data:`GROUP_DATABASES`), ``files``
     where none is configured (glibc's default). Every source outside :data:`LOCAL_SOURCES` cannot be listed,
-    configured and idle alike, and so is `compat` when the files hold NIS lines."""
+    configured and idle alike, and so is `compat` when the files hold NIS lines.
+
+    Each line is read as glibc reads it: the database's name ends at whitespace or a colon, then whitespace and colons
+    are skipped, and every word after them that is not an action is a source. A line whose first word starts with
+    ``#`` names no database. A ``#`` later in a line ends it on some glibc versions and not on others, so the words
+    after it count as sources too: a word that is no source is one that cannot be listed, which fails closed."""
     try:
         text = nsswitch.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         return {FILES: True}
     found: dict[str, bool] = {}
-    for line in text.splitlines():
-        db, _, rest = line.split("#", 1)[0].partition(":")
-        if db.strip() not in GROUP_DATABASES:
+    for raw in text.splitlines():
+        line = raw.lstrip()
+        db = re.split(r"[\s:]", line, maxsplit=1)[0]
+        rest = line[len(db):].lstrip(string.whitespace + ":")
+        if db not in GROUP_DATABASES:
             continue
-        for word in rest.split():
-            if word.startswith("["):  # an action, such as [SUCCESS=merge]
-                continue
+        for word in re.sub(r"\[[^]]*\]", " ", rest).split():  # without its actions, such as [SUCCESS=merge]
             found[word] = word in LOCAL_SOURCES and not (word == "compat" and _nis_lines(etc))
     return found or {FILES: True}
 

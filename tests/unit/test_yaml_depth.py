@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import ast
 import functools
+import inspect
 import os
+import random
+import types
 from collections import Counter
 from pathlib import Path
 
@@ -187,21 +190,34 @@ def test_every_yaml_document_in_the_repository_is_within_the_bound():
 
 
 # Every place the product composes or writes YAML outside util's bounded functions, and why it is safe, counted by
-# (file, the function it is in). `yaml.parse` (events only) composes nothing and is allowed anywhere. A new site joins a
-# list with its reason, or goes through `util.load_yaml`, `util.dump_yaml` or `util.safe_dump_yaml`; a second site in
-# a listed function is red too (review of #236, F2).
+# (file, the function it is in). A new site joins a list with its reason, or goes through `util.load_yaml`,
+# `util.dump_yaml` or `util.safe_dump_yaml`; a second site in a listed function is red too (review of #236, F2).
 #
-# What is enumerated: every reference `yaml.<name>` (or `yaml.<submodule>.<name>`) to a composing or writing function,
-# called or not; every loader or dumper class instantiated or subclassed (passing one as an argument, such as
-# `Loader=yaml.BaseLoader`, composes nothing); and, as the precondition all of that rests on, every import of yaml is a
-# bare `import yaml`, with no `from yaml import`, alias, `__import__`, `import_module` or `getattr(yaml, ...)` beyond
-# util's backend lookups. Limits, not claimed: the module or a class bound to another name at run time (`y = yaml`, a
-# loader held in a data structure and instantiated elsewhere), and YAML parsed inside a C extension or a dependency.
+# What is enumerated, derived from the installed yaml package rather than restated (review of #236, R2-F2):
+# - every chain `yaml.a.b...` is resolved against the yaml module, prefix by prefix. A prefix that is one of the
+#   composing or writing functions is a site, whatever follows it (`yaml.safe_load.__call__`). Every function of the
+#   yaml module is classified once, below, and a test fails when PyYAML adds one.
+# - a class is composing when it has `get_single_node` (the composer: every loader, `Composer`, libyaml's `CParser`) and
+#   writing when it has `represent`, `serialize` or `emit` (every dumper, the representers, `Serializer`, `Emitter`,
+#   `CEmitter`). Such a class is a site where it is instantiated, subclassed or reached through `__call__`/`__new__`;
+#   passing one as an argument (`Loader=yaml.BaseLoader`) composes nothing.
+# - a chain that does not resolve, reaches a namespace (`yaml.__dict__`), or is assigned to is a lookup site, and so is
+#   every bare `yaml` name that is not the root of a chain: `getattr(yaml, ...)`, `vars(yaml)`, `y = yaml`, `f(yaml)`.
+# - the precondition all of that rests on: every import of yaml is a bare `import yaml` (no `from yaml import`, alias,
+#   submodule import, `__import__` or `import_module`, its name positional or keyword), and no module reaches util's
+#   own yaml objects (`util.yaml`, `_SafeLoader`, the dumpers: every name util binds to a yaml object, derived).
+# Limits, not claimed: a module or class reached through an arbitrary object at run time (a loader held in a data
+# structure or passed in, then instantiated), `exec` and `eval`, and YAML parsed inside a C extension or a dependency.
 COMPOSERS = {"load", "safe_load", "full_load", "unsafe_load", "load_all", "safe_load_all", "full_load_all",
              "unsafe_load_all", "compose", "compose_all"}
 DUMPERS = {"dump", "safe_dump", "dump_all", "safe_dump_all", "serialize", "serialize_all", "emit"}
-CLASSES = {"Loader", "SafeLoader", "CSafeLoader", "BaseLoader", "CBaseLoader", "FullLoader", "CFullLoader",
-           "UnsafeLoader", "CUnsafeLoader", "CLoader", "Dumper", "SafeDumper", "CSafeDumper", "CDumper"}
+NEITHER = {"scan": "tokens only", "parse": "events only: yaml_too_deep's own walk",
+           "add_constructor": "registers a constructor", "add_multi_constructor": "registers a constructor",
+           "add_implicit_resolver": "registers a resolver", "add_path_resolver": "registers a resolver",
+           "add_representer": "registers a representer", "add_multi_representer": "registers a representer",
+           "warnings": "PyYAML's deprecated warning switch"}
+COMPOSING_CLASS = ("get_single_node",)
+WRITING_CLASS = ("represent", "serialize", "emit")
 COMPOSING = {
     ("src/aew/util.py", "load_yaml"): (1, "bounded by yaml_too_deep first"),
     ("src/aew/cli/fields.py", "_load"): (1, "bounded by yaml_too_deep first"),
@@ -211,7 +227,8 @@ COMPOSING = {
     ("src/aew/stg02/adopted.py", "load"): (1, "vendored adopted files, read only after their sealed sha256 matches"),
 }
 WRITING = {("src/aew/util.py", "_bounded_dump"): (1, "dump_yaml and safe_dump_yaml, through the bounded representer")}
-CLASS_SITES = {("src/aew/util.py", "<module>"): (1, "_PyYAMLLayoutDumper: the bounded representer on PyYAML's dumper")}
+CLASS_SITES = {("src/aew/util.py", "<module>"): (2, "_Bounded, the bounded representer, and _PyYAMLLayoutDumper, it on "
+                                                    "PyYAML's dumper")}
 BACKEND_LOOKUPS = {("src/aew/util.py", "<module>"): (2, "_SafeLoader and _SafeDumperBase: libyaml when present"),
                    ("src/aew/util.py", "yaml_backend"): (1, "which backend _SafeLoader is")}
 
@@ -228,12 +245,48 @@ def _scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
     return ".".join(reversed(names)) or "<module>"
 
 
-def _yaml_name(node: ast.Attribute) -> str | None:
-    """``name`` for an outermost ``yaml.name`` or ``yaml.<submodule>.name``, read (not assigned), else None."""
+def _is_yaml_object(value: object) -> bool:
+    """The yaml module, or a class or function of it, or a class built on one of its classes."""
+    if value is yaml:
+        return True
+    if inspect.isclass(value):
+        return any((base.__module__ or "").split(".")[0] == "yaml" for base in value.__mro__)
+    return (getattr(value, "__module__", None) or "").split(".")[0] == "yaml"
+
+
+UTIL_YAML = frozenset(name for name, value in vars(util).items() if _is_yaml_object(value))
+_MISSING = object()
+
+
+def _chain(node: ast.Attribute) -> tuple[ast.AST, list[str]]:
+    """The root of an attribute chain and its names, outermost last: ``yaml.a.b`` is (``yaml``, [a, b])."""
+    names: list[str] = []
     root: ast.AST = node
     while isinstance(root, ast.Attribute):
+        names.append(root.attr)
         root = root.value
-    return node.attr if isinstance(root, ast.Name) and root.id == "yaml" and isinstance(node.ctx, ast.Load) else None
+    return root, names[::-1]
+
+
+def _yaml_chain_site(node: ast.Attribute, parent: ast.AST | None) -> str | None:
+    """The kind of site an outermost ``yaml.a.b...`` is, resolved against the yaml module, or None."""
+    if not isinstance(node.ctx, ast.Load):
+        return "lookup"  # yaml's own objects assigned or deleted
+    _root, names = _chain(node)
+    value: object = yaml
+    for i, name in enumerate(names):
+        value = getattr(value, name, _MISSING)
+        if value is _MISSING or isinstance(value, (dict, types.MappingProxyType)):
+            return "lookup"  # not resolvable here, or a namespace such as `yaml.__dict__`
+        if inspect.isfunction(value) and value.__module__ == "yaml":
+            return "compose" if value.__name__ in COMPOSERS else "write" if value.__name__ in DUMPERS else None
+        if inspect.isclass(value) and any(hasattr(value, m) for m in COMPOSING_CLASS + WRITING_CLASS):
+            rest = names[i + 1:]
+            driven = (rest[:1] in (["__call__"], ["__new__"]) or not rest and (
+                (isinstance(parent, ast.Call) and parent.func is node)
+                or (isinstance(parent, ast.ClassDef) and node in parent.bases)))
+            return "class" if driven else None
+    return None
 
 
 def _is_yaml_string(node: ast.AST | None) -> bool:
@@ -245,7 +298,7 @@ def yaml_sites() -> dict[str, Counter[tuple[str, str]]]:
     return _sites_under(ROOT)
 
 
-@functools.cache  # one parse of the product for the four tests that read it
+@functools.cache  # one parse of the product for the tests that read it
 def _sites_under(root: Path) -> dict[str, Counter[tuple[str, str]]]:
     sites: dict[str, Counter[tuple[str, str]]] = {k: Counter() for k in ("compose", "write", "class", "lookup",
                                                                           "import")}
@@ -253,31 +306,53 @@ def _sites_under(root: Path) -> dict[str, Counter[tuple[str, str]]]:
         rel = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"))
         parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        util_names = set() if rel == "src/aew/util.py" else _util_bindings(tree)
         for node in ast.walk(tree):
             at = (rel, _scope(node, parents))
-            if isinstance(node, ast.Attribute) and not isinstance(parents.get(node), ast.Attribute):
-                name = _yaml_name(node)
-                parent = parents.get(node)
-                if name in COMPOSERS:
-                    sites["compose"][at] += 1
-                elif name in DUMPERS:
-                    sites["write"][at] += 1
-                elif name in CLASSES and ((isinstance(parent, ast.Call) and parent.func is node)
-                                          or (isinstance(parent, ast.ClassDef) and node in parent.bases)):
-                    sites["class"][at] += 1
+            parent = parents.get(node)
+            if isinstance(node, ast.Attribute) and not isinstance(parent, ast.Attribute):
+                root_node, names = _chain(node)
+                if isinstance(root_node, ast.Name) and root_node.id == "yaml":
+                    kind = _yaml_chain_site(node, parent)
+                    if kind:
+                        sites[kind][at] += 1
+                elif isinstance(root_node, ast.Name) and _reaches_util_yaml(root_node.id, names, util_names):
+                    sites["import"][at] += 1  # util's yaml objects, reached from another module
+            elif isinstance(node, ast.Name) and node.id == "yaml" and not isinstance(parent, ast.Attribute):
+                sites["lookup"][at] += 1  # the module itself, handed on or looked into
             elif isinstance(node, ast.Import):
                 sites["import"][at] += sum(a.name.split(".")[0] == "yaml" and (a.name != "yaml" or a.asname is not None)
                                            for a in node.names)
             elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "yaml":
                 sites["import"][at] += 1
+            elif isinstance(node, ast.ImportFrom) and node.module == "aew.util" and rel != "src/aew/util.py":
+                sites["import"][at] += sum(a.name in UTIL_YAML for a in node.names)
             elif isinstance(node, ast.Call):
-                func, first = node.func, node.args[0] if node.args else None
+                func = node.func
                 called = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
-                if called in {"__import__", "import_module"} and _is_yaml_string(first):
+                named = [*node.args[:1], *(k.value for k in node.keywords if k.arg == "name")]
+                if called in {"__import__", "import_module"} and any(_is_yaml_string(n) for n in named):
                     sites["import"][at] += 1
-                elif called == "getattr" and isinstance(first, ast.Name) and first.id == "yaml":
-                    sites["lookup"][at] += 1
     return {kind: +counts for kind, counts in sites.items()}  # unary + drops zero counts
+
+
+def _util_bindings(tree: ast.Module) -> set[str]:
+    """The names a module binds to ``aew.util`` (``from aew import util``, ``import aew.util as u``), and ``aew``
+    when it imports ``aew.util`` bare."""
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "aew":
+            names |= {a.asname or a.name for a in node.names if a.name == "util"}
+        elif isinstance(node, ast.Import):
+            names |= {a.asname or "aew" for a in node.names if a.name == "aew.util"}
+    return names
+
+
+def _reaches_util_yaml(root: str, names: list[str], util_names: set[str]) -> bool:
+    if root not in util_names:
+        return False
+    rest = names[1:] if names[:1] == ["util"] and root == "aew" else names
+    return bool(rest) and rest[0] in UTIL_YAML
 
 
 def _expected(listed: dict[tuple[str, str], tuple[int, str]]) -> Counter[tuple[str, str]]:
@@ -301,6 +376,31 @@ def test_every_import_of_yaml_is_the_bare_module_that_the_enumeration_sees():
     assert sites["import"] == Counter() and sites["lookup"] == _expected(BACKEND_LOOKUPS)
 
 
+def test_every_function_of_the_yaml_module_is_classified_once():
+    """The function lists are checked against the installed yaml package, so a function PyYAML adds is classified
+    before it can be used unseen (review of #236, R2-F2)."""
+    functions = {name for name, value in vars(yaml).items() if inspect.isfunction(value) and value.__module__ == "yaml"}
+    assert functions == COMPOSERS | DUMPERS | set(NEITHER)
+    assert not (COMPOSERS & DUMPERS or COMPOSERS & set(NEITHER) or DUMPERS & set(NEITHER))
+
+
+def test_the_class_rule_finds_every_loader_and_dumper_and_the_components_they_are_built_from():
+    found = {name for name, value in vars(yaml).items() if inspect.isclass(value)
+             and any(hasattr(value, m) for m in COMPOSING_CLASS + WRITING_CLASS)}
+    assert {"SafeLoader", "BaseLoader", "FullLoader", "UnsafeLoader", "Loader", "SafeDumper", "BaseDumper", "Dumper",
+            "CSafeLoader", "CBaseLoader", "CSafeDumper", "CBaseDumper"} <= found
+    assert all(hasattr(c, "get_single_node") for c in (yaml.composer.Composer, yaml.cyaml.CParser))
+    assert all(any(hasattr(c, m) for m in WRITING_CLASS) for c in (
+        yaml.representer.BaseRepresenter, yaml.serializer.Serializer, yaml.emitter.Emitter, yaml.cyaml.CEmitter))
+    assert not any(hasattr(c, m) for c in (yaml.parser.Parser, yaml.scanner.Scanner, yaml.reader.Reader,
+                                           yaml.resolver.Resolver, yaml.constructor.SafeConstructor)
+                   for m in COMPOSING_CLASS + WRITING_CLASS)  # parsing, scanning or constructing composes nothing
+
+
+def test_utils_own_yaml_objects_are_derived_from_util():
+    assert UTIL_YAML == {"yaml", "_SafeLoader", "_SafeDumperBase", "_Bounded", "_Dumper", "_PyYAMLLayoutDumper"}
+
+
 PLANTED = [  # (module source, the kind of site it must be counted as, its scope, the count): the review's probe cases
     ("import yaml as y\ndef f(t): return y.safe_load(t)\n", "import", "<module>", 1),
     ("from yaml import safe_load\n", "import", "<module>", 1),
@@ -316,6 +416,29 @@ PLANTED = [  # (module source, the kind of site it must be counted as, its scope
     ("import yaml\nclass L(yaml.SafeLoader):\n    pass\n", "class", "<module>", 1),
     ("import yaml\ndef f(t): return yaml.safe_load(t), yaml.safe_load(t)\n", "compose", "f", 2),
     ("import yaml\ndef f(d): return yaml.safe_dump(d)\n", "write", "f", 1),
+    # The second review's (R2-F2): classes the hand list missed, found by what they can do
+    ("import yaml\ndef f(t): return yaml.cyaml.CParser(t).get_single_node()\n", "class", "f", 1),
+    ("import yaml\nclass L(yaml.reader.Reader, yaml.scanner.Scanner, yaml.parser.Parser, yaml.composer.Composer,\n"
+     "        yaml.constructor.SafeConstructor, yaml.resolver.Resolver):\n    pass\n", "class", "<module>", 1),
+    ("import yaml\nclass D(yaml.BaseDumper):\n    pass\n", "class", "<module>", 1),
+    ("import yaml\ndef f(s): return yaml.CBaseDumper(s)\n", "class", "f", 1),
+    ("import yaml\nclass W(yaml.representer.SafeRepresenter, yaml.serializer.Serializer, yaml.emitter.Emitter):\n"
+     "    pass\n", "class", "<module>", 3),
+    ("import yaml\ndef f(t): return yaml.SafeLoader.__call__(t)\n", "class", "f", 1),
+    # an attribute after the function's name is still a reference to it
+    ("import yaml\ndef f(t): return yaml.safe_load.__call__(t)\n", "compose", "f", 1),
+    ("import yaml\ndef f(t): return yaml.load.__get__(None, object)(t, yaml.SafeLoader)\n", "compose", "f", 1),
+    # util's own yaml objects, reached from another module
+    ("from aew.util import _SafeLoader\ndef f(t): return _SafeLoader(t).get_single_data()\n", "import", "<module>", 1),
+    ("from aew import util\ndef f(t): return util.yaml.safe_load(t)\n", "import", "f", 1),
+    ("from aew.util import yaml as y\n", "import", "<module>", 1),
+    ("import aew.util\ndef f(t): return aew.util._Dumper\n", "import", "f", 1),
+    # dynamic lookups, and the module handed on
+    ("import yaml\ndef f(t): return vars(yaml)['safe_load'](t)\n", "lookup", "f", 1),
+    ("import yaml\ndef f(t): return yaml.__dict__['safe_load'](t)\n", "lookup", "f", 1),
+    ("import importlib\ndef f(t): return importlib.import_module(name='yaml').safe_load(t)\n", "import", "f", 1),
+    ("import yaml\ny = yaml\n", "lookup", "<module>", 1),
+    ("import yaml\ndef f(t): return yaml.no_such_function(t)\n", "lookup", "f", 1),
 ]
 
 
@@ -334,7 +457,144 @@ def test_the_enumeration_sees_each_way_a_module_can_reach_a_composer(source, kin
     assert yaml_sites()[kind] == Counter({("src/aew/planted.py", scope): count})
 
 
-def test_passing_a_loader_class_as_an_argument_is_not_a_site(tmp_path, monkeypatch):
-    _plant(tmp_path, "import yaml\ndef f(t): return list(yaml.parse(t, Loader=yaml.BaseLoader))\n")
+@pytest.mark.parametrize("source", [
+    "import yaml\ndef f(t): return list(yaml.parse(t, Loader=yaml.BaseLoader))\n",  # a loader passed, not driven
+    "import yaml\ndef f(t): return yaml.scan(t), yaml.YAMLError, yaml.MappingNode\n",
+    "import yaml\nyaml.SafeLoader.add_constructor('!x', None)\n",  # registration composes nothing
+    "from aew.util import load_yaml\nfrom aew import util\ndef f(t): return util.dump_yaml(load_yaml(t))\n",
+], ids=["loader-argument", "parse-scan-and-types", "registration", "util-bounded-functions"])
+def test_what_composes_and_writes_nothing_is_not_a_site(source, tmp_path, monkeypatch):
+    _plant(tmp_path, source)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
     assert not any(yaml_sites().values())
+
+
+def _writer_key(data: dict) -> object:
+    """The truth: the top-level key the writer was representing when it refused (the review's oracle, R2-F1)."""
+
+    class Probe(util._Dumper):  # type: ignore[misc,valid-type]
+        current: object = None
+
+        def represent_data(self, value: object) -> yaml.Node:
+            if self._depth == 1 and any(value is key for key in data):
+                Probe.current = value
+            return super().represent_data(value)
+
+    with pytest.raises(util._TooDeepToWrite):
+        yaml.dump(data, Dumper=Probe, sort_keys=False, allow_unicode=True, default_flow_style=False, width=100)
+    return Probe.current
+
+
+def _named_key(data: dict) -> object:
+    with pytest.raises(ValidationFailed) as refused:
+        util.dump_yaml(data)
+    message = refused.value.message
+    return message.split("top-level key ", 1)[1].split(":", 1)[0].strip("'") if "top-level key" in message else None
+
+
+def _shared_cases() -> list[dict]:
+    shared, also = nested(30), nested(30)
+    top: dict = {"x": nested(util.YAML_MAX_DEPTH - 1)}
+    top["self"], top["z"] = top, nested(70)
+
+    def over(n: int, leaf: object) -> object:  # n mappings around ``leaf``
+        for _ in range(n):
+            leaf = {"k": leaf}
+        return leaf
+
+    return [{"a": [shared, over(40, shared)], "c": nested(70)},  # met shallow first, then deep: the writer refuses c
+            {"a": [over(40, also), also]},  # met deep first
+            top]  # the top-level mapping is itself a value: an alias
+
+
+def _random_dags(count: int, seed: int = 236) -> list[dict]:
+    """Data that shares objects at random, as control state does (an invocation's snapshot is its workspace's)."""
+    rng, found = random.Random(seed), []
+    while len(found) < count:
+        nodes: list = ["x"]
+        for _ in range(rng.randint(70, 110)):  # each node holds 1-3 earlier ones, mostly recent: the depth grows
+            kids = [nodes[max(0, len(nodes) - 1 - int(rng.expovariate(1.2)))] for _ in range(rng.randint(1, 3))]
+            nodes.append({f"k{i}": c for i, c in enumerate(kids)} if rng.random() < 0.5 else kids)
+        data = {f"t{i}": rng.choice(nodes[len(nodes) // 2:]) for i in range(rng.randint(1, 4))}
+        try:
+            util.dump_yaml(data)
+        except ValidationFailed:
+            found.append(data)
+    return found
+
+
+def test_a_write_refusal_names_the_key_the_writer_refused_under_when_the_data_shares_objects():
+    """The writer expands an object where it first meets it and writes an alias wherever it meets it again, the
+    top-level mapping included; the key the refusal names is the one it was writing (review of #236, R2-F1)."""
+    cases = _shared_cases() + _random_dags(60)
+    assert [_writer_key(d) for d in cases[:3]] == ["c", "a", "z"]
+    assert [_named_key(d) for d in cases] == [_writer_key(d) for d in cases]
+
+
+def test_a_deep_control_state_says_to_restore_it_since_aew_never_writes_one(tmp_path):
+    """Flattening control state by hand would break its checksum (review of #236, R2-F3)."""
+    from store_model import init
+
+    init(tmp_path)
+    raw = (tmp_path / "state" / "control.yaml").read_text(encoding="utf-8")
+    body = raw[:raw.rindex(CHECKSUM_PREFIX)] + flow(100).replace("k:", "zz_planted:")
+    resealed = (body + f"{CHECKSUM_PREFIX}{util.sha256_bytes(body.encode('utf-8'))}\n").encode("utf-8")
+    with pytest.raises(ValidationFailed) as refused:
+        deserialize_control(resealed, source="control.yaml")
+    assert refused.value.message.endswith("so this file was written outside AEW: restore it from git or a backup")
+    assert refused.value.details["reason"] == util.YAML_TOO_DEEP
+
+
+def test_a_deep_redo_record_is_the_damaged_record_it_is(tmp_path, monkeypatch):
+    """A redo record is git-ignored, so git cannot restore it: past the bound, it takes the refusal its checksum
+    already gives a damaged one, keeping the reason (review of #236, R2-F3)."""
+    from store_model import init, make_store, one_transaction
+
+    from aew.engine.faults import InjectedFault
+    from aew.errors import IntegrityError
+
+    store = init(tmp_path)
+    one_transaction(store)
+    monkeypatch.setenv("AEW_FAULT", "txn.after_replace")  # committed, its writes not yet applied
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    with pytest.raises(InjectedFault):
+        one_transaction(make_store(tmp_path))
+    monkeypatch.delenv("AEW_FAULT")
+    control = tmp_path / "state" / "control.yaml"
+    redo = sorted((tmp_path / "state" / "txn").glob("*.yaml"))[-1]  # the interrupted one; an older one is spent
+    old_sha = util.sha256_bytes(redo.read_bytes())
+    deep = flow(100).encode("utf-8")
+    redo.write_bytes(deep)
+    raw = control.read_text(encoding="utf-8")
+    body = raw[:raw.rindex(CHECKSUM_PREFIX)].replace(old_sha, util.sha256_bytes(deep))
+    control.write_bytes((body + f"{CHECKSUM_PREFIX}{util.sha256_bytes(body.encode('utf-8'))}\n").encode("utf-8"))
+    with pytest.raises(IntegrityError) as refused:
+        make_store(tmp_path).read()
+    assert refused.value.message == f"redo record state/txn/{redo.name} is damaged"
+    assert refused.value.details["reason"] == util.YAML_TOO_DEEP
+
+
+# Every writer that names its document in a depth refusal, and the name (review of #236, R2-N2): the refusal's text is
+# behaviour. `test_a_write_refusal_names_the_document_...` shows `source` leads the message.
+NAMED_WRITERS = {
+    ("src/aew/engine/store.py", "serialize_control"): '"control state"',
+    ("src/aew/engine/store.py", "ControlStore._commit_unprofiled"): '"the transaction\'s redo record"',
+    ("src/aew/engine/disposition_ops.py", "Dispositions._write"): "f\"disposition record {record['id']}\"",
+    ("src/aew/engine/stage_intents.py", "StageIntents._end"): "f\"stage intent {si['id']}\"",
+}
+
+
+def test_each_writer_that_names_its_document_names_it_as_pinned():
+    found = {}
+    for path in sorted((ROOT / "src" / "aew").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) in {
+                    "dump_yaml", "safe_dump_yaml"}:
+                for keyword in node.keywords:
+                    if keyword.arg == "source":
+                        at = (path.relative_to(ROOT).as_posix(), _scope(node, parents))
+                        found[at] = ast.get_source_segment(text, keyword.value)  # as written: unparse varies
+    assert found == NAMED_WRITERS

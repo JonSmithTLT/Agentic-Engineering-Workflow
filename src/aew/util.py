@@ -185,11 +185,13 @@ def _bounded_dump(data: Any, source: str | None, **options: Any) -> str:
 
 
 def _top_level_key_too_deep(data: Any) -> Any:
-    """The first top-level key of a mapping whose value nests past the bound as the writer counts, or None. Walked with
-    a stack, not recursion: the data may be nested far deeper than Python's recursion limit."""
+    """The top-level key of a mapping under which the writer refused, or None. It walks as the writer writes: in
+    insertion order, each object expanded where it is first met and an alias, a leaf, wherever it is met again, the
+    top-level mapping included (review of #236, R2-F1: shared objects are real, control state's snapshots are one).
+    Walked with a stack, not recursion: the data may be nested far deeper than Python's recursion limit."""
     if not isinstance(data, dict):
         return None
-    seen: set[int] = set()  # an object met again is an alias, a leaf, as the writer writes it
+    seen = {id(data)}  # the writer registers the top-level mapping before it writes a value
     for key, value in data.items():
         stack = [(value, 2)]  # the top-level mapping is level 1
         while stack:
@@ -199,7 +201,8 @@ def _top_level_key_too_deep(data: Any) -> Any:
             seen.add(id(obj))
             if depth > YAML_MAX_DEPTH:
                 return key
-            stack.extend((child, depth + 1) for child in (obj.values() if isinstance(obj, dict) else obj))
+            children = list(obj.values()) if isinstance(obj, dict) else list(obj)
+            stack.extend((child, depth + 1) for child in reversed(children))  # popped first to last, as written
     return None
 
 
@@ -219,20 +222,24 @@ def yaml_too_deep(text: str, *, loader: Any = _SafeLoader, limit: int = YAML_MAX
     return None
 
 
-def load_yaml(text: str, *, source: str = "<yaml>") -> Any:
+_FLATTEN_IT = f"flatten it to at most {YAML_MAX_DEPTH} levels of mappings and sequences"
+
+
+def load_yaml(text: str, *, source: str = "<yaml>", remedy: str = _FLATTEN_IT) -> Any:
     """``text`` as YAML, safely: a syntax error, or a nesting deeper than :data:`YAML_MAX_DEPTH` (reason
-    :data:`YAML_TOO_DEEP`), is a ValidationFailed, never a crash. Every read in AEW passes the bound, the control
-    store's own files included: their checksums keep out damage, not a writer (a same-account process, a worker on
-    Windows, or a git checkout can write them and recompute the hash), so skipping the pass would turn a deep file into
-    a process killed with no error (review of #236, F1). The pass costs about 40% of a parse, once per file a process
-    reads: 39 ms at 50 units, 379 ms at 500 (control state, Windows, libyaml, 2026-10-23)."""
+    :data:`YAML_TOO_DEEP`), is a ValidationFailed, never a crash. ``remedy`` ends that refusal: what to do instead,
+    for a file whose remedy is not flattening it (review of #236, R2-F3). Every read in AEW passes the bound, the
+    control store's own files included: their checksums keep out damage, not a writer (a same-account process, a worker
+    on Windows, or a git checkout can write them and recompute the hash), so skipping the pass would turn a deep file
+    into a process killed with no error (review of #236, F1). The pass costs 28-43% of a parse, once per version of a
+    file a process parses (once per CLI command; again after each commit for a long-lived reader): 39 ms at 50 units,
+    379 ms at 500 (control state, Windows, libyaml, 2026-10-23)."""
     try:
         line = yaml_too_deep(text)
         if line is not None:
             raise ValidationFailed(f"{source}: the YAML nests deeper than {YAML_MAX_DEPTH} levels (at line {line}): "
-                                   f"AEW does not read a document that deep; flatten it to at most {YAML_MAX_DEPTH} "
-                                   "levels of mappings and sequences", reason=YAML_TOO_DEEP, limit=YAML_MAX_DEPTH,
-                                   line=line)
+                                   f"AEW does not read a document that deep; {remedy}", reason=YAML_TOO_DEEP,
+                                   limit=YAML_MAX_DEPTH, line=line)
         return yaml.load(text, Loader=_SafeLoader)  # noqa: S506 (_SafeLoader is a SafeLoader subclass)
     except yaml.YAMLError as exc:
         raise ValidationFailed(f"{source}: invalid YAML: {exc}") from exc

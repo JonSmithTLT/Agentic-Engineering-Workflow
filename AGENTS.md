@@ -38,6 +38,16 @@ The operator owns this file; a change to it is merged by the operator (rule 5).
   unlabelled point is not a nit.
 - **One pass raises everything.** A review lists every finding and nit it would raise at that commit. Nothing is held
   back as "optional" for a later round. A later review still raises a real defect an earlier pass missed.
+- **The stop rule** (operator, 2026-10-21; for pull requests, 2026-10-24). A review round with no blocker or major,
+  where every minor fails closed, is the last full round.
+  - **Closed or open.** A minor fails closed when its worst case refuses, stops or raises a false alarm. It fails open
+    when its worst case lets through, or reports as passing, something a guarantee forbids. The review labels each
+    minor with its worst case, and its label decides.
+  - **The answer is the smallest that meets the finding:** narrowing a claim or stating a limit where that suffices
+    (M1's known limits), otherwise the smallest code change, never new mechanism.
+  - **One short targeted review** then checks the whole diff since the last full round, in the shape of "Nits after a
+    CLEAR". A point it raises is fixed and checked the same way. Only a blocker, a major or a minor that fails open
+    reopens a full round.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
 - **CI at the exact head** (designer ruling, 2026-10-12, C1; a CLEAR was recorded at heads whose CI was red, and nobody

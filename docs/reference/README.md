@@ -8,6 +8,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [control-keys.md](control-keys.md): Control-state keys
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
+- [layout.md](layout.md): Layout
 - [writers.md](writers.md): Writers
 
 ## A record

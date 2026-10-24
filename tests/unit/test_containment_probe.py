@@ -364,18 +364,19 @@ def test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_th
     ([{"name": "@ISCSIADM_ABSTRACT_NAMESPACE", "class": "reported"}], "PASS"),
 ])
 def test_doctor_warns_of_each_failing_class_of_abstract_socket_on_the_shared_network(monkeypatch, abstract, status):
-    """D-CS2-5: a passing sandbox with an abstract socket of a failing class is a WARN naming its class and that
-    CS-3's network namespace closes it; a reported one is not."""
+    """D-CS2-5: on the host's network (containment.network.mode: shared), a passing sandbox with an abstract socket of
+    a failing class is a WARN naming its class and that the default network mode closes it; a reported one is not."""
     monkeypatch.setattr(C, "supported", lambda: True)
     monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
     monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {"ok": True, "reason": None, "rows": {
         "2": {"abstract": {"network": "shared", "sockets": abstract}}}})
     monkeypatch.setattr(probe, "mechanism", lambda _layout: "bubblewrap 0.4.0")
-    got, detail = C.doctor(None, "unsupported")
+    got, detail = C.doctor({"containment": {"network": {"mode": "shared"}}}, "unsupported")
     assert got == status
     if status == "WARN":
-        assert detail.endswith("; abstract credential socket on the shared network; CS-3's network namespace closes "
-                               "it; abstract display socket on the shared network; CS-3's network namespace closes it")
+        assert detail.endswith("; abstract credential socket on the shared network; the default network mode "
+                               "(proxy_only) closes it; abstract display socket on the shared network; the default "
+                               "network mode (proxy_only) closes it")
 
 
 @pytest.mark.parametrize(("change", "says"), [

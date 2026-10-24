@@ -200,36 +200,31 @@ def _shutdown(sock: socket.socket, how: int = socket.SHUT_RDWR) -> None:
         pass
 
 
-class EgressProxy:
-    """Serves ``listener`` (any listening socket; the proxy owns it from here) under ``policy``. Without a listener
-    it serves only the connections passed to :meth:`handle`.
+class Service:
+    """One listening socket served by a thread per connection, as the egress proxy and the provider relay
+    (``relay.py``, CS-3b) both are: :meth:`handle` serves one connection; the rest (accepting, tracking every open
+    socket, :meth:`close`) is shared. Without a listener it serves only the connections passed to :meth:`handle`."""
 
-    ``resolve``, ``connect`` and ``is_local`` are seams for tests: the defaults are the host's resolver, a plain
-    connect to a literal address, and :func:`peer.is_host_address`. Nothing a request carries reaches them."""
+    name = "aew-service"
 
-    def __init__(self, policy: Policy, *, listener: socket.socket | None = None, resolve: Resolver = _resolve,
-                 connect: Connector = _connect, is_local: Callable[[peer.IP], bool] = peer.is_host_address,
-                 header_timeout: float = HEADER_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT) -> None:
+    def __init__(self, *, listener: socket.socket | None = None) -> None:
         self.listener = listener
-        self.policy = policy
-        self._resolve, self._connect, self._is_local = resolve, connect, is_local
-        self.header_timeout, self.connect_timeout = header_timeout, connect_timeout
-        # Telemetry: how many requests were tunnelled ("allowed") or refused, by reason. Never targets or payload.
+        # Telemetry: how many requests were served ("allowed") or refused, by reason. Never targets or payload.
         self.decisions: dict[str, int] = {}
         self._lock = threading.Lock()
         self._open: set[socket.socket] = set()
         self._handlers: set[threading.Thread] = set()
         self._closed = threading.Event()
         self._wake_r, self._wake_w = socket.socketpair()
-        self._thread = threading.Thread(target=self._serve, name="aew-egress", daemon=True)
+        self._thread = threading.Thread(target=self._serve, name=self.name, daemon=True)
 
-    def start(self) -> EgressProxy:
+    def start(self) -> Service:
         if self.listener is None:
-            raise ValueError("an egress proxy without a listener serves only handle()")
+            raise ValueError(f"{type(self).__name__} without a listener serves only handle()")
         self._thread.start()
         return self
 
-    def __enter__(self) -> EgressProxy:
+    def __enter__(self) -> Service:
         return self.start()
 
     def __exit__(self, *exc: object) -> None:
@@ -295,7 +290,7 @@ class EgressProxy:
                         self._closed.wait(ACCEPT_BACKOFF)
                         continue
                     thread = threading.Thread(target=self._handle_then_forget, args=(conn,),
-                                              name="aew-egress-conn", daemon=True)
+                                              name=f"{self.name}-conn", daemon=True)
                     with self._lock:
                         self._handlers.add(thread)
                     try:
@@ -312,6 +307,35 @@ class EgressProxy:
         finally:
             with self._lock:
                 self._handlers.discard(threading.current_thread())
+
+    def handle(self, conn: socket.socket) -> None:
+        """Serve one client connection to its end, and close it."""
+        raise NotImplementedError
+
+
+class EgressProxy(Service):
+    """Serves ``listener`` (any listening socket; the proxy owns it from here) under ``policy``. Without a listener
+    it serves only the connections passed to :meth:`handle`.
+
+    ``resolve``, ``connect`` and ``is_local`` are seams for tests: the defaults are the host's resolver, a plain
+    connect to a literal address, and :func:`peer.is_host_address`. Nothing a request carries reaches them."""
+
+    name = "aew-egress"
+
+    def __init__(self, policy: Policy, *, listener: socket.socket | None = None, resolve: Resolver = _resolve,
+                 connect: Connector = _connect, is_local: Callable[[peer.IP], bool] = peer.is_host_address,
+                 header_timeout: float = HEADER_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT) -> None:
+        super().__init__(listener=listener)
+        self.policy = policy
+        self._resolve, self._connect, self._is_local = resolve, connect, is_local
+        self.header_timeout, self.connect_timeout = header_timeout, connect_timeout
+
+    def start(self) -> EgressProxy:
+        super().start()
+        return self
+
+    def __enter__(self) -> EgressProxy:
+        return self.start()
 
     def handle(self, conn: socket.socket) -> None:
         """Serve one client connection to its end, and close it."""

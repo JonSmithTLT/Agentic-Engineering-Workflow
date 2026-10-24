@@ -161,6 +161,16 @@ def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[st
             "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents}
 
 
+def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:
+    """``config`` with the pinned provider pointed at the run's provider relay (F28 §3.5): its ``baseURL`` at the
+    relay's loopback port inside the sandbox, over plain HTTP requests (2.0.18's OpenAI provider otherwise opens a
+    WebSocket first). Set for the provider and for the pinned model, whose catalog entry may carry its own ``baseURL``,
+    which wins over the provider's (every ``opencode/*`` model's does; measured on 2.0.18, 2026-10-24)."""
+    settings = {"baseURL": base_url, "transport": "http"}
+    return {**config, "providers": {str(profile["provider"]): {
+        "settings": dict(settings), "models": {str(profile["model"]): {"settings": dict(settings)}}}}}
+
+
 def session_body(contract: LaunchContract, directory: str, rules: list[dict[str, str]]) -> dict[str, Any]:
     """``POST /api/session``. The metadata is correlation only: nothing reads it as authority."""
     return {"title": f"AEW {contract.run} ({contract.role}, {contract.work_unit})", "agent": AGENT,

@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -211,12 +212,13 @@ class Supervisor:
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
-            self._contain(contract)
+            adapter_cls = registry.load(profile["harness"])
+            self._contain(contract, adapter_cls)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
                                             contained=self.layout.env if self.layout is not None else None)
-            self.adapter = registry.load(profile["harness"])(self.tree, self.run_dir, self.events)
+            self.adapter = adapter_cls(self.tree, self.run_dir, self.events)
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
@@ -243,25 +245,46 @@ class Supervisor:
         faults.hit("harness.supervisor.after_start")
         return True
 
-    def _contain(self, contract: K.LaunchContract) -> None:
-        """Build and self-test this run's sandbox before any harness process exists (F2, M4-B). Under the default
-        policy a sandbox that cannot be established refuses the launch; the label records what the run has."""
+    def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
+        """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network
+        outside it (F28, STG-05 CS-3b): the provider relay when the harness calls a provider, and the egress proxy
+        when its allowlist names something. Under the default policy a sandbox or a network that cannot be established
+        refuses the launch; the label records what the run has."""
+        from aew.harness.containment import netns
+
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
+        network: netns.RunNetwork | None = None
         try:
+            try:
+                allow = netns.egress_policy(policy, adapter_cls.EGRESS)
+            except errors.AEWError as exc:
+                raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
+                                                    reason="bad_egress_allow") from None
             self.layout, self.record["containment"] = containment.establish(
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
                 scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
-                project=str(self.engine.repo_root))
+                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow)
+            if self.layout is not None and self.layout.private_network:
+                network = netns.RunNetwork.start(
+                    self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
+                    provider_env=[str(n) for n in contract.extra.get("provider_env") or []], policy=policy,
+                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, egress_extra=adapter_cls.EGRESS)
+                self.record["containment"]["network"].update(network.describe())
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
+            if self.layout is not None and self.layout.net_dir:
+                shutil.rmtree(self.layout.net_dir, ignore_errors=True)
+                containment.retire_private_git(self.run_dir)
+            self.layout = None
             self.record["containment"] = containment.label(contained=False, reason=exc.message,
                                                            self_test=exc.details.get("self_test"))
             self._event("containment_refused", reason=exc.message)
             raise
         self._event("containment", filesystem=self.record["containment"]["filesystem"],
-                    process_ownership=self.record["containment"]["process_ownership"])
+                    process_ownership=self.record["containment"]["process_ownership"],
+                    network=self.record["containment"]["network"]["mode"])
         if not procs.IS_WINDOWS:
-            self.tree = procs.ProcessTree(layout=self.layout)
+            self.tree = procs.ProcessTree(layout=self.layout, network=network)
 
     def _starting_beats(self, harness: str | None) -> None:
         """Beat while the harness starts (a server start plus health checks can take a while); the watchdog loop

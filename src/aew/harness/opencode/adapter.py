@@ -33,6 +33,7 @@ messages (non-authoritative telemetry that the supervisor compares with the pin)
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -50,6 +51,7 @@ from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed
 from aew.harness import agentenv, runlog
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
+from aew.harness.containment import netns
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
     CATALOG_TIMEOUT,
@@ -185,6 +187,10 @@ def new_message_id() -> str:
 
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
+    # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
+    # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
+    PROVIDER_RELAY = True
+    EGRESS = ("models.opencode.ai:443",)
     # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
     # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixture
     # tests/fixtures/opencode/usage-2.0.18-openai.json.
@@ -251,14 +257,28 @@ class OpenCodeAdapter(HarnessAdapter):
                 scratch=os.path.realpath(contract.scratch) if contract.scratch else ""))
         self.skills = projection.skills(contract)
         rules = config["permissions"]
+        network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
+        base = network.provider_base() if network is not None else None
+        if base is not None:
+            config = projection.relayed(config, contract.execution_profile, base)
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
                                                              encoding="utf-8")
         command = binary_command()
         self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
         env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
                          config=config, password=secrets.token_urlsafe(32))
-        self.server = Server.start(self.tree.spawn, command, env=env, cwd=self.directory,
-                                   log_path=self.state_dir / "server.log")
+        if network is not None:  # the provider's variables are sentinels inside; the relay holds the values
+            env = network.harness_env(env)
+            leaked = network.leaks(*env.values(), json.dumps(config))
+            if leaked:  # F28 §3.6, row 6: never started with a provider secret in its reach
+                raise HarnessIncompatible(f"the value of {', '.join(leaked)} would reach the run's sandbox in the "
+                                          "harness's environment or configuration, so the harness was not started; "
+                                          "keep the provider's key out of every other variable and setting",
+                                          reason="provider_secret_in_sandbox", variables=leaked)
+        self.server = Server.start(functools.partial(self.tree.spawn, network_shim=True), command, env=env,
+                                   cwd=self.directory, log_path=self.state_dir / "server.log",
+                                   **({"port": netns.SERVER_PORT, "unix": network.server_socket}
+                                      if network is not None else {}))
         del env
         self.client = self.server.client
         self._bind_meter()
@@ -313,7 +333,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def meter_client(self) -> Client:
         """The meter's own client: never the adapter's, so a slow 30 s request of ``_poll`` cannot delay a sample."""
         assert self.server is not None
-        return Client(self.server.url, self.server.password)
+        return Client(self.server.url, self.server.password, unix=self.server.unix)
 
     def _bind_meter(self) -> None:
         """Once the server answers, the meter polls it every second in every turn state, until ``terminate``."""

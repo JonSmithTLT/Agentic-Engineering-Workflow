@@ -19,8 +19,12 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   (STG-05 CBF-1). The mask takes its place in the one bind order (no bind above it can bring the lock back), and is
   remounted read-only once the run's own directories are bound back into it, so nothing makes a lock of its own
   there. The store itself (``.aew/state``) stays visible, read-only, for lock-free reads;
-* PID, IPC and UTS namespaces are private; the network namespace is shared (the harness server listens on
-  ``127.0.0.1`` and the provider is remote), so nothing here claims network isolation;
+* PID, IPC and UTS namespaces are private, and so is the network namespace unless the layout's ``network`` is
+  :data:`SHARED` (F28, STG-05 CS-3b): a private one has only its own loopback, so the host's loopback ports and abstract
+  sockets are not there. The run's network sockets (the shim's, the provider relay's and the egress proxy's) are files
+  in a private directory of the host's ``/tmp``, bound in at their depth: read-only, with the shim's own subdirectory
+  writable (:data:`NET_SHIM`). A check runs with no network at all unless its definition and the policy allow the host's
+  (:func:`for_check`);
 * the writable roots come from the role (:data:`WORKSPACE_ACCESS`, exhaustive: a role without an entry has no
   layout and its launch is refused), plus the run's own scratch, harness state and private git state, plus any
   path the operator's execution policy adds (recorded on the run's label);
@@ -45,7 +49,7 @@ import os
 import shutil
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
@@ -103,6 +107,12 @@ MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Lin
 # Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
 # home directory whose name starts with one of these is masked too. Only the home directory itself is listed.
 SECRET_FILE_PREFIXES = (".claude.json.",)  # provider credential/config location
+
+# The network a layout gives its processes (F28 §3.1, network containment design v0.2): a private namespace whose only
+# routes out are the run's relay and egress proxy, a private one with none, or the host's own (topology, not a claim).
+PROXY_ONLY, ISOLATED, SHARED = "proxy_only", "isolated", "shared"
+NETWORK_MODES = (PROXY_ONLY, ISOLATED, SHARED)
+NET_SHIM = "shim"  # <net dir>/shim: the one place in a run's network directory the sandbox may write (the shim binds)
 
 PRIVATE_GIT = "git"  # <run dir>/git: the run's private index and object store
 MASK_FILE = ".aew-mask"
@@ -170,6 +180,8 @@ class Layout:
     # (path, why): bound back read-only into ``hide_host`` after its mask
     run_exceptions: tuple[tuple[str, str], ...] = field(default_factory=run_exceptions)
     display_files: tuple[str, ...] = ()      # the display's credential files found (in ``hide_files``), for row 3
+    network: str = SHARED                    # NETWORK_MODES: --unshare-net unless SHARED (F28 §3.2)
+    net_dir: str | None = None               # the run's network sockets, bound in read-only (its NET_SHIM writable)
 
     def describe(self) -> dict[str, Any]:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
@@ -177,7 +189,18 @@ class Layout:
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files],
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
                 "display_files": list(self.display_files), "unset_env": list(DISPLAY_ENV), "session": "new",
-                "operator_writable": list(self.operator_writable)}
+                "operator_writable": list(self.operator_writable), "network": self.network, "net_dir": self.net_dir}
+
+    @property
+    def private_network(self) -> bool:
+        """Whether this layout's processes get a network namespace of their own (``--unshare-net``)."""
+        return self.network != SHARED
+
+    def net_binds(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """``(writable, read-only)`` binds of the run's network directory: none without one."""
+        if not self.net_dir:
+            return (), ()
+        return (os.path.join(self.net_dir, NET_SHIM),), (self.net_dir,)
 
     def bind_backs(self) -> tuple[tuple[str, str], ...]:
         """(path, why) for every path this layout itself puts inside a ``hide_host`` mask: the exceptions, then any
@@ -200,6 +223,7 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
     # --new-session: no controlling terminal, so TIOCSTI has no terminal it would accept (CB-05; bubblewrap's answer to
     # CVE-2017-5226). bubblewrap's own processes stay in the caller's process group, so killing it still ends the run.
     out = [layout.bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+           *(["--unshare-net"] if layout.private_network else []),  # F28 §3.2: its own loopback only
            "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", SANDBOX_TMP]
     for name in DISPLAY_ENV:
         out += ["--unsetenv", name]
@@ -231,9 +255,20 @@ def _hidden_with_its_tree(layout: Layout, path: str) -> bool:
 
 def order(layout: Layout) -> list[tuple[str, str]]:
     """:func:`bind_order` of everything ``layout`` binds and masks at a depth: the project, the writable binds, the
-    read-only re-binds with the ``/run`` exceptions, and the ``/run`` and runs masks."""
-    return bind_order(layout.writable, (*layout.readonly, *(p for p, _ in layout.run_exceptions)),
+    read-only re-binds with the ``/run`` exceptions, the run's network directory, and the ``/run`` and runs masks."""
+    net_writable, net_readonly = layout.net_binds()
+    return bind_order((*layout.writable, *net_writable),
+                      (*layout.readonly, *(p for p, _ in layout.run_exceptions), *net_readonly),
                       (*layout.hide_host, *layout.hide_runs), visible=layout.visible)
+
+
+def for_check(layout: Layout, requested: str | None = None) -> Layout:
+    """The layout a check of a contained run starts in (F28 §3.8, network containment design decision 3): the run's
+    own, with no network unless the check's definition asks for the host's and the run's own policy gives the host's
+    (equal to or stricter than the run, never wider). It never binds the run's network directory, so a check has no
+    route to the relay or the egress proxy either."""
+    network = SHARED if requested == SHARED and layout.network == SHARED else ISOLATED
+    return replace(layout, network=network, net_dir=None)
 
 
 # Within one depth: the project's visible bind first, so a role's writable bind of the same path wins (the Lead's R-2
@@ -379,7 +414,7 @@ def _git_metadata(workspace: Path) -> tuple[list[str], list[str]]:
 
 def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os.PathLike[str] | None,
              bridge_dir: str | None, masks: tuple[str, ...],
-             host: tuple[str, ...] = (RUN,)) -> list[tuple[str, str]]:
+             host: tuple[str, ...] = (RUN,), net_dir: str | None = None) -> list[tuple[str, str]]:
     """(what, path) for every location an operator's writable root must neither equal, contain nor lie under. The
     shared temporary directory is listed separately (``_SHARED_TMP``): only containing it, or reaching one of AEW's
     own directories in it, exposes other runs."""
@@ -397,6 +432,8 @@ def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os
         out.append(("every run's harness state and bridge credentials (the runs directory)", _real(runs)))
     if bridge_dir:
         out.append(("this run's bridge socket", _real(bridge_dir)))
+    if net_dir:
+        out.append(("this run's network sockets (its relay and egress proxy)", _real(net_dir)))
     for prefix in {sys.prefix, sys.base_prefix}:
         if prefix:
             out.append(("the Python environment AEW runs from", _real(prefix)))
@@ -535,16 +572,22 @@ def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> N
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
-            runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None) -> Layout:
+            runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None,
+            network: str = SHARED, net_dir: str | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
     so it stays visible; its ``.aew/local`` is hidden, and its store checked against every writable bind); ``runs``
     is the directory holding every run's directory (hidden too, with only this run's own directories bound back).
-    ``env`` is the launching environment, for the credential paths it names (default: this process's)."""
+    ``env`` is the launching environment, for the credential paths it names (default: this process's). ``network``
+    is the run's network mode (:data:`NETWORK_MODES`) and ``net_dir`` the directory of its network sockets
+    (``aew.harness.containment.netns``), with its :data:`NET_SHIM` subdirectory made here."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
+    if network not in NETWORK_MODES:
+        raise ContainmentUnavailable(f"network mode {network!r} is not one of {', '.join(NETWORK_MODES)}",
+                                     network=network)
     if access == "write" and scope not in WRITE_SCOPES:
         raise ContainmentUnavailable(f"a {role} may write only a Ticket workspace, not a {scope!r} scope",
                                      role=role, scope=scope)
@@ -575,8 +618,11 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     home = home if home is not None else os.path.expanduser("~")
     hide_dirs, hide_files = _masks(home, list(cfg.get("hide") or []), env)
     hide_host = host_masks()
+    if net_dir:
+        net_dir = _real(net_dir)
+        os.makedirs(os.path.join(net_dir, NET_SHIM), mode=0o700, exist_ok=True)
     guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files),
-                       host=hide_host)
+                       host=hide_host, net_dir=net_dir)
     operator = []
     for raw in cfg.get("writable") or []:
         path = _real(os.path.expanduser(raw))
@@ -605,7 +651,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                     visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
                     mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected),
-                    env=contained, hide_host=hide_host, display_files=display_files(home, env))
+                    env=contained, hide_host=hide_host, display_files=display_files(home, env), network=network,
+                    net_dir=net_dir)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     return layout

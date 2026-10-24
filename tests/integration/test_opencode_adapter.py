@@ -388,6 +388,10 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
     again = lab.wait("R-INV-0001-2")
     assert again["status"] == "ended_with_evidence" and "reason_code" not in again, again
     assert "reason_code" not in lab.record("R-INV-0001-2")
+    if record["containment"]["network"]["mode"] == "proxy_only":  # Linux (F28): the server held a sentinel, and the
+        # relay gave the provider each key in its place, the one the launch read
+        assert list(dict.fromkeys(lab.provider.seen)) == [hashlib.sha256(k.encode()).hexdigest()
+                                                         for k in (expired, fresh)]
     # Neither key, nor the provider's message quoting part of one, is in anything AEW wrote, its server log (the
     # harness's stderr) included: only the variable's name. OpenCode's own private state (its XDG directories, with
     # its database) keeps what the provider said.

@@ -346,8 +346,22 @@ def test_establish_labels_a_contained_run_truthfully(lab):
                                 project=str(lab.repo))
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
-    assert label["network"] == "shared" and label["mechanism"].startswith("bubblewrap")
+    # F28 decision 1: a contained run's network is a namespace of its own by default, and row 1 says so
+    assert label["network"] == {"mode": "proxy_only"} and label["mechanism"].startswith("bubblewrap")
     assert label["self_test"]["ok"] is True and label["layout"]["workspace_access"] == "read"
+    assert label["self_test"]["rows"]["1"]["ok"] is True and label["self_test"]["rows"]["1"]["mode"] == "proxy_only"
+    shutil.rmtree(layout.net_dir or "", ignore_errors=True)
+
+
+def test_establish_on_the_hosts_network_says_so_and_claims_nothing(lab):
+    """F28 §3.1: ``shared`` is an explicit weaker choice, labelled for what it is, and row 1 claims nothing for it."""
+    layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
+                                scratch=str(lab.run / "scratch"), bridge_dir=None,
+                                policy={"containment": {"network": {"mode": "shared"}}}, project=str(lab.repo))
+    assert layout is not None and layout.net_dir is None and "--unshare-net" not in C.bwrap_argv(layout, ["true"])
+    assert label["network"]["mode"] == "shared"
+    assert label["self_test"]["rows"]["1"] == {"name": "network", "ok": True, "reason": None, "mode": "shared",
+                                               "claim": "none: the run shares the host's network"}
 
 
 # ------------------------------------------------------------------ process ownership (E13)
@@ -727,20 +741,21 @@ def without(monkeypatch, *steps: tuple[str, ...]) -> None:
     monkeypatch.setattr(probe, "bwrap_argv", argv)
 
 
-def test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
-    """CB-12's rows 2 to 5 pass on the real layout and are on the label with their facts: /run a read-only tmpfs
-    holding nothing the layout did not put there, the kernel's socket table read with the probe's own listener in it
-    and no reachable socket of a failing class (D-CS2-2), what the table cannot show named (D-CS2-3), no display
-    credential or variable, no controlling terminal, and every bind and mask holding. The table's size and the
-    check's time are printed: its cost, on CI and on the Rocky VM (`-s`)."""
+def test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
+    """CB-12's rows 1 to 5 pass on the real layout and are on the label with their facts: the run's own network (row
+    1, F28 §3.6), /run a read-only tmpfs holding nothing the layout did not put there, the kernel's socket table read
+    with the probe's own listener in it and no reachable socket of a failing class (D-CS2-2), no abstract socket of the
+    host's listed inside (D-CS2-5), what the table cannot show named (D-CS2-3), no display credential or variable, no
+    controlling terminal, and every bind and mask holding. The table's size and the check's time are printed: its
+    cost, on CI and on the Rocky VM (`-s`)."""
     layout, label = establish(lab, monkeypatch)
     assert layout is not None and label["filesystem"] == "os_readonly_roots"
     rows = label["self_test"]["rows"]
-    assert sorted(rows) == ["2", "3", "4", "5"]
+    assert sorted(rows) == ["1", "2", "3", "4", "5"]
     assert {n: r["reason"] for n, r in rows.items() if not r["ok"]} == {}
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
     assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)
-    assert rows["2"]["abstract"]["network"] == "shared"
+    assert rows["2"]["abstract"]["network"] == "proxy_only" and rows["2"]["abstract"]["visible_inside"] == []
     assert [s for s in rows["2"]["sockets"] if s["class"] in sockets.FAILING] == []
     assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"]) == (0, "ENXIO")
     print(f"socket table: {rows['2']['table']} entries, {rows['2']['checked']} path sockets checked, "

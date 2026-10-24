@@ -202,14 +202,30 @@ def test_operator_writable_roots_must_exist_and_are_recorded(tmp_path, fake_bwra
 def test_labels_say_what_a_run_had_and_old_records_read_as_workdir_only():
     contained = C.label(contained=True, mechanism="bubblewrap 0.4.0", self_test={"ok": True})
     assert contained == {"filesystem": "os_readonly_roots", "process_ownership": "pid_namespace",
-                         "network": C.network(), "mechanism": "bubblewrap 0.4.0", "self_test": {"ok": True}}
+                         "network": {"mode": C.network(), "provider_relay": "none"}, "mechanism": "bubblewrap 0.4.0",
+                         "self_test": {"ok": True}}
     assert C.network() == ("not_provided" if sys.platform == "win32" else "shared")
     weaker = C.label(contained=False, reason="bwrap missing")
     assert weaker["filesystem"] == "workdir_separation_only" and weaker["weaker_because"] == "bwrap missing"
-    assert weaker["process_ownership"] in {"job_object", "process_group"} and weaker["network"] == C.network()
+    assert weaker["process_ownership"] in {"job_object", "process_group"}
+    assert weaker["network"] == {"mode": C.network(), "provider_relay": "none"}
     for old in ("workdir_separation_only", None, {}):
         assert C.normalize(old)["filesystem"] == "workdir_separation_only"
+        assert C.normalize(old)["network"] == {"mode": C.network(), "provider_relay": "none"}
     assert C.normalize(contained) is contained
+    # a record from before CS-3b holds the network's mode as a string (F28 §3.1's labels came with CS-3b)
+    assert C.normalize({**contained, "network": "shared"})["network"] == {"mode": "shared", "provider_relay": "none"}
+
+
+def test_a_contained_runs_label_names_its_layouts_network_and_what_its_network_holds():
+    """F28 §3.1: network.mode is the layout's, and network.provider_relay and network.egress_allow what the run's
+    network started (``netns.RunNetwork.describe``)."""
+    layout = L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=(),
+                      hide_host=("/run",), run_exceptions=(), network="proxy_only", net_dir="/tmp/aew-net-x")
+    got = C.label(contained=True, layout=layout,
+                  net={"provider_relay": "configured", "egress_allow": ["a.example:443"]})
+    assert got["network"] == {"mode": "proxy_only", "provider_relay": "configured", "egress_allow": ["a.example:443"]}
+    assert got["layout"]["network"] == "proxy_only" and got["layout"]["net_dir"] == "/tmp/aew-net-x"
 
 
 def test_policy_mode_defaults_to_required_where_containment_exists():

@@ -6,8 +6,8 @@ condition stands: nothing may call Linux runs network-contained before its live 
 - **`aew.harness.containment.peer`** is ruling R-6's one owner.
   - `host_route` refuses loopback, link-local and host-local addresses: "this host" (`0.0.0.0/8`, `::`), and every
     address the kernel delivers to this host, whatever route makes it local. That is an address that binds, or one a
-    `local` route covers in any of the kernel's routing tables, in either family. Tables that cannot be read count as
-    local.
+    `local` or `anycast` route covers in any of the kernel's routing tables, in either family. Tables that cannot be
+    read count as local.
   - It judges IPv4-mapped, IPv4-compatible and NAT64 forms by the IPv4 address they carry too.
   - It judges addresses, never names.
   - `not_public` is the any-public-address policy's test.

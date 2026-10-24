@@ -247,13 +247,14 @@ def dump(*datagrams: bytes):
     return read
 
 
-def test_the_route_dump_gives_every_local_route_of_its_family_in_every_table():
-    """Right: the local routes of every table, across datagrams; unicast, anycast and the other family's are not."""
+def test_the_route_dump_gives_every_local_and_anycast_route_of_its_family_in_every_table():
+    """Right: the local and anycast routes of every table, across datagrams; unicast and the other family's are not."""
     read = dump(route("3ffe:1::", 64) + route("3ffe:3::", 64, table=100) + message(NOOP),
                 route("2001:db8::", 32, kind=UNICAST) + route("3ffe:4::", 128, kind=ANYCAST)
                 + route("198.51.100.0", 24) + END)
     assert peer.local_routes(socket.AF_INET6, read=read) == [ipaddress.ip_network("3ffe:1::/64"),
-                                                             ipaddress.ip_network("3ffe:3::/64")]
+                                                             ipaddress.ip_network("3ffe:3::/64"),
+                                                             ipaddress.ip_network("3ffe:4::/128")]
     assert peer.local_routes(socket.AF_INET, read=read) == [ipaddress.ip_network("198.51.100.0/24")]
 
 

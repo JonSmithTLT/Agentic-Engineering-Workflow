@@ -7,8 +7,8 @@ address, never on a name: a name raises.
 
 - **Host-local** is "this host" (``0.0.0.0/8`` and ``::``, which a Linux connect delivers to loopback) and every
   address the kernel delivers to this host, whatever route makes it local (:func:`is_host_address`), not a list of
-  interfaces: an address that binds, or one a ``local`` route covers in any of the kernel's routing tables, in either
-  family. Where the tables cannot be read, the address counts as local.
+  interfaces: an address that binds, or one a ``local`` or ``anycast`` route covers in any of the kernel's routing
+  tables, in either family. Where the tables cannot be read, the address counts as local.
 - **IPv6 forms of an IPv4 address** are judged by the IPv4 address too: IPv4-mapped (``::ffff:0:0/96``, which a
   dual-stack socket connects to over IPv4), IPv4-compatible (``::/96``, deprecated) and NAT64's well-known prefix
   (``64:ff9b::/96``). Zone ids are dropped (``fe80::1%eth0``). **Coverage limit:** no other embedding is unwrapped:
@@ -142,7 +142,9 @@ _RTATTR = struct.Struct("=HH")        # rtattr: length, type
 _NLMSG_NOOP, _NLMSG_DONE = 1, 3       # any other control message (NLMSG_ERROR, an overrun) means the dump failed
 _NLM_F_REQUEST, _NLM_F_DUMP_INTR, _NLM_F_DUMP = 0x1, 0x10, 0x300
 _RTM_NEWROUTE, _RTM_GETROUTE = 24, 26
-_RTN_LOCAL = 2
+# Route types whose addresses are this host's own: local, and anycast (an anycast address is this host's too, whatever
+# a given protocol's input does with it).
+_HOST_ROUTE_TYPES = (2, 4)  # RTN_LOCAL, RTN_ANYCAST
 _RTA_DST = 1
 # AEW's choice: each read of the dump waits this long at most, and a dump that stalls counts as unreadable.
 ROUTE_DUMP_TIMEOUT = 5.0
@@ -171,11 +173,11 @@ def _route_dump(family: int) -> Generator[bytes, None, None]:
 
 
 def _local_prefix(body: bytes, family: int) -> Network | None:
-    """The prefix one dumped route covers if it is a ``local`` route of ``family``, else None."""
+    """The prefix one dumped route covers if it is a ``local`` or ``anycast`` route of ``family``, else None."""
     if len(body) < _RTMSG.size:
         raise ValueError("a route message is cut short")
     route_family, dst_len, _, _, _, _, _, kind, _ = _RTMSG.unpack_from(body)
-    if route_family != family or kind != _RTN_LOCAL:
+    if route_family != family or kind not in _HOST_ROUTE_TYPES:
         return None
     size = 4 if family == socket.AF_INET else 16
     dst = None
@@ -195,8 +197,8 @@ def _local_prefix(body: bytes, family: int) -> Network | None:
 
 
 def _local_prefixes(datagrams: Iterable[bytes], family: int) -> list[Network]:
-    """The prefixes the ``local`` routes in a route dump cover. Raises ``ValueError`` unless the dump is whole: it ends
-    with the kernel's end marker, reports no error, and no table changed while it was read."""
+    """The prefixes the ``local`` and ``anycast`` routes in a route dump cover. Raises ``ValueError`` unless the dump
+    is whole: it ends with the kernel's end marker, reports no error, and no table changed while it was read."""
     prefixes: list[Network] = []
     for data in datagrams:
         offset = 0
@@ -224,10 +226,10 @@ def _local_prefixes(datagrams: Iterable[bytes], family: int) -> list[Network]:
 
 
 def local_routes(family: int, *, read: Callable[[int], Generator[bytes, None, None]] = _route_dump) -> list[Network]:
-    """Every prefix a ``local`` route covers in any of the kernel's routing tables, for ``family`` (``AF_INET`` or
-    ``AF_INET6``): what ``ip route show table all type local`` lists. Every table, not a route lookup: a policy rule
-    can choose a table by more than the destination, and every table holds whatever any rule can choose. Raises
-    ``OSError`` or ``ValueError`` when the tables cannot be read whole."""
+    """Every prefix a ``local`` or ``anycast`` route covers in any of the kernel's routing tables, for ``family``
+    (``AF_INET`` or ``AF_INET6``): what ``ip route show table all type local`` and ``type anycast`` list. Every table,
+    not a route lookup: a policy rule can choose a table by more than the destination, and every table holds whatever
+    any rule can choose. Raises ``OSError`` or ``ValueError`` when the tables cannot be read whole."""
     with contextlib.closing(read(family)) as datagrams:
         return _local_prefixes(datagrams, family)
 
@@ -251,10 +253,10 @@ def _binds(ip: IP, family: int) -> bool:
 
 def is_host_address(ip: IP) -> bool:
     """Whether the kernel delivers ``ip`` to this host, whatever route makes it local. Either test makes it local:
-    a bind to it succeeds (:func:`_binds`), or, on Linux, a ``local`` route covers it in one of the routing tables
-    (:func:`local_routes`). The bind test is kept: it is the whole check off Linux, and with both an address is
-    refused whenever either test would refuse it. Fails closed: a bind error but "not available", and tables that
-    cannot be read, count as local.
+    a bind to it succeeds (:func:`_binds`), or, on Linux, a ``local`` or ``anycast`` route covers it in one of the
+    routing tables (:func:`local_routes`). The bind test is kept: it is the whole check off Linux, and with both an
+    address is refused whenever either test would refuse it. Fails closed: a bind error but "not available", and
+    tables that cannot be read, count as local.
 
     Residual: with ``net.ipv4.ip_nonlocal_bind=1`` (or its IPv6 twin) every address binds, so every address counts as
     local and the proxy refuses all egress. Safe, and surprising: the refusal's reason is ``host_interface``. Each

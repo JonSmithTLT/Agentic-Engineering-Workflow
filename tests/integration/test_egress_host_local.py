@@ -26,12 +26,16 @@ pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="ne
 
 SRC = Path(peer.__file__).resolve().parents[3]  # this checkout's src, whatever checkout the venv's aew is from
 TIMEOUT = 60
+# The kernel adds an address's own routes (its local and anycast ones) from deferred work, even with nodad, so a
+# case waits for them. The test's choice: far beyond the milliseconds they take under load.
+LISTED_WITHIN = 10
 
-# Runs as root of its own user and network namespace: brings loopback up, plants the case, refuses to go on unless
-# the kernel lists the planted route, then prints host_route for each address as JSON. With "unreadable", it asks
-# again with the tables read by a reader that fails, and by one that stops before the kernel's end marker.
+# Runs as root of its own user and network namespace: brings loopback up, plants the case, waits until the kernel
+# lists the planted route (at most LISTED_WITHIN seconds), then prints host_route for each address as JSON. With
+# "unreadable", it asks again with the tables read by a reader that fails, and by one that stops before the kernel's
+# end marker.
 CHILD = """
-import contextlib, functools, json, subprocess, sys
+import contextlib, functools, json, subprocess, sys, time
 sys.path.insert(0, sys.argv[1])
 from aew.harness.containment import peer
 
@@ -42,9 +46,14 @@ for command in [["link", "set", "lo", "up"], *case["plant"]]:
             sysctl.write(command[2])
     else:
         subprocess.run(["ip", *command], check=True, timeout=10, capture_output=True)
-listing = subprocess.run(["ip", *case["listing"]], check=True, timeout=10, capture_output=True, text=True).stdout
-if case["listed"] not in listing:
-    sys.exit("the kernel does not list the planted route: " + listing)
+deadline = time.monotonic() + float(sys.argv[3])
+while True:
+    listing = subprocess.run(["ip", *case["listing"]], check=True, timeout=10, capture_output=True, text=True).stdout
+    if case["listed"] in listing:
+        break
+    if time.monotonic() > deadline:
+        sys.exit("the kernel does not list the planted route: " + listing)
+    time.sleep(0.05)
 result = {"readable": {value: peer.host_route(value) for value in case["addresses"]}}
 
 def fails(family):
@@ -102,13 +111,13 @@ CASES = {
         "listing": V4_LOCAL, "listed": "local 203.0.113.0/25 dev lo table 100",
         "addresses": {"203.0.113.5": "host_interface", "203.0.113.200": None},
     },
-    # The subnet-router anycast address of a forwarding host's prefix: its route's type is anycast, not local, and a
-    # connect to it is not delivered to this host. The prefix's own address is local.
+    # The subnet-router anycast address of a forwarding host's prefix, and the prefix's own address: both are this
+    # host's.
     "an IPv6 anycast address": {
         "plant": [["write", "/proc/sys/net/ipv6/conf/all/forwarding", "1"],
                   ["-6", "addr", "add", "3ffe:4::1/64", "dev", "lo", "nodad"]],
         "listing": ["-6", "route", "show", "table", "local", "type", "anycast"], "listed": "anycast 3ffe:4:: dev lo",
-        "addresses": {"3ffe:4::": None, "3ffe:4::1": "host_interface"},
+        "addresses": {"3ffe:4::": "host_interface", "3ffe:4::1": "host_interface", "3ffe:4::2": None},
     },
     "tables that cannot be read": {
         "plant": [["-6", "route", "add", "local", "3ffe:1::/64", "dev", "lo"]],
@@ -136,8 +145,8 @@ def test_an_address_the_kernel_delivers_to_this_host_is_refused_whatever_route_m
         pytest.skip(f"unprivileged user and network namespaces are not available: {unavailable}")
     results = {}
     for name, case in CASES.items():
-        run = subprocess.run(["unshare", "-rn", sys.executable, "-I", "-c", CHILD, str(SRC), json.dumps(case)],
-                             capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        run = subprocess.run(["unshare", "-rn", sys.executable, "-I", "-c", CHILD, str(SRC), json.dumps(case),
+                              str(LISTED_WITHIN)], capture_output=True, text=True, timeout=TIMEOUT, check=False)
         assert run.returncode == 0, f"{name}: {run.stderr.strip()}"
         results[name] = json.loads(run.stdout)
     for name, case in CASES.items():

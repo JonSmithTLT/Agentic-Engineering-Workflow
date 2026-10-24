@@ -13,7 +13,9 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - `family`, and `anchor` (`module` and `symbol`; line numbers churn, so a line is never an anchor).
 - `basis`: `enumerated` (read from a registry the code owns, at run time), `declared` (a table the generator declares, pinned to the code), `static` (read from the source without running it) or `observed` (read back from something the generator ran).
 - `coverage.label`: `complete-by-construction` (names its `registry` and the tests in `check` that stop code bypassing it), `lower-bound` (lists what it could not resolve in `unresolved`) or `unknown`.
-- `fact`: the record's own facts. A list fact that a detector found says how complete it is, in `fact.fact_coverage` (an object keyed by the fact's name, in `coverage`'s vocabulary); a list fact with no entry is `unknown`, and an empty list never means none. A `modules` record also has `imports`, a top-level key: the AEW modules it imports, statically.
+- `fact`: the record's own facts.
+- `fact_coverage`: on the record, beside `coverage` (it describes facts, so it is not one). For each list fact a detector found, an object keyed by the fact's name, in `coverage`'s vocabulary: how complete the list is. A list fact with no entry is `unknown`, and an empty list never means none.
+- A `modules` record also has `imports`, a top-level key: the AEW modules it imports, statically.
 
 ## When a change moves it
 

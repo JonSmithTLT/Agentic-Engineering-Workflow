@@ -14,7 +14,8 @@ two tests of this family, which read the source by two independent detectors (``
 * every row declares itself at a site, and every site declares a row.
 
 The two list facts of a record, ``declared_at`` and ``starts``, are what detectors found, so each carries its own
-coverage in ``fact.fact_coverage`` (lower-bound, with what it could not resolve; the designer's addendum 3). ``starts``
+coverage in the record's ``fact_coverage``, beside ``coverage`` (lower-bound, with what it could not resolve; the
+designer's addendum 3). ``starts``
 is one list of every place the product starts the entry point, each item with its ``form`` and ``attribution``:
 
 * ``-m``: a ``python -m aew...`` spawn, attributed by the module it names;
@@ -266,12 +267,13 @@ def build(ctx: C.Context) -> C.Built:
             "entry_point": key, "kind": kind, "reason": reason,
             "declared_at": [{"module": m, "symbol": s or None, "via": v} for m, s, v in where],
             "starts": [distinct[k] for k in sorted(distinct)],
-            # how complete each list is, in coverage's vocabulary: a detector found them, so both are lower-bound
-            "fact_coverage": {"declared_at": C.lower_bound(declared_unresolved),
-                              "starts": C.lower_bound(started_unresolved[key] + anywhere_started)},
         }
+        # how complete each list fact is, in coverage's vocabulary, on the record beside `coverage`: a detector found
+        # them, so both are lower-bound
+        fact_coverage = {"declared_at": C.lower_bound(declared_unresolved),
+                         "starts": C.lower_bound(started_unresolved[key] + anywhere_started)}
         records.append(C.Record(FAMILY, key, anchor_module, anchor_symbol, "enumerated",
-                                C.complete(REGISTRY, CHECKS), fact))
+                                C.complete(REGISTRY, CHECKS), fact, fact_coverage=fact_coverage))
     return C.Built(records=records, pages={"entry-points.md": page(records)})
 
 

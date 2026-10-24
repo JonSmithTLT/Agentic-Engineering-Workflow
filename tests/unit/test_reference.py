@@ -266,7 +266,7 @@ def test_the_committed_index_is_in_the_shape_the_trace_reads():
     assert list(index) == ["counts", "gaps", "records", "schema"] and index["schema"] == C.SCHEMA
     assert index["counts"]["records"] == len(index["records"])
     for rid, r in index["records"].items():
-        assert set(r) <= {"family", "anchor", "basis", "coverage", "fact", "imports"}, rid
+        assert set(r) <= {"family", "anchor", "basis", "coverage", "fact", "fact_coverage", "imports"}, rid
         assert set(r["anchor"]) == {"module", "symbol"}, rid
 
 
@@ -275,9 +275,10 @@ def small_index() -> dict[str, Any]:
     other = C.Record(C.MODULES, "aew.b", "aew.b", None, "static",
                      C.lower_bound([C.unresolved_item("aew.b", "f", "a computed import")]), {"path": "src/aew/b.py"},
                      ["aew.a"])
-    fact = {"n": 1, "items": [{"x": 1}],  # a list fact a detector found, and how complete it is (addendum 3)
-            "fact_coverage": {"items": C.lower_bound([C.unresolved_item("aew.a", "T", "an item not resolved")])}}
-    rec = C.Record("things", "t1", "aew.a", "T", "enumerated", C.complete("aew.a:T", ["tests/x.py::t"]), fact)
+    fact = {"n": 1, "items": [{"x": 1}]}  # a list fact a detector found; how complete it is is on the record
+    fact_coverage = {"items": C.lower_bound([C.unresolved_item("aew.a", "T", "an item not resolved")])}
+    rec = C.Record("things", "t1", "aew.a", "T", "enumerated", C.complete("aew.a:T", ["tests/x.py::t"]), fact,
+                   fact_coverage=fact_coverage)
     return C.build_index([mod, other, rec])
 
 
@@ -303,17 +304,18 @@ MUTATIONS = {
     "counts that no longer match": lambda i: i["counts"].update(records=99),
     "a gap without its why": lambda i: i["gaps"][0].pop("why"),
     "a wrong schema": lambda i: i.update(schema="aew/reference-index/v0"),
-    "a list fact without its fact_coverage entry": lambda i: i["records"]["things:t1"]["fact"][
-        "fact_coverage"].pop("items"),
-    "a fact_coverage for a fact the record lacks": lambda i: i["records"]["things:t1"]["fact"][
-        "fact_coverage"].update(missing={"label": "unknown"}),
-    "a fact_coverage label outside the three": lambda i: i["records"]["things:t1"]["fact"]["fact_coverage"][
+    "a list fact without its fact_coverage entry": lambda i: i["records"]["things:t1"]["fact_coverage"].pop("items"),
+    "a fact_coverage for a fact the record lacks": lambda i: i["records"]["things:t1"]["fact_coverage"].update(
+        missing={"label": "unknown"}),
+    "a fact_coverage label outside the three": lambda i: i["records"]["things:t1"]["fact_coverage"][
         "items"].update(label="complete"),
-    "a fact_coverage lower-bound without its unresolved list": lambda i: i["records"]["things:t1"]["fact"][
-        "fact_coverage"]["items"].pop("unresolved"),
-    "a fact_coverage unresolved item without its why": lambda i: i["records"]["things:t1"]["fact"]["fact_coverage"][
+    "a fact_coverage lower-bound without its unresolved list": lambda i: i["records"]["things:t1"]["fact_coverage"][
+        "items"].pop("unresolved"),
+    "a fact_coverage unresolved item without its why": lambda i: i["records"]["things:t1"]["fact_coverage"][
         "items"]["unresolved"][0].pop("why"),
-    "a fact_coverage that is not an object": lambda i: i["records"]["things:t1"]["fact"].update(fact_coverage=[]),
+    "a fact_coverage that is not an object": lambda i: i["records"]["things:t1"].update(fact_coverage=[]),
+    "a fact_coverage left inside fact (addendum 3: it belongs on the record)": lambda i: i["records"][
+        "things:t1"]["fact"].update(fact_coverage=i["records"]["things:t1"].pop("fact_coverage")),
     "an unresolved item of a list fact missing from gaps": lambda i: i.update(
         gaps=[g for g in i["gaps"] if g["family"] != "things"]),
     "a gap that is on no record": lambda i: i["gaps"].append(
@@ -435,7 +437,8 @@ def test_every_list_fact_a_detector_found_says_how_complete_it_is():
         fact = r.get("fact", {})
         for name, value in fact.items():
             if isinstance(value, list):
-                assert fact["fact_coverage"][name]["label"] in C.LABELS, (rid, name)
+                assert r["fact_coverage"][name]["label"] in C.LABELS, (rid, name)
+                assert "fact_coverage" not in fact, rid  # on the record, beside coverage
                 seen += 1
     assert seen
 

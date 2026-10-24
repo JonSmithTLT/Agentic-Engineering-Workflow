@@ -283,11 +283,13 @@ def test_one_list_holds_every_start_of_an_entry_point_with_its_form_and_says_how
     path_sites = {(m, c.symbol) for m, c in consoles if c.form == E.PATH_FORM}
     assert path_sites and any(c.form == E.ARGV_FORM for _, c in consoles)
     by_key = {r.key: r.fact or {} for r in built.records}
+    coverage_of = {r.key: r.fact_coverage or {} for r in built.records}
     for key, fact in by_key.items():
         assert {i["form"] for i in fact["starts"]} <= {E.DASH_M, E.ARGV_FORM, E.PATH_FORM}, key
         assert all(set(i) == {"module", "symbol", "form", "attribution"} for i in fact["starts"]), key
-        assert set(fact["fact_coverage"]) == {"declared_at", "starts"} and all(
-            c["label"] == C.LOWER for c in fact["fact_coverage"].values()), key
+        assert "fact_coverage" not in fact, key  # it is on the record, beside coverage (addendum 3)
+        assert set(coverage_of[key]) == {"declared_at", "starts"} and all(
+            c["label"] == C.LOWER for c in coverage_of[key].values()), key
         mine = {(i["module"], i["symbol"]) for i in fact["starts"] if i["form"] == E.PATH_FORM}
         assert mine == (path_sites if key in roles else set()), key  # the PATH makes every role of the CLI startable
         assert {(i["module"], i["symbol"]) for i in fact["starts"] if i["form"] == E.DASH_M} == {
@@ -298,7 +300,7 @@ def test_one_list_holds_every_start_of_an_entry_point_with_its_form_and_says_how
     assert ("aew.dashboard.projections", "Projector._search_hit") in {
         (i["module"], i["symbol"]) for i in by_key["aew"]["starts"] if i["form"] == E.ARGV_FORM}
     unresolved = {(i["module"], i["symbol"])
-                  for k in by_key for i in by_key[k]["fact_coverage"]["starts"]["unresolved"]}
+                  for k in by_key for i in coverage_of[k]["starts"]["unresolved"]}
     assert set(argv_sites) <= unresolved  # an argv constant is listed, and its being run is not decided
 
 

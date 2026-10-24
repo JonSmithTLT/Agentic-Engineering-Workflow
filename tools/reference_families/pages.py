@@ -69,10 +69,11 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "from something the generator ran).",
         "- `coverage.label`: `complete-by-construction` (names its `registry` and the tests in `check` that stop code "
         "bypassing it), `lower-bound` (lists what it could not resolve in `unresolved`) or `unknown`.",
-        "- `fact`: the record's own facts. A list fact that a detector found says how complete it is, in "
-        "`fact.fact_coverage` (an object keyed by the fact's name, in `coverage`'s vocabulary); a list fact with no "
-        "entry is `unknown`, and an empty list never means none. A `modules` record also has `imports`, a "
-        "top-level key: the AEW modules it imports, statically.", "",
+        "- `fact`: the record's own facts.",
+        "- `fact_coverage`: on the record, beside `coverage` (it describes facts, so it is not one). For each list "
+        "fact a detector found, an object keyed by the fact's name, in `coverage`'s vocabulary: how complete the "
+        "list is. A list fact with no entry is `unknown`, and an empty list never means none.",
+        "- A `modules` record also has `imports`, a top-level key: the AEW modules it imports, statically.", "",
         "## When a change moves it", "",
         "A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site) runs "
         "`python tools/reference.py render` and commits `docs/reference/`. After a merge conflict here, take either "

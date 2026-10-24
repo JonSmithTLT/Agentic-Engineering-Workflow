@@ -16,7 +16,7 @@
         "lower-bound": 171
       }
     },
-    "digest": "sha256:bb91bd2b7401dfa13efeec1a6c5602ba95c92398cdc277f870cd7cff8e2a2a29",
+    "digest": "sha256:e2e320816f4b958a282827cead8fe0bba0f0da0005fc1034dfaeaa66b8cade95",
     "records": 177,
     "unresolved": 5
   },
@@ -77,22 +77,6 @@
           }
         ],
         "entry_point": "aew",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": [
-              {
-                "module": "aew.dashboard.projections",
-                "symbol": "Projector._search_hit",
-                "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
-              }
-            ]
-          }
-        },
         "kind": "store_writer",
         "reason": "the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock",
         "starts": [
@@ -122,6 +106,22 @@
           }
         ]
       },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.dashboard.projections",
+              "symbol": "Projector._search_hit",
+              "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+            }
+          ]
+        }
+      },
       "family": "entry-points"
     },
     "entry-points:aew (worker run)": {
@@ -148,16 +148,6 @@
           }
         ],
         "entry_point": "aew (worker run)",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": []
-          }
-        },
         "kind": "non_writer",
         "reason": "the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, `check run` and `submit` go through the run's bridge, whose supervisor holds the credential and the lock; nothing else in that process may take the lock",
         "starts": [
@@ -174,6 +164,16 @@
             "symbol": "tui_env"
           }
         ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
       },
       "family": "entry-points"
     },
@@ -201,16 +201,6 @@
           }
         ],
         "entry_point": "aew dashboard serve",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": []
-          }
-        },
         "kind": "non_writer",
         "reason": "the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock",
         "starts": [
@@ -227,6 +217,16 @@
             "symbol": "tui_env"
           }
         ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
       },
       "family": "entry-points"
     },
@@ -254,22 +254,6 @@
           }
         ],
         "entry_point": "aew lead mcp",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": [
-              {
-                "module": "aew.harness.opencode.projection",
-                "symbol": "LEAD_MCP_COMMAND",
-                "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
-              }
-            ]
-          }
-        },
         "kind": "non_writer",
         "reason": "the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential",
         "starts": [
@@ -292,6 +276,22 @@
             "symbol": "LEAD_MCP_COMMAND"
           }
         ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.opencode.projection",
+              "symbol": "LEAD_MCP_COMMAND",
+              "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+            }
+          ]
+        }
       },
       "family": "entry-points"
     },
@@ -319,16 +319,6 @@
           }
         ],
         "entry_point": "aew.harness.supervisor",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": []
-          }
-        },
         "kind": "store_writer",
         "reason": "a run's supervisor: holds the run's credential and commits through the engine",
         "starts": [
@@ -339,6 +329,16 @@
             "symbol": "Harness._spawn_run"
           }
         ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
       },
       "family": "entry-points"
     },
@@ -366,19 +366,19 @@
           }
         ],
         "entry_point": "aew.stg02.server",
-        "fact_coverage": {
-          "declared_at": {
-            "label": "lower-bound",
-            "unresolved": []
-          },
-          "starts": {
-            "label": "lower-bound",
-            "unresolved": []
-          }
-        },
         "kind": "non_writer",
         "reason": "the STG-02 slice's producer: it reads a project's committed state lock-free (dashboard.reader) and writes only its own state directory, never the store",
         "starts": []
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
       },
       "family": "entry-points"
     },

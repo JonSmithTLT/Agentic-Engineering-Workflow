@@ -105,6 +105,10 @@ class Record:
     coverage: dict[str, Any]
     fact: dict[str, Any] | None = None
     imports: list[str] | None = None  # the modules family only: the AEW modules it imports, statically
+    # How complete each list fact a detector found is, keyed by the fact's name, in `coverage`'s vocabulary (addendum
+    # 3). It is on the record beside `coverage`, not inside `fact`: it describes facts, as `coverage` describes the
+    # record. Passed by keyword.
+    fact_coverage: dict[str, dict[str, Any]] | None = None
 
     @property
     def id(self) -> str:
@@ -115,6 +119,8 @@ class Record:
                                "basis": self.basis, "coverage": self.coverage}
         if self.fact is not None:
             out["fact"] = self.fact
+        if self.fact_coverage is not None:
+            out["fact_coverage"] = self.fact_coverage
         if self.imports is not None:
             out["imports"] = self.imports
         return out
@@ -157,9 +163,9 @@ def dumps(obj: Any) -> str:
 
 def unresolved_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Every unresolved item a record carries: its own ``coverage.unresolved`` and those of its list facts
-    (``fact_coverage``)."""
+    (``fact_coverage``, on the record beside ``coverage``)."""
     items = list((record.get("coverage") or {}).get("unresolved") or [])
-    for coverage in ((record.get("fact") or {}).get("fact_coverage") or {}).values():
+    for coverage in (record.get("fact_coverage") or {}).values():
         items += coverage.get("unresolved") or []
     return items
 
@@ -270,12 +276,14 @@ def index_problems(index: Mapping[str, Any]) -> list[str]:
             problems.append(f"{rid}: basis {r.get('basis')!r} is not one of {list(BASES)}")
         problems += coverage_problems(rid, r.get("coverage"))
         fact = r.get("fact") or {}
-        fact_coverage = fact.get("fact_coverage")
+        if "fact_coverage" in fact:  # it describes facts, so it is not one: it belongs on the record (addendum 3)
+            problems.append(f"{rid}: fact_coverage is inside fact; it belongs on the record, beside coverage")
+        fact_coverage = r.get("fact_coverage")
         if fact_coverage is not None and not isinstance(fact_coverage, dict):
             problems.append(f"{rid}: fact_coverage is not an object")
             fact_coverage = None
         for name, cov in (fact_coverage or {}).items():
-            if name == "fact_coverage" or name not in fact:
+            if name not in fact:
                 problems.append(f"{rid}: fact_coverage for {name!r}, which is not a fact of the record")
             problems += coverage_problems(f"{rid} fact_coverage.{name}", cov)
         for name, value in fact.items():  # a list a detector found says how complete it is (addendum 3)

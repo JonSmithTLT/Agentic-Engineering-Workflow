@@ -265,14 +265,14 @@ def test_a_local_default_route_covers_every_address(family):
 
 
 @pytest.mark.parametrize("datagrams", [
-    [message(ERROR, struct.pack("=i", -1) + bytes(16))],
+    [message(ERROR, struct.pack("=i", -1) + bytes(16)) + END],
     [route("3ffe:1::", 64) + message(DONE, struct.pack("=i", -16))],
     [route("3ffe:1::", 64, flags=DUMP_INTR) + END],
     [route("3ffe:1::", 64)],
     [],
     [route("3ffe:1::", 64)[:-8], END],
     [bytes(8)],
-    [message(OVERRUN)],
+    [message(OVERRUN) + END],
     [message(NEWROUTE, struct.pack("=BBBBBBBBI", socket.AF_INET6, 64, 0, 0, 255, 0, 0, LOCAL, 0)
              + struct.pack("=HH", 64, 1) + bytes(16)) + END],
     [route(None, 24, raw_destination=bytes(4)) + END],

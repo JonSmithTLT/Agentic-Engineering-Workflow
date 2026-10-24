@@ -696,10 +696,12 @@ class ControlStore:
 
         Neither record path is followed if it is a link: a control file that is one is left for `aew doctor` to name,
         and the next commit replaces it with a file (review of #256, F3). If the control file is still wide after it is
-        narrowed, whether or not ``chmod`` raised, walking the store would change nothing either, at every open: the
-        file system keeps no permission bits (drvfs without ``metadata``, vfat, CIFS without Unix extensions), and
-        `aew doctor` says so once (:attr:`modes_kept`), or the control file is another account's, and doctor names it
-        (review of #256, F1)."""
+        narrowed, whether or not ``chmod`` raised, the narrowing stops there, at every open (review of #256, F1). Where
+        the file system keeps no permission bits (drvfs without ``metadata``, vfat, CIFS without Unix extensions),
+        walking the store would change nothing either, and `aew doctor` says so once (:attr:`modes_kept`). Where the
+        control file is another account's, the walk would narrow the paths this process owns, but it is skipped too:
+        they stay wide until the next commit replaces the control file, and doctor names them meanwhile (review of
+        #256, N1)."""
         # sys.platform, not IS_WINDOWS: Pyright narrows a platform branch only on sys.platform, and os.geteuid is
         # POSIX-only (review of #230, m8)
         if sys.platform == "win32":  # pragma: windows-only

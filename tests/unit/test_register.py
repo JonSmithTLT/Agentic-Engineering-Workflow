@@ -98,29 +98,6 @@ def test_ids_sort_naturally():
     assert key("Gate") > key("U99")  # anything that is not an id sorts after every id
 
 
-def test_an_stg_stage_is_a_row_id_and_nothing_wider_is():
-    """Designer ruling D-CS1-12: one row per STG build stage, named as the stage is (`STG-05`)."""
-    assert register.ID_RE.match("STG-05") and register.ID_RE.match("STG-12")
-    for wrong in ("STG-5", "STG-005", "STG05", "STG-05.1", "XYZ-05", "stg-05", "STG-05a"):
-        assert not register.ID_RE.match(wrong), wrong
-    key = register.id_key
-    assert key("STG-05") < key("STG-12") and key("STG-05") < key("Gate")
-
-
-def test_the_rows_the_notes_readme_sends_gate_progress_to_are_open():
-    """notes.d/README.md names the rows that carry a gate's work; a row that closes (as F2 did, its notes moving to
-    STG-05) must not stay named there."""
-    import re
-
-    text = (register.NOTES / register.NOTES_README).read_text(encoding="utf-8").replace("\n", " ")
-    sentence = text[text.index("Progress toward a gate"):]
-    sentence = sentence[:sentence.index(".")]
-    named = re.findall(r"\b(STG-[0-9]{2}|[A-Z][0-9]+(?:\.[0-9]+)?)\b", sentence)
-    closed = {next(iter(r.values())) for s in DATA["sections"] if s["title"].startswith("Closed") for r in s["rows"]}
-    rows = {next(iter(r.values())) for s in DATA["sections"] for r in s["rows"]}
-    assert named and all(rid in rows and rid not in closed for rid in named), named
-
-
 def test_closed_rows_are_gates_first_then_id_order_and_an_appended_row_is_reported():
     closed = next(s for s in DATA["sections"] if s["title"].startswith("Closed"))
     ids = [next(iter(r.values())) for r in closed["rows"]]

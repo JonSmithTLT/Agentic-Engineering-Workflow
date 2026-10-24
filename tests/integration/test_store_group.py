@@ -135,6 +135,17 @@ def test_the_store_group_and_store_writer_modules_read_no_environment_variable()
         assert found == [], (module.__name__, found)
 
 
+def test_the_store_group_module_imports_nothing_but_the_standard_library():
+    """The WIS issuer's installer runs as root from a root-owned install, never from an editable checkout (G3-14), and
+    calls this module's ``record_path``, ``parse_record`` and ``store_ref`` rather than restating them: so the module
+    has to install as it is, with nothing from the rest of AEW (the Lead, for WIS-B)."""
+    tree = ast.parse(Path(sg.__file__ or "").read_text(encoding="utf-8"))
+    names = [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
+    names += [n.module or "." for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level == 0]
+    names += ["." for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.level > 0]
+    assert names and [m for m in names if m.split(".")[0] not in sys.stdlib_module_names] == []
+
+
 # ------------------------------------------------------------------------------------- the rule, over synthetic hosts
 
 def test_another_entry_with_the_groups_id_in_a_listable_source_makes_it_not_private():

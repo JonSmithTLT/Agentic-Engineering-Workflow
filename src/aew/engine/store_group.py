@@ -36,6 +36,9 @@ OWNER_ONLY = (0o600, 0o700)
 # Name-service sources whose entries are all on this host, so enumerating them lists every entry they hold. `compat` is
 # one unless the files hold NIS `+`/`-` lines, which bring in entries this host does not list.
 LOCAL_SOURCES = frozenset({"files", "compat", "systemd", "altfiles"})
+# The nsswitch.conf(5) databases that resolve an account or the groups it holds: every source any of them names is one
+# the host resolves accounts and groups from (WIS-01a part 2).
+GROUP_DATABASES = frozenset({"passwd", "group", "initgroups"})
 FILES = "files"
 OTHER = "nss"  # an entry the merged enumeration returned that is not in this host's files
 
@@ -189,8 +192,10 @@ def answer(host: HostGroups) -> Answer:
     primary_why = alone(host.primary, host.operator, [])
     named = record.group if record is not None else None
     if primary_why is None:
-        if named is not None and named[1] != host.primary:
-            return Answer(None, None, RECORD_NAMES_OTHER)  # the record names a group part 1 does not select (C1-1)
+        if named is not None and tuple(named) != (host.operator, host.primary):
+            # The record names a group part 1 does not select (C1-1), or the user-private ID under a name other than
+            # the operator's, which the listing contradicts (D-CS1-16).
+            return Answer(None, None, RECORD_NAMES_OTHER)
         return Answer(host.primary, USER_PRIVATE, None)  # a local AEW group is not used here, even if one exists
     if named is None:
         return Answer(None, None, NO_PRIVATE_GROUP, primary_why)
@@ -341,10 +346,10 @@ def load_record(path: Path, *, check: Callable[[Path], str | None] = root_owned)
 # --------------------------------------------------------------------------------------------- the host's listing
 
 def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
-    """The name-service sources for accounts and groups, each ``True`` where it can be listed: the ``passwd`` and
-    ``group`` lines of ``nsswitch``, ``files`` where it is absent (glibc's default). Every source outside
-    :data:`LOCAL_SOURCES` cannot be listed, configured and idle alike, and so is `compat` when the files hold NIS
-    lines."""
+    """The name-service sources for accounts and groups, each ``True`` where it can be listed: the sources of every
+    database in ``nsswitch`` that resolves an account or the groups it holds (:data:`GROUP_DATABASES`), ``files``
+    where none is configured (glibc's default). Every source outside :data:`LOCAL_SOURCES` cannot be listed,
+    configured and idle alike, and so is `compat` when the files hold NIS lines."""
     try:
         text = nsswitch.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
@@ -352,7 +357,7 @@ def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
     found: dict[str, bool] = {}
     for line in text.splitlines():
         db, _, rest = line.split("#", 1)[0].partition(":")
-        if db.strip() not in ("passwd", "group"):
+        if db.strip() not in GROUP_DATABASES:
             continue
         for word in rest.split():
             if word.startswith("["):  # an action, such as [SUCCESS=merge]

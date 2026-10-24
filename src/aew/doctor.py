@@ -146,13 +146,15 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list
                 bound.add(rel)
         shown = ", ".join(f"{rel} (gid {g}, {m:04o}{', above the bound' if rel in bound else ''})"
                           for rel, g, m in problems[:5])
+        by_hand = "; ".join(_by_hand(rel, g, m, target) for rel, g, m in problems[:5])
         checks.append(_check("store-modes", "WARN" if problems else "PASS",
                              f"{len(problems)} path(s) in the store are not at its target, gid {target.gid} with "
                              f"{modes}: {shown}{' ...' if len(problems) > 5 else ''}. AEW walks the store again only "
-                             "when the control file's group or mode differs from the target, so set these by hand: "
-                             f"`chgrp {target.gid} <path>`, then `chmod {target.file_mode:04o} <file>` or "
-                             f"`chmod {target.dir_mode:04o} <directory>` (a path another account owns needs that "
-                             "account). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
+                             "when its record (the store's directories and its control file) differs from the target, "
+                             "so set these by hand, each path's commands in the order given, as the walk steps "
+                             f"(narrow, then the group, then widen): {by_hand}"
+                             f"{'; and the rest the same way' if len(problems) > 5 else ''} (a path another account "
+                             "owns needs that account). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
                              if problems else f"every path in the store is at its target: gid {target.gid}, {modes}"))
     if found.gid is None:
         why = f"no group is private to you (WIS-01a {_parts(found)}; see store-group)"
@@ -168,6 +170,16 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None) -> list
                          "every running store writer holds it, and every path carries it at 0640/0750. The rest (the "
                          "issuer, its view and the gate's checks WIS-Q01 to WIS-Q09) is the qualification gate's"))
     return checks
+
+
+def _by_hand(rel: str, gid: int, mode: int, target: Any) -> str:
+    """The commands that bring one store path (``state/...``, a directory ending in ``/``) to ``target``, in the order
+    the walk steps it (``store_group.steps``), from the project's directory."""
+    from aew.engine import store_group as sg
+
+    path = f".aew/{rel}"
+    return ", ".join(f"`chmod {value:04o} {path}`" if op == "mode" else f"`chgrp {value} {path}`"
+                     for op, value in sg.steps(gid, mode, target, rel.endswith("/")))
 
 
 def _parts(found: Any) -> str:

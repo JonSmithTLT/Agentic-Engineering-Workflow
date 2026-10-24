@@ -155,7 +155,8 @@ def release(aew_root: Path) -> None:
 def running(aew_root: Path, *, exclude: Registration | None = None) -> tuple[list[Writer], list[str]]:
     """The running store writers of ``aew_root`` other than ``exclude``, and what could not be done (an entry this view
     may not remove). An entry whose lock is free belongs to an exited process and is removed; an entry that is locked
-    but cannot be read counts as a writer holding no group, so it can only make the store owner-only."""
+    but cannot be read counts as a writer holding no group, so it can only make the store owner-only. Temporary
+    entries are left alone: see the loop."""
     if sys.platform == "win32":  # pragma: windows-only
         return [], []
     import fcntl  # pragma: posix-only
@@ -168,7 +169,11 @@ def running(aew_root: Path, *, exclude: Registration | None = None) -> tuple[lis
     out: list[Writer] = []
     problems: list[str] = []
     for name in names:
-        if exclude is not None and name in (exclude.name, f".{exclude.name}.tmp"):
+        if name.startswith(".") or (exclude is not None and name == exclude.name):
+            # A temporary entry is one being made: not yet a writer, and only the writer making it may remove it
+            # (``Registration._open`` does if it fails). A reader that took its free lock for an exited owner's would
+            # remove it under that writer, which then stays unregistered (review of #243, P2). One whose writer was
+            # killed while making it stays behind, unread.
             continue
         path = directory / name
         try:
@@ -181,9 +186,8 @@ def running(aew_root: Path, *, exclude: Registration | None = None) -> tuple[lis
         try:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                if not name.startswith("."):  # a live entry; a locked temporary one is being made, not yet a writer
-                    out.append(_read(fd, name))
+            except BlockingIOError:  # a live entry
+                out.append(_read(fd, name))
                 continue
             try:  # its owner has exited
                 path.unlink()

@@ -11,10 +11,13 @@ on every host it builds. POSIX-only tests are pinned in ``tests/platform-skips.y
 from __future__ import annotations
 
 import ast
+import errno
 import hashlib
 import itertools
 import os
+import re
 import runpy
+import shutil
 import stat
 import subprocess
 import sys
@@ -185,6 +188,14 @@ def test_a_record_naming_another_group_than_part_one_selects_is_owner_only():
     assert sg.target(found, 1000, sg.Credentials(1000, frozenset({990})), []) == sg.Target(1000, *OWNER_ONLY)
 
 
+def test_a_record_naming_the_user_private_id_under_another_name_is_owner_only():
+    """D-CS1-16: part 1's user-private group is named for the operator, so a record that gives its ID another name
+    contradicts the listing (part 4). The same record under the operator's name is the user-private group's."""
+    found = sg.answer(gh.make_host(primary=1000, record_group=("staff", 1000)))
+    assert (found.gid, found.reason) == (None, sg.RECORD_NAMES_OTHER)
+    assert sg.answer(gh.make_host(primary=1000, record_group=(gh.OP, 1000))).kind == sg.USER_PRIVATE
+
+
 # ------------------------------------------------------------------------------------- root's group record
 
 def test_store_ref_is_wis_01s_and_the_record_path_derives_from_it(tmp_path):
@@ -235,6 +246,33 @@ def test_root_ownership_is_judged_along_the_whole_path(tmp_path):
     assert "symbolic link" in (sg.root_owned(link) or "")
 
 
+def test_a_record_counts_only_if_every_directory_above_it_is_roots_and_writable_by_no_one_else(monkeypatch):
+    """Review of #243, P3 (G2): a root-owned record under a directory that is not root's, or that its group or others
+    may write, or that is a link, is no record. The stat results are synthetic, so no root-owned files are needed."""
+    record = Path("/etc/systemd/system/aew-wis-issuer@x.service.d/store.conf")
+    good = {str(p): (0, stat.S_IFDIR | 0o755) for p in record.parents} | {str(record): (0, stat.S_IFREG | 0o644)}
+
+    def judged(change: dict[str, tuple[int, int]]) -> str | None:
+        chain = {**good, **change}
+
+        def lstat(p):
+            if str(p) not in chain:
+                raise FileNotFoundError(str(p))
+            uid, mode = chain[str(p)]
+            return os.stat_result((mode, 0, 0, 1, uid, 0, 0, 0, 0, 0))
+
+        with monkeypatch.context() as m:
+            m.setattr(sg.os, "lstat", lstat)
+            return sg.root_owned(record)
+
+    assert judged({}) is None
+    for change in ({str(record.parent): (1000, stat.S_IFDIR | 0o755)},
+                   {str(record.parents[1]): (0, stat.S_IFDIR | 0o775)},
+                   {str(record.parents[2]): (0, stat.S_IFDIR | 0o1777)},
+                   {str(record.parents[1]): (0, stat.S_IFLNK | 0o777)}):
+        assert judged(change) is not None, change
+
+
 # ------------------------------------------------------------------------------------- the host's listing
 
 def test_name_service_sources_outside_this_hosts_files_cannot_be_listed_running_or_not(tmp_path):
@@ -249,6 +287,17 @@ def test_name_service_sources_outside_this_hosts_files_cannot_be_listed_running_
     (etc / "group").write_text("wheel:x:10:\n+@netgroup\n", encoding="utf-8")  # NIS lines: `compat` goes remote
     assert sg.nss_sources(conf, etc)["compat"] is False
     assert sg.nss_sources(tmp_path / "absent", etc) == {"files": True}
+
+
+def test_every_database_that_gives_an_account_its_groups_is_a_source(tmp_path):
+    """D-CS1-14: WIS-01a part 2's sources are every source the host resolves accounts and groups from, so a source on
+    any database that gives an account its groups counts, and needs root's signal where it cannot be listed."""
+    conf, etc = tmp_path / "nsswitch.conf", tmp_path / "etc"
+    etc.mkdir()
+    conf.write_text("passwd: files\ngroup: files\ninitgroups: files sss\n", encoding="utf-8")
+    assert sg.nss_sources(conf, etc) == {"files": True, "sss": False}
+    conf.write_text("passwd: files\ngroup: files\ninitgroups: files\n", encoding="utf-8")
+    assert sg.nss_sources(conf, etc) == {"files": True}
 
 
 class _G:
@@ -409,21 +458,27 @@ def test_a_member_root_adds_later_returns_the_store_to_owner_only_at_the_next_pu
     assert at(root, egid, OWNER_ONLY) == {} and gh.readers(host.host, state_of(root)) == set()
 
 
+def fd_path(fd: int) -> str:
+    """The path a descriptor is open on (Linux's ``/proc``, where the POSIX tests run)."""
+    return os.readlink(f"/proc/self/fd/{fd}")
+
+
 def record_walk(monkeypatch) -> list[tuple[str, str, int]]:
-    """Every ``chmod``/``chown`` the store makes, in order: (path, op, value)."""
+    """Every ``fchmod``/``fchown`` the store makes, in order, with the path its descriptor is open on: (path, op,
+    value). The walk changes a path only through a descriptor on it (``store._open_listed``)."""
     calls: list[tuple[str, str, int]] = []
-    real_chmod, real_chown = os.chmod, os.chown
+    real_fchmod, real_fchown = os.fchmod, os.fchown
 
-    def chmod(path, mode, *a, **kw):
-        calls.append((str(path), "mode", mode))
-        return real_chmod(path, mode, *a, **kw)
+    def fchmod(fd, mode):
+        calls.append((fd_path(fd), "mode", mode))
+        return real_fchmod(fd, mode)
 
-    def chown(path, uid, gid, *a, **kw):
-        calls.append((str(path), "group", gid))
-        return real_chown(path, uid, gid, *a, **kw)
+    def fchown(fd, uid, gid):
+        calls.append((fd_path(fd), "group", gid))
+        return real_fchown(fd, uid, gid)
 
-    monkeypatch.setattr(store_mod.os, "chmod", chmod)
-    monkeypatch.setattr(store_mod.os, "chown", chown)
+    monkeypatch.setattr(store_mod.os, "fchmod", fchmod)
+    monkeypatch.setattr(store_mod.os, "fchown", fchown)
     return calls
 
 
@@ -439,7 +494,7 @@ def grants(state: dict[str, tuple[int, int]]) -> set[tuple[str, str, int | None,
 def replay(root: Path, start: dict[str, tuple[int, int]], calls: list[tuple[str, str, int]]) -> list[dict]:
     states, cur = [], dict(start)
     for path, op, value in calls:
-        rel = Path(path).relative_to(root).as_posix()
+        rel = Path(path).relative_to(root.resolve()).as_posix()
         rel = rel + "/" if (rel + "/") in cur else rel
         g, m = cur[rel]
         cur[rel] = (value, m) if op == "group" else (g, value)
@@ -466,7 +521,7 @@ def test_the_walk_in_each_direction_grants_nothing_beyond_its_start_and_end_and_
     host.host = then
     calls = record_walk(monkeypatch)
     store.read()  # the open walks
-    walked = [c for c in calls if Path(c[0]).is_relative_to(root / "state")]
+    walked = [c for c in calls if Path(c[0]).is_relative_to((root / "state").resolve())]
     assert walked, "nothing was walked: the test proves nothing"
     states = replay(root, start, walked)
     final = state_of(root)
@@ -543,12 +598,15 @@ def test_a_change_of_mode_alone_at_the_same_group_is_a_migration(tmp_path, monke
 
 
 @posix
-def test_a_walk_interrupted_before_the_control_file_resumes_at_the_next_comparison(tmp_path, monkeypatch):
-    """C2-2: the record is the control file's, so a walk cut before it is walked again at the next open."""
+@pytest.mark.parametrize("then", ["same", "other"])
+def test_a_walk_interrupted_before_the_control_file_resumes_at_the_next_comparison(tmp_path, monkeypatch, then):
+    """C2-2, with D-CS1-1's erratum (2026-10-24): the walk sets the store directory first and the control file last,
+    so a walk cut between them is walked again at the next open, whichever target it has then."""
     from aew.engine.faults import InjectedFault
 
     egid, s = gh.held()
-    host = Host(monkeypatch, gh.make_host(primary=egid))
+    first = gh.make_host(primary=egid)
+    host = Host(monkeypatch, first)
     root = tmp_path / ".aew"
     store = init(root)
     one_transaction(store)
@@ -559,11 +617,17 @@ def test_a_walk_interrupted_before_the_control_file_resumes_at_the_next_comparis
     with pytest.raises(InjectedFault):
         make_store(root).read()
     cut = state_of(root)
-    assert cut["state/control.yaml"] == (egid, GROUP_READ[0])  # the record is still the old one
+    assert cut["state/control.yaml"] == (egid, GROUP_READ[0])  # the control file is still at the first target
     assert {rel for rel, (g, _m) in cut.items() if g != s} == {"state/control.yaml"}
     monkeypatch.delenv("AEW_FAULT")
-    make_store(root).read()
-    assert at(root, s, GROUP_READ) == {}
+    end = (s, GROUP_READ)
+    if then == "other":
+        host.host, end = first, (egid, GROUP_READ)
+    later = make_store(root)
+    later.read()
+    assert at(root, *end) == {}
+    one_transaction(later)
+    assert at(root, *end) == {}
 
 
 @posix
@@ -590,6 +654,221 @@ def test_a_second_writer_waits_for_the_whole_walk(tmp_path, monkeypatch):
         pause.unlink(missing_ok=True)
         assert child.wait(timeout=60) == 0
     assert at(root, egid, OWNER_ONLY) == {}
+
+
+class _Cut(BaseException):
+    """A walk cut short, as by Ctrl-C or a kill: nothing in the engine catches it."""
+
+
+def cut_walk(monkeypatch, root: Path, step: int) -> bool:
+    """Open the store and cut its walk at its ``step``-th change to a store path (``fchmod`` or ``fchown``); False where
+    the walk made fewer changes than that."""
+    count, store_dir = [0], (root / "state").resolve()
+
+    def counted(real):
+        def change(fd, *rest):
+            if Path(fd_path(fd)).is_relative_to(store_dir):
+                count[0] += 1
+                if count[0] == step:
+                    raise _Cut
+            return real(fd, *rest)
+        return change
+
+    with monkeypatch.context() as m:
+        m.setattr(store_mod.os, "fchmod", counted(os.fchmod))
+        m.setattr(store_mod.os, "fchown", counted(os.fchown))
+        try:
+            make_store(root).read()
+        except _Cut:
+            return True
+    return False
+
+
+TARGETS = ("owner_only", "aew", "user_private")
+
+
+@posix
+@pytest.mark.parametrize(("first", "second"), list(itertools.permutations(TARGETS, 2)))
+def test_a_walk_cut_at_any_step_is_finished_by_the_next_comparison(tmp_path, monkeypatch, first, second):
+    """D-CS1-1's erratum (2026-10-24), as a property (the enumeration of the review of #243): for each ordered pair of
+    targets, a walk from the first to the second cut at each of its steps, and each next target (the first, the second
+    or the third), the next open leaves every store path exactly at the target."""
+    egid, s = gh.held()
+    hosts = {"owner_only": gh.make_host(primary=egid, user_private=False),
+             "aew": gh.make_host(primary=egid, user_private=False, aew=s),
+             "user_private": gh.make_host(primary=egid)}
+    host = Host(monkeypatch, hosts[first])
+    template = tmp_path / "template" / ".aew"
+    one_transaction(init(template))
+    start = state_of(template)
+    cases = 0
+    for then in (first, second, next(t for t in TARGETS if t not in (first, second))):
+        for step in itertools.count(1):
+            root = tmp_path / f"{then}-{step}" / ".aew"
+            shutil.copytree(template, root, symlinks=True)
+            for rel, (gid, _mode) in start.items():  # the copy keeps the modes; give it the groups too
+                os.chown(root / rel, -1, gid)
+            host.host = hosts[second]
+            if not cut_walk(monkeypatch, root, step):
+                break
+            cases += 1
+            host.host = hosts[then]
+            later = make_store(root)
+            later.read()
+            assert later.path_problems(later.group_view().target) == [], (first, second, step, then)
+    assert cases >= 3 * 4, cases  # each walk has at least four steps: the test proves something
+
+
+@posix
+@pytest.mark.parametrize("era", ["before_cs1_umask022", "before_cs1_umask002", "cs1_migrated", "mixed_umasks"])
+def test_a_store_from_an_earlier_version_is_brought_within_the_bound_at_its_first_open(tmp_path, monkeypatch, era):
+    """Review of #243, P1, and D-CS1-1's erratum (2026-10-24), on a host whose primary group is user-private. Before
+    CS-1 a store's directories came from a ``mkdir`` the umask filtered, and its files from ``mkstemp`` at 0600; CS-1's
+    migration then made every file 0640 and kept the directories; and a store's directories may come from different
+    umasks (``init`` under one, a later directory under another). Each is at the target after its first open."""
+    egid, _s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    one_transaction(store)
+    handoffs = root / "state" / "handoffs"  # a directory a later command made
+    handoffs.mkdir()
+    (handoffs / "h-1.md").write_text("a handoff\n", encoding="utf-8")
+    del store
+    mixed = {"state/": 0o750, "state/log/": 0o755, "state/txn/": 0o775, "state/handoffs/": 0o755}
+    for rel in state_of(root):
+        if rel.endswith("/"):
+            dir_mode = {"before_cs1_umask002": 0o775, "mixed_umasks": mixed.get(rel, 0o755)}.get(era, 0o755)
+            os.chmod(root / rel, dir_mode)
+        else:
+            os.chmod(root / rel, 0o600 if era.startswith("before_cs1") else 0o640)
+    if era == "mixed_umasks":  # the store directory and the control file are both at the target
+        assert {state_of(root)["state/"][1], state_of(root)["state/control.yaml"][1]} == set(GROUP_READ)
+    make_store(root).read()
+    assert at(root, egid, GROUP_READ) == {}, at(root, egid, GROUP_READ)
+
+
+@posix
+def test_a_link_in_the_store_is_neither_walked_nor_reported(tmp_path, monkeypatch):
+    """Review of #243, P3 (G1): the store's paths are its files and directories, never what a link in it names."""
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not the store's\n", encoding="utf-8")
+    os.chmod(outside, 0o604)
+    (root / "state" / "log" / "link.yaml").symlink_to(outside)
+    before = os.stat(outside)
+    host.host = gh.make_host(primary=egid, user_private=False, aew=s)
+    store = make_store(root)
+    store.read()  # the open walks
+    after = os.stat(outside)
+    assert (after.st_gid, stat.S_IMODE(after.st_mode)) == (before.st_gid, 0o604)
+    assert at(root, s, GROUP_READ) == {} and store.path_problems(sg.Target(s, *GROUP_READ)) == []
+
+
+@posix
+def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
+    """The walk changes a path through a descriptor on the very file it listed, so a path that is another file by the
+    time it is stepped is left as it is, and so is that other file."""
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    path = root / "state" / "handoffs" / "h-1.md"  # a store file nothing in an open reads or writes
+    path.parent.mkdir()
+    path.write_text("a handoff\n", encoding="utf-8")
+    listed = store_mod.ControlStore._store_paths
+
+    def a_link_to(p: Path, outside: Path) -> None:
+        p.unlink()
+        os.symlink(outside, p)
+
+    def a_hard_link_to(p: Path, outside: Path) -> None:
+        p.unlink()
+        os.link(outside, p)
+
+    def moved_out_with_a_link_to_it(p: Path, outside: Path) -> None:
+        outside.unlink()
+        os.rename(p, outside)
+        os.symlink(outside, p)
+
+    hosts = [gh.make_host(primary=egid, user_private=False, aew=s), gh.make_host(primary=egid)]
+    for i, swap in enumerate((a_link_to, a_hard_link_to, moved_out_with_a_link_to_it)):
+        outside = tmp_path / f"outside-{i}.txt"
+        outside.write_text("not the store's\n", encoding="utf-8")
+        os.chmod(outside, 0o604)
+        before = os.stat(path if swap is moved_out_with_a_link_to_it else outside)
+
+        def swapped(self, outside=outside, swap=swap):
+            for p, st, is_dir in listed(self):
+                if p == path:
+                    swap(p, outside)
+                yield p, st, is_dir
+
+        host.host = hosts[i % 2]  # each open walks
+        with monkeypatch.context() as m:
+            m.setattr(store_mod.ControlStore, "_store_paths", swapped)
+            make_store(root).read()
+        after = os.stat(outside)
+        assert (after.st_ino, after.st_gid, stat.S_IMODE(after.st_mode)) == (
+            before.st_ino, before.st_gid, stat.S_IMODE(before.st_mode)), swap.__name__
+        path.unlink()
+        path.write_text("a handoff\n", encoding="utf-8")
+
+
+@posix
+def test_doctors_commands_for_a_path_off_the_target_follow_the_walks_order(tmp_path, monkeypatch):
+    """`aew doctor`'s store-modes gives, for each path off the target, the commands the walk would run, in its order
+    (``store_group.steps``): run as given, none grants anything that neither the path's start nor the target grants."""
+    from aew.doctor import store_checks
+
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid, user_private=False, aew=s))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    host.host = gh.make_host(primary=egid, user_private=False)
+    store.read()  # walked to owner-only
+    off = root / "state" / "log" / "000001.yaml"
+    os.chown(off, -1, s)
+    os.chmod(off, 0o640)
+    view = store.group_view()
+    detail = {c["check"]: c for c in store_checks(view, store.path_problems(view.target))}["store-modes"]["detail"]
+    commands = re.findall(r"`(chmod|chgrp) (\d+) \.aew/state/log/000001\.yaml`", detail)
+    start, end = {"p": (s, 0o640)}, {"p": (egid, 0o600)}
+    states, (g, m) = [], start["p"]
+    for op, value in commands:
+        g, m = (g, int(value, 8)) if op == "chmod" else (int(value), m)
+        states.append({"p": (g, m)})
+    assert commands and states[-1] == end, commands
+    for state in states:
+        assert grants(state) <= grants(start) | grants(end), commands
+
+
+@posix
+def test_wis_store_is_met_only_while_every_store_path_is_at_the_target(tmp_path, monkeypatch):
+    """Review of #243, P3 (G5): WIS-Q02's store condition fails while a store path is off the target, even with the
+    group private and every running writer holding it (D-CS1-5: only PASS counts as met)."""
+    from aew.doctor import store_checks
+
+    egid, _s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+
+    def checks() -> dict[str, dict[str, str]]:
+        view = store.group_view()
+        return {c["check"]: c for c in store_checks(view, store.path_problems(view.target))}
+
+    assert checks()["wis-store"]["status"] == "PASS"
+    os.chmod(root / "state" / "log" / "000001.yaml", 0o600)
+    found = checks()
+    assert found["store-group"]["status"] == "PASS" and found["store-writers"]["status"] == "PASS"
+    assert found["wis-store"]["status"] == "WARN" and "store-modes" in found["wis-store"]["detail"], found
 
 
 # ------------------------------------------------------------------------------------- what every publication obeys
@@ -651,6 +930,12 @@ def test_a_set_group_id_parent_gives_nothing_its_group_or_its_bit(tmp_path, monk
     assert not any(m & stat.S_ISGID for _g, m in state_of(root).values())
 
 
+def test_a_publication_without_a_target_is_owner_only():
+    """Review of #243, P4: a POSIX publication always has a target today; one without would be owner-only, never at
+    whatever group the process has by default."""
+    assert store_mod._temp_args(None) == {"mode": 0o600}
+
+
 @posix
 def test_a_write_into_the_store_without_the_control_lock_is_refused(tmp_path, monkeypatch):
     egid, _s = gh.held()
@@ -686,6 +971,49 @@ def test_a_group_the_file_system_refuses_makes_the_process_lack_it_and_the_store
     assert [w.refused for w in entries] == [s] and not store.group_view().me.holds(s)
     one_transaction(store)  # and it keeps working, owner-only
     assert at(root, egid, OWNER_ONLY) == {}
+
+
+@posix
+def test_a_group_the_file_system_refuses_during_the_walk_makes_the_process_lack_it(tmp_path, monkeypatch):
+    """Review of #243, P3 (G4): the walk's own group change refused on a path of this process's: it lacks the group,
+    says so in its entry, and walks owner-only instead."""
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid, user_private=False))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    host.host = gh.make_host(primary=egid, user_private=False, aew=s)  # the next open walks to the AEW group
+    real = os.fchown
+
+    def fchown(fd, uid, gid):
+        if gid == s:
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        return real(fd, uid, gid)
+
+    monkeypatch.setattr(store_mod.os, "fchown", fchown)
+    store.read()  # an open publishes nothing: only the walk sets a group here
+    assert at(root, egid, OWNER_ONLY) == {}
+    assert store._registration is not None and store._registration.refused == s
+    assert not store.group_view().me.holds(s)
+
+
+@posix
+def test_a_process_that_cannot_record_itself_never_widens_the_store(tmp_path, monkeypatch):
+    """Review of #243, P3 (G3): the other writers cannot see a process that could not record itself as a running
+    store writer, so it never widens the store, even where the group is private and it holds it. Doctor says why."""
+    egid, _s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid))  # private, and this process holds it
+
+    def unrecorded(*_args, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(store_writers, "register", unrecorded)
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    assert at(root, egid, OWNER_ONLY) == {}
+    view = store.group_view()
+    assert view.answer.gid == egid and view.register_problem and view.lacking() == [f"this process (pid {os.getpid()})"]
 
 
 @posix
@@ -732,6 +1060,42 @@ def test_a_writer_registers_owner_only_and_an_exited_writers_entry_is_dropped(tm
     assert len(list(directory.iterdir())) == 2  # still there
     live, problems = store_writers.running(root, exclude=store._registration)
     assert live == [] and problems == [] and len(list(directory.iterdir())) == 1
+
+
+@posix
+def test_the_registry_directory_is_owner_only_even_where_it_was_made_wider(tmp_path, monkeypatch):
+    """Review of #243, P3 (G6): `.aew/local/writers/` is 0700 whatever made it first."""
+    egid, _s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid))
+    root = tmp_path / ".aew"
+    directory = root / "local" / "writers"
+    directory.mkdir(parents=True)
+    os.chmod(directory, 0o755)  # noqa: S103 (an existing directory made wider is the condition under test)
+    store = init(root)
+    assert store._registration is not None and stat.S_IMODE(os.stat(directory).st_mode) == 0o700
+
+
+@posix
+def test_a_reader_listing_the_writers_while_one_registers_leaves_its_entry_alone(tmp_path, monkeypatch):
+    """Review of #243, P2: another writer's view of the registry runs while this one is making its entry (after the
+    entry is created and before it is locked). The entry is still made, and this writer is seen."""
+    egid, s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid, user_private=False, aew=s))
+    root = tmp_path / ".aew"
+    init(root)  # its ControlStore is gone again, and its entry with it
+    real, views = os.fchmod, []
+
+    def fchmod(fd, mode):
+        if not views:  # the first fchmod is the new entry's, in that window
+            views.append(store_writers.running(root))
+        return real(fd, mode)
+
+    with monkeypatch.context() as m:
+        m.setattr(store_writers.os, "fchmod", fchmod)
+        store = make_store(root)
+        store.read()  # it registers at its first control lock
+    assert views and store._register_problem is None and store._registration is not None
+    assert [w.pid for w in store_writers.running(root)[0]] == [os.getpid()]
 
 
 @posix

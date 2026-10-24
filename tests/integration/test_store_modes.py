@@ -148,7 +148,7 @@ def test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_cha
     assert mode(later) == 0o600
     check = {c["check"]: c for c in p.aew("doctor", "--json").json["checks"]}["store-modes"]
     assert check["status"] == "WARN" and "state/log/000000.yaml" in check["detail"], check
-    assert f"`chgrp {egid} <path>`" in check["detail"] and "`chmod 0640 <file>`" in check["detail"], check
+    assert "`chmod 0640 .aew/state/log/000000.yaml`" in check["detail"], check  # its group is already the target's
 
 
 @posix
@@ -179,14 +179,14 @@ def test_the_migration_sets_exact_modes_and_finishes_past_a_path_it_may_not_chan
     wide = root / "state" / "CURRENT.md"
     os.chmod(wide, 0o644)  # above the bound: the migration narrows it
     foreign = root / "state" / "log" / "000001.yaml"  # this process may not change it
-    real_chmod = os.chmod
+    real_fchmod = os.fchmod
 
-    def chmod(path, m, *a, **kw):
-        if Path(path) == foreign:
-            raise PermissionError(errno.EPERM, "Operation not permitted", str(path))
-        return real_chmod(path, m, *a, **kw)
+    def fchmod(fd, m):  # the walk changes a path only through a descriptor on it
+        if Path(os.readlink(f"/proc/self/fd/{fd}")) == foreign.resolve():
+            raise PermissionError(errno.EPERM, "Operation not permitted", str(foreign))
+        return real_fchmod(fd, m)
 
-    monkeypatch.setattr(store_mod.os, "chmod", chmod)
+    monkeypatch.setattr(store_mod.os, "fchmod", fchmod)
     store = make_store(root)
     store.read()  # the open walks, and does not fail
     assert mode(wide) == sg.GROUP_READ[0]

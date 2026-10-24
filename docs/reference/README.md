@@ -4,7 +4,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 
 ## Files
 
-- [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total; `gaps` lists the unresolved items that belong to no one record. Schema `aew/reference-index/v1`.
+- [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total, and carries a `digest` of every record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its family (nothing lives only there). Schema `aew/reference-index/v1`.
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
 
@@ -13,8 +13,8 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - `family`, and `anchor` (`module` and `symbol`; line numbers churn, so a line is never an anchor).
 - `basis`: `enumerated` (read from a registry the code owns, at run time), `declared` (a table the generator declares, pinned to the code), `static` (read from the source without running it) or `observed` (read back from something the generator ran).
 - `coverage.label`: `complete-by-construction` (names its `registry` and the tests in `check` that stop code bypassing it), `lower-bound` (lists what it could not resolve in `unresolved`) or `unknown`.
-- `fact`: the record's own facts. A `modules` record has `imports` instead: the AEW modules it imports, statically.
+- `fact`: the record's own facts. A list fact that a detector found says how complete it is, in `fact.fact_coverage` (an object keyed by the fact's name, in `coverage`'s vocabulary); a list fact with no entry is `unknown`, and an empty list never means none. A `modules` record also has `imports`, a top-level key: the AEW modules it imports, statically.
 
 ## When a change moves it
 
-A pull request that changes enumerated code runs `python tools/reference.py render` and commits `docs/reference/`. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders.
+A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site) runs `python tools/reference.py render` and commits `docs/reference/`. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line of `counts`, so a clean merge cannot leave the totals stale.

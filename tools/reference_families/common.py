@@ -2,7 +2,7 @@
 writer, and the checks every family's output must pass.
 
 A family module exposes ``build(ctx) -> Built`` and nothing else the generator needs. It reads its owners (a runtime
-registry it imports, a declared table, or the source tree it parses) and returns records, gaps and the page text for
+registry it imports, a declared table, or the source tree it parses) and returns records and the page text for
 its own family. Nothing here knows a family.
 
 Determinism is by construction: every mapping is dumped with sorted keys, every list a family returns is sorted by the
@@ -14,6 +14,7 @@ Linux; ``tests/unit/test_reference.py`` proves it, including across hash seeds.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 from collections import Counter
@@ -119,23 +120,12 @@ class Record:
         return out
 
 
-@dataclass(frozen=True)
-class Gap:
-    """An unresolved item that belongs to no one record's ``unresolved`` list (listed in ``gaps.md`` all the same)."""
-
-    family: str
-    module: str
-    symbol: str | None
-    why: str
-
-    def as_json(self) -> dict[str, Any]:
-        return {"family": self.family, "module": self.module, "symbol": self.symbol, "why": self.why}
-
-
 @dataclass
 class Built:
+    """What a family returns: its records (every unresolved item is on one, in ``coverage`` or in a list fact's
+    ``fact_coverage``: nothing lives only in the index's ``gaps``, which is computed from them) and its pages."""
+
     records: list[Record] = field(default_factory=list)
-    gaps: list[Gap] = field(default_factory=list)
     pages: dict[str, str] = field(default_factory=dict)  # file name under docs/reference -> its text
 
 
@@ -149,8 +139,9 @@ def complete(registry: str, check: Iterable[str]) -> dict[str, Any]:
 
 
 def lower_bound(unresolved: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
-    items = sorted((dict(i) for i in unresolved), key=lambda i: (i["module"], i["symbol"] or "", i["why"]))
-    return {"label": LOWER, "unresolved": items}
+    """lower-bound: what was found is real, and what could not be resolved is listed (each item once)."""
+    distinct = {(i["module"], i["symbol"] or "", i["why"]): dict(i) for i in unresolved}
+    return {"label": LOWER, "unresolved": [distinct[k] for k in sorted(distinct)]}
 
 
 def unknown() -> dict[str, Any]:
@@ -164,36 +155,89 @@ def dumps(obj: Any) -> str:
 
 # ---------------------------------------------------------------------------------------------------- the index
 
-def counts_of(rows: Iterable[tuple[str, str, int]], gaps: int) -> dict[str, Any]:
-    """The measured counts, from (family, coverage label, unresolved items) per record and the number of gaps."""
+def unresolved_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every unresolved item a record carries: its own ``coverage.unresolved`` and those of its list facts
+    (``fact_coverage``)."""
+    items = list((record.get("coverage") or {}).get("unresolved") or [])
+    for coverage in ((record.get("fact") or {}).get("fact_coverage") or {}).values():
+        items += coverage.get("unresolved") or []
+    return items
+
+
+def gaps_of(records: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The index's ``gaps``: a summary computed from the records, each distinct unresolved item once, with its family.
+    Nothing lives only here: the trace reads the records, and a test holds the summary to them."""
+    seen: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for record in records.values():
+        for item in unresolved_items(record):
+            key = (record["family"], item["module"], item["symbol"] or "", item["why"])
+            seen[key] = {"family": record["family"], "module": item["module"], "symbol": item["symbol"],
+                         "why": item["why"]}
+    return [seen[k] for k in sorted(seen)]
+
+
+def counts_of(rows: Iterable[tuple[str, str]], unresolved: int) -> dict[str, Any]:
+    """The measured counts, from (family, coverage label) per record and the number of distinct unresolved items."""
     listed = list(rows)
     by_both: dict[str, dict[str, int]] = {}
-    for family, label, _ in listed:
+    for family, label in listed:
         row = by_both.setdefault(family, {})
         row[label] = row.get(label, 0) + 1
-    return {"records": len(listed), "by_family": dict(Counter(f for f, _, _ in listed)),
-            "by_coverage": dict(Counter(label for _, label, _ in listed)), "by_family_and_coverage": by_both,
-            "gaps": gaps, "unresolved": sum(n for _, _, n in listed) + gaps}
+    return {"records": len(listed), "by_family": dict(Counter(f for f, _ in listed)),
+            "by_coverage": dict(Counter(label for _, label in listed)), "by_family_and_coverage": by_both,
+            "unresolved": unresolved}
 
 
-def counts(records: Iterable[Record], gaps: Iterable[Gap]) -> dict[str, Any]:
-    return counts_of(((r.family, r.coverage["label"], len(r.coverage.get("unresolved", []))) for r in records),
-                     len(list(gaps)))
+def digest_of(records: Mapping[str, Any], gaps: list[Any]) -> str:
+    """A digest of every record and gap, kept in ``counts``. Several lines of the generated files are functions of more
+    than one record (the totals), so two independent changes can each edit them to the same text, and git then merges
+    them without a conflict into totals that are stale. This line differs between any two changes to the records, so
+    two reference-changing pull requests always conflict on it, and the documented step (take either side, run
+    ``render``) applies: a stale clean merge cannot happen."""
+    return "sha256:" + hashlib.sha256(dumps({"gaps": gaps, "records": records}).encode("utf-8")).hexdigest()
 
 
-def build_index(records: Iterable[Record], gaps: Iterable[Gap]) -> dict[str, Any]:
+def build_index(records: Iterable[Record]) -> dict[str, Any]:
     recs = sorted(records, key=lambda r: r.id)
     ids = [r.id for r in recs]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         raise ReferenceError(f"record ids are not unique: {dup[:5]}")
-    sorted_gaps = sorted(gaps, key=lambda g: (g.family, g.module, g.symbol or "", g.why))
-    return {"schema": SCHEMA, "counts": counts(recs, sorted_gaps), "gaps": [g.as_json() for g in sorted_gaps],
-            "records": {r.id: r.as_json() for r in recs}}
+    as_records = {r.id: r.as_json() for r in recs}
+    gaps = gaps_of(as_records)
+    totals = {**counts_of(((r.family, r.coverage["label"]) for r in recs), len(gaps)),
+              "digest": digest_of(as_records, gaps)}
+    return {"schema": SCHEMA, "counts": totals, "gaps": gaps, "records": as_records}
+
+
+def coverage_problems(where: str, cov: Any) -> list[str]:
+    """One coverage object (a record's ``coverage``, or a list fact's entry in ``fact_coverage``): the label and what
+    the label requires, in the vocabulary of addendum 1."""
+    if not isinstance(cov, dict):
+        return [f"{where}: coverage is not an object"]
+    label = cov.get("label")
+    problems = []
+    if label == COMPLETE:
+        if not isinstance(cov.get("registry"), str) or not cov["registry"]:
+            problems.append(f"{where}: complete-by-construction without its registry")
+        check = cov.get("check")
+        if not (isinstance(check, list) and check and all(isinstance(c, str) for c in check)):
+            problems.append(f"{where}: complete-by-construction without its check (a non-empty list of test ids)")
+    elif label == LOWER:
+        items = cov.get("unresolved")
+        if not isinstance(items, list):
+            problems.append(f"{where}: lower-bound without its unresolved list")
+        else:
+            for item in items:
+                if not isinstance(item, dict) or set(item) != {"module", "symbol", "why"} or not item["why"]:
+                    problems.append(f"{where}: an unresolved item is not {{module, symbol, why}}: {item!r}")
+    elif label != UNKNOWN:
+        problems.append(f"{where}: coverage label {label!r} is not one of {list(LABELS)}")
+    return problems
 
 
 def index_problems(index: Mapping[str, Any]) -> list[str]:
-    """The consumer's interface (addendum 1), plus the generator's own invariants. Empty when the index is sound."""
+    """The consumer's interface (addenda 1 and 3) and the generator's own invariants. Empty when the index is sound."""
     problems: list[str] = []
     if index.get("schema") != SCHEMA:
         problems.append(f"schema is {index.get('schema')!r}, not {SCHEMA!r}")
@@ -214,7 +258,7 @@ def index_problems(index: Mapping[str, Any]) -> list[str]:
             problems.append(f"{rid}: no anchor.symbol")
         if family == MODULES:
             if anchor.get("symbol") is not None:
-                problems.append(f"{rid}: a modules record's symbol is null")
+                problems.append(f"{rid}: a modules record's symbol must be null")
             imports = r.get("imports")
             if not isinstance(imports, list) or imports != sorted(set(imports)):
                 problems.append(f"{rid}: imports is not a sorted list without repeats")
@@ -224,32 +268,33 @@ def index_problems(index: Mapping[str, Any]) -> list[str]:
             problems.append(f"{rid}: only a modules record has imports")
         if r.get("basis") not in BASES:
             problems.append(f"{rid}: basis {r.get('basis')!r} is not one of {list(BASES)}")
-        cov = r.get("coverage") or {}
-        label = cov.get("label")
-        if label == COMPLETE:
-            if not isinstance(cov.get("registry"), str) or not cov["registry"]:
-                problems.append(f"{rid}: complete-by-construction without its registry")
-            check = cov.get("check")
-            if not (isinstance(check, list) and check and all(isinstance(c, str) for c in check)):
-                problems.append(f"{rid}: complete-by-construction without its check (a non-empty list of test ids)")
-        elif label == LOWER:
-            items = cov.get("unresolved")
-            if not isinstance(items, list):
-                problems.append(f"{rid}: lower-bound without its unresolved list")
-            else:
-                for item in items:
-                    if set(item) != {"module", "symbol", "why"} or not item["why"]:
-                        problems.append(f"{rid}: an unresolved item is not {{module, symbol, why}}: {item!r}")
-        elif label != UNKNOWN:
-            problems.append(f"{rid}: coverage label {label!r} is not one of {list(LABELS)}")
+        problems += coverage_problems(rid, r.get("coverage"))
+        fact = r.get("fact") or {}
+        fact_coverage = fact.get("fact_coverage")
+        if fact_coverage is not None and not isinstance(fact_coverage, dict):
+            problems.append(f"{rid}: fact_coverage is not an object")
+            fact_coverage = None
+        for name, cov in (fact_coverage or {}).items():
+            if name == "fact_coverage" or name not in fact:
+                problems.append(f"{rid}: fact_coverage for {name!r}, which is not a fact of the record")
+            problems += coverage_problems(f"{rid} fact_coverage.{name}", cov)
+        for name, value in fact.items():  # a list a detector found says how complete it is (addendum 3)
+            if isinstance(value, list) and name not in (fact_coverage or {}):
+                problems.append(f"{rid}: the list fact {name!r} has no fact_coverage entry")
+    try:
+        gaps = gaps_of(records)
+    except (KeyError, TypeError, AttributeError):
+        return [*problems, "an unresolved item is malformed, so the gaps cannot be computed from the records"]
     for gap in index.get("gaps", []):
-        if set(gap) != {"family", "module", "symbol", "why"} or not gap["why"]:
+        if not isinstance(gap, dict) or set(gap) != {"family", "module", "symbol", "why"} or not gap["why"]:
             problems.append(f"a gap is not {{family, module, symbol, why}}: {gap!r}")
-    rows = [(r.get("family", ""), r["coverage"]["label"], len(r["coverage"].get("unresolved", [])))
-            for r in records.values() if isinstance(r.get("coverage"), dict) and r["coverage"].get("label") in LABELS
-            and isinstance(r["coverage"].get("unresolved", []), list)]
-    if index.get("counts") != counts_of(rows, len(index.get("gaps", []))):
-        problems.append("counts is not what the records and gaps give")
+    if index.get("gaps") != gaps:
+        problems.append("gaps is not the summary of the records' unresolved items (nothing may live only in gaps)")
+    rows = [(r.get("family", ""), r["coverage"]["label"]) for r in records.values()
+            if isinstance(r.get("coverage"), dict) and r["coverage"].get("label") in LABELS]
+    expected = {**counts_of(rows, len(gaps)), "digest": digest_of(records, gaps)}
+    if index.get("counts") != expected:
+        problems.append("counts (with its digest) is not what the records and gaps give")
     return problems
 
 

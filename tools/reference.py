@@ -46,15 +46,19 @@ def _families() -> Any:
 
 def _one_tree(common: Any, root: Path) -> None:
     """The families read ``root/src`` on disk and import ``aew``: they must be the same tree."""
-    import aew
+    rule = ("Run the generator (and its tests) with an absolute PYTHONPATH to this tree's src, as AGENTS.md and "
+            "CLAUDE.md say for a worktree: otherwise the registries it imports come from another checkout than the "
+            "source it parses.")
+    try:
+        import aew
+    except ImportError as exc:  # exit 2 ("cannot generate"), never exit 1 ("the pages differ: render")
+        raise common.ReferenceError(f"aew cannot be imported by this interpreter ({exc}). {rule}") from exc
 
     src = (root / "src").resolve()
     where = Path(aew.__file__).resolve()
     if src not in where.parents:
         raise common.ReferenceError(
-            f"aew is imported from {where.parent.as_posix()}, not from this tree's {src.as_posix()}. Run the generator "
-            "(and its tests) with an absolute PYTHONPATH to this tree's src, as AGENTS.md and CLAUDE.md say for a "
-            "worktree: otherwise the registries it imports come from another checkout than the source it parses.")
+            f"aew is imported from {where.parent.as_posix()}, not from this tree's {src.as_posix()}. {rule}")
 
 
 def render_files(root: Path = ROOT) -> dict[str, bytes]:
@@ -63,13 +67,12 @@ def render_files(root: Path = ROOT) -> dict[str, bytes]:
     common, pages, families = _families()
     _one_tree(common, root)
     ctx = common.Context(root)
-    records, gaps, page_text = [], [], {}
+    records, page_text = [], {}
     for family in families:
         built = family.build(ctx)
         records += built.records
-        gaps += built.gaps
         page_text.update(built.pages)
-    index = common.build_index(records, gaps)
+    index = common.build_index(records)
     problems = common.index_problems(index)
     page_text[pages.GAPS] = pages.gaps_page(index)
     page_text[pages.README] = pages.readme(index, page_text)
@@ -82,7 +85,18 @@ def render_files(root: Path = ROOT) -> dict[str, bytes]:
 
 
 def _on_disk(out: Path) -> dict[str, bytes]:
-    return {p.name: p.read_bytes() for p in sorted(out.iterdir()) if p.is_file()} if out.is_dir() else {}
+    """Every entry under the directory, at any depth: a file by its POSIX path, a directory by its path with a trailing
+    slash (the generator writes no directory, so any is a stray)."""
+    if not out.is_dir():
+        return {}
+    found = {}
+    for p in sorted(out.rglob("*")):
+        rel = p.relative_to(out).as_posix()
+        if p.is_dir():
+            found[rel + "/"] = b""
+        elif p.is_file():
+            found[rel] = p.read_bytes()
+    return found
 
 
 def differences(files: dict[str, bytes], out: Path = OUT) -> list[str]:
@@ -123,8 +137,11 @@ def render(root: Path = ROOT, out: Path = OUT, files: dict[str, bytes] | None = 
         if have.get(name) != data:
             (out / name).write_bytes(data)
             changed.append(name)
-    for name in sorted(have.keys() - files.keys()):
-        (out / name).unlink()
+    for name in sorted(have.keys() - files.keys(), reverse=True):  # a directory's files before the directory
+        if name.endswith("/"):
+            (out / name).rmdir()
+        else:
+            (out / name).unlink()
         changed.append(name)
     return sorted(changed)
 

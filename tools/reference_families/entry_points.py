@@ -13,10 +13,14 @@ two tests of this family, which read the source by two independent detectors (``
 * every ``python -m aew...`` spawn site in the product names a listed entry point (D-CS1-12);
 * every row declares itself at a site, and every site declares a row.
 
-``spawn_sites`` are the ``-m`` forms only. The console script ``aew`` run from a ``PATH`` the product builds, and an
-argv that starts with ``aew``, are not ``-m`` forms and no detector here sees them: each is listed in ``gaps.md`` by
-anchor, as the sites that start the CLI in a way this reading cannot follow. A shell string (``"python -m aew..."``)
-is not seen either, and an argv that builds its module name is reported as unreadable; both are pinned by probes.
+``spawn_sites`` are the ``-m`` forms only, and each record says so (``fact.spawn_forms``). The console script ``aew``
+run from a ``PATH`` the product builds, and an argv that starts with ``aew``, are not ``-m`` forms: each is listed in
+``gaps.md`` by anchor and, unattributed to a role, as ``fact.other_starts`` of the CLI's rows, so a reader that reads
+``records`` only still sees that the ``-m`` list is partial. A ``-m`` whose module name is not a plain string is a site
+with an unreadable name, reported and never passed over (in a list or tuple always; in a call's arguments when the call
+also passes ``sys.executable``, since git's own ``-m`` is passed as a call argument). What no reading here sees (a shell
+string, an argv built by ``append``, ``-c`` payloads, an interpreter named without ``sys.executable``) is pinned by
+probes, one each, in ``tests/integration/test_reference_entry_points.py``.
 """
 
 from __future__ import annotations
@@ -54,17 +58,23 @@ class SpawnSite(NamedTuple):
 
 
 def declare_sites_from(index: C.Index, module: str) -> list[DeclareSite]:
-    """Where a module declares which entry point its process is. ``aew.process_kind`` defines the calls; it declares
-    nothing itself."""
-    if module == PROCESS_KIND:
-        return []
+    """Where a module declares which entry point its process is. Inside ``aew.process_kind``, which defines the calls,
+    a bare ``declare(...)`` is the module's own, and only a literal counts: ``declared_as`` forwards its parameter to
+    ``declare``, which is the machinery and not a declaration. A literal there is a declaration like any other (the
+    forgotten-mask rule: the defining module is not exempt)."""
+    own = module == PROCESS_KIND
     sites = []
     for call, symbol in index.calls:
-        if index.aliases.resolve(call.func) not in (f"{PROCESS_KIND}.declare", f"{PROCESS_KIND}.declared_as"):
+        callee = index.aliases.resolve(call.func)
+        if own and callee in ("declare", "declared_as"):
+            callee = f"{PROCESS_KIND}.{callee}"
+        if callee not in (f"{PROCESS_KIND}.declare", f"{PROCESS_KIND}.declared_as"):
             continue
         arg = call.args[0] if call.args else None
         if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
             sites.append(DeclareSite(module, symbol, arg.value, "literal"))
+        elif own:
+            continue
         elif isinstance(arg, ast.Call) and index.aliases.resolve(arg.func) == f"{PROCESS_KIND}.cli_entry_point":
             sites.append(DeclareSite(module, symbol, None, "cli_entry_point"))
         else:
@@ -72,41 +82,80 @@ def declare_sites_from(index: C.Index, module: str) -> list[DeclareSite]:
     return sites
 
 
+def _is_dash_m(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "-m"
+
+
+def _argv_sites(index: C.Index, module: str, symbol: str | None, elts: list[ast.expr], *, literal: bool
+                ) -> list[SpawnSite]:
+    """The ``-m`` sites in one run of elements: a list or tuple literal (``literal``), or a call's positional
+    arguments. A ``-m`` before a module that is a plain string names an AEW module or does not. A ``-m`` before
+    anything else is a site with an unreadable name (``target`` None), reported and never passed over: in a literal
+    always (an argv list is an argv), in a call's arguments only when the call also passes ``sys.executable``, since
+    git's own ``-m`` (a commit message) is passed that way. A literal that ends in ``-m`` takes its module later
+    (``argv.append(name)``), so it is reported too."""
+    runs_this_python = any(index.aliases.resolve(e) == "sys.executable" for e in elts)
+    found = []
+    for a, b in zip(elts, elts[1:], strict=False):
+        if not _is_dash_m(a):
+            continue
+        if isinstance(b, ast.Constant) and isinstance(b.value, str):
+            if b.value == C.PACKAGE or b.value.startswith(C.PACKAGE + "."):
+                found.append(SpawnSite(module, symbol, b.value))
+        elif literal or runs_this_python:
+            found.append(SpawnSite(module, symbol, None))
+    if literal and elts and _is_dash_m(elts[-1]):
+        found.append(SpawnSite(module, symbol, None))
+    return found
+
+
 def spawn_sites_from(index: C.Index, module: str) -> list[SpawnSite]:
-    """Every ``[..., "-m", "aew...", ...]`` argv in a module: where it starts one of AEW's entry points. A list or a
-    tuple whose ``-m`` is followed by something that is not a plain string, in an argv that runs this interpreter, is a
-    site with an unreadable module name (``target`` None): reported, never passed over."""
+    """Every ``"-m", "aew..."`` in an argv list or tuple, or in the positional arguments of a call (``os.execl``): where
+    a module starts one of AEW's entry points. See :func:`_argv_sites` for what is reported as unreadable."""
     sites = []
     for node, symbol in index.seqs:
-        elts = node.elts
-        runs_this_python = any(index.aliases.resolve(e) == "sys.executable" for e in elts)
-        for a, b in zip(elts, elts[1:], strict=False):
-            if not (isinstance(a, ast.Constant) and a.value == "-m"):
-                continue
-            if isinstance(b, ast.Constant) and isinstance(b.value, str):
-                if b.value == C.PACKAGE or b.value.startswith(C.PACKAGE + "."):
-                    sites.append(SpawnSite(module, symbol, b.value))
-            elif runs_this_python:
-                sites.append(SpawnSite(module, symbol, None))
+        sites += _argv_sites(index, module, symbol, node.elts, literal=True)
+    for call, symbol in index.calls:
+        sites += _argv_sites(index, module, symbol, call.args, literal=False)
     return sites
 
 
-def console_script_sites_from(index: C.Index) -> list[tuple[str | None, str]]:
-    """Where the CLI is started by its console script, which is not a ``-m`` form (listed in ``gaps.md``): the
-    interpreter's own directory put on a child's PATH, which is how a harness run finds ``aew``, and an argv list that
-    starts with ``aew`` (a list: ``("aew", "aew.exe")`` is a pair of names)."""
+DASH_M, PATH_FORM, ARGV_FORM = "-m", "console-script-on-PATH", "console-script-argv"
+CONSOLE_WHY = {
+    PATH_FORM: "puts the console script `aew` on a child's PATH (the interpreter's own directory), which makes an "
+               "entry point startable and starts none",
+    ARGV_FORM: "an argv list that starts with the console script `aew`; whether it is run as a process is not decided "
+               "here",
+}
+
+
+class ConsoleStart(NamedTuple):
+    symbol: str | None
+    form: str  # PATH_FORM or ARGV_FORM
+    words: tuple[str, ...]  # an argv list's string constants right after `aew` (empty for the PATH form)
+    decided: bool  # an argv whose role its constants decide: two or more words, or an argv of constants only
+
+
+def console_script_sites_from(index: C.Index) -> list[ConsoleStart]:
+    """Where the product uses the CLI's console script, which is not a ``-m`` form. The interpreter's own directory put
+    on a child's PATH is how a harness run finds ``aew``; an argv list that starts with ``aew`` is a list
+    (``("aew", "aew.exe")`` is a pair of names). Each is an item of the CLI rows' ``starts``, with its form."""
     found = []
     for call, symbol in index.calls:
         if (index.aliases.resolve(call.func) == "os.path.dirname" and call.args
                 and index.aliases.resolve(call.args[0]) == "sys.executable"):
-            found.append((symbol, "the interpreter's directory, put on a child's PATH so it can run the console "
-                                  "script `aew`"))
+            found.append(ConsoleStart(symbol, PATH_FORM, (), True))
     for node, symbol in index.seqs:
         first = node.elts[0] if node.elts else None
         if (isinstance(node, ast.List) and len(node.elts) >= 2 and isinstance(first, ast.Constant)
                 and first.value == "aew"):
-            found.append((symbol, "an argv list that starts with the console script `aew` (whether it is run as a "
-                                  "process is not decided here)"))
+            words: list[str] = []
+            for e in node.elts[1:]:
+                if not (isinstance(e, ast.Constant) and isinstance(e.value, str)):
+                    break
+                words.append(e.value)
+            found.append(ConsoleStart(symbol, ARGV_FORM, tuple(words),
+                                      len(words) >= 2 or len(words) == len(node.elts) - 1))
     return found
 
 
@@ -119,7 +168,7 @@ def spawn_sites(tree: ast.Module, module: str, is_package: bool) -> list[SpawnSi
     return spawn_sites_from(C.index_of(tree, module, is_package), module)
 
 
-def console_script_sites(tree: ast.Module, module: str, is_package: bool) -> list[tuple[str | None, str]]:
+def console_script_sites(tree: ast.Module, module: str, is_package: bool) -> list[ConsoleStart]:
     return console_script_sites_from(C.index_of(tree, module, is_package))
 
 
@@ -141,70 +190,108 @@ def entry_for(target: str) -> str:
     return CLI_ENTRY if target in CLI_MODULES else target
 
 
+def start_item(module: str, symbol: str | None, form: str, attribution: str) -> dict[str, Any]:
+    """One start of an entry point. ``attribution`` is ``derived`` (from the module a ``-m`` names, or from
+    ``cli_entry_point`` applied to an argv's words) or ``unattributed`` (a PATH that makes the CLI startable in any of
+    its roles)."""
+    return {"module": module, "symbol": symbol, "form": form, "attribution": attribution}
+
+
 def build(ctx: C.Context) -> C.Built:
     from aew import process_kind  # the owner, at run time (reference.py has checked it is this tree's)
 
     table: dict[str, tuple[str, str]] = dict(process_kind.ENTRY_POINTS)
-    roles = cli_roles(ctx, table)
+    roles = sorted(cli_roles(ctx, table))
     declares: list[DeclareSite] = []
     spawns: list[SpawnSite] = []
-    gaps: list[C.Gap] = []
+    consoles: list[tuple[str, ConsoleStart]] = []
     for name, src in ctx.sources().items():
         if src.tree is None:
             continue  # the modules family lists it as unreadable
         index = ctx.index(name)
         declares += declare_sites_from(index, name)
         spawns += spawn_sites_from(index, name)
-        gaps += [C.Gap(FAMILY, name, symbol, f"{why}: not a `python -m` form, so no spawn site is recorded for it")
-                 for symbol, why in console_script_sites_from(index)]
-    for site in declares:
-        if site.via == "unreadable" or (site.via == "literal" and site.entry_point not in table):
-            gaps.append(C.Gap(FAMILY, site.module, site.symbol,
-                              "a process declaration whose entry point cannot be read or is not in the table"))
-    by_entry: dict[str, list[SpawnSite]] = {key: [] for key in table}
+        consoles += [(name, c) for c in console_script_sites_from(index)]
+
+    # what could concern any entry point: a declaration or a `-m` this reading cannot attribute to a row
+    anywhere_declared = [C.unresolved_item(d.module, d.symbol, "a process declaration whose entry point cannot be "
+                                           "read or is not in the table")
+                         for d in declares
+                         if d.via == "unreadable" or (d.via == "literal" and d.entry_point not in table)]
+    anywhere_started: list[dict[str, Any]] = []
+    starts: dict[str, list[dict[str, Any]]] = {key: [] for key in table}
+    started_unresolved: dict[str, list[dict[str, Any]]] = {key: [] for key in table}
     for s in spawns:
         if s.target is None:
-            gaps.append(C.Gap(FAMILY, s.module, s.symbol, "a `-m` spawn whose module name is not a plain string"))
+            anywhere_started.append(C.unresolved_item(s.module, s.symbol, "a `-m` whose module name is not a plain "
+                                                      "string"))
         elif entry_for(s.target) not in table:
-            gaps.append(C.Gap(FAMILY, s.module, s.symbol, f"a `-m {s.target}` spawn that names no listed entry point"))
+            anywhere_started.append(C.unresolved_item(s.module, s.symbol, f"a `-m {s.target}` that names no listed "
+                                                      "entry point"))
         else:
-            by_entry[entry_for(s.target)].append(s)
+            starts[entry_for(s.target)].append(start_item(s.module, s.symbol, DASH_M, "derived"))
+    for module, c in consoles:
+        if c.form == PATH_FORM:
+            for role in roles:
+                starts[role].append(start_item(module, c.symbol, PATH_FORM, "unattributed"))
+            continue
+        role = process_kind.cli_entry_point(list(c.words), {}) if c.decided else None
+        if role in table:  # the owner's own function decides which of the CLI's rows an argv is
+            starts[role].append(start_item(module, c.symbol, ARGV_FORM, "derived"))
+            started_unresolved[role].append(C.unresolved_item(module, c.symbol, CONSOLE_WHY[ARGV_FORM]))
+        else:
+            for row in roles:
+                started_unresolved[row].append(C.unresolved_item(
+                    module, c.symbol, f"{CONSOLE_WHY[ARGV_FORM]}; its constants do not decide which role it is"))
 
     records = []
     for key, (kind, reason) in sorted(table.items()):
         where = sorted({(d.module, d.symbol or "", d.via) for d in declares
                         if (d.via == "literal" and d.entry_point == key)
                         or (d.via == "cli_entry_point" and key in roles)})
+        declared_unresolved = list(anywhere_declared)
         if not where:
-            gaps.append(C.Gap(FAMILY, PROCESS_KIND, "ENTRY_POINTS",
-                              f"{key} is in the table but nothing declares itself as it"))
+            declared_unresolved.append(C.unresolved_item(PROCESS_KIND, "ENTRY_POINTS",
+                                                         f"{key} is in the table but nothing declares itself as it"))
         anchor_module, anchor_symbol = (where[0][0], where[0][1]) if where else (PROCESS_KIND, "ENTRY_POINTS")
+        distinct = {(i["module"], i["symbol"] or "", i["form"]): i for i in starts[key]}
         fact: dict[str, Any] = {
             "entry_point": key, "kind": kind, "reason": reason,
             "declared_at": [{"module": m, "symbol": s or None, "via": v} for m, s, v in where],
-            "spawn_sites": [{"module": s.module, "symbol": s.symbol}
-                            for s in sorted(by_entry[key], key=lambda s: (s.module, s.symbol or ""))],
+            "starts": [distinct[k] for k in sorted(distinct)],
+            # how complete each list is, in coverage's vocabulary: a detector found them, so both are lower-bound
+            "fact_coverage": {"declared_at": C.lower_bound(declared_unresolved),
+                              "starts": C.lower_bound(started_unresolved[key] + anywhere_started)},
         }
         records.append(C.Record(FAMILY, key, anchor_module, anchor_symbol, "enumerated",
                                 C.complete(REGISTRY, CHECKS), fact))
-    return C.Built(records=records, gaps=gaps, pages={"entry-points.md": page(records)})
+    return C.Built(records=records, pages={"entry-points.md": page(records)})
 
 
 def page(records: list[C.Record]) -> str:
     lines = ["# Entry points", "",
              "Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, where it declares itself, "
-             "and the product sites that start it with `python -m`. Generated by `python tools/reference.py render`; "
-             "do not edit. A **store writer** takes the engine's control lock; a **non-writer** reads lock-free only "
-             "and is refused a lock-taking operation before the lock opens. Coverage is complete-by-construction for "
-             "the set of entry points: the table is the registry, and the tests named in `index.json` stop code "
-             "bypassing it. `Started by` lists the `-m` forms only; the other ways the CLI is started are in "
-             "[gaps.md](gaps.md).", ""]
+             "and the places the product starts it. Generated by `python tools/reference.py render`; do not edit. A "
+             "**store writer** takes the engine's control lock; a **non-writer** reads lock-free only and is refused a "
+             "lock-taking operation before the lock opens. The set of entry points is complete-by-construction: the "
+             "table is the registry, and the tests named in `index.json` stop code bypassing it. Each list of a record "
+             "(`declared_at`, `starts`) is lower-bound, and its `fact_coverage` says what it could not resolve (also "
+             "in [gaps.md](gaps.md)). A start has a form: `-m` (a `python -m` spawn), `console-script-argv` (an argv "
+             "constant that starts with `aew`; whether it is run is not decided here) or `console-script-on-PATH` "
+             "(makes the CLI startable and starts none, so it is listed for every role of the CLI).", ""]
+
+    def anchors(items: list[dict[str, Any]]) -> str:
+        return ", ".join(f"`{i['module']}:{i['symbol']}`" if i["symbol"] else f"`{i['module']}`" for i in items)
+
     for r in sorted(records, key=lambda r: r.key):
         fact = r.fact or {}
-        declared = ", ".join(f"`{d['module']}:{d['symbol']}`" if d["symbol"] else f"`{d['module']}`"
-                             for d in fact["declared_at"]) or "nowhere (a gap)"
-        started = ", ".join(f"`{s['module']}:{s['symbol']}`" if s["symbol"] else f"`{s['module']}`"
-                            for s in fact["spawn_sites"]) or "no `python -m` site in the product"
         lines += [f"### `{r.key}`", "", f"- **Kind:** {fact['kind']}", f"- **Why:** {fact['reason']}",
-                  f"- **Declares itself at:** {declared}", f"- **Started by:** {started}", ""]
+                  f"- **Declares itself at:** {anchors(fact['declared_at']) or 'nowhere (see gaps.md)'}"]
+        for form in (DASH_M, ARGV_FORM, PATH_FORM):
+            items = [i for i in fact["starts"] if i["form"] == form]
+            if items:
+                lines.append(f"- **Starts, `{form}`:** {anchors(items)}")
+        if not fact["starts"]:
+            lines.append("- **Starts:** none found")
+        lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"

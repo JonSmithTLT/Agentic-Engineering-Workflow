@@ -57,13 +57,14 @@ def index_of(files: dict[str, bytes]) -> dict[str, Any]:
 
 def test_the_committed_reference_is_what_the_code_gives():
     """The check CI runs. A failure names the first file that differs and the command that settles it."""
-    found = reference.check(ROOT, OUT)
+    found = reference.check(ROOT, OUT, rendered())
     assert found == [], "\n".join(found)
 
 
 def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_path):
     """The wrong case and the missing case of the check: a changed byte, a deleted record, a deleted file, a stray
-    file, a carriage return. Each is a difference, and the check's last line is the command that fixes it."""
+    file, a stray subdirectory (a nested file included), a carriage return. Each is a difference, and the check's last
+    line is the command that fixes it."""
     files = rendered()
     index = files["index.json"].decode("utf-8")
     victim = next(k for k in index_of(files)["records"] if k.startswith("entry-points:"))
@@ -74,6 +75,7 @@ def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_p
         "a deleted file": {"entry-points.md": None},
         "a carriage return": {"gaps.md": files["gaps.md"].replace(b"\n", b"\r\n")},
         "a stray file": {"stray.md": b"# Stray\n"},
+        "a stray nested json": {"extra/stray.json": b"{}\n"},  # review of #241, F4: neither check nor render saw it
         "an empty page": {"README.md": b""},
     }
     for what, change in planted.items():
@@ -81,19 +83,25 @@ def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_p
         out.mkdir()
         for name, data in {**files, **change}.items():
             if data is not None:
+                (out / name).parent.mkdir(parents=True, exist_ok=True)
                 (out / name).write_bytes(data)
         found = reference.check(ROOT, out, files)
         assert found, f"{what} is not a difference"
         assert C.RENDER_COMMAND in found[-1], what
+    nested = reference.check(ROOT, tmp_path / "a-stray-nested-json", files)
+    assert any("extra/stray.json" in f and "not a file the generator writes" in f for f in nested), nested
     assert reference.check(ROOT, OUT, files) == []  # the committed directory was not touched
 
 
-def test_render_writes_what_check_accepts_removes_a_stray_file_and_is_idempotent(tmp_path):
+def test_render_writes_what_check_accepts_removes_strays_at_any_depth_and_is_idempotent(tmp_path):
     out = tmp_path / "reference"
-    out.mkdir()
+    (out / "extra" / "deeper").mkdir(parents=True)
     (out / "stray.md").write_bytes(b"x")
+    (out / "extra" / "stray.json").write_bytes(b"{}")
+    (out / "extra" / "deeper" / "more.json").write_bytes(b"{}")
     changed = reference.render(ROOT, out, rendered())
-    assert "stray.md" in changed and not (out / "stray.md").exists()
+    assert {"stray.md", "extra/stray.json", "extra/deeper/more.json", "extra/", "extra/deeper/"} <= set(changed)
+    assert not (out / "stray.md").exists() and not (out / "extra").exists()
     assert reference.check(ROOT, out, rendered()) == []
     assert reference.render(ROOT, out, rendered()) == []  # nothing to write the second time
     assert committed() == {name: (out / name).read_bytes() for name in sorted(os.listdir(out))}
@@ -174,17 +182,13 @@ def test_the_privacy_check_sees_this_machines_home_directory_in_every_spelling()
 
 # The shape of the design workspace's requirement IDs, exactly as its pack cutter matches it. The cutter checks each
 # match against its own index of requirements, so a code fact passes there; this repository has no such index, so here
-# a match is a hit unless it is allowed below, each entry with its reason. Measured over the committed pages when this
-# test was written: 2 matches, both `STG-02` (the table's reason for the STG-02 slice's producer).
+# a match is a hit unless it is allowed below, each entry with its reason. The allowlist is minimal: an entry is added
+# when a page first needs it, in the pull request that adds the page, where its reason is reviewed (a standard such as
+# SHA-256 or UTF-8, or a family's own name such as DOC-03, is allowed then, not before). Measured over the committed
+# pages when this test was written: 2 matches, both `STG-02` (the table's reason for the STG-02 slice's producer).
 ID_SHAPE = re.compile(
     r"(?<![\w/.-])([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-[A-Z]?\d{1,3}[a-z]?(?:\.[a-z0-9]{1,3})?)(?![\w-])")
 ID_ALLOWED = {
-    "SHA-256": "an external standard: the hash",
-    "UTF-8": "an external standard: the encoding",
-    "DOC-01": "a family of this reference (the writer map), the document's own name, not a requirement",
-    "DOC-02": "a family of this reference (the entry points), the document's own name, not a requirement",
-    "DOC-03": "a family of this reference (concurrency), the document's own name, not a requirement",
-    "DOC-04": "a family of this reference (the layout), the document's own name, not a requirement",
     "STG-02": "a stage: the code's own name for the slice (`aew.process_kind`'s reason for `aew.stg02.server`)",
 }
 
@@ -231,24 +235,29 @@ def test_no_requirement_id_is_in_the_reference():
 @pytest.mark.parametrize("text", [
     "see CRD-13", "MOD-08", "WIS-01a", "D-CS1-12", "CS-01", "CB-09", "AIR-75.", "(WCA-3)", "CRD-13a",   # design shapes
     "STG-05",                                           # a stage name nobody has allowed: the allowlist is deliberate
+    "SHA-256", "UTF-8", "DOC-03",                       # standards and family names too, until a page needs them
     "register F44", "row F15.2 says", "E71"])           # the register's own row ids
 def test_the_id_check_sees_each_wrong_case(text):
     assert id_hits(text), text
 
 
 @pytest.mark.parametrize("text", [
-    "UTF-8", "SHA-256", "DOC-02", "STG-02",                                             # allowed, each with its reason
+    "STG-02",                                                                        # allowed, with its reason
     "aew.process_kind:ENTRY_POINTS", "python3.11", "http-problem-matrix", "src/aew/engine/store.py", "version 0.5.4",
     "entry-points:aew.stg02.server", "an ordinary sentence."])
 def test_the_id_check_leaves_what_is_allowed_or_not_an_id_alone(text):
     assert id_hits(text) == [], text
 
 
-def test_every_allowed_id_has_its_reason_and_would_otherwise_be_a_hit():
-    """An allowlist entry that the shape would not match is dead weight, and one without a reason is a hole."""
+def test_every_allowed_id_has_its_reason_is_matched_by_the_shape_and_is_used_by_a_committed_page():
+    """An allowlist entry that no committed page uses pre-authorises a token before any page needs it (review of #241,
+    F5): it is dead, and the next page to quote that token would pass without a review of the allowance. One the shape
+    would not match needs no entry, and one without a reason is a hole."""
+    pages = " ".join(data.decode("utf-8") for data in committed().values())
     for entry, reason in ID_ALLOWED.items():
         assert reason.strip(), entry
         assert ID_SHAPE.search(entry), f"{entry} is not matched by the shape, so it needs no entry"
+        assert entry in pages, f"{entry} occurs in no committed page: drop it until a page needs it"
 
 
 def test_the_committed_index_is_in_the_shape_the_trace_reads():
@@ -266,8 +275,10 @@ def small_index() -> dict[str, Any]:
     other = C.Record(C.MODULES, "aew.b", "aew.b", None, "static",
                      C.lower_bound([C.unresolved_item("aew.b", "f", "a computed import")]), {"path": "src/aew/b.py"},
                      ["aew.a"])
-    rec = C.Record("things", "t1", "aew.a", "T", "enumerated", C.complete("aew.a:T", ["tests/x.py::t"]), {"n": 1})
-    return C.build_index([mod, other, rec], [C.Gap("things", "aew.a", None, "unreadable")])
+    fact = {"n": 1, "items": [{"x": 1}],  # a list fact a detector found, and how complete it is (addendum 3)
+            "fact_coverage": {"items": C.lower_bound([C.unresolved_item("aew.a", "T", "an item not resolved")])}}
+    rec = C.Record("things", "t1", "aew.a", "T", "enumerated", C.complete("aew.a:T", ["tests/x.py::t"]), fact)
+    return C.build_index([mod, other, rec])
 
 
 MUTATIONS = {
@@ -292,6 +303,22 @@ MUTATIONS = {
     "counts that no longer match": lambda i: i["counts"].update(records=99),
     "a gap without its why": lambda i: i["gaps"][0].pop("why"),
     "a wrong schema": lambda i: i.update(schema="aew/reference-index/v0"),
+    "a list fact without its fact_coverage entry": lambda i: i["records"]["things:t1"]["fact"][
+        "fact_coverage"].pop("items"),
+    "a fact_coverage for a fact the record lacks": lambda i: i["records"]["things:t1"]["fact"][
+        "fact_coverage"].update(missing={"label": "unknown"}),
+    "a fact_coverage label outside the three": lambda i: i["records"]["things:t1"]["fact"]["fact_coverage"][
+        "items"].update(label="complete"),
+    "a fact_coverage lower-bound without its unresolved list": lambda i: i["records"]["things:t1"]["fact"][
+        "fact_coverage"]["items"].pop("unresolved"),
+    "a fact_coverage unresolved item without its why": lambda i: i["records"]["things:t1"]["fact"]["fact_coverage"][
+        "items"]["unresolved"][0].pop("why"),
+    "a fact_coverage that is not an object": lambda i: i["records"]["things:t1"]["fact"].update(fact_coverage=[]),
+    "an unresolved item of a list fact missing from gaps": lambda i: i.update(
+        gaps=[g for g in i["gaps"] if g["family"] != "things"]),
+    "a gap that is on no record": lambda i: i["gaps"].append(
+        {"family": "things", "module": "aew.a", "symbol": None, "why": "only in gaps"}),
+    "a stale digest": lambda i: i["counts"].update(digest="sha256:" + "0" * 64),
 }
 
 
@@ -306,7 +333,7 @@ def test_a_sound_index_has_no_problems_and_each_planted_fault_is_one():
 def test_two_records_with_one_id_are_refused():
     rec = C.Record("things", "t1", "aew.a", "T", "enumerated", C.unknown())
     with pytest.raises(C.ReferenceError, match="not unique"):
-        C.build_index([rec, rec], [])
+        C.build_index([rec, rec])
 
 
 # ------------------------------------------------------------------------------------------ one tree
@@ -316,6 +343,101 @@ def test_the_generator_refuses_an_aew_that_is_not_this_trees(tmp_path):
     with pytest.raises(C.ReferenceError, match="absolute PYTHONPATH"):
         reference._one_tree(C, tmp_path)
     reference._one_tree(C, ROOT)  # this tree's own: the tests run with an absolute PYTHONPATH to it
+
+
+def test_without_an_importable_aew_the_generator_refuses_with_exit_2_not_a_traceback_with_exit_1(monkeypatch, capsys):
+    """Exit 1 means the pages differ, and the remedy is `render`; an interpreter that cannot import aew must not look
+    like that (review of #241, F7). It is "cannot generate": exit 2, naming the absolute-PYTHONPATH rule."""
+    monkeypatch.setitem(sys.modules, "aew", None)  # `import aew` then raises ImportError
+    with pytest.raises(C.ReferenceError, match="cannot be imported.*absolute PYTHONPATH"):
+        reference._one_tree(C, ROOT)
+    assert reference.main(["check"]) == 2
+    assert "absolute PYTHONPATH" in capsys.readouterr().err
+
+
+def test_an_index_problem_states_the_fault_not_the_rule():
+    """An error message is behaviour (AGENTS.md): it says what is wrong, not the opposite (review of #241, F8)."""
+    broken = small_index()
+    broken["records"]["modules:aew.a"]["anchor"]["symbol"] = "x"
+    problems = C.index_problems(broken)
+    assert any("symbol must be null" in p for p in problems), problems
+    assert not any(p.endswith("symbol is null") for p in problems)
+
+
+# ------------------------------------------------------------------------------- a stale clean merge cannot happen
+
+def merge(base: str, ours: str, theirs: str, tmp_path: Path) -> tuple[int, str]:
+    """A real three-way merge of three versions of one file: (the number of conflicts, the merged text)."""
+    paths = []
+    for name, text in (("ours", ours), ("base", base), ("theirs", theirs)):
+        paths.append(tmp_path / f"{name}.json")
+        paths[-1].write_bytes(text.encode("utf-8"))
+    proc = subprocess.run(["git", "merge-file", "-p", *map(str, paths)], capture_output=True, text=True, timeout=60,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert proc.returncode >= 0, proc.stderr
+    return proc.returncode, proc.stdout
+
+
+def modules_index(names: list[str]) -> dict[str, Any]:
+    return C.build_index([C.Record(C.MODULES, n, n, None, "static", C.lower_bound(),
+                                   {"path": f"src/{n.replace('.', '/')}.py", "package": False}, []) for n in names])
+
+
+def test_two_changes_that_each_add_a_module_conflict_instead_of_merging_into_stale_totals(tmp_path):
+    """The hazard (review of #241, F3): two pull requests each add a module, each re-renders and passes `check`. Both
+    edit the totals (`records`, `by_family`...) to the same text, so git keeps one edit and reports no conflict, and the
+    merged `main` says 3 records over 4. The `digest` of every record is on the line that differs, so the merge
+    conflicts and the documented step (take either side, run `render`) applies."""
+    base, ours, theirs = (modules_index(names) for names in (
+        ["aew.m1", "aew.m5"], ["aew.m0", "aew.m1", "aew.m5"], ["aew.m1", "aew.m5", "aew.m9"]))
+    merged_by_hand = modules_index(["aew.m0", "aew.m1", "aew.m5", "aew.m9"])
+    assert ours["counts"]["records"] == theirs["counts"]["records"] == 3  # the same edit to the totals, from both sides
+
+    conflicts, _ = merge(C.dumps(base), C.dumps(ours), C.dumps(theirs), tmp_path)
+    assert conflicts > 0
+    # the control: the same merge without the digest line is clean, and its totals are stale
+    for index in (base, ours, theirs):
+        del index["counts"]["digest"]
+    conflicts, text = merge(C.dumps(base), C.dumps(ours), C.dumps(theirs), tmp_path)
+    merged = json.loads(text)
+    assert conflicts == 0 and len(merged["records"]) == 4 and merged["counts"]["records"] == 3
+    assert merged_by_hand["counts"]["records"] == 4
+
+
+def test_a_change_to_a_record_changes_the_digest_and_no_change_does_not():
+    base = modules_index(["aew.m1", "aew.m5"])
+    assert modules_index(["aew.m1", "aew.m5"])["counts"]["digest"] == base["counts"]["digest"]
+    assert modules_index(["aew.m1", "aew.m6"])["counts"]["digest"] != base["counts"]["digest"]
+    changed = small_index()
+    changed["records"]["modules:aew.b"]["imports"] = []
+    assert C.index_problems(changed)  # the digest (and the shape) notice a record edited in place
+
+
+# ------------------------------------------------------------------------------- nothing lives only in gaps
+
+def test_every_gap_is_on_a_record_and_nothing_lives_only_in_gaps():
+    """`gaps` is a summary computed from the records (addendum 3): the trace reads records only, so each unresolved
+    item is on a record, in its `coverage` or in the `fact_coverage` of a list fact, and the summary holds exactly
+    those."""
+    index = index_of(committed())
+    on_records = {(r["family"], i["module"], i["symbol"], i["why"])
+                  for r in index["records"].values() for i in C.unresolved_items(r)}
+    in_gaps = [(g["family"], g["module"], g["symbol"], g["why"]) for g in index["gaps"]]
+    assert set(in_gaps) == on_records and len(in_gaps) == len(set(in_gaps))
+    assert on_records, "the tree has dynamic imports and argv constants: they are the items"
+    assert index["counts"]["unresolved"] == len(in_gaps)
+
+
+def test_every_list_fact_a_detector_found_says_how_complete_it_is():
+    """A list fact with no entry reads as unknown, and an empty list never means none (addendum 3)."""
+    seen = 0
+    for rid, r in index_of(committed())["records"].items():
+        fact = r.get("fact", {})
+        for name, value in fact.items():
+            if isinstance(value, list):
+                assert fact["fact_coverage"][name]["label"] in C.LABELS, (rid, name)
+                seen += 1
+    assert seen
 
 
 # ------------------------------------------------------------------------------- every coverage claim names tests

@@ -21,10 +21,10 @@ of resolved calls, and nothing more); a writer with no chain is unresolved on th
 share one declaring function, and the command decides the role, so they are cut by the parser
 (:mod:`reference_families.writers_roles`): a handler is reached by the role of its command. A handler whose command
 cannot be read is reached by every role, and the writers behind it say so, with an unresolved item anchored at the
-function that registers it. The role the environment selects reaches nothing by the call graph: a store write that the
-general handlers reach carries an item that says the lock refuses it there (`process_kind.require_writer`, tested at run
-time and not proved here). A second detector, :mod:`reference_families.writers_text`, finds the write-primitive calls
-by tokens, and the two must agree per module.
+function that registers it. The role the environment selects reaches nothing by the call graph: a writer that the
+general handlers reach and that role is not given carries an item that says so, and that a write a non-writer may not
+make is refused there (`process_kind.require_writer`, tested at run time and not proved here). A second detector,
+:mod:`reference_families.writers_text`, finds the write-primitive calls by tokens, and the two must agree per module.
 
 What it does not see is the family's ``cannot see`` list, pinned by probes in the tests: a path built in one function
 and written in another through a value this reading cannot follow (a command-line argument, an environment variable, a
@@ -475,16 +475,16 @@ GATE_SYMBOL = ("aew.process_kind", "require_writer")
 
 def store_class(directory: str, mechanism: str) -> bool:
     """Whether a write is to the store: staged by the store's transaction, or direct under a directory other than
-    ``local/`` (the rebuildable data, which takes no control lock). A path prefix and a mechanism tell them apart; no
-    field says it."""
+    ``local/`` (the rebuildable data kept out of git). A path prefix and a mechanism tell them apart; no field says
+    it."""
     return mechanism == STORE_TRANSACTION or directory != LOCAL
 
 
-def gated(directory: str, mechanism: str, keys: Iterable[str], roles: ROLES.Roles | None) -> bool:
-    """Whether the worker role may reach this write without the call graph saying so: a store write that the general
-    handlers reach and the worker role (chosen by the environment, not by a command) is not already given."""
-    return roles is not None and store_class(directory, mechanism) and roles.general in set(keys) and (
-        roles.worker not in set(keys))
+def gated(keys: Iterable[str], roles: ROLES.Roles | None) -> bool:
+    """Whether the worker role may reach this writer without the call graph saying so: the general handlers reach it
+    and the worker role (chosen by the environment, not by a command) is not already given it. The call graph gives
+    that role nothing, so its absence from ``entry_points`` is no evidence, whatever the writer writes."""
+    return roles is not None and roles.general in set(keys) and roles.worker not in set(keys)
 
 
 # The run-time test of the gate, in tests/integration/test_non_writer_reads.py (a tree test holds that it exists).
@@ -494,9 +494,9 @@ GATE_TEST = "test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock
 def gate_item(roles: ROLES.Roles) -> dict[str, Any]:
     return C.unresolved_item(*GATE_SYMBOL, (
         f"the role `{roles.worker}` is chosen by an environment variable and not by a command, so the call graph "
-        "attributes no handler to it; a store write that its process reaches is refused by "
-        "`process_kind.require_writer` (at the control lock, and before an operation whose purpose is a write), "
-        f"tested at run time by `{GATE_TEST}` and not proved here"))
+        "attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process "
+        "may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose "
+        f"purpose is such a write), tested at run time by `{GATE_TEST}` and not proved here"))
 
 
 def undecided_item(registrar: tuple[str, str]) -> dict[str, Any]:
@@ -522,7 +522,7 @@ def records_of(analysis: Analysis) -> list[C.Record]:
             if not keys:
                 unreached.append(C.unresolved_item(w.module, w.symbol, NO_CHAIN))
             unreached += [undecided_item(r) for r in sorted(analysis.undecided.get((w.module, w.symbol), ()))]
-            if analysis.roles is not None and gated(template.split("/")[0], w.mechanism, keys, analysis.roles):
+            if analysis.roles is not None and gated(keys, analysis.roles):
                 unreached.append(gate_item(analysis.roles))
         fact = {
             "prefix": template,
@@ -548,10 +548,11 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
                     undecided: Mapping[tuple[str, str], Iterable[tuple[str, str]]] | None = None) -> list[str]:
     """The family's own invariants over its records as JSON (``Record.as_json`` keyed by id), which the index checks do
     not know: a writer's mechanism is one of two, its primitives are named, its entry points are rows of the owner's
-    table and its kinds are theirs, a store write that only the general CLI handlers reach says on its record that the
-    worker role is gated at the lock, a writer behind a handler of a command not read says which function registers it,
-    and every path record points at the unresolved ones. ``kinds`` is the owner's table (entry-point key -> kind),
-    ``roles`` the CLI's roles and ``undecided`` the registering functions that reach each writer function."""
+    table and its kinds are theirs, a writer that the general CLI handlers reach and the worker role is not given
+    says on its record that the call graph gives that role nothing, a writer behind a handler of a command not read
+    says which function registers it, and every path record points at the unresolved ones. ``kinds`` is the owner's
+    table (entry-point key -> kind), ``roles`` the CLI's roles and ``undecided`` the registering functions that reach
+    each writer function."""
     problems: list[str] = []
     pointer = pointer_item()
     for rid, r in sorted(records.items()):
@@ -606,10 +607,10 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
                 if undecided_item(registrar) not in listed:
                     problems.append(f"{where} is behind a handler registered in {registrar[0]}:{registrar[1]} for a "
                                     "command this reading could not read, and the record does not say so")
-            if roles is not None and gated(fact.get("directory", ""), w["mechanism"], w["entry_points"], roles):
+            if roles is not None and gated(w["entry_points"], roles):
                 if gate_item(roles) not in listed:
-                    problems.append(f"{where} is a store write that the general handlers reach, and the record does "
-                                    "not say that the worker role is gated at the lock")
+                    problems.append(f"{where} is reached by the general handlers and not the worker role, and the "
+                                    "record does not say that the call graph gives that role nothing")
         if (r.get("coverage") or {}).get("unresolved") != [pointer]:
             problems.append(f"{rid}: its coverage does not point at the unresolved writes")
     return problems
@@ -652,8 +653,9 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "function and the command decides which runs, so the parser cuts them: the handler a command registers "
              "is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the "
              "calls the CLI's function makes itself, which every command shares, by all of them. The role the "
-             "environment selects is no command's: the call graph gives it nothing, and a store write is refused "
-             "there by `process_kind.require_writer`, a gate tested at run time and not proved here.", ""]
+             "environment selects is no command's: the call graph gives it nothing, and a write a non-writer may "
+             "not make is refused there by `process_kind.require_writer`, a gate tested at run time and not proved "
+             "here.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles
@@ -675,8 +677,8 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
               "than `local/`) reached from an entry point of kind `non_writer` ("
               + ", ".join(f"`{k}`" for k in non_writers) + f"): {found}",
               "**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable "
-              "runtime data kept out of git (`AEW_GITIGNORE`), and a write there takes no control lock: "
-              f"{allowed}",
+              "runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the "
+              f"mechanism: {allowed}",
               "**Not checked:** a handler that calls its engine method by a name held in a variable is not followed, "
               "so the writers behind it are not attributed to its role; and what the worker role may write is "
               "`process_kind.require_writer`'s to refuse (above), not this reading's to prove.", ""]

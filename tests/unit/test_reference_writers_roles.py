@@ -123,11 +123,12 @@ def test_a_conditional_name_is_each_of_its_arms():
     assert found == ((("a",), ("b",)), (H,), False)
 
 
-def test_a_closure_reads_the_enclosing_functions_name():
+def test_a_closure_reads_every_assignment_of_the_enclosing_functions_name():
+    """The closure runs when it is called, not where it is defined: whichever assignment came before the call."""
     source = ("def register(sub):\n    p = sub.add_parser('a')\n\n    def later():\n"
-              "        p.set_defaults(handler=h)\n\n    later()\n\n\n"
+              "        p.set_defaults(handler=h)\n\n    p = sub.add_parser('b')\n    later()\n\n\n"
               "def build():\n    register(argparse.ArgumentParser().add_subparsers())\n")
-    assert only(source) == ((("a",),), (H,), False)
+    assert only(source) == ((("a",), ("b",)), (H,), False)
 
 
 def test_a_registration_outside_any_function_is_the_empty_path_and_belongs_to_the_module():
@@ -138,12 +139,13 @@ def test_a_registration_outside_any_function_is_the_empty_path_and_belongs_to_th
 @pytest.mark.parametrize("body", [
     "    p = mystery(sub)\n    p.set_defaults(handler=h)\n",                      # a call this reading cannot follow
     "    with mystery() as p:\n        p.set_defaults(handler=h)\n",               # bound by `with`
+    "    p = sub.add_parser('a')\n    with mystery() as p:\n        p.set_defaults(handler=h)\n",  # ... after another
     "    sub.add_parser(mystery()).set_defaults(handler=h)\n",                     # a word it cannot read
     "    parser.add_argument('x').set_defaults(handler=h)\n",                      # not a parser expression
 ])
 def test_a_parser_this_reading_cannot_follow_is_unread_never_guessed(body):
-    paths, handlers, unread = only(top(body))
-    assert unread and handlers == (H,) and paths == ()
+    _, handlers, unread = only(top(body))
+    assert unread and handlers == (H,)
 
 
 def test_a_parameter_nothing_calls_is_unread():

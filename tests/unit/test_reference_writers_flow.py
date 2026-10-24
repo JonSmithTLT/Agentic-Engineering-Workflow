@@ -159,7 +159,7 @@ PROBES = {
     "positional-open-mode": "def f(p, req):\n    OPENER.open(req, timeout=3)",
     "metadata-calls": "os.utime(p)\nos.chmod(p, 0o700)\nfsync_dir(d)",
 }
-THE_REST = {"cross-function-path", "handler-by-name"}  # about a destination or a handler, not a primitive
+THE_REST = {"cross-function-path", "handler-by-name"}  # about a destination or a handler: probed below
 
 
 def test_the_cannot_see_list_has_a_probe_for_each_class_and_nothing_else():
@@ -604,23 +604,28 @@ def test_the_store_writes_a_non_writer_role_reaches_are_the_finding_and_its_loca
     assert "`aew.m:local_write`" in permitted and "`aew.m:local_write`" not in checked
 
 
-def test_a_store_write_only_the_general_handlers_reach_says_the_worker_role_is_gated_by_the_owner():
-    """The call graph attributes nothing to the environment's role, so a store write the general handlers reach
-    carries one item that says where it is refused; a local write, and a store write the common path gives every role,
-    do not."""
-    a = cli_analysis()
+def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
+    """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
+    item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever
+    the writer writes; a writer the named role reaches alone, and one the common path gives every role, do not."""
+    a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
+                     "def cmd_local(a):\n    local_only(None)\n\n"
+                     "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
+                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
     by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
     gate = W.gate_item(a.roles)
     listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
-    assert gate in listed["state/s"]
-    assert gate not in listed["local/l"] and gate not in listed["state/c"]
+    assert gate in listed["state/s"], "a store write the general handlers reach"
+    assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
+    assert gate not in listed["local/l"], "a writer only the named role reaches"
+    assert gate not in listed["state/c"], "the common path gives the worker role this one"
     assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}
     assert W.record_problems(records, KINDS, a.roles, a.undecided) == []
     cut = copy.deepcopy(records)
     cut["writers:state/s"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
     problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
-    assert any("worker role is gated" in p for p in problems), problems
+    assert any("the call graph gives that role nothing" in p for p in problems), problems
 
 
 UNREAD = CLI.replace("    lead = sub.add_parser('lead')\n", "    lead = mystery(sub)\n")
@@ -644,6 +649,25 @@ def test_a_handler_of_a_command_that_cannot_be_read_is_run_by_every_role_and_its
     cut["writers:local/l"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
     problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
     assert any("for a command this reading could not read" in p for p in problems), problems
+
+
+BYNAME = ("class Eng:\n    def publish(self, aew_root):\n        (aew_root / 'state' / 'p').write_text('x')\n\n"
+          "def eng(a) -> Eng:\n    return Eng()\n\n"
+          "def register(sub):\n    for name, method in (('publish', 'publish'),):\n"
+          "        sub.add_parser(name).set_defaults(handler=lambda a, m=method: getattr(eng(a), m)(None))\n\n"
+          "def build():\n    register(argparse.ArgumentParser().add_subparsers())\n\n"
+          "def cli_main(argv):\n    build()\n")
+
+
+def test_a_handler_that_calls_its_engine_method_by_a_name_held_in_a_variable_is_the_pinned_limit():
+    """The `handler-by-name` class of the page's `cannot see` list: the command is read (its lambda is a function of its
+    own, reached by its role), the method behind `getattr(...)` is not, so its writer has no chain."""
+    a = cli_analysis(BYNAME)
+    assert a.cut.handlers == {GENERAL: {("aew.m", "register.<handler1>")}}
+    assert a.reach[("aew.m", "register.<handler1>")] == {GENERAL}
+    assert ("aew.m", "Eng.publish") not in a.reach
+    by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
+    assert W.NO_CHAIN in [i["why"] for i in by_key["state/p"].fact_coverage["writers"]["unresolved"]]  # type: ignore[index]
 
 
 def test_the_page_says_how_many_registrations_and_which_it_could_not_read():

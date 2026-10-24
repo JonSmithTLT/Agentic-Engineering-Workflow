@@ -17,13 +17,15 @@ that all four of the CLI's roles reach it. Now each writer's `entry_points` is c
 - **What a record says now.** A handler is reached by the role of its command only; what `_main` calls itself (the
   parser's construction, the path every command shares) by all four. A writer the general handlers reach and the
   worker role is not given carries one item, anchored at `aew.process_kind:require_writer`, saying the role the
-  environment selects is no command's, that the call graph gives it nothing, and that a store write there is refused
-  by that gate (tested at run time by a named test, not proved here). A handler whose command cannot be read is
+  environment selects is no command's, that the call graph gives it nothing (so its absence from `entry_points` is no
+  evidence), and that a write a non-writer may not make is refused by that gate (tested at run time by a named test,
+  not proved here). A handler whose command cannot be read is
   not guessed: it counts as run by every role, and the writers behind it name the function that registers it (none
   today). The earlier item anchored at `_main` is gone.
 - **The check.** A store write (a store-transaction writer, or a direct writer outside `local/`) reached from an entry
   point of kind `non_writer` is listed on the page and held empty by a tree test; writers under `local/` that a
-  non-writer reaches are listed too, as permitted (`local/` is rebuildable data kept out of git and takes no lock).
+  non-writer reaches are listed too, as permitted (`local/` is rebuildable data kept out of git; the check is keyed on
+  the path prefix and the mechanism).
 - **Limits, stated on the page.** A handler that calls its engine method by a name held in a variable
   (`getattr(engine, name)(...)`: the `integrate` commands) is not followed. A sibling path named by something that is
   neither fixed nor made by the process is an unresolved write (it used to fold into its path).

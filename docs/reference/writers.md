@@ -168,7 +168,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 ## Which entry points reach the writers
 
-A chain of resolved calls from the function where an entry point declares itself (see [entry-points.md](entry-points.md)), so a writer's `entry_points` is a lower bound: a callback, or a call on an object whose class is not evident, is not followed. The CLI declares its roles in one function and the command decides which runs, so the parser cuts them: the handler a command registers is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the calls the CLI's function makes itself, which every command shares, by all of them. The role the environment selects is no command's: the call graph gives it nothing, and a store write is refused there by `process_kind.require_writer`, a gate tested at run time and not proved here.
+A chain of resolved calls from the function where an entry point declares itself (see [entry-points.md](entry-points.md)), so a writer's `entry_points` is a lower bound: a callback, or a call on an object whose class is not evident, is not followed. The CLI declares its roles in one function and the command decides which runs, so the parser cuts them: the handler a command registers is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the calls the CLI's function makes itself, which every command shares, by all of them. The role the environment selects is no command's: the call graph gives it nothing, and a write a non-writer may not make is refused there by `process_kind.require_writer`, a gate tested at run time and not proved here.
 
 The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none.
 
@@ -182,7 +182,7 @@ Writer functions with a store-transaction or direct write placed under `.aew`: 7
 - `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
-**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and a write there takes no control lock: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`
+**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the mechanism: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`
 **Not checked:** a handler that calls its engine method by a name held in a variable is not followed, so the writers behind it are not attributed to its role; and what the worker role may write is `process_kind.require_writer`'s to refuse (above), not this reading's to prove.
 
 ## Writes this reading could not place

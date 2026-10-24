@@ -19,5 +19,8 @@ credential).
   abstract socket or loopback port inside, only the shim's ports listening) and the paths through the shim, the relay
   and the egress proxy; it fails closed under `required`. Row 2 fails on a host abstract socket listed inside a
   private network.
-- **Not yet:** the Lead's harness on `proxy_only` with the any-public egress policy is CS-4's. Nothing may call Lead
-  runs network-contained before then, and F28's row stays open until CS-4.
+- **Not yet:** the Lead's harness on `proxy_only` with the any-public egress policy is CS-4's. The live lane's real
+  streamed turn through the relay (F28's NET-19 and decision 6) is still to be observed: on 2026-10-24 the free
+  provider's daily quota was spent, so a real OpenCode 2.0.18 server's requests reached the upstream through the relay
+  and came back refused for quota, not answered. Nothing may call Linux runs network-contained before that live lane
+  passes, and F28's row stays open.

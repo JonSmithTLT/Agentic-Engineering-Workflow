@@ -1321,6 +1321,12 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   the rows. On the shared network, row 1 records the mode and claims nothing.
 
 ### What this does not claim
+- **The live lane** (F28 decision 6, NET-19): a real streamed turn through the relay, its backpressure and its
+  cancellation against the real upstream are not yet observed; the tests above prove them on socket pairs and a fake
+  provider. On the Rocky VM a real 2.0.18 server's requests crossed the relay to the free provider's TLS upstream
+  with the server's own headers intact (a bare request is refused as not from OpenCode; through the relay it was
+  answered as OpenCode's), and came back refused for the day's spent quota. The upstream has an IPv6 address, which
+  that host has no route to. Nothing calls Linux runs network-contained until the live lane passes.
 - **The Lead's harness** on `proxy_only` (F28 decision 2, with the any-public egress policy) is CS-4's. Until then
   only worker runs have a network of their own.
 - **A check's route out** through the run's egress proxy (`proxy_only` for a check) is not built.

@@ -143,6 +143,7 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 | [`f4-ticket-revisions-plan.md`](implementation/f4-ticket-revisions-plan.md) | The F4 plan: Ticket revisions (E19-B v0.4), its cross-cutting designs (the field-group registry, admissibility, the lifecycle, confirmation, hierarchy changes), its decisions and readings, and slices S1 to S12 |
 | [`agent-effectiveness-implementation-delta-2026-10-09.md`](implementation/agent-effectiveness-implementation-delta-2026-10-09.md) | The planning pass of the agent-effectiveness adoption (2026-10-09): every item classified, the ordered delta D1 to D16 (owner row, dependency, new work, completion, probe, before M4-H or not), the implementation-local choices; no true design gap. Nothing in it is built |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
+| [`review-guide.md`](implementation/review-guide.md) | **Governing** (2026-10-24, A0; the operator owns it, `AGENTS.md` rule 5): how an independent review is done. The finding format, the labels, M1, CI at the exact head, nits after a CLEAR, one full round and a quick check, test-only proportion, and what counts as a security finding. Every review brief loads it |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 | [`vertical-uat.md`](implementation/vertical-uat.md) | The vertical UAT (in shadow): a fresh project to a published fix, its burden ledger and the thresholds the test pins |
 | [`surface-map.md`](implementation/surface-map.md) | Anti-drift guard G1: every `aew` command and typed Lead tool registered with one home, its users, journeys, `mutates`, the Lead's door and disposition, and its refusal codes; the standing rule for new surfaces; which checks are enforced and which only report until A1, A2 and A4 |
@@ -326,14 +327,19 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
 - A new design, research or review document is **ingested, not just placed**: every requirement goes into
   [`requirements-ledger.yaml`](design/requirements-ledger.yaml) and is tracked by a register row. A new version of a
   document is re-mapped section by section; a requirement it drops is retired with its disposition, never deleted.
-  `tests/unit/test_requirements_ledger.py` enforces it.
+  `tests/unit/test_requirements_ledger.py` enforces it. Every heading of a source is accounted for: requirements with
+  stable ids, `no_requirements`, or `carried`; a dropped requirement's disposition is `superseded-by:`,
+  `absorbed-by:` or `rejected:`. ADRs from 0012 on are ledger sources too. Adopted amendments to the frozen
+  specification are listed in [`spec-amendments.yaml`](spec-amendments.yaml), as an overlay or under `considered`.
 - A designer decision belongs in a decision record or an ADR under `design/` or `implementation/adr/`, never only in a
   research note or a proposal; a research note that received one points at the record.
 - Work is tracked in one place, the register ([`future-work.md`](implementation/future-work.md)): a design's work items
   are its rows, a review's findings are its rows, and a closed item moves to §9 with what closed it.
 - The register is edited as data: change [`future-work.yaml`](implementation/future-work.yaml), then run
-  `python tools/register.py render`; the markdown is the view and `tests/unit/test_register.py` fails when it drifts.
-  Every open row's target column starts with one bold target from the register's own table.
+  `python tools/register.py render`; the markdown is the view, never edited by hand, and `tests/unit/test_register.py`
+  fails when it drifts. Every open row's target column starts with one bold target from the register's own table.
+  What the operator or designer still owes is [`decisions-due.yaml`](implementation/decisions-due.yaml), rendered by
+  the same command; `check` fails when an item goes stale, or when a question or **Designer** row has none.
 - **A note on an existing row is a file, never an edit of its Notes cell:** `python tools/register.py note <id>`
   creates `implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` to write ([the convention, the slug rule
   and what is guaranteed](implementation/notes.d/README.md)). Appending to a shared cell is the one change the
@@ -347,8 +353,18 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
   own dates; the log to 2026-10-05 is [archived](archive/register-changelog-to-2026-10-05.md)), and §9 *Closed* is kept in id
   order, which `render` applies and `check` enforces, so append a closed row anywhere. After every sync with main,
   run `render`, conflict or not: a clean merge can still leave §9 unsorted and the markdown stale, which `check` and
-  CI refuse. When a merge conflicts, resolve `future-work.yaml` only, then run `render`: the markdown is derived and
-  is never merged by hand.
+  CI refuse. When a merge stops on the register, run `python tools/register.py resolve` (it re-merges the YAML row by
+  row and renders), not a hand merge. Only a real conflict is left to fix: the same cell changed on both sides, a row
+  changed on one side and closed on the other, a section reordered differently on both, or like-named rows (the §1
+  gates, the §9 `Gate` rows) changed on both sides that it cannot tell apart, which it marks rather than guess.
+- **Changes to different rows merge**, so keep the layouts that make it so: the register's pages are rendered as one
+  block per row, and `implementation-status.md` is one section per capability with a blank line between every two
+  lines, no table and no "last updated" line (`tests/unit/test_docs_merge.py`). The exception is two insertions at one
+  place, which git always conflicts on: two rows closed into the same gap of §9's id order, two new rows or
+  decisions-due items added at one place, two new capabilities side by side. For the register, `resolve` settles them.
 - When a milestone finishes, its plan, reports and review responses move to `archive/`. An independent review's record
   moves to `archive/reviews/` and its probes to `eval/reviews/` when the review is delivered.
-- `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this page.
+- `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` (except `skills/`) is
+  missing from this page.
+- Before committing docs work, run `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
+  tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/unit/test_docs_merge.py tests/test_spec_pin.py`.

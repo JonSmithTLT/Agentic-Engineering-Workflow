@@ -260,8 +260,14 @@ Do not move a slow lane to nightly.
 4. Add `exploratory` if it is seeded exploration whose budget can grow. Give it env knobs whose defaults are the merge-gate budget.
 5. A new directory or lane needs a rule in `tests/helpers/lanes.py`, a unit test in `tests/unit/test_lanes.py`, a CI matrix entry, and an update to §2 of this document.
 6. If it needs a platform, use `skipif` with the reason and pin it in `tests/platform-skips.yaml`.
+7. Engine invariants live in `tests/helpers/invariants.py`; extend them when a new state appears.
 
 ## 10. Local commands
+
+- **CI is the matrix** (Linux and Windows, sharded, with a coverage ratchet). Locally, run the tests you touched and
+  their neighbours, then push. A full local run is for risky engine changes only.
+- **Run long suites from a separate worktree** at the commit under test, so the checkout you edit stays free. Do not
+  edit a checkout while its test run is in progress.
 
 ```bash
 pip install -e ".[dev,parallel]"                       # parallel = pytest-xdist (optional)

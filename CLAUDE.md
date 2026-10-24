@@ -9,17 +9,16 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 ## Where things are
 
 - **Start at [`docs/README.md`](docs/README.md).** It says what governs, the status of every document, and where the
-  project is going (current milestone, next, open gates). Do not search 80 documents for the answer; if the map does
-  not answer it, the map needs fixing.
-- **What is built:** [`docs/implementation/implementation-status.md`](docs/implementation/implementation-status.md).
-  **What is deferred and why:** the register, `docs/implementation/future-work.md`.
+  project is going. Do not search 80 documents for the answer; if the map does not answer it, the map needs fixing.
+- **What is built:** [`implementation-status.md`](docs/implementation/implementation-status.md). **What is deferred and
+  why:** the register, [`future-work.md`](docs/implementation/future-work.md). **What the code is:** the generated
+  reference, [`docs/reference/`](docs/reference/README.md).
 - **Implementation decisions:** `docs/implementation/adr/`. A decision changed after adoption is an amendment section
   in the ADR, never a silent edit.
 - **Code:** `src/aew/` — `engine/` (the control engine: transitions, gates, dispatch, the integration queue,
   validation), `harness/` (supervisors, process ownership, containment), `policy/`, `knowledge/` (evidence, context),
-  `workspace/`, `cli/`, `dashboard/` (the read API), `schemas/`.
-- **Tools:** `tools/register.py` (the register), `tools/reference.py` (the generated as-built reference),
-  `tools/ci/` (lanes, assurance), `tools/perf/`.
+  `workspace/`, `cli/`, `dashboard/` (the read API), `schemas/`. **Tools:** `tools/register.py` (the register),
+  `tools/reference.py` (the generated reference), `tools/ci/` (lanes, assurance), `tools/perf/`.
 
 ## Authority and escalation
 
@@ -34,67 +33,33 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 
 ## Docs, the ledger and the register (all test-enforced)
 
-- **Every `.md` and `.yaml` under `docs/`** (except `skills/`) is linked from `docs/README.md`
-  (`tests/unit/test_docs_links.py`).
-- **Ingesting a design is a hard gate, not a file move.** Every document under `docs/design/` and `docs/research/` is a
-  source in `docs/design/requirements-ledger.yaml`, and every heading is accounted for: requirements with stable ids,
-  `no_requirements`, or `carried`. A requirement dropped between versions needs an explicit disposition
-  (`superseded-by:`, `absorbed-by:`, `rejected:`), never silence. ADRs from 0012 on are ledger sources too.
-- **Adopted amendments** are listed in `docs/spec-amendments.yaml` (as an overlay or under `considered`).
-- **The register is data.** Edit `docs/implementation/future-work.yaml`, then run `python tools/register.py render`.
-  Never edit `future-work.md` by hand. Closed rows move to §9 with the date and what closed them; nothing is deleted.
-  **A note on an existing row is a file, never an edit of its Notes cell:** `python tools/register.py note <id>`
-  creates `docs/implementation/notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md` for you to write (the slug rule and
-  what is guaranteed are in `notes.d/README.md`); the rendered page does not change, and branches with different slugs
-  never conflict. `python tools/register.py show <id>` prints a row with its notes. The same holds for a
-  decisions-due item's `what` and an `implementation-status.md` paragraph: progress goes in a note on the row. A
-  capability built in slices has a Status that names no slice and one paragraph per slice, which only that slice
-  edits (a convention review keeps; the docs test refuses the known shapes, not every wording); a slice with no
-  paragraph there adds a note on the row its **Later slices** paragraph names.
-  What the operator or designer still owes is `docs/implementation/decisions-due.yaml` (rendered by the same
-  command; `check` fails when an item goes stale or a question or **Designer** row has none). When a merge stops on
-  the register, run `python tools/register.py resolve` (it re-merges the YAML row by row and renders), not a hand
-  merge; only a real conflict is left to fix: the same cell changed on both sides, a row changed on one side and closed
-  on the other, a section reordered differently on both, or like-named rows (the §1 gates, the §9 `Gate` rows) changed
-  on both sides that it cannot tell apart, which it marks rather than guess.
-- **Changes to different rows merge**, so keep the layouts that make it so: the register's pages are rendered as one
-  block per row, and `implementation-status.md` is one section per capability with a blank line between every two
-  lines, no table and no "last updated" line (`tests/unit/test_docs_merge.py`). The exception is two insertions at one
-  place, which git always conflicts on: two rows closed into the same gap of §9's id order, two new rows or
-  decisions-due items added at one place, two new capabilities side by side. For the register, `resolve` settles them.
-- Before committing docs work: `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
-  tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/unit/test_docs_merge.py tests/test_spec_pin.py`.
+How each of these is done is in [`docs/README.md`](docs/README.md), "Keeping this map true".
+- **Every `.md` and `.yaml` under `docs/`** (except `skills/`) is linked from `docs/README.md`.
+- **Ingesting a design is a hard gate, not a file move:** every requirement goes into the requirements ledger, and a
+  dropped one gets an explicit disposition, never silence.
+- **The register is data.** Edit `future-work.yaml` and run `python tools/register.py render`; never edit the rendered
+  pages by hand. A note on an existing row is a file (`python tools/register.py note <id>`), never an edit of its
+  Notes cell. A merge that stops on the register is settled with `python tools/register.py resolve`, not by hand.
+  `python tools/register.py show <id>` prints a row with its notes.
+- **`docs/reference/` is generated from the code.** A pull request that changes what it enumerates runs
+  `python tools/reference.py render` and commits the result ([its README](docs/reference/README.md)).
 
 ## Tests
 
-- Lanes, markers and the merge gate: [`docs/implementation/testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md).
-  `python -m pytest --lane <lane> -n auto -q` runs one CI lane; `-m acceptance` selects the acceptance scenarios.
-- **CI is the matrix** (Linux and Windows, sharded, with a coverage ratchet). Locally, run the tests you touched and
-  their neighbours, then push. A full local run is for risky engine changes only.
-- **A pull request's CI tier follows what it changes** (strategy §3): one that changes only docs, or only docs and
-  fast-lane test modules or `tests/durations.json` (the `fast` tier; shadow for now, so its run stays full), runs
-  `core` and no heavy lane. During shadow a red `fastbase` check is informational, not a merge blocker. Force a full
-  run with a `CI-Full: yes` trailer on the head commit or the `full-ci` label, then **Re-run all jobs**.
-- **`docs/reference/` is generated from the code** (`python tools/reference.py render`; never edit it by hand). A
-  fast-lane test runs `python tools/reference.py check`, so a pull request that changes what it enumerates (a
-  module, its imports, an entry point, a spawn site) runs `render` and commits the result. The second of two
-  changes to merge re-renders: two that change the records always conflict, on the `digest` line of `counts`, so
-  take either side and run `render`. It needs an absolute `PYTHONPATH` to this tree's `src` in a worktree, like
-  every test.
-- **Run long suites from a separate worktree** at the commit under test, so the checkout you edit stays free. Do not
-  edit a checkout while its test run is in progress.
-- **A worktree's tests need an absolute `PYTHONPATH`** to that worktree's `src` when the venv's `aew` is an editable
-  install of another checkout. A relative `PYTHONPATH=src` silently runs the other checkout's code in every test that
-  starts `aew` from another directory.
-- **On Windows, never open console windows.** Background and test processes use `subprocess.CREATE_NO_WINDOW`; tests
-  that need a terminal run on Linux only.
+The lanes, the CI tiers, the static checks and the local commands are in
+[`testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md).
+- **CI is the matrix.** Locally, run the tests you touched and their neighbours, then push. Do not edit a checkout
+  while its test run is in progress.
 - **Never mark a test xfail or skip it to get green.** A test that fails and then passes on re-run is a defect to
   investigate. A slower test is a regression to find, not a timeout to raise.
+- **Fix what the static checks report;** a `# noqa` is only for a reviewed false positive, and names the rule and the
+  reason (strategy §3).
 - **New behaviour comes with the test that proves it**, named for the guarantee (`test_a_diagnostic_run_never_...`).
   Engine invariants live in `tests/helpers/invariants.py`; extend them when a new state appears.
-- Static checks run in CI: Ruff, Pyright and pip-audit (`pip install -e ".[lint]"`). Fix what they report; do not
-  silence a rule without a reason in the line's comment. Ruff runs twice: `ruff check .`, and
-  `ruff check --preview --select E301,E302,E303,E304,E305,E306 .` for the blank-line rules, which are preview-only.
+- **A worktree's tests, and `tools/reference.py`, need an absolute `PYTHONPATH`** to that worktree's `src` when the
+  venv's `aew` is an editable install of another checkout. A relative `PYTHONPATH=src` silently runs the other
+  checkout's code.
+- **On Windows, never open console windows** (`subprocess.CREATE_NO_WINDOW`).
 
 ## Code
 
@@ -104,25 +69,12 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   several causes. Tests and operators rely on both. A refusal says what was refused, why, and what to do instead.
 - **Reuse work product, not proof.** Evidence is bound to the snapshot it was produced on; a change invalidates the
   proof even when it keeps the work.
-- **A new command or typed tool ships with its surface-map entry and honours it** (operator, 2026-10-12;
-  [`docs/implementation/surface-map.md`](docs/implementation/surface-map.md)). In the same pull request, add its full
-  entry to `docs/implementation/surface-map.yaml`: home, mutates, users, journeys, refusals, and a decided
-  `lead_disposition` if the Lead can use it to change anything. Reachability is decided by the mechanism, not by
-  `users`: a mutating command that takes no Lead credential and is neither `OPERATOR_ONLY` nor internal (with its
-  `launcher`) states `lead_kept_out_by`, which the test proves by running the command in a Lead session's
-  environment (a stated claim is not enough). The code must honour that disposition in the same pull
-  request. `typed` means the Lead reaches it through a typed tool with a proved primitive, never through the shell
-  (keep it out of `lead_broker.LEAD_REACHABLE`). `engine-owned` means the engine does it, and it is absent from
-  `LEAD_REACHABLE` and the typed surface. `forbidden-to-lead` means it is reachable through neither Lead door.
-  `tests/unit/test_surface_map.py` (`new_surface`) enforces this. Its grandfathered baseline only shrinks.
-  A surface declared `mutates: "no"` also gives a `probe`: one or more argument lists that run its real path (exit
-  0, every option it takes) against the test's sample project and leave the sample unchanged. A refused or exempt
-  probe is only for the test's pinned `PROBE_LIMITED` list, which only shrinks. A new `diagnostic` home has no
-  journeys and gives a one-line `diagnostic_justification`.
+- **A new command or typed tool ships with its surface-map entry and honours it** in the same pull request (operator,
+  2026-10-12). What the entry holds and how the test proves it are in
+  [`surface-map.md`](docs/implementation/surface-map.md).
 - **Derive, don't restate** (operator, 2026-10-12). Every fact has one owner. Its consumers derive it from the owner's
   accessor and never restate it by hand: restating a fact is a defect. Every plan names the facts it consumes and their
-  owners. The information catalog (planned; it generalises the owner registry of register F44) will list the owners
-  and their accessors.
+  owners.
 - External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
   a harness's current online documentation.
 

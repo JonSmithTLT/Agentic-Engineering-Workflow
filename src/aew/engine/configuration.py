@@ -41,7 +41,7 @@ from aew.knowledge.manifest import MANIFEST
 from aew.policy import config_paths as P
 from aew.policy import execution as X
 from aew.schemas import iter_errors, schema, validate
-from aew.util import load_yaml, sha256_bytes
+from aew.util import YAML_TOO_DEEP, load_yaml, sha256_bytes
 
 DIGEST_SCHEME = "aew/config-digest/v2"
 PROJECT, EXECUTION = "project", "execution"
@@ -360,14 +360,17 @@ def violations(data: Any) -> list[dict[str, Any]]:
 
 def parse_structured(raw: bytes) -> tuple[Any, list[dict[str, Any]], dict[str, Any] | None]:
     """``(document, violations, yaml_error)`` for an execution policy's bytes: the parsed document (None when it does
-    not parse) and what is wrong with it, as structure. A document the walk cannot process (a nesting deep enough to
-    exhaust the recursion limit, or any other failure) is one structured violation at the root, ``UNPROCESSABLE``,
-    never an exception or its text."""
+    not parse) and what is wrong with it, as structure. A document nested deeper than the YAML bound
+    (``util.YAML_MAX_DEPTH``, refused before it is composed, on every platform and Python), or one the walk cannot
+    process for any other reason, is one structured violation at the root, ``UNPROCESSABLE``, never an exception or
+    its text."""
     try:
         data = load_yaml(raw.decode("utf-8"), source=X.REL_PATH)
     except UnicodeDecodeError:
         return None, [], yaml_error(None)
     except ValidationFailed as exc:
+        if exc.details.get("reason") == YAML_TOO_DEEP:
+            return None, [UNPROCESSABLE_VIOLATION], None
         return None, [], yaml_error(exc)
     except Exception:  # RecursionError and the like: fail closed, as structure
         return None, [UNPROCESSABLE_VIOLATION], None

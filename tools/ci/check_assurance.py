@@ -10,6 +10,9 @@ For every required platform it proves, from the lane reports written by ``pytest
 * the skipped tests are exactly the pinned platform skips (``tests/platform-skips.yaml``);
 * no xfail/xpass occurred unless pinned there.
 
+It judges each shard's latest run attempt only (``latest_attempts``): a re-run job's report supersedes its earlier
+attempt's, whichever of them failed.
+
 The change's tier (CI redesign P1, ``tools/ci/tier.py``) says which lanes are required. ``full`` requires every
 collected test; a reduced tier requires every collected test of its lanes, by the lane each report records for every
 collected test. A reduced tier is refused outright on any event but a pull request, and when a report does not record
@@ -46,6 +49,7 @@ SKIPS_SCHEMA = "aew/platform-skips/v1"
 
 
 def load_reports(root: Path) -> list[dict[str, Any]]:
+    """The lane reports under ``root``, each shard's latest attempt only (``latest_attempts``)."""
     reports = []
     for path in sorted(root.rglob("*.json")):
         if AUTOPSY_DIR in path.relative_to(root).parts:
@@ -54,7 +58,38 @@ def load_reports(root: Path) -> list[dict[str, Any]]:
         if data.get("schema") == REPORT_SCHEMA:
             data["_source"] = str(path.relative_to(root))
             reports.append(data)
-    return reports
+    return latest_attempts(reports)
+
+
+def latest_attempts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Only the reports of each shard's latest run attempt. A re-run job uploads its report under an artifact name of
+    its own attempt (``ci.yml``), so the reports of every attempt arrive, and an older one must never decide: not a
+    failure a re-run fixed, and not a pass that hides a newer failure.
+
+    Per platform and lane, the lane's latest attempt gives its shard count (Re-run all jobs re-plans the shards, and
+    an earlier plan's shards are superseded whole); per shard of that count, every report of its latest attempt stays,
+    so two of one attempt still run their tests twice. A report that records no attempt is the first."""
+    def attempt(r: dict[str, Any]) -> int:
+        return int(r.get("attempt") or 1)
+
+    def lane(r: dict[str, Any]) -> tuple[str | None, str | None]:
+        return r.get("platform"), r.get("lane")
+
+    def count(r: dict[str, Any]) -> str | None:
+        return r["shard"].split("/")[1] if r.get("shard") else None
+
+    newest: dict[tuple[str | None, str | None], int] = defaultdict(int)
+    for r in reports:
+        newest[lane(r)] = max(newest[lane(r)], attempt(r))
+    counts: dict[tuple[str | None, str | None], set[str | None]] = defaultdict(set)
+    for r in reports:
+        if attempt(r) == newest[lane(r)]:
+            counts[lane(r)].add(count(r))
+    planned = [r for r in reports if count(r) in counts[lane(r)]]
+    latest: dict[tuple[str | None, str | None, str | None], int] = defaultdict(int)
+    for r in planned:
+        latest[(*lane(r), r.get("shard"))] = max(latest[(*lane(r), r.get("shard"))], attempt(r))
+    return [r for r in planned if attempt(r) == latest[(*lane(r), r.get("shard"))]]
 
 
 def load_expectations(path: Path) -> dict[str, Any]:

@@ -25,6 +25,7 @@ import pytest
 from aewflow import create_investigation, create_unit, sample_project
 from fake_harness import HarnessLab
 from invariants import assert_control_invariants
+from racing_read import read_text_or_none
 
 from aew.harness import runlog
 from aew.harness.opencode import capabilities
@@ -97,7 +98,7 @@ def test_an_agent_cannot_send_a_prompt_to_another_run_by_writing_a_request_file(
     # The Lead's own message is delivered.
     lab.ok("harness", "send", "R-INV-0001-1", "--text", "Lead message", "--token", lab.project.token)
     inbox = victim_dir / "harness" / "inbox.jsonl"
-    lab.until(lambda: inbox.exists() and inbox.read_text(encoding="utf-8").strip(), what="the Lead's message")
+    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
     assert [json.loads(line)["text"] for line in inbox.read_text(encoding="utf-8").splitlines()] == ["Lead message"]
     assert_control_invariants(lab.project)
 
@@ -109,7 +110,7 @@ def test_a_lead_request_is_acted_on_once_and_only_as_recorded(lab, tmp_path):
     victim_dir = runlog.run_dir(lab.aew_root, run)
     lab.ok("harness", "send", run, "--text", "first", "--token", lab.project.token)
     inbox = victim_dir / "harness" / "inbox.jsonl"
-    lab.until(lambda: inbox.exists() and inbox.read_text(encoding="utf-8").strip(), what="the Lead's message")
+    lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
     entry = next(r for r in lab.ok("invoke", "show", "INV-0001")["runs"] if r["run"] == run)["requests"][0]
     assert entry["kind"] == "send" and len(entry["sha256"]) == 64 and "text" not in entry
     # Replaying the recorded file name, with the recorded content or another, is refused.

@@ -230,12 +230,12 @@
             "type": "string"
           },
           "worker": {
-            "description": "M4-E E6a (plan v3 §2.3, S2): an integration-attempt custodian's custody worker, as it registered itself in its own first commit: lifecycle identity (liveness), never authorization.",
+            "description": "M4-E E6a (plan v3 §2.3, S2): an integration-attempt custodian's custody worker, as it registered itself in its own first commit: lifecycle identity (liveness), never authorization. `start_id` (ADR-0009 amendment 2026-10-23) names the process with its pid and is compared exactly; a worker registered before it, or whose start id was unknown, is judged by `started_at` instead.",
             "type": "object",
             "required": ["host_pid", "started_at", "host", "registered_at"],
             "additionalProperties": false,
             "properties": {"host_pid": {"type": "integer"}, "started_at": {"type": "number"}, "host": {"type": "string"},
-                           "registered_at": {"type": "string"}}
+                           "registered_at": {"type": "string"}, "start_id": {"type": "string"}}
           },
           "role": {
             "enum": [

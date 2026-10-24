@@ -316,10 +316,21 @@ def test_ids_limits_and_cursors_are_checked_before_any_lookup(live):
         assert status == 400 and error_code(raw) in ("INVALID_REQUEST", "CURSOR_INVALID"), path
 
 
+def _wait_for_slots(live: Live, free: int) -> None:
+    """Until ``free`` of the in-flight slots are free. A handler gives its slot back only after its answer is on the
+    wire, so a test that fills the bound waits for all of them first: the previous test can have read its last answer
+    while that answer's handler still holds its slot."""
+    deadline = time.monotonic() + 30
+    while live.server._slots._value != free:  # noqa: SLF001 (the in-flight bound)
+        assert time.monotonic() < deadline, live.server._slots._value  # noqa: SLF001
+        time.sleep(0.05)
+
+
 def test_the_seventeenth_request_in_flight_is_503(live):
     """Sixteen API requests wait behind the projection lock (held here); the next request of any kind is refused at
     once with ``Retry-After``, and once the lock is released every waiting request is answered."""
     results: list[int] = []
+    _wait_for_slots(live, SV.MAX_IN_FLIGHT)
     held = live.server._serial  # noqa: SLF001 (the lock every projection takes)
     held.acquire()
     threads = [threading.Thread(target=lambda: results.append(live.request("GET", "/api/v1/project")[0]))
@@ -327,11 +338,7 @@ def test_the_seventeenth_request_in_flight_is_503(live):
     try:
         for t in threads:
             t.start()
-        deadline = 0
-        while live.server._slots._value > 0 and deadline < 200:  # noqa: SLF001 (wait until all 16 are in flight)
-            threading.Event().wait(0.05)
-            deadline += 1
-        assert live.server._slots._value == 0  # noqa: SLF001
+        _wait_for_slots(live, 0)  # all sixteen in flight
         for path in ("/api/v1/project", "/"):
             status, headers, raw = live.request("GET", path)
             assert status == 503 and headers.get("retry-after") == "1" and error_code(raw) == "SERVER_BUSY"
@@ -415,6 +422,9 @@ def _busy(live: Live) -> None:
 
 
 def _wait_for_connections(live: Live, free: int) -> None:
+    """Until ``free`` connection slots are free. A connection gives its slot back only when its handler thread ends,
+    after its last answer was read, so a test that fills the bound waits for all of them first, as with the in-flight
+    slots (``_wait_for_slots``)."""
     deadline = time.monotonic() + 30
     while live.server.httpd.connections._value != free:  # noqa: SLF001 (the admission semaphore)
         assert time.monotonic() < deadline, live.server.httpd.connections._value  # noqa: SLF001
@@ -424,6 +434,7 @@ def _wait_for_connections(live: Live, free: int) -> None:
 def test_half_sent_requests_hold_no_more_than_the_connection_bound(live):
     """Connections that never finish their headers each hold a handler thread: at the bound, the next connection
     is answered 503 at once, before anything of it is read, and the server recovers when they go."""
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
     held = [_connect_partial(live) for _ in range(SV.MAX_CONNECTIONS)]
     try:
         _wait_for_connections(live, 0)
@@ -436,6 +447,7 @@ def test_half_sent_requests_hold_no_more_than_the_connection_bound(live):
 
 
 def test_idle_keep_alive_connections_hold_no_more_than_the_connection_bound(live):
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
     held = []
     try:
         for _ in range(SV.MAX_CONNECTIONS):
@@ -533,6 +545,7 @@ def test_every_request_stdlib_would_read_headers_for_is_bounded_while_it_is_read
 def test_every_refused_connection_reads_its_503_rather_than_a_reset(live):
     """Finding 3: the busy answer is completed and the client's request drained before the close, so a refused
     client reads the 503 instead of a connection reset."""
+    _wait_for_connections(live, SV.MAX_CONNECTIONS)
     held = [_connect_partial(live) for _ in range(SV.MAX_CONNECTIONS)]
     try:
         _wait_for_connections(live, 0)
@@ -772,6 +785,7 @@ def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second
     inner = _inner_read(live)
     outer = f"GET / HTTP/1.1\r\nHost: {live.host}\r\nContent-Length: {len(inner)}\r\n\r\n".encode("latin-1")
     slots = live.server._slots  # noqa: SLF001 (the in-flight bound, filled in-process)
+    _wait_for_slots(live, SV.MAX_IN_FLIGHT)
     held = 0
     while slots.acquire(blocking=False):
         held += 1

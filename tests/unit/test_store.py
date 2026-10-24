@@ -302,8 +302,11 @@ def test_a_holder_leaves_the_turnstile_free_so_the_next_taker_queues_behind_it(t
 
 
 def test_a_taker_that_cannot_open_the_lock_lets_the_turnstile_go(tmp_path):
-    """Every way out of taking the lock releases the turnstile: here the lock file cannot be opened (a directory at
-    its path) after the turnstile was taken."""
+    """Every synchronous way out of taking the lock releases the turnstile: here the lock file cannot be opened (a
+    directory at its path) after the turnstile was taken. Not covered, like the existing window between taking the
+    lock and recording it: an asynchronous KeyboardInterrupt just after the turnstile is taken, or a failed unlock of
+    it once the lock is held. Either leaves a lock held while the exception lives, never two holders (ADR-0001,
+    amendment 2026-10-23)."""
     from aew.engine.lock import FileLock
 
     path = tmp_path / "control.lock"

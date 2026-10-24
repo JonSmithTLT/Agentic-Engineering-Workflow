@@ -10,9 +10,13 @@ The lock is fair (ADR-0001, amendment 2026-10-23): a taker first takes a turnsti
 asked again win nearly every time, so a waiter waited through the holder's whole run of transactions. Now that holder
 queues behind the waiter: two takers alternate, and with more the next holder is whichever queued taker polls first.
 The turnstile only orders takers and excludes no one: a taker that cannot open it polls the lock without it, and it
-has no removed-file check, so removing ``local/`` can cost fairness for a moment, never exclusion. A process stopped
-while it waits (Ctrl+Z, a debugger) holds the turnstile, and every other taker waits behind it, as behind a stopped
-holder (operator decision, 2026-10-23).
+has no removed-file check, so removing ``local/`` can cost fairness for a moment, never exclusion.
+
+The accepted con (operator decision, 2026-10-23): a queued taker that is not running (stopped by Ctrl+Z or a debugger,
+a suspended Windows process, a frozen cgroup or job) holds the turnstile for as long as it stays so. Meanwhile every
+take of that lock fails after its caller's full timeout (60 s for the control store and the map registry, 30 s for the
+dashboard endpoint, 0.5 s for an operator endpoint claim, which then reports the endpoint "live or starting"). Unlike
+behind a stopped holder, the lock itself is free: look for the process holding ``<lock>.queue``.
 """
 
 from __future__ import annotations

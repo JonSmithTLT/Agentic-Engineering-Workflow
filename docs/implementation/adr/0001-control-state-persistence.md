@@ -152,9 +152,15 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
     2026-10-04).
   - A taker that cannot open the turnstile takes the lock without it, rather than failing.
   - STG-05 CB-09's lock-free readers take neither lock.
-- **Accepted con** (operator, 2026-10-23). A process stopped while it waits (Ctrl+Z, a debugger) holds the turnstile.
-  Every other taker then waits behind it until its timeout, as behind a stopped holder. A crash or a kill frees it.
-  A bypass after a set wait was rejected: for holds longer than that wait, it gives the releaser its lead back.
+- **Accepted con** (operator, 2026-10-23). A queued taker that is not running holds the turnstile for as long as it
+  stays so: one stopped by Ctrl+Z or a debugger, a suspended Windows process, or a frozen cgroup or job.
+  - Meanwhile every take of that lock fails after its full timeout. That is 60 s for the control store
+    (`ControlStore`'s `lock_timeout` default) and the map registry, and 30 s for the dashboard endpoint
+    (`dashboard.service.LOCK_TIMEOUT_S`). It is 0.5 s for an operator endpoint claim
+    (`operator_endpoint.CLAIM_TIMEOUT_S`), which then reports the endpoint "live or starting".
+  - Unlike behind a stopped holder, the lock itself is free: look for the process holding `<lock>.queue`.
+  - A crash or a kill frees it.
+  - A bypass after a set wait was rejected: for holds longer than that wait, it gives the releaser its lead back.
 - **Measured** (prototype, 50 back-to-back takes per process, Windows and WSL Linux):
 
   | Takers | Polling: longest wait | Turnstile: longest wait | Turnstile: holds waited through per take |
@@ -164,12 +170,18 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
 
   An uncontended take costs 147 µs more on Windows and 7 µs more on Linux.
 - **Tests.**
-  - `tests/integration/test_store_processes.py::test_a_taker_waiting_for_the_lock_gets_it_within_about_one_hold`
+  - `tests/integration/test_store_processes.py::test_two_takers_of_the_lock_alternate_so_a_waiter_gets_it_within_about_one_hold`
     (serial) runs two real processes, 12 takes each, with 100 ms holds. Outside the survivor's final run, no taker
     holds the lock more than twice in a row while the other waits, and every wait is under three holds. Run against
     the old polling loop, it fails with one taker holding the lock 12 times in a row.
   - In `tests/unit/test_store.py`:
     - the turnstile is free while the lock is held, and after a taker times out;
-    - a taker that cannot open the lock lets the turnstile go;
+    - a taker that cannot open the lock lets the turnstile go. Every synchronous way out does. Two narrow windows
+      remain, like the existing one between taking the lock and recording it:
+      - an asynchronous `KeyboardInterrupt` just after the turnstile is taken and before `__enter__`'s `try`;
+      - a failed unlock of the turnstile once the lock is held, which leaves the lock unrecorded.
+
+      Either leaves a lock held while the exception lives. There are never two holders, and the OS frees both when
+      the process exits;
     - a taker stuck in the turnstile holds others back until their timeout;
     - a turnstile that cannot be opened costs fairness, never the lock.

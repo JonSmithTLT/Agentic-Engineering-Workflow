@@ -25,6 +25,8 @@ pytestmark = pytest.mark.serial
 
 WORKER = HELPERS / "store_worker.py"
 HISTORY_WORKER = HELPERS / "history_worker.py"
+# Every child of this module runs without a console window on Windows (CLAUDE.md, "never open console windows").
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 # Transactions per racing writer. The merge gate uses 50; the nightly race-repeat job raises it.
 RACE_WRITES = int(os.environ.get("AEW_RACE_WRITES", "50"))
 FAULT_POINTS = [
@@ -51,7 +53,7 @@ def run_worker(root: Path, count: int, *extra: str, fault: str | None = None) ->
         env["AEW_FAULT"] = fault
     return subprocess.run(
         [sys.executable, str(WORKER), str(root), str(count), *extra],
-        env=env, capture_output=True, text=True, timeout=300,
+        env=env, capture_output=True, text=True, timeout=300, **NO_WINDOW,
     )
 
 
@@ -76,7 +78,7 @@ def test_two_racing_writers_lose_no_updates(tmp_path):
     env.pop("AEW_FAULT", None)
     procs = [
         subprocess.Popen([sys.executable, str(WORKER), str(tmp_path), str(RACE_WRITES)], env=env,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **NO_WINDOW)
         for _ in range(2)
     ]
     for p in procs:
@@ -107,18 +109,18 @@ def runs_before_last(order: str) -> list[int]:
     return runs[:-1]
 
 
-def test_a_taker_waiting_for_the_lock_gets_it_within_about_one_hold(tmp_path):
+def test_two_takers_of_the_lock_alternate_so_a_waiter_gets_it_within_about_one_hold(tmp_path):
     """Liveness (ADR-0001, amendment 2026-10-23): two processes take the lock back to back. A waiter is served within
     about one hold, not after the holder's whole loop: no holder takes it more than twice in a row while the other
-    waits, and no wait reaches a few holds. Before the turnstile, polling alone let a releaser re-lock within
-    microseconds, so one racer ran its whole loop while the other waited (the nightly's LockTimeout, 2026-10-23)."""
+    waits, and no wait reaches a few holds. With more takers the wait grows (the ADR's table). Before the turnstile,
+    polling alone let a releaser re-lock within microseconds, so one racer ran its whole loop while the other waited
+    (the nightly's LockTimeout, 2026-10-23)."""
     lock, order, go = tmp_path / "control.lock", tmp_path / "order.txt", tmp_path / "go"
     order.write_text("", encoding="utf-8")
     env = dict(os.environ)
     procs = {name: subprocess.Popen([sys.executable, str(LOCK_WORKER), str(lock), str(FAIR_TAKES), str(FAIR_HOLD_S),
                                      name, str(order), str(go)], env=env, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True,
-                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                    stderr=subprocess.PIPE, text=True, **NO_WINDOW)
              for name in "AB"}
     try:
         deadline = time.monotonic() + 60
@@ -160,7 +162,7 @@ def run_history_worker(root: Path, units: int, *extra: str, fault: str) -> subpr
     env.pop("AEW_FAULT_MODE", None)
     env["AEW_FAULT"] = fault
     return subprocess.run([sys.executable, str(HISTORY_WORKER), str(root), str(units), *extra],
-                          env=env, capture_output=True, text=True, timeout=300)
+                          env=env, capture_output=True, text=True, timeout=300, **NO_WINDOW)
 
 
 @pytest.mark.parametrize("point", HISTORY_POINTS + ["txn.after_stage", "txn.mid_apply"])
@@ -200,15 +202,14 @@ def test_process_killed_at_each_sealing_point_recovers(tmp_path, point):
     extend_log(tmp_path, 300, overflow_every=13)
     env = dict(os.environ, AEW_FAULT=point)
     env.pop("AEW_FAULT_MODE", None)
-    kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     proc = subprocess.run([sys.executable, str(COMPACT_WORKER), str(tmp_path), "8"], env=env, capture_output=True,
-                          text=True, timeout=300, **kwargs)
+                          text=True, timeout=300, **NO_WINDOW)
     assert proc.returncode == CRASH_EXIT_CODE, proc.stderr
     state = make_store(tmp_path).read()
     assert outbox_violations(tmp_path, state) == []  # one valid representation of every transition, readable
     one_transaction(make_store(tmp_path))  # commits continue over a half-sealed log
     env.pop("AEW_FAULT")
     proc = subprocess.run([sys.executable, str(COMPACT_WORKER), str(tmp_path), "8"], env=env, capture_output=True,
-                          text=True, timeout=300, **kwargs)
+                          text=True, timeout=300, **NO_WINDOW)
     assert proc.returncode == 0, proc.stderr
     assert check_invariants(tmp_path, synthetic_through=300) == 301

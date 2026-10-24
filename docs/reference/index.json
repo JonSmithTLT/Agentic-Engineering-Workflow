@@ -1,15 +1,20 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 6,
-      "lower-bound": 335
+      "complete-by-construction": 32,
+      "lower-bound": 401
     },
     "by_family": {
+      "control-keys": 92,
       "entry-points": 6,
       "modules": 174,
       "writers": 161
     },
     "by_family_and_coverage": {
+      "control-keys": {
+        "complete-by-construction": 26,
+        "lower-bound": 66
+      },
       "entry-points": {
         "complete-by-construction": 6
       },
@@ -20,11 +25,17 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:e9398857e2949ffadca96bc00ca4c8f1e51ac0b5bee5039d6fed8ce6aa3b32e1",
-    "records": 341,
-    "unresolved": 69
+    "digest": "sha256:da4955c95de44a3151d9ac4453af392b8bbba50a49b767c9a3670b8a7095295b",
+    "records": 433,
+    "unresolved": 70
   },
   "gaps": [
+    {
+      "family": "control-keys",
+      "module": "aew.engine.ticket_fields",
+      "symbol": "load_registry",
+      "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+    },
     {
       "family": "entry-points",
       "module": "aew.dashboard.projections",
@@ -441,6 +452,2254 @@
     }
   ],
   "records": {
+    "control-keys:anomalies": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "anomalies",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:archived_refs": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "archived_refs",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:cold": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "cold",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:coordination_store": {
+      "anchor": {
+        "module": "aew.coordination.layout",
+        "symbol": "STORE_KEY"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "coordination_store",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:coordination_unseen": {
+      "anchor": {
+        "module": "aew.coordination.layout",
+        "symbol": "UNSEEN_KEY"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "coordination_unseen",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:counters": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "counters",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:invocations": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "invocations",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:last_transition": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "last_transition",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:latest_handoff": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "latest_handoff",
+        "required": false,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:lead": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "lead",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:manifest_sha256": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "manifest_sha256",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:next_action": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "next_action",
+        "required": false,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:outbox": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": "ControlStore.create"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "outbox",
+        "required": false,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:policy_sha256": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "POLICY_PINS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "policy_sha256",
+        "required": false,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:project_id": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "project_id",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:queue": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "queue",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:recent": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "recent",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:retained_workspaces": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "retained_workspaces",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:retired_observations": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "retired_observations",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:revision": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "revision",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:schema": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "schema",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:spec_set": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "spec_set",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:stage_intents": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "stage_intents",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:steering": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": "V2_ONLY_KEYS"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": false,
+        "key": "steering",
+        "required": false,
+        "scope": "control",
+        "v2_only": true
+      },
+      "family": "control-keys"
+    },
+    "control-keys:tokens": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "tokens",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:archived_children": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "archived_children",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:attempts": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "attempts",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:attention": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "attention",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:baseline_commit": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "baseline_commit",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:blocked_by": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "blocked_by",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:blocked_descendants": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "blocked_descendants",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:cancellation": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "cancellation",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:carried_obligations": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:gate_set",
+        "in_schema": false,
+        "key": "carried_obligations",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:classifications": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "classifications",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:closeout": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "closeout",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:commit_ready_gates": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "commit_ready_gates",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:commit_ready_seq": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "commit_ready_seq",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:commit_ready_snapshot": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "commit_ready_snapshot",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:completion_record": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "completion_record",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:completion_sha256": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "completion_sha256",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:coordination": {
+      "anchor": {
+        "module": "aew.coordination.layout",
+        "symbol": "UNIT_KEY"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "coordination",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:coverage_obligations": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "coverage_obligations",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:created_at": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "created_at",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:depends_on": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:dependencies",
+        "in_schema": true,
+        "key": "depends_on",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:dispositions": {
+      "anchor": {
+        "module": "aew.engine.disposition_ops",
+        "symbol": "UNIT_KEY"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "dispositions",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:environment_blocker": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "environment_blocker",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:escalated_from": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "escalated_from",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:evidence": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "evidence",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:execution": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "execution",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:execution_history": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "execution_history",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:failure_evidence": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "failure_evidence",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:findings": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "findings",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:hierarchy_baseline": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "hierarchy_baseline",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:history": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "history",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:history_refs": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "history_refs",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:implementer_invocation": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "implementer_invocation",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:input_acknowledgements": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "input_acknowledgements",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:integration": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "integration",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:integration_frontier": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "integration_frontier",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:integration_history": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "integration_history",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:interrupted_from": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "interrupted_from",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:invocations": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "invocations",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:kind": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:kind",
+        "in_schema": true,
+        "key": "kind",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:last_verification": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "last_verification",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:legacy_digest": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "legacy_digest",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:mutating": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:kind",
+        "in_schema": true,
+        "key": "mutating",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:parent": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:parent",
+        "in_schema": true,
+        "key": "parent",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:parent_history": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "parent_history",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:parent_verification": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "parent_verification",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:plan": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "plan",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:plans": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "plans",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:policy": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:gate_set",
+        "in_schema": false,
+        "key": "policy",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:promoted_from": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:parent",
+        "in_schema": false,
+        "key": "promoted_from",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:queue_history": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "queue_history",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:record": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "record",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:record_sha256": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "record_sha256",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:recorded_digests": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "recorded_digests",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:revision_events": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "revision_events",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:revision_impact_holds": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "revision_impact_holds",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:revision_pending": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "revision_pending",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:revision_refusals": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "revision_refusals",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:revisions": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "revisions",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:risk_class": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:gate_set",
+        "in_schema": true,
+        "key": "risk_class",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:role_plan": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:staffing",
+        "in_schema": false,
+        "key": "role_plan",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:stage_intents": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "stage_intents",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:state": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": true,
+        "key": "state",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:state_reason": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "state_reason",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:ticket_revision": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "ticket_revision",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:title": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "input:card",
+        "in_schema": true,
+        "key": "title",
+        "required": true,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:waivers": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "waivers",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:unit:workspace": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": "load_registry"
+      },
+      "basis": "declared",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.ticket_fields",
+            "symbol": "load_registry",
+            "why": "the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it"
+          }
+        ]
+      },
+      "fact": {
+        "classification": "bookkeeping",
+        "in_schema": false,
+        "key": "workspace",
+        "required": false,
+        "scope": "unit"
+      },
+      "family": "control-keys"
+    },
+    "control-keys:work": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": "Engine.initialize"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_control_keys.py::test_every_load_and_commit_of_the_control_state_is_validated",
+          "tests/integration/test_reference_control_keys.py::test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "initial": true,
+        "key": "work",
+        "required": true,
+        "scope": "control",
+        "v2_only": false
+      },
+      "family": "control-keys"
+    },
     "entry-points:aew": {
       "anchor": {
         "module": "aew.cli.main",

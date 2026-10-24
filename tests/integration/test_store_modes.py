@@ -204,9 +204,12 @@ def test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_
     umask(0o022)
     e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
     wider(e.aew_root, 0o777, 0o777)  # how every path reads there
-    touched = []
+    store_dir, real_chmod, touched = (e.aew_root / "state").resolve(), os.chmod, []
 
     def chmod(path, m, *a, **kw):
+        # Only the store is on that file system: doctor's containment check makes files of its own elsewhere.
+        if not Path(path).is_relative_to(store_dir):
+            return real_chmod(path, m, *a, **kw)
         touched.append(Path(path).name)
         if refusal is not None:
             raise OSError(refusal, os.strerror(refusal), str(path))

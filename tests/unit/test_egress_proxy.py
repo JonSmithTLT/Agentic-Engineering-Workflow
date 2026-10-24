@@ -48,10 +48,12 @@ class Resolver:
 
 
 def ended(sock: socket.socket) -> bool:
-    """The far side of a closed tunnel sees its end: EOF, or a reset when it had sent bytes nobody read. A tunnel
-    that stays open makes this raise TimeoutError instead."""
+    """The far side of a closed tunnel sees its end, after whatever was already on its way: EOF, or a reset when it
+    had sent bytes nobody read. A tunnel that stays open makes this raise TimeoutError instead."""
     try:
-        return sock.recv(1) == b""
+        while sock.recv(64 * 1024):
+            pass
+        return True
     except ConnectionResetError:
         return True
 
@@ -120,8 +122,10 @@ def served(proxy: EgressProxy, *, small: bool = False) -> Iterator[socket.socket
     finally:
         client.close()
         thread.join(TIMEOUT)
+        ended_by_itself = not thread.is_alive()  # before close(), which would end it anyway
         proxy.close()
-        assert not thread.is_alive()
+        thread.join(TIMEOUT)
+        assert ended_by_itself
 
 
 def request(target: str, *headers: str) -> bytes:
@@ -524,11 +528,14 @@ def test_the_whole_request_head_has_one_deadline():
         sender.start()
         try:
             status, headers, _ = response(client)
+            assert (status, headers["X-AEW-Refusal"]) == (408, "header_timeout")
+        except ConnectionResetError:
+            pass  # a byte that arrived after the proxy's last read made its close a reset: the end came all the same
         finally:
             stop.set()
             sender.join(TIMEOUT)
         elapsed = time.monotonic() - started
-    assert (status, headers["X-AEW-Refusal"]) == (408, "header_timeout")
+    assert proxy.decisions == {"header_timeout": 1}
     assert elapsed < 3 * timeout
 
 
@@ -564,9 +571,13 @@ def test_a_tunnel_ends_both_ways_even_while_a_direction_is_mid_send(ending):
             client.sendall(request("public.example:443"))
             assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
             far = spy.far[0]
-            source = client if ending == "upstream_ends" else far  # the other side never reads it
-            writer = threading.Thread(target=send_until_closed, args=(source, stream), daemon=True)
-            writer.start()
+            # The side or sides that stream, which the other never reads. For close(), both directions are blocked
+            # at once, so that no relay is waiting where the wake socket reaches it: only close()'s shutdown does.
+            sources = {"client_ends": [far], "upstream_ends": [client], "proxy_closes": [client, far]}[ending]
+            writers = [threading.Thread(target=send_until_closed, args=(source, stream), daemon=True)
+                       for source in sources]
+            for writer in writers:
+                writer.start()
             try:
                 time.sleep(0.3)  # long enough for the stream to fill every buffer on its way
                 if ending == "client_ends":
@@ -579,8 +590,9 @@ def test_a_tunnel_ends_both_ways_even_while_a_direction_is_mid_send(ending):
                     proxy.close()
                     assert ended(far)
             finally:
-                proxy.close()  # closing the tunnel's sockets wakes the writer at once, on Windows too
-                writer.join(TIMEOUT)
+                proxy.close()  # closing the tunnel's sockets wakes the writers at once, on Windows too
+                for writer in writers:
+                    writer.join(TIMEOUT)
     finally:
         spy.close()
 

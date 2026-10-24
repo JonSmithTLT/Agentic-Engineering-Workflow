@@ -463,8 +463,8 @@ class EgressProxy:
     def _relay(self, src: socket.socket, dst: socket.socket, done_r: socket.socket, done_w: socket.socket) -> None:
         """One direction, until ``src`` ends, the other direction ends (``done_r``), or ``close()`` (the proxy's
         wake socket). Both wake sockets stay readable once written, and are watched rather than relying on a
-        shutdown: on Windows a shutdown does not wake a blocked ``recv``. When this direction ends, both sockets are
-        shut down as well, which ends the other direction even mid-``sendall`` (on Linux)."""
+        shutdown: on Windows a shutdown made by another thread does not end a wait for ``src``. When this direction
+        ends, both sockets are shut down as well, which ends the other direction even mid-``sendall`` (on Linux)."""
         try:
             with selectors.DefaultSelector() as selector:
                 for sock in (self._wake_r, done_r, src):

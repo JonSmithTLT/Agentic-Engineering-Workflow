@@ -56,7 +56,6 @@ from typing import Any
 
 from aew import process_kind
 from aew.engine import faults
-from aew.engine.lock import FileLock
 from aew.engine.outbox import (
     LOG_DIR,
     LOG_WINDOW,
@@ -285,7 +284,7 @@ def compact(store: ControlStore, *, window: int = LOG_WINDOW) -> dict[str, Any]:
         if exists and not listing.leftovers(index):
             continue
 
-        def control_lock() -> FileLock:
+        def control_lock() -> AbstractContextManager[Any]:
             return store.control_lock("history compact")
 
         try:

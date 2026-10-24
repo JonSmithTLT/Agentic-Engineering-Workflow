@@ -13,7 +13,8 @@ committed revision (no hybrid states), and the outbox oracle rules 24 to 27;
 from __future__ import annotations
 
 import random
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,12 @@ def render(state: dict[str, Any]) -> dict[str, str]:
 
 def make_store(root: Path) -> ControlStore:
     return ControlStore(root, renderer=render, lock_timeout=120)
+
+
+def publish_lock(root: Path) -> Callable[[], AbstractContextManager[Any]]:
+    """The control lock around a segment's publish (``log_compact.seal_steps``' ``publish_lock``): every write into the
+    store is made by the holder of the control lock (STG-05 CB-08), which compares the store with its target first."""
+    return lambda: make_store(root).control_lock("history compact")
 
 
 def item_content(k: int) -> str:
@@ -192,14 +199,14 @@ def _verified_segment(root: Path, index: int, since: int | None) -> outbox.Segme
 
 def compaction_steps(root: Path, since: int, revision: int, window: int,
                      rng: random.Random | None = None) -> Iterator[dict[str, Any]]:
-    """One compaction run as a sequence of durable steps (``log_compact.seal_steps`` per eligible segment, without the
-    control lock: the model interleaves in one process). With ``rng`` it may crash, i.e. stop for good, after any
-    step."""
+    """One compaction run as a sequence of durable steps (``log_compact.seal_steps`` per eligible segment, holding the
+    control lock only around each publish, as ``log_compact.compact`` does, so the model can interleave commits in one
+    process between steps). With ``rng`` it may crash, i.e. stop for good, after any step."""
     for index in range(log_compact.eligible_segments(revision, window)):
         listing = log_compact.scan(root)
         if index in listing.segments and not listing.leftovers(index):
             continue
-        for step in log_compact.seal_steps(root, index, since):
+        for step in log_compact.seal_steps(root, index, since, publish_lock(root)):
             yield step
             if rng is not None and rng.random() < 0.01:
                 return

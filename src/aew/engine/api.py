@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -45,7 +46,7 @@ from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
-from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore, operator_gid
+from aew.engine.store import ControlStore
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -279,28 +280,12 @@ class ProjectAdmin:
         except Exception as exc:  # report, never crash
             add("control-state", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
             return checks
-        below = self.k.store.mode_problems()  # the store's modes (STG-05 CB-08); None where there are none (Windows)
-        if below is not None:
-            add("store-modes", "WARN" if below else "PASS",
-                f"{len(below)} path(s) in the store are below {STORE_FILE_MODE:04o} (files) or {STORE_DIR_MODE:04o} "
-                f"(directories), the modes AEW writes the store with, which a reader running as your group needs: "
-                f"{', '.join(below[:5])}{' ...' if len(below) > 5 else ''}. Restore them with "
-                "`chmod -R u+rwX,g+rX .aew/state` (a path owned by another account needs that account, or `chown`)"
-                if below else
-                f"every file in the store is {STORE_FILE_MODE:04o} or wider, every directory {STORE_DIR_MODE:04o}")
-        # The store's group (review of #230, m6): those modes make it readable to the group the store's paths have,
-        # which is meant to be the operator's user-private primary group (`primary-group` checks that group).
-        gid = operator_gid()
-        others = self.k.store.group_problems(gid) if gid is not None else None
-        if others is not None:
-            add("store-group", "WARN" if others else "PASS",
-                f"{len(others)} path(s) in the store have a group other than your primary group (gid {gid}), so its "
-                "members can read them: "
-                f"{', '.join(f'{rel} (gid {g})' for rel, g in others[:5])}{' ...' if len(others) > 5 else ''}. A "
-                "process run under another group (`sg`, `newgrp`) or a set-group-ID directory above the store gives "
-                "new files that group. AEW changes no group: `chgrp -R <your group> .aew/state`, and write the store "
-                "from your own group" if others else
-                f"every path in the store has your primary group (gid {gid})")
+        # The store's group and modes (STG-05 CB-08; WIS-01a and D-CS1-11 as A-36 amends them). None on Windows.
+        if sys.platform != "win32":
+            from aew.doctor import store_checks
+
+            view = self.k.store.group_view()
+            checks.extend(store_checks(view, self.k.store.path_problems(view.target)))
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")

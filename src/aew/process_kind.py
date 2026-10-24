@@ -8,6 +8,12 @@ Every AEW entry point is in :data:`ENTRY_POINTS` with its kind:
   ``outbox.LogView`` and ``outbox.read_transitions``. These take no lock and run no recovery, so they work on a
   read-only store. Anything that needs the lock goes through the bridge of the process that holds the credential.
 
+**The table gives the engine's run-time kind, not WIS qualification** (designer ruling D-CS1-4; A-27, WIS-00 review
+R4-2). WIS qualifies a non-writer only when a unit AEW installs starts it, so `aew dashboard serve` started from a shell
+is a ``non_writer`` by kind, and an unqualified one (CB-10's development mode). The work-item fact issuer's gate
+(WIS-Q01) reads this table for the kind and checks the unit itself; nobody should read the table as a qualification
+list.
+
 An entry point declares itself once, at process start (:func:`declare`); ``ControlStore`` refuses ``read``,
 ``session`` and ``create`` in a non-writer before it opens the lock (:func:`require_writer`). A process that declared
 nothing (library use, a test calling the engine in-process) is a store writer, as before.

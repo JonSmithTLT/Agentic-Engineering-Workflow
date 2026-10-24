@@ -29,11 +29,16 @@ Model (ADR-0001):
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
   A process declared a non-writer (``aew.process_kind``, STG-05 CB-09) is refused
   all three before the lock is opened: it reads lock-free (``read_committed``).
-* The store (``state/`` and everything under it) is group-readable whatever the umask (STG-05 CB-08): its files are
-  :data:`STORE_FILE_MODE`, its directories :data:`STORE_DIR_MODE`, so a reader running as the operator's group (the
-  work-item fact issuer) can read it. Every other file AEW writes keeps ``0600``. :func:`write_file` picks the mode
-  from the path for every write the store makes, and the control file's temp is written at the store's mode; a store
-  written before this gets the modes once, in recovery (``_migrate_modes``).
+* The store (``state/`` and everything under it) has one **target** group and modes at a time, whatever the umask,
+  the process's effective group or a set-group-ID parent (STG-05 CB-08; D-CS1-10 and D-CS1-11 as A-36 amends them):
+  the store's group with :data:`STORE_FILE_MODE` and :data:`STORE_DIR_MODE` (group-readable, so the work-item fact
+  issuer can read it) where WIS-01a's group is private to the operator and every running store writer holds it, and
+  otherwise owner-only under the operator's primary group (``aew.engine.store_group``, ``aew.engine.store_writers``).
+  Every other file AEW writes keeps ``0600``. The target is computed under the control lock, at every open and before
+  every commit, and compared with the record, the control file's group **and** mode (D-CS1-1 as extended); where they
+  differ the whole store is walked to the target first, the control file last (``_walk``). Every write into the store
+  goes through :func:`write_file`, which refuses one made without the control lock, so no publication escapes the
+  comparison.
 * The transition log ``state/log/<rev>.yaml`` is derived from committed state and
   never authoritative, but it is complete and consumable (ADR-0012, amending
   ADR-0001): every revision has exactly one record, carrying the typed events the
@@ -62,20 +67,22 @@ import os
 import stat
 import sys
 import time
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
 from typing import Any, TypeVar
 
 from aew import process_kind, profile
 from aew.coordination import layout as coordination
-from aew.engine import faults, outbox
+from aew.engine import faults, outbox, store_group, store_writers
 from aew.engine.lock import FileLock
 from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision, ThreadUnsealed
 from aew.schemas import validate
 from aew.util import (
-    IS_WINDOWS,
+    GroupRefused,
     atomic_write,
     create_exclusive,
     dump_yaml,
@@ -90,12 +97,16 @@ from aew.util import (
 
 CHECKSUM_PREFIX = "# aew-checksum sha256:"
 STORE_REL = "state"
-# The store's modes (STG-05 CB-08; WIS-00 WISD-2): group-readable files, group-searchable directories. The one owner of
-# both: every write into the store goes through ``write_file`` (and ``store_dirs``), except the control file's temp,
-# which ``_commit_unprofiled`` writes with ``write_temp(..., mode=STORE_FILE_MODE)`` before it replaces the control
-# file.
-STORE_FILE_MODE = 0o640
-STORE_DIR_MODE = 0o750
+# The store's group-readable modes (STG-05 CB-08; WIS-00 WISD-2), which are also WIS-00's upper bound, and its
+# owner-only ones; ``store_group`` owns both pairs. Every write into the store goes through ``write_file`` (and
+# ``store_dirs``) at the target the holder of the control lock computed, except the control file's temp, which
+# ``_commit_unprofiled`` writes at the same target before it replaces the control file.
+STORE_FILE_MODE, STORE_DIR_MODE = store_group.GROUP_READ
+OWNER_FILE_MODE, OWNER_DIR_MODE = store_group.OWNER_ONLY
+# The control file's mode from a walk's first step to its last (D-CS1-1's erratum, its second amendment): no target's
+# mode, so an interrupted walk always leaves the store marked for repair. It narrows every target's mode, so it stays
+# within WIS-00's bound, and the owner can still read the control file.
+WALKING_FILE_MODE = 0o400
 CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
@@ -137,10 +148,12 @@ def read_lock_free(path: Path) -> bytes | None:
         raise
 
 
-def store_dirs(store: Path, directory: Path) -> None:
-    """Create ``directory`` (the store directory or one under it) and every missing directory between, each
-    :data:`STORE_DIR_MODE`: ``mkdir`` is filtered by the umask, ``chmod`` is not. An existing directory keeps its mode
-    (``_migrate_modes`` re-modes a store from before the modes)."""
+def store_dirs(store: Path, directory: Path, target: store_group.Target | None) -> None:
+    """Create ``directory`` (the store directory or one under it) and every missing directory between, each at the
+    target. ``mkdir`` makes it ``0700`` or narrower (the umask only removes bits), so it grants nothing until it has the
+    target's group, set on its descriptor, and then the target's mode, which ``fchmod`` sets exactly (clearing a
+    set-group-ID parent's bit too). So no new directory is ever above WIS-00's bound, even for a moment. An existing
+    directory is left: the walk brings it to the target. ``target`` is None on Windows."""
     missing = []
     d = directory
     while not d.is_dir():
@@ -149,23 +162,26 @@ def store_dirs(store: Path, directory: Path) -> None:
             break
         d = d.parent
     for d in reversed(missing):
-        d.mkdir(parents=d == store, exist_ok=True)
-        if not IS_WINDOWS:  # pragma: posix-only
-            os.chmod(d, STORE_DIR_MODE)
-
-
-def _chmod_if_allowed(path: Path, mode: int) -> None:  # pragma: posix-only
-    """``chmod``, except where this process may not change the path (another account's file) or it has gone: the
-    migration then leaves it, and `aew doctor` names it."""
-    try:
-        os.chmod(path, mode)
-    except (PermissionError, FileNotFoundError):
-        pass
+        try:
+            d.mkdir(mode=OWNER_DIR_MODE, parents=d == store)
+        except FileExistsError:
+            continue  # another writer made it: the walk owns existing directories
+        if sys.platform != "win32" and target is not None:  # pragma: posix-only
+            fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                try:
+                    os.fchown(fd, -1, target.gid)
+                except PermissionError as exc:
+                    if target.group_readable:
+                        raise GroupRefused(exc.errno, f"group {target.gid} refused for {d}") from exc
+                os.fchmod(fd, target.dir_mode)
+            finally:
+                os.close(fd)
 
 
 def operator_gid() -> int | None:
-    """The group the store's paths should have (:meth:`ControlStore.group_problems`): the operator's primary group, or
-    this process's own group when the uid has no account entry. None where there are no POSIX groups (Windows)."""
+    """The operator's primary group, or this process's own group when the uid has no account entry: the group an
+    owner-only store has where the host's listing failed. None where there are no POSIX groups (Windows)."""
     if sys.platform == "win32":  # pragma: windows-only
         return None
     try:  # pragma: posix-only
@@ -178,6 +194,52 @@ def operator_gid() -> int | None:
         return os.getgid()
 
 
+# The store directory -> the ControlStore that holds its control lock in this process and has compared the store with
+# its target (D-CS1-1). ``write_file`` publishes into the store only through it.
+_HOLDERS: dict[Path, ControlStore] = {}
+
+
+class _ControlLock:
+    """The control lock as a store writer holds it: once taken, the store is compared with WIS-01a's current answer,
+    and walked to it first where they differ (D-CS1-1 as extended), before anything else runs under it. So the walk
+    always holds the lock throughout, and so does every publication (``write_file``). It holds its ``FileLock`` rather
+    than extending it: the engine dispatches nothing through ``super()`` (register E5)."""
+
+    def __init__(self, store: ControlStore, path: Path, timeout: float) -> None:
+        self._file = FileLock(path, timeout=timeout)
+        self._store = store
+        self._outer: ControlStore | None = None
+
+    def intact(self) -> bool:
+        return self._file.intact()
+
+    def __enter__(self) -> _ControlLock:
+        self._file.__enter__()
+        self._outer = _HOLDERS.get(self._store.store_dir)
+        _HOLDERS[self._store.store_dir] = self._store
+        try:
+            self._store._compare()
+        except BaseException:
+            self._release_holder()
+            self._file.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None,
+                 tb: TracebackType | None) -> None:
+        try:
+            self._release_holder()
+        finally:
+            self._file.__exit__(exc_type, exc, tb)
+
+    def _release_holder(self) -> None:
+        if self._outer is None:
+            _HOLDERS.pop(self._store.store_dir, None)
+        else:
+            _HOLDERS[self._store.store_dir] = self._outer
+        self._store._target = None
+
+
 def store_of(aew_root: Path) -> Path:
     """The store directory of ``aew_root``, resolved itself (a ``state`` that is a link resolves to its target): what
     :func:`write_file` compares its resolved paths with, and what the migration and `aew doctor` walk."""
@@ -185,14 +247,74 @@ def store_of(aew_root: Path) -> Path:
 
 
 def write_file(store: Path, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
-    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``): with the store's modes when it is in
+    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``): at the store's target when it is in
     ``store`` (from :func:`store_of`), and AEW's ``0600`` otherwise. Both are resolved paths, so a path that reaches
-    the store through ``..`` or a link is in the store."""
-    mode = 0o600
-    if store in path.parents:
-        store_dirs(store, path.parent)
-        mode = STORE_FILE_MODE
-    (create_exclusive if exclusive else atomic_write)(path, data, mode=mode)
+    the store through ``..`` or a link is in the store. A write into the store is made only through the
+    ``ControlStore`` that holds its control lock in this process, which has compared the store with its target
+    (D-CS1-1); without one it is refused, so no writer publishes a store file the comparison has not covered."""
+    if store not in path.parents:
+        (create_exclusive if exclusive else atomic_write)(path, data, mode=0o600)
+        return
+    holder = _HOLDERS.get(store)
+    if holder is None:
+        raise IntegrityError(f"refusing to write {path} into the store without holding its control lock",
+                             path=str(path), reason="store_write_unlocked")
+    holder.publish(path, data, exclusive=exclusive)
+
+
+def _temp_args(target: store_group.Target | None) -> dict[str, Any]:
+    """``write_temp``'s group and mode for a store file at ``target``. With no target (Windows, which ignores the mode)
+    it is owner-only, so a POSIX publication without one could never go to whatever group the process has by default
+    (review of #243, P4)."""
+    if target is None:
+        return {"mode": OWNER_FILE_MODE}
+    return {"mode": target.file_mode, "group": target.gid, "require_group": target.group_readable}
+
+
+def _open_listed(path: Path, st: os.stat_result, is_dir: bool) -> int | None:
+    """A descriptor on the file ``st`` describes, opened at ``path`` without following a link, or None where ``path``
+    is gone, is not that file now, is a file with more than one link (the store publishes every file by a rename, so
+    it holds one link to each), or cannot be opened (a mode with neither the owner's read nor, for a file, its
+    write). The walk changes a path only through it (``ControlStore._step``)."""
+    if sys.platform == "win32":  # pragma: windows-only
+        raise NotImplementedError("no store walk on Windows")
+    flags = os.O_NOFOLLOW | os.O_NONBLOCK | os.O_NOCTTY | (os.O_DIRECTORY if is_dir else 0)  # pragma: posix-only
+    for access in (os.O_RDONLY,) if is_dir else (os.O_RDONLY, os.O_WRONLY):
+        try:
+            fd = os.open(path, access | flags)
+        except PermissionError:
+            continue
+        except OSError:  # gone, or a link now
+            return None
+        now = os.fstat(fd)
+        if ((now.st_dev, now.st_ino, stat.S_IFMT(now.st_mode)) == (st.st_dev, st.st_ino, stat.S_IFMT(st.st_mode))
+                and (is_dir or now.st_nlink == 1)):
+            return fd
+        os.close(fd)
+        return None
+    return None
+
+
+@dataclass(frozen=True)
+class GroupView:
+    """What a store writer sees of the store's group now (:meth:`ControlStore.group_view`)."""
+
+    host: store_group.HostGroups | None  # None where the listing failed (``error``)
+    answer: store_group.Answer
+    me: store_group.Credentials
+    others: list[store_writers.Writer]
+    problems: list[str]
+    target: store_group.Target
+    error: str | None
+    register_problem: str | None
+
+    def lacking(self) -> list[str]:
+        """Each running store writer that lacks the private group, this process first: the ones to restart."""
+        gid = self.answer.gid
+        if gid is None:
+            return []
+        out = [] if self.me.holds(gid) else [f"this process (pid {os.getpid()})"]
+        return out + [w.name() + (f": {w.note}" if w.note else "") for w in self.others if not w.holds(gid)]
 
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
@@ -389,8 +511,12 @@ class ControlStore:
         self.seal = seal  # F9-A plan D-16: the commit check's fallback; the composition root sets it
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
-        self._lock: FileLock | None = None  # the control lock this process holds for the open session
+        self._lock: _ControlLock | None = None  # the control lock this process holds for the open session
         self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
+        self._target: store_group.Target | None = None  # set under the control lock only (``_compare``)
+        self._registered = False
+        self._registration: store_writers.Registration | None = None
+        self._register_problem: str | None = None
 
     # ------------------------------------------------------------------ paths
 
@@ -410,12 +536,203 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
-    def control_lock(self, operation: str) -> FileLock:
+    def control_lock(self, operation: str) -> _ControlLock:
         """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
         here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
-        ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
+        ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1). This is also where a process becomes a
+        running store writer (``store_writers.register``), so every one of them is counted (STG-05 CB-08)."""
         process_kind.require_writer(operation)
-        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+        self._register()
+        return _ControlLock(self, self.root / LOCK_REL, timeout=self.lock_timeout)
+
+    def _register(self) -> None:
+        """Record this process as a running store writer of this project, once per ``ControlStore``; the entry goes
+        when the last ``ControlStore`` of the project in this process does. A process that cannot record itself is
+        unseen by the others, so it never widens the store (``group_view``)."""
+        if self._registered or sys.platform == "win32":
+            return
+        self._registered = True
+        try:  # pragma: posix-only
+            self._registration = store_writers.register(self.root, process_kind.declared())
+        except OSError as exc:
+            self._register_problem = (f"this process could not record itself as a running store writer "
+                                      f"({exc.strerror or exc}), so it writes the store owner-only")
+            return
+        weakref.finalize(self, store_writers.release, self.root)
+
+    # ------------------------------------------------------------------ the store's group and modes (STG-05 CB-08)
+
+    def group_view(self) -> GroupView:
+        """WIS-01a's answer now (``store_group.HOST``), the running store writers, and the target they give every store
+        publication. Changes nothing; ``aew doctor`` reads it too. A listing that fails makes nothing private: the
+        store is then owner-only, and AEW keeps working."""
+        host: store_group.HostGroups | None = None
+        error = None
+        try:
+            host = store_group.HOST(self.store_dir)
+            found = store_group.answer(host)
+            primary = host.primary
+        except Exception as exc:  # report and fail closed, never stop a command
+            error = f"{type(exc).__name__}: {exc}"
+            found = store_group.Answer(None, None, store_group.HOST_UNREADABLE)
+            primary = operator_gid() or 0
+        me = store_writers.CREDENTIALS()
+        reg = self._registration
+        if process_kind.kind() == process_kind.NON_WRITER:  # it publishes nothing, so it is no writer to count
+            me = store_group.Credentials(-1, frozenset() if found.gid is None else frozenset({found.gid}))
+        elif reg is None:  # unseen by the others, so it must not be the one that widens
+            me = store_group.Credentials(-1, frozenset())
+        elif reg.refused is not None:  # the file system refused it the group: it lacks it, whatever its credentials
+            me = store_group.Credentials(-1 if me.egid == reg.refused else me.egid, me.groups - {reg.refused})
+        others, problems = store_writers.running(self.root, exclude=reg)
+        return GroupView(host, found, me, others, problems, store_group.target(found, primary, me, others), error,
+                         self._register_problem)
+
+    def _compare(self) -> None:
+        """D-CS1-1 as extended (A-36), with its erratum (2026-10-24): under the control lock, compare the record with
+        the target WIS-01a gives now, and walk the store to the target first where they differ. Run when the lock is
+        taken (every open) and again before every commit, so a change that lands while a writer is open is walked
+        before its next publication (C2-1), and a walk cut at any step runs again at the next comparison (C2-2). A
+        store with no control file yet is walked too, so an interrupted ``create`` leaves nothing behind."""
+        if sys.platform == "win32":  # pragma: windows-only
+            self._target = None
+            return
+        want = self.group_view().target  # pragma: posix-only
+        if not self._at(want) and self.store_dir.is_dir():
+            want = self._walk(want)
+        self._target = want
+
+    def _at(self, want: store_group.Target) -> bool:  # pragma: posix-only
+        """Whether the record is at ``want``. The record (D-CS1-1's erratum, 2026-10-24) is the group and mode of the
+        store directory and of every directory under it (:meth:`_store_directories`), and of the control file. The
+        walk's first step puts the control file at a mode no target has and its last step puts it at the target
+        (:meth:`_walk`), so a walk cut at any step leaves the record at no target, and the next comparison walks
+        whatever the target is then. Every store directory an
+        earlier version made, under whatever umask, is compared too, so it is brought within WIS-00's bound at the
+        first comparison: no version made a store file wider than this build's target (they came from ``mkstemp`` at
+        0600 before CS-1, and at the exact mode since)."""
+        for d in self._store_directories():
+            try:
+                st = os.lstat(d)
+            except FileNotFoundError:
+                continue
+            if (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.dir_mode):
+                return False
+        try:
+            st = os.stat(self.store_dir / Path(CONTROL_REL).name)
+        except FileNotFoundError:
+            return False
+        return (st.st_gid, stat.S_IMODE(st.st_mode)) == (want.gid, want.file_mode)
+
+    def _walk(self, want: store_group.Target) -> store_group.Target:  # pragma: posix-only
+        """Bring every store path to ``want`` (``store_group.steps``) under the control lock: the control file first to
+        :data:`WALKING_FILE_MODE`, then the store directory, the other directories and the files, and the control file
+        last to ``want``. A path pruned meanwhile (the compactor prunes without the lock) is skipped, and so is one this
+        process may not change (another account's), which `aew doctor` names. If the file system refuses this process
+        the store's group on a path of its own, the process lacks it: it says so in its entry, and walks to the
+        owner-only target instead. Returns the target the store was walked to."""
+        control = self.store_dir / Path(CONTROL_REL).name
+        try:
+            self._mark_walking(control)
+            first = True
+            for path, st, is_dir in self._store_paths():
+                if path != control:
+                    self._step(path, st, is_dir, want)
+                    if first:
+                        first = False
+                        faults.pause("store.walk.mid")  # tests hold a walk here while a second writer tries to open
+            faults.hit("store.walk.before_control")
+            try:
+                st = os.lstat(control)
+            except FileNotFoundError:
+                return want
+            self._step(control, st, False, want)
+        except GroupRefused:
+            self._refuse(want.gid)
+            return self._walk(self.group_view().target)  # owner-only now, which needs no group but the primary
+        return want
+
+    @staticmethod
+    def _mark_walking(control: Path) -> None:
+        """The walk's first step: the control file to :data:`WALKING_FILE_MODE` under its own group, through a
+        descriptor on it (:func:`_open_listed`). From here to the walk's last step the record is at no target, so a walk
+        cut anywhere between is walked again at the next comparison, whatever the target is then."""
+        if sys.platform == "win32":  # pragma: windows-only (no store walk on Windows)
+            return
+        try:  # pragma: posix-only
+            st = os.lstat(control)
+        except FileNotFoundError:  # an interrupted ``create``: nothing to mark, and the comparison walks anyway
+            return
+        if not stat.S_ISREG(st.st_mode) or stat.S_IMODE(st.st_mode) == WALKING_FILE_MODE:
+            return
+        fd = _open_listed(control, st, False)
+        if fd is None:
+            return
+        try:
+            os.fchmod(fd, WALKING_FILE_MODE)
+        except PermissionError:  # another account's control file: left, and reported
+            pass
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _step(path: Path, st: os.stat_result, is_dir: bool, want: store_group.Target) -> None:
+        """Bring ``path``, as it was listed (``st``), to ``want`` in the step rule's order, through a descriptor on that
+        very file (:func:`_open_listed`): a path that is gone, is another file now, or that this process cannot open is
+        left as it is, and `aew doctor` names it."""
+        if sys.platform == "win32":  # pragma: windows-only (no groups or modes to walk)
+            return
+        steps = store_group.steps(st.st_gid, stat.S_IMODE(st.st_mode), want, is_dir)  # pragma: posix-only
+        if not steps:
+            return
+        fd = _open_listed(path, st, is_dir)
+        if fd is None:
+            return
+        try:
+            for op, value in steps:
+                try:
+                    if op == "mode":
+                        os.fchmod(fd, value)
+                    else:
+                        os.fchown(fd, -1, value)
+                except PermissionError as exc:
+                    if op == "group" and want.group_readable and st.st_uid == os.geteuid():
+                        raise GroupRefused(exc.errno, f"group {value} refused for {path}") from exc
+                    return  # another account's path, or a primary group this process does not hold: left, and reported
+        finally:
+            os.close(fd)
+
+    def _refuse(self, gid: int) -> None:
+        if self._registration is not None:
+            self._registration.refuse(gid)
+
+    def publish(self, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
+        """Publish ``path`` (resolved, in the store) at the target: only for the holder of the control lock, which
+        ``write_file`` routes to. If the file system refuses the store's group, this process lacks it: the store
+        goes owner-only (``_refuse``, ``_compare``) and the file is published owner-only."""
+        while True:
+            target = self._target
+            try:
+                store_dirs(self.store_dir, path.parent, target)
+                (create_exclusive if exclusive else atomic_write)(path, data, **_temp_args(target))
+                return
+            except GroupRefused:
+                if target is None or not target.group_readable:
+                    raise
+                self._refuse(target.gid)
+                self._compare()
+
+    def _publish_temp(self, data: bytes, prefix: str) -> Path:
+        """The control file's temp, at the target, as :meth:`publish` makes every other store file."""
+        while True:
+            target = self._target
+            try:
+                return write_temp(self.store_dir, data, prefix=prefix, **_temp_args(target))
+            except GroupRefused:
+                if target is None or not target.group_readable:
+                    raise
+                self._refuse(target.gid)
+                self._compare()
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -589,6 +906,9 @@ class ControlStore:
         validate("control", after, source=f"control state revision {revision}")
         control_bytes = serialize_control(after)
 
+        # D-CS1-1 as extended (C2-1): compared before every commit, not only at the open, so this commit publishes
+        # nothing at a group or mode the rest of the store does not carry.
+        self._compare()
         self.require_lock_intact()
         faults.hit("txn.before_stage")
         if txn_ref:
@@ -596,7 +916,7 @@ class ControlStore:
         faults.hit("txn.after_stage")
 
         # The commit point: temp + fsync, then atomic replace of control.yaml.
-        tmp = write_temp(self.store_dir, control_bytes, prefix=".control.yaml.", mode=STORE_FILE_MODE)
+        tmp = self._publish_temp(control_bytes, ".control.yaml.")
         try:
             faults.hit("txn.before_replace")
             replace_with_retry(tmp, self.control_path)
@@ -642,8 +962,7 @@ class ControlStore:
             return self._recover_unprofiled()
 
     def _recover_unprofiled(self) -> dict[str, Any]:
-        self._remove_temp_files()
-        self._migrate_modes()
+        self._remove_temp_files()  # the store was compared, and walked, when the lock was taken (``_ControlLock``)
         state = self._load()
         revision = state["revision"]
         txn_dir = self._abs(TXN_DIR)
@@ -668,45 +987,36 @@ class ControlStore:
                     f.unlink()
         return state
 
-    def _store_modes(self) -> Iterator[tuple[Path, int, int, int]]:  # pragma: posix-only
-        """(path, its mode, the mode it should have at least, its group) for the store directory and every directory
-        and regular file under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so
-        is a path that vanished after it was listed: the compactor prunes log records without the control lock
-        (``log_compact``)."""
+    def _store_directories(self) -> Iterator[Path]:  # pragma: posix-only
+        """The store directory, then every directory under it, never through a link. It reads each directory's entries
+        and stats none of its files, so the comparison, which runs at every open and commit, costs a few system calls
+        for each of the store's few directories."""
+        pending = [self.store_dir]
+        while pending:
+            d = pending.pop(0)
+            yield d
+            try:
+                with os.scandir(d) as entries:
+                    pending.extend(Path(e.path) for e in entries if e.is_dir(follow_symlinks=False))
+            except OSError:  # gone, or not readable: its own mode is compared above
+                continue
+
+    def _store_paths(self, *, every: bool = False) -> Iterator[tuple[Path, os.stat_result, bool]]:  # pragma: posix-only
+        """(path, its ``lstat``, whether it is a directory) for the store directory and every directory and regular
+        file under it, and with ``every`` (for `aew doctor`) every other path in it too, such as a FIFO or a socket,
+        which the walk never opens. Skipped always: a symbolic link (the store's paths are the files and directories
+        in it, never what a link names), and a path that vanished after it was listed (the compactor prunes log
+        records without the control lock, ``log_compact``)."""
         for d, dirs, files in os.walk(self.store_dir):
-            names = [("", STORE_DIR_MODE)] if Path(d) == self.store_dir else []
-            names += [*((n, STORE_DIR_MODE) for n in dirs), *((n, STORE_FILE_MODE) for n in files)]
-            for name, want in names:
+            names = [""] if Path(d) == self.store_dir else []
+            for name in [*names, *dirs, *files]:
                 path = Path(d) / name if name else Path(d)
                 try:
                     st = os.lstat(path)
                 except FileNotFoundError:
                     continue
-                if not stat.S_ISLNK(st.st_mode):
-                    yield path, stat.S_IMODE(st.st_mode), want, st.st_gid
-
-    def _migrate_modes(self) -> None:
-        """Give a store written before the store's modes (STG-05 CB-08) those modes, once, under the control lock. The
-        control file's own mode is the record that it ran: every commit publishes the control file at
-        :data:`STORE_FILE_MODE`, and this re-modes it last, so a store whose control file has the mode was migrated
-        (or written with the modes from the start), and a migration interrupted part-way runs again. Wider modes are
-        kept, and only a path that lacks the bits is changed. A path this process may not change (another account's
-        file) is left as it is and the migration still finishes, so it never stops a command; `aew doctor`
-        (``store-modes``) names what is left below the modes. The cost of that: if the control file itself is such a
-        path, the record is never written and every recovery walks the store again (review of #230, N4)."""
-        if IS_WINDOWS:  # pragma: windows-only
-            return
-        control = self.store_dir / Path(CONTROL_REL).name  # pragma: posix-only
-        try:
-            current = stat.S_IMODE(os.stat(control).st_mode)
-        except FileNotFoundError:
-            return
-        if current & STORE_FILE_MODE == STORE_FILE_MODE:
-            return
-        for path, mode, want, _gid in self._store_modes():
-            if path != control and mode & want != want:
-                _chmod_if_allowed(path, mode | want)
-        _chmod_if_allowed(control, current | STORE_FILE_MODE)
+                if stat.S_ISDIR(st.st_mode) or stat.S_ISREG(st.st_mode) or (every and not stat.S_ISLNK(st.st_mode)):
+                    yield path, st, stat.S_ISDIR(st.st_mode)
 
     def applied(self, revision: int) -> bool:
         """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
@@ -790,30 +1100,25 @@ class ControlStore:
 
     # ------------------------------------------------------------------ helpers for tests/doctor
 
-    def mode_problems(self) -> list[str] | None:
-        """The store's paths (``state/...``; a directory ends in ``/``) whose mode lacks :data:`STORE_FILE_MODE` or
-        :data:`STORE_DIR_MODE`, without modifying anything. None on Windows, which has no such modes: there is nothing
-        to report either way."""
-        if IS_WINDOWS:  # pragma: windows-only
+    def path_problems(self, want: store_group.Target) -> list[tuple[str, int, int]] | None:
+        """``(path, group, mode)`` for each store path (``state/...``; a directory ends in ``/``) that is not exactly at
+        ``want``, without modifying anything: a path the walk could not change (another account's), or a file changed
+        after the record was written, which the walk does not revisit while the record is at the target. A path that is
+        neither a file nor a directory (a FIFO, a socket, a device) is never at a target: its mode keeps its file type
+        bits (``stat.S_IFMT``), so a reader can tell it apart. None on Windows, which has no such modes or groups."""
+        if sys.platform == "win32":  # pragma: windows-only
             return None
         out = []  # pragma: posix-only
-        for path, mode, want, _gid in self._store_modes():
-            if mode & want != want:
-                out.append(self._rel(path, want))
+        for path, st, is_dir in self._store_paths(every=True):
+            if not (is_dir or stat.S_ISREG(st.st_mode)):
+                out.append((self._rel(path, False), st.st_gid, st.st_mode))
+            elif (st.st_gid, stat.S_IMODE(st.st_mode)) != (want.gid, want.mode(is_dir)):
+                out.append((self._rel(path, is_dir), st.st_gid, stat.S_IMODE(st.st_mode)))
         return sorted(out)
 
-    def group_problems(self, gid: int) -> list[tuple[str, int]] | None:
-        """The store's paths whose group is not ``gid`` (the operator's primary group), with the group they have. The
-        store's modes make it group-readable, so a path whose group is another (a process run under ``sg``, a
-        set-group-ID directory above the store) is readable by that group's members (review of #230, m6). Nothing is
-        changed: AEW never changes groups. None on Windows."""
-        if IS_WINDOWS:  # pragma: windows-only
-            return None
-        return sorted((self._rel(path, want), g) for path, _mode, want, g in self._store_modes() if g != gid)
-
-    def _rel(self, path: Path, want: int) -> str:  # pragma: posix-only
+    def _rel(self, path: Path, is_dir: bool) -> str:  # pragma: posix-only
         rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()
-        return rel + "/" if want == STORE_DIR_MODE else rel
+        return rel + "/" if is_dir else rel
 
     def verify(self) -> list[str]:
         """Return integrity problems without modifying anything."""

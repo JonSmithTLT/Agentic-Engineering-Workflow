@@ -224,8 +224,9 @@ POINTER = ("write sites whose destination this reading could not place under `.a
            "`unresolved:<module>:<symbol>:<primitive>`; any of them may write this path")
 
 
-def prefix_why(site: Site, reason: str) -> str:
-    return f"{site.primitive} of a path this reading cannot place: {reason}"
+def why_unplaced(primitive: str, reason: str) -> str:
+    """The one sentence an unresolved write is listed under, on its record and in ``record_problems``."""
+    return f"{primitive} of a path this reading cannot place: {reason}"
 
 
 def _const_ref(program: F.Program, mod: F.Module, node: ast.AST) -> tuple[str, str] | None:
@@ -365,7 +366,7 @@ def records_of(analysis: Analysis) -> list[C.Record]:
                                 fact, fact_coverage={"named_by": C.lower_bound(),
                                                      "writers": C.lower_bound([pointer, *unreached])}))
     for (module, symbol, primitive), (mechanism, reason) in analysis.unresolved.items():
-        item = C.unresolved_item(module, symbol, f"{primitive} of a path this reading cannot place: {reason}")
+        item = C.unresolved_item(module, symbol, why_unplaced(primitive, reason))
         records.append(C.Record(FAMILY, f"{UNRESOLVED_KEY}:{module}:{symbol}:{primitive}", module, symbol, "static",
                                 C.lower_bound([item]),
                                 {"primitive": primitive, "mechanism": mechanism, "reason": reason}))
@@ -398,7 +399,7 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str]) -> lis
             if fact["mechanism"] not in (STORE_TRANSACTION, DIRECT):
                 problems.append(f"{rid}: mechanism {fact['mechanism']!r} is not one of the two")
             item = C.unresolved_item(anchor.get("module", ""), anchor.get("symbol"),
-                                     f"{fact['primitive']} of a path this reading cannot place: {fact['reason']}")
+                                     why_unplaced(fact["primitive"], fact["reason"]))
             if (r.get("coverage") or {}).get("unresolved") != [item]:
                 problems.append(f"{rid}: its coverage does not carry its own reason as the one unresolved item")
             continue

@@ -1174,10 +1174,20 @@ class ControlStore:
                 out.append((self._rel(path, is_dir), st.st_gid, stat.S_IMODE(st.st_mode)))
         return sorted(out)
 
+    def record_at(self, want: store_group.Target) -> bool | None:
+        """Whether the store's record is at ``want`` (:meth:`_at`), for `aew doctor`. Changes nothing. None on Windows,
+        which has no walk."""
+        if sys.platform == "win32":  # pragma: windows-only
+            return None
+        return self._at(want)  # pragma: posix-only
+
     def walk_refusals(self) -> list[tuple[str, str]] | None:
         """``(path, why)`` for each store path the walk cannot change (:func:`_refusal`), and for a control file that
-        is not a file: while one is there, the record is at no target and every comparison walks the store again (the
-        erratum's third amendment), so WIS cannot be qualified. Changes nothing. None on Windows, which has no walk."""
+        is not a file. A walk leaves each as it is. One it leaves off the target keeps the record at no target (the
+        erratum's third amendment), and so does the control file among them, which the record never counts
+        (:meth:`_at`): while either is there, every comparison walks the store again, and WIS cannot be qualified. One
+        at the target, other than the control file, leaves the record at the target (:meth:`record_at`). Changes
+        nothing. None on Windows, which has no walk."""
         if sys.platform == "win32":  # pragma: windows-only
             return None
         out = []  # pragma: posix-only

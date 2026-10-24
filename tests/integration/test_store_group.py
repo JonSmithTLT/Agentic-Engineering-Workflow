@@ -472,7 +472,9 @@ def doctor_checks(store) -> dict[str, dict[str, str]]:
     from aew.doctor import store_checks
 
     view = store.group_view()
-    return {c["check"]: c for c in store_checks(view, store.path_problems(view.target), store.walk_refusals())}
+    rendered = set(store.renderer(store.read_committed()) if store.renderer else ())  # read without the walk
+    return {c["check"]: c for c in store_checks(view, store.path_problems(view.target), store.walk_refusals(),
+                                                store.record_at(view.target), rendered)}
 
 
 class Host:
@@ -1607,9 +1609,65 @@ def test_wis_store_is_met_only_while_every_store_path_is_at_the_target(tmp_path,
 
 @posix
 def test_doctor_names_a_store_path_the_walk_cannot_change_and_wis_waits_for_it(tmp_path, monkeypatch):
-    """D-CS1-1's erratum, its third amendment: while a store path is one the walk cannot change, the record is at no
-    target and WIS cannot be qualified, so `aew doctor` names the path and why, even where every path is at the target's
-    group and mode. Once it is fixed, the record is at the target again."""
+    """D-CS1-1's erratum, its third amendment: a store path the walk cannot change and leaves off the target keeps the
+    record at no target, and so does a control file the record cannot count (root's, or a link), even with every path
+    at the target. While either is there, `aew doctor` names each path, why and its remedy, and WIS cannot be
+    qualified. Once each is fixed, the record is at the target again."""
+    egid, s = gh.held()
+    host = Host(monkeypatch, gh.make_host(primary=egid, user_private=False))
+    root = tmp_path / ".aew"
+    store = init(root)
+    one_transaction(store)
+    record, real_lstat = root / "state" / "log" / "000001.yaml", os.lstat
+    os.link(record, tmp_path / "snapshot.yaml")
+    host.host = gh.make_host(primary=egid, user_private=False, aew=s)
+    store = make_store(root)
+    store.read()  # the walk to the AEW group leaves the file owner-only, under the primary group
+    found = doctor_checks(store)
+    assert ("state/log/000001.yaml", egid, 0o600) in store.path_problems(store.group_view().target)
+    detail = found["store-modes"]["detail"]
+    assert found["store-modes"]["status"] == "WARN" and detail.endswith("The record is at no target now"), found
+    assert ("state/log/000001.yaml (a file with 2 names: remove its other names, which may be outside the store: "
+            '`find "$(stat -c %m .aew/state/log/000001.yaml)" -xdev -samefile .aew/state/log/000001.yaml` lists '
+            "every name, this one among them)") in detail, detail
+    assert found["wis-store"]["status"] == "WARN" and "cannot change" in found["wis-store"]["detail"], found
+
+    def owned(path: Path):  # root's file, as `lstat` shows it (the property's simulation of an owner)
+        return lambda p, *a, **k: _Owned(real_lstat(p, *a, **k), 0) if Path(p) == path else real_lstat(p, *a, **k)
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "lstat", owned(record))
+        detail = doctor_checks(store)["store-modes"]["detail"]
+    assert f"state/log/000001.yaml (root's: as root, `chown {gh.OP} .aew/state/log/000001.yaml`)" in detail, detail
+    os.unlink(tmp_path / "snapshot.yaml")
+    store = make_store(root)
+    store.read()
+    found = doctor_checks(store)
+    assert found["store-modes"]["status"] == "PASS" and found["wis-store"]["status"] == "PASS", found
+    control, real = root / "state" / "control.yaml", tmp_path / "real.yaml"
+    with monkeypatch.context() as m:
+        m.setattr(os, "lstat", owned(control))
+        found = doctor_checks(store)
+    detail = found["store-modes"]["detail"]
+    assert f"state/control.yaml (root's: as root, `chown {gh.OP} .aew/state/control.yaml`)" in detail, detail
+    assert detail.endswith("The record is at no target now") and found["wis-store"]["status"] == "WARN", found
+    os.rename(control, real)
+    os.symlink(real, control)
+    found = doctor_checks(store)
+    detail = found["store-modes"]["detail"]
+    assert "state/control.yaml (a symbolic link: the next commits replace it with the file)" in detail, detail
+    assert found["wis-store"]["status"] == "WARN", found
+    os.replace(real, control)
+    found = doctor_checks(store)
+    assert found["store-modes"]["status"] == "PASS" and found["wis-store"]["status"] == "PASS", found
+
+
+@posix
+def test_a_store_path_the_walk_cannot_change_at_the_target_leaves_the_record_there_and_wis_met(tmp_path, monkeypatch):
+    """D-CS1-1's erratum, its third amendment: a store path the walk cannot change that is already at the target, other
+    than the control file, leaves the record at the target. No command walks for it, and wis-store passes, naming it
+    as information (D-CS1-5); store-modes names it with its remedy, which offers removing it only for a page the next
+    commit renders again."""
     egid, s = gh.held()
     Host(monkeypatch, gh.make_host(primary=egid, user_private=False, aew=s))
     root = tmp_path / ".aew"
@@ -1617,31 +1675,55 @@ def test_doctor_names_a_store_path_the_walk_cannot_change_and_wis_waits_for_it(t
     one_transaction(store)
     os.link(root / "state" / "log" / "000001.yaml", tmp_path / "snapshot.yaml")
     store = make_store(root)
+    calls = record_walk(monkeypatch)
     store.read()
+    store_dir = (root / "state").resolve()
+    assert [c for c in calls if Path(c[0]).is_relative_to(store_dir)] == []
+    target = store.group_view().target
+    assert store.path_problems(target) == [] and store.record_at(target)
     found = doctor_checks(store)
-    assert store.path_problems(store.group_view().target) == []
     detail = found["store-modes"]["detail"]
-    assert found["store-modes"]["status"] == "WARN", found
-    assert ("state/log/000001.yaml (a file with 2 names: remove its other names, which may be outside the store "
-            "(`find / -xdev -samefile .aew/state/log/000001.yaml` lists them))") in detail, detail
-    assert found["wis-store"]["status"] == "WARN" and "cannot change" in found["wis-store"]["detail"], found
-    os.unlink(tmp_path / "snapshot.yaml")
-    record, real_lstat = root / "state" / "log" / "000001.yaml", os.lstat
-    with monkeypatch.context() as m:  # root's file, as `lstat` shows it (the property's simulation of an owner)
+    assert found["store-modes"]["status"] == "WARN" and detail.endswith("The record is at the target now"), found
+    assert found["wis-store"]["status"] == "PASS" and "each at the target" in found["wis-store"]["detail"], found
+    page, real_lstat = root / "state" / "CURRENT.md", os.lstat
+    with monkeypatch.context() as m:  # root's rendered page, as `lstat` shows it
         m.setattr(os, "lstat", lambda p, *a, **k: _Owned(real_lstat(p, *a, **k), 0)
-                  if Path(p) == record else real_lstat(p, *a, **k))
-        detail = doctor_checks(store)["store-modes"]["detail"]
-    assert f"state/log/000001.yaml (root's: as root, `chown {gh.OP} .aew/state/log/000001.yaml`" in detail, detail
-    control, real = root / "state" / "control.yaml", tmp_path / "real.yaml"
-    os.rename(control, real)
-    os.symlink(real, control)
-    detail = doctor_checks(store)["store-modes"]["detail"]
-    assert "state/control.yaml (a symbolic link: the next commits replace it with the file)" in detail, detail
-    os.replace(real, control)
-    store = make_store(root)
-    store.read()
-    found = doctor_checks(store)
-    assert found["store-modes"]["status"] == "PASS" and found["wis-store"]["status"] == "PASS", found
+                  if Path(p) == page else real_lstat(p, *a, **k))
+        found = doctor_checks(store)
+    assert (f"state/CURRENT.md (root's: as root, `chown {gh.OP} .aew/state/CURRENT.md`, or remove it: the next commit "
+            "renders it again)") in found["store-modes"]["detail"], found
+    assert found["wis-store"]["status"] == "PASS", found
+    page.unlink()
+    one_transaction(store)
+    assert page.is_file()
+
+
+@posix
+def test_the_engines_doctor_follows_the_record_and_offers_removing_only_a_page_it_renders(tmp_path, monkeypatch):
+    """`aew doctor`'s own store checks (the engine's): a control file with a second name keeps the record at no target,
+    so wis-store waits; root's rendered page leaves it at the target, so wis-store passes, and the page's remedy offers
+    removing it, as the next commit renders it again."""
+    from conftest import make_git_repo
+
+    from aew.engine.api import Engine
+
+    egid, s = gh.held()
+    Host(monkeypatch, gh.make_host(primary=egid, user_private=False, aew=s))
+    e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
+    state_dir = e.store.store_dir
+    os.link(state_dir / "control.yaml", tmp_path / "second.yaml")
+    checks = {c["check"]: c for c in e.doctor_checks()}
+    assert checks["store-modes"]["detail"].endswith("The record is at no target now"), checks["store-modes"]
+    assert checks["wis-store"]["status"] == "WARN", checks["wis-store"]
+    os.unlink(tmp_path / "second.yaml")
+    page, real_lstat = state_dir / "CURRENT.md", os.lstat
+    with monkeypatch.context() as m:  # root's rendered page, as `lstat` shows it
+        m.setattr(os, "lstat", lambda p, *a, **k: _Owned(real_lstat(p, *a, **k), 0)
+                  if Path(p) == page else real_lstat(p, *a, **k))
+        checks = {c["check"]: c for c in e.doctor_checks()}
+    assert (f"state/CURRENT.md (root's: as root, `chown {gh.OP} .aew/state/CURRENT.md`, or remove it: the next commit "
+            "renders it again)") in checks["store-modes"]["detail"], checks["store-modes"]
+    assert checks["wis-store"]["status"] == "PASS", checks["wis-store"]
 
 
 # ------------------------------------------------------------------------------------- what every publication obeys

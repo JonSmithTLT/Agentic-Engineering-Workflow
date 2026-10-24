@@ -284,9 +284,11 @@ class ProjectAdmin:
         if sys.platform != "win32":
             from aew.doctor import store_checks
 
-            view = self.k.store.group_view()
-            checks.extend(store_checks(view, self.k.store.path_problems(view.target),
-                                       self.k.store.walk_refusals()))
+            store = self.k.store
+            view = store.group_view()
+            rendered = set(store.renderer(state) if store.renderer else ())  # what the next commit writes again
+            checks.extend(store_checks(view, store.path_problems(view.target), store.walk_refusals(),
+                                       store.record_at(view.target), rendered))
         try:
             _ = self.k.manifest
             add("manifest", "PASS", "project.yaml parses and matches its schema")

@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -97,12 +98,13 @@ def _yaml() -> dict[str, str]:
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
 
 
-def store_checks(view: Any, problems: list[tuple[str, int, int]] | None,
-                 refused: list[tuple[str, str]] | None) -> list[dict[str, str]]:
+def store_checks(view: Any, problems: list[tuple[str, int, int]] | None, refused: list[tuple[str, str]] | None,
+                 at_target: bool | None, rendered: Collection[str]) -> list[dict[str, str]]:
     """The store's group, its running writers, its paths, and whether WIS can be qualified here as far as the store
-    goes (STG-05 CB-08; WIS-01a and D-CS1-11 as A-36 amends them). ``view`` is ``ControlStore.group_view()``, and
-    ``problems`` and ``refused`` are the store's ``path_problems`` and ``walk_refusals``; doctor itself is a store
-    writer, so it is one of the writers it reports on. For WIS-Q02 only PASS counts as met (D-CS1-5)."""
+    goes (STG-05 CB-08; WIS-01a and D-CS1-11 as A-36 amends them). ``view`` is ``ControlStore.group_view()``;
+    ``problems``, ``refused`` and ``at_target`` are the store's ``path_problems``, ``walk_refusals`` and ``record_at``
+    for the view's target; ``rendered`` is the paths the store's renderer writes again at every commit. Doctor itself
+    is a store writer, so it is one of the writers it reports on. For WIS-Q02 only PASS counts as met (D-CS1-5)."""
     from aew.engine import store_group as sg
 
     found, target, host = view.answer, view.target, view.host
@@ -160,10 +162,13 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None,
                "owns needs that account or root). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
                if problems else "")
         owner = host.operator if host is not None and not host.operator.startswith("uid ") else "<you>"
-        cannot = (f"AEW cannot change {len(refused)} path(s) in the store: "
-                  f"{'; '.join(f'{rel} ({why}: {_refused_fix(rel, why, owner)})' for rel, why in refused[:5])}"
-                  f"{' ...' if len(refused) > 5 else ''}. While one is there, the store's record is at no target, so "
-                  "every command walks the store again and WIS cannot be qualified" if refused else "")
+        fixes = "; ".join(f"{rel} ({why}: {_refused_fix(rel, why, owner, rendered)})" for rel, why in refused[:5])
+        cannot = (f"AEW cannot change {len(refused)} path(s) in the store: {fixes}{' ...' if len(refused) > 5 else ''}"
+                  ". A walk leaves each as it is. One it leaves off the target keeps the store's record at no target, "
+                  "and so does the control file among them: while either is there, every command walks the store "
+                  "again, and WIS cannot be qualified. One at the target, other than the control file, leaves the "
+                  f"record at the target. The record is at {'the' if at_target else 'no'} target now"
+                  if refused else "")
         checks.append(_check("store-modes", "WARN" if problems or refused else "PASS",
                              ". ".join(x for x in (off, cannot) if x) or
                              f"every path in the store is at its target: gid {target.gid}, {modes}"))
@@ -171,17 +176,23 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None,
         why = f"no group is private to you (WIS-01a {_parts(found)}; see store-group)"
     elif lacking:
         why = "a running store writer lacks the store's group (see store-writers)"
-    elif refused:
-        why = "AEW cannot change some store paths, so its record of the store is at no target (see store-modes)"
+    elif refused and not at_target:
+        why = "AEW cannot change some store paths, and its record of the store is at no target (see store-modes)"
     elif problems:
         why = "some store paths are not at the store's group and modes (see store-modes)"
     else:
         why = None
+    # A path the walk cannot change that is at the target leaves the record there (D-CS1-1's erratum, its third
+    # amendment): the store has converged, so it is information, not a reason to wait (D-CS1-5 speaks of a store that
+    # has not).
+    info = (f". AEW cannot change {len(refused)} store path(s), each at the target, which leave its record at the "
+            "target (information; see store-modes)" if refused else "")
     checks.append(_check("wis-store", "WARN" if why else "PASS",
                          f"WIS cannot be qualified on this host: {why}" if why else
                          "WIS can be qualified on this host as far as the store goes: its group is private to you, "
                          "every running store writer holds it, and every path carries it at 0640/0750. The rest (the "
-                         "issuer, its view and the gate's checks WIS-Q01 to WIS-Q09) is the qualification gate's"))
+                         "issuer, its view and the gate's checks WIS-Q01 to WIS-Q09) is the qualification gate's"
+                         f"{info}"))
     return checks
 
 
@@ -198,15 +209,20 @@ def _by_hand(rel: str, gid: int, mode: int, target: Any) -> str:
                      for op, value in sg.steps(gid, mode, target, rel.endswith("/")))
 
 
-def _refused_fix(rel: str, why: str, owner: str) -> str:
+def _refused_fix(rel: str, why: str, owner: str, rendered: Collection[str]) -> str:
     """What makes one store path the walk cannot change (``ControlStore.walk_refusals``) one it can, from the project's
-    directory. Only root gives a file to another account, so a path of root's or another account's needs root."""
+    directory. Only root gives a file to another account, so a path of root's or another account's needs root's
+    `chown`. Removing one is offered only for a page the next commit renders again (``rendered``): removing any other
+    loses what the store records. A file's other names are on the file system that holds it, so `find` starts at
+    that file system's mount point, which need not be `/` (a separately mounted `/home`)."""
     path = f".aew/{rel}"
     if why.startswith(("root's", "another account's")):
-        return f"as root, `chown {owner} {path}`, or remove it"
+        again = ", or remove it: the next commit renders it again" if rel in rendered else ""
+        return f"as root, `chown {owner} {path}`{again}"
     if why == "a symbolic link":
         return "the next commits replace it with the file"
-    return f"remove its other names, which may be outside the store (`find / -xdev -samefile {path}` lists them)"
+    return (f"remove its other names, which may be outside the store: `find \"$(stat -c %m {path})\" -xdev -samefile "
+            f"{path}` lists every name, this one among them")
 
 
 def _parts(found: Any) -> str:

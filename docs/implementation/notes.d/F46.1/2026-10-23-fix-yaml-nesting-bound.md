@@ -35,4 +35,6 @@ F46.1 merged.
   relative import, `import aew` or `import_module`; `util`'s own names driven inside `util.py`; another AEW module's
   `yaml`; yaml found by `pkgutil.resolve_name`, `sys.modules`, `globals()` or a computed import name; a function that
   `yaml/__init__` re-exports from a submodule, or a C function; `exec` and `eval`; and YAML parsed inside a C extension
-  or a dependency. None of these spellings occurs in `src/aew` today (grep, 2026-10-24).
+  or a dependency. None of these spellings reaches yaml in `src/aew` today (grep, 2026-10-24): its `import aew`
+  (`harness/procs.py`, for `aew.__file__`) and its two computed imports (`doctor.py`, `harness/registry.py`, names from
+  AEW's own lists) compose nothing.

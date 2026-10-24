@@ -200,7 +200,9 @@ def _top_level_key_too_deep(data: Any) -> Any:
         stack = [(value, 2), (key, 2)]  # the top-level mapping is level 1; the key is popped first, then the value
         while stack:
             obj, depth = stack.pop()
-            if not isinstance(obj, (dict, list, tuple, set)):  # a tuple is written as a sequence (SafeRepresenter)
+            # A tuple is written as a sequence (SafeRepresenter). The types are named, not derived from
+            # _Dumper.yaml_representers: the walk needs its mapping and sequence branches anyway, so deriving is larger.
+            if not isinstance(obj, (dict, list, tuple, set)):
                 continue
             if not (isinstance(obj, tuple) and not obj):  # the writer never aliases ()
                 if id(obj) in seen:

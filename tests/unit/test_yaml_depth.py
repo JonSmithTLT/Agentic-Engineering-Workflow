@@ -208,9 +208,9 @@ def test_every_yaml_document_in_the_repository_is_within_the_bound():
 #   `import_module` of the constant "yaml" (its name positional or keyword) are sites.
 # - util's own yaml objects (`util.yaml`, `_SafeLoader`, the dumpers: every name util binds to a yaml object, derived)
 #   are sites where another module reaches them by `from aew import util`, `import aew.util` or `from aew.util import`.
-# Limits, not claimed. None of these is seen, and none of these spellings occurs in src/aew today (grep, 2026-10-24; its
-# two computed imports, doctor.py's `__import__(module)` and harness/registry.py's `import_module(where)`, take names
-# from AEW's own lists and compose nothing):
+# Limits, not claimed. None of these is seen, and none of these spellings reaches yaml in src/aew today (grep,
+# 2026-10-24). Its `import aew` (harness/procs.py, for `aew.__file__`) and its two computed imports (doctor.py's
+# `__import__(module)`, harness/registry.py's `import_module(where)`, names from AEW's own lists) compose nothing:
 # 1. a composing or writing class bound to a name and then driven (`L = yaml.SafeLoader; L(t)`, or the backend choice
 #    `yaml.CSafeLoader if yaml.__with_libyaml__ else yaml.SafeLoader`); a class used as a decorator, in `type(...)`,
 #    with `object.__new__` or `getattr(cls, "__call__")`; one held in a tuple or a default argument, or in `partial`;
@@ -541,7 +541,8 @@ def _random_dags(count: int, seed: int = 236) -> list[dict]:
     """Data that shares objects at random, as control state does (an invocation's snapshot is its workspace's), and that
     holds what the writer also writes: tuples, the empty tuple and tuples as mapping keys (review of #236, R3-F1). The
     search is bounded and asserts what it found, so when the writer refuses none the test fails instead of looping
-    (R3-F3); its depth is the bound's, so a raised bound still yields refusals."""
+    (R3-F3). Its depth follows the bound, so a raised bound still yields refusals, though fewer (7 of the 60 at a bound
+    of 128): the assertion then says the search needs retuning."""
     rng, found = random.Random(seed), []
 
     def recent(pool: list) -> object:  # mostly the latest: the depth grows

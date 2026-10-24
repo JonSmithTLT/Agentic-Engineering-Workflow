@@ -23,8 +23,9 @@ credential).
   `openai/gpt-5.6-luna#medium` with a real key the supervisor held. Implementer, reviewer and verifier ran
   `proxy_only` and ended with evidence, and 14 streamed model requests crossed the relay. Against the real upstream, a
   slow client got its stream whole, and an interrupted turn closed the upstream at once. No file the lane left held the
-  key. ADR-0009's amendment has the numbers, and two limits it showed: the relay's `cancelled` count also counts
-  complete answers, and OpenCode's glob and grep tools need ripgrep on the host, since a contained run cannot
-  download it.
+  key. ADR-0009's amendment has the numbers. The lane showed two things: the relay counted complete answers as
+  `cancelled` (OpenCode closes first), fixed here so that only a client leaving before the response's end counts; and
+  OpenCode's glob and grep tools need ripgrep on the host, since a contained run cannot download it (with the
+  designer).
 - **Not yet:** the Lead's harness on `proxy_only` with the any-public egress policy is CS-4's, and F28's row stays
   open until then.

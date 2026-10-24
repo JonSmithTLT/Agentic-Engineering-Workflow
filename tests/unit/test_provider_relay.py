@@ -247,6 +247,57 @@ def test_a_client_that_goes_away_ends_the_upstream_connection_and_is_counted_can
     assert service.counts() == {"allowed": 1, "cancelled": 1}
 
 
+SSE = b"data: one\n\ndata: [DONE]\n\n"
+CHUNKED = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+
+
+@pytest.mark.parametrize(("head", "body", "cancelled"), [
+    (CHUNKED, b"c\r\ndata: one\n\n\r\n10\r\ndata: [DONE]\n\n\r\n0\r\n\r\n", False),  # whole: the last chunk sent
+    (CHUNKED, b"c\r\ndata: one\n\n\r\n", True),                                     # mid-stream
+    (b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % len(SSE), SSE, False),       # whole by its length
+    (b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % (len(SSE) + 9), SSE, True),  # short of its length
+])
+def test_a_client_that_closes_once_it_has_the_whole_answer_is_not_counted_cancelled(head, body, cancelled):
+    """OpenCode closes as soon as it has a whole answer, before the upstream's own close arrives (the live lane,
+    2026-10-24): only a client that leaves before the response's end, by its length or its last chunk, is a cancelled
+    turn. The upstream here never closes, so the client is always first."""
+    seam = Seam()
+    with relayed(seam) as (service, client, _):
+        client.sendall(b"POST /v1/responses HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(head + body)
+        got = b""
+        while not got.endswith(body):
+            got += client.recv(4096)
+        client.close()
+        assert read_all(upstream) == b""  # the relay closed the upstream either way
+    assert service.counts() == ({"allowed": 1, "cancelled": 1} if cancelled else {"allowed": 1})
+
+
+@pytest.mark.parametrize("step", [1, 2, 3, 7, 4096])
+def test_a_chunked_body_is_followed_to_its_last_chunk_and_trailer_whatever_its_pieces(step):
+    """``_Body`` follows a chunked body however the network splits it: chunk extensions, a chunk whose data holds what
+    looks like a last chunk, and a trailer section."""
+    body = b"5;ext=1\r\n0\r\n\r\n\r\n3\r\nabc\r\n0\r\nX-Trailer: t\r\n\r\n"
+    tracker = relay._Body(CHUNKED, "POST")
+    for i in range(0, len(body), step):
+        assert not tracker.done, i  # never done before its last byte
+        tracker.feed(body[i:i + step])
+    assert tracker.done
+
+
+def test_a_body_without_length_or_chunks_ends_only_with_the_upstream_and_one_without_a_body_is_done_at_once():
+    close_delimited = relay._Body(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n", "POST")
+    close_delimited.feed(SSE)
+    assert not close_delimited.done
+    assert relay._Body(b"HTTP/1.1 204 No Content\r\n\r\n", "POST").done
+    assert relay._Body(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", "HEAD").done
+    unreadable = relay._Body(CHUNKED, "POST")
+    unreadable.feed(b"zz\r\n")  # not a chunk size: the end cannot be told, so the client's leaving counts
+    assert not unreadable.done and unreadable.kind == "close"
+
+
 def test_an_unreachable_upstream_is_a_502_that_names_the_fixed_upstream():
     seam = Seam(error=ConnectionRefusedError(111, "synthetic: refused"))
     with relayed(seam) as (service, client, _):

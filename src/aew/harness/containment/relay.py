@@ -20,8 +20,10 @@ a destination: ruling R-6 is the egress proxy's (``egress.py``), and this module
 (F18.8's Provider Gateway) is allowed for the same reason.
 
 **Streaming:** the response is relayed by one thread per connection, reading the upstream only when the client has
-taken the last chunk (a ``sendall`` that blocks is the backpressure), and watching the client: when it goes away (a
-cancelled turn), the upstream connection is closed at once.
+taken the last chunk (a ``sendall`` that blocks is the backpressure), and watching the client: when it goes away, the
+upstream connection is closed at once. It is counted ``cancelled`` only when it went before the response's end (its
+``Content-Length``, or its last chunk): OpenCode closes as soon as it has a whole answer, before the upstream's own
+close arrives (seen in the live lane, 2026-10-24), and that is no cancelled turn (:class:`_Body`).
 """
 
 from __future__ import annotations
@@ -164,10 +166,10 @@ class ProviderRelay(Service):
                 return
             upstream.sendall(_head(f"{method} {target} HTTP/1.1", self._rewrite(headers)))
             self._send_body(conn, upstream, framing, early)
-            reader = self._relay_head(conn, upstream)
+            reader, response = self._relay_head(conn, upstream)
             answered = True
             self._count("allowed")
-            self._stream(conn, upstream, reader)
+            self._stream(conn, upstream, reader, _Body(response, method))
         except _Refused as refused:
             if not answered:
                 self._answer(conn, refused)
@@ -312,8 +314,9 @@ class ProviderRelay(Service):
                     upstream.sendall(data)
                     left -= len(data)
 
-    def _relay_head(self, conn: socket.socket, upstream: socket.socket) -> _Reader:
-        """The response's head, with ``Connection: close``; interim 1xx heads first, as they come."""
+    def _relay_head(self, conn: socket.socket, upstream: socket.socket) -> tuple[_Reader, bytes]:
+        """The response's head, with ``Connection: close``; interim 1xx heads first, as they come. Returns the reader
+        and the final head as the upstream sent it."""
         reader = _Reader(upstream, b"", None)
         while True:
             head = reader.head()
@@ -321,14 +324,16 @@ class ProviderRelay(Service):
             interim = len(status) > 1 and status[1].startswith(b"1") and status[1] != b"101"
             conn.sendall(head if interim else _close_head(head))
             if not interim:
-                return reader
+                return reader, head
 
-    def _stream(self, conn: socket.socket, upstream: socket.socket, reader: _Reader) -> None:
+    def _stream(self, conn: socket.socket, upstream: socket.socket, reader: _Reader, body: _Body) -> None:
         """The response's body as it streams, until the upstream ends it. A client that goes away ends it at once,
         and so does :meth:`close`."""
         conn.settimeout(None)
         if reader.buffer:
-            conn.sendall(reader.take())
+            data = reader.take()
+            body.feed(data)
+            conn.sendall(data)
         with selectors.DefaultSelector() as selector:
             selector.register(upstream, selectors.EVENT_READ)
             selector.register(conn, selectors.EVENT_READ)
@@ -338,14 +343,72 @@ class ProviderRelay(Service):
                 ready = set() if pending else {key.fileobj for key, _ in selector.select()}
                 if self._wake_r in ready:
                     return
-                if conn in ready and _gone(conn):  # the client went away: a cancelled turn
-                    self._count("cancelled")
+                if conn in ready and _gone(conn):
+                    if not body.done:  # it went before the response's end: a cancelled turn
+                        self._count("cancelled")
                     return
                 if pending or upstream in ready:
                     data = upstream.recv(CHUNK)
                     if not data:
                         return
+                    body.feed(data)
                     conn.sendall(data)
+
+
+class _Body:
+    """How far a response's body has been relayed: whether its end, by its framing (RFC 9112 §6.3), has gone to the
+    client. A body with neither length nor chunking ends only when the upstream closes, so it is never ``done`` here.
+    Chunked bodies are followed chunk by chunk, to the last chunk and its trailer section."""
+
+    def __init__(self, head: bytes, method: str) -> None:
+        status = head.split(b"\r\n", 1)[0].split(b" ")
+        code = status[1] if len(status) > 1 else b""
+        fields = [raw.split(b":", 1) for raw in head[:-4].split(b"\r\n")[1:]]
+        values = [(f[0].strip().lower(), f[1].strip().lower()) for f in fields if len(f) == 2]
+        codings = [v for k, v in values if k == b"transfer-encoding"]
+        lengths = {v for k, v in values if k == b"content-length"}
+        self.state, self.left, self.line = "size", 0, b""
+        if method == "HEAD" or code in (b"204", b"304"):
+            self.kind = "none"
+        elif codings and codings[-1].split(b",")[-1].strip() == b"chunked":
+            self.kind = "chunked"
+        elif len(lengths) == 1 and next(iter(lengths)).isdigit():
+            self.kind, self.left = "length", int(next(iter(lengths)))
+        else:
+            self.kind = "close"
+        self.done = self.kind == "none" or (self.kind == "length" and self.left == 0)
+
+    def feed(self, data: bytes) -> None:
+        if self.done or self.kind not in ("length", "chunked"):
+            return
+        if self.kind == "length":
+            self.left -= len(data)
+            self.done = self.left <= 0
+            return
+        i = 0
+        while i < len(data) and not self.done:
+            if self.state == "data":  # the chunk's bytes and their CRLF
+                take = min(self.left, len(data) - i)
+                i, self.left = i + take, self.left - take
+                if not self.left:
+                    self.state = "size"
+                continue
+            end = data.find(b"\n", i)
+            if end < 0:
+                self.line += data[i:]
+                if len(self.line) > MAX_HEAD:  # no chunk-size line or trailer field is this long: framing unknown
+                    self.kind = "close"
+                return
+            line, self.line, i = (self.line + data[i:end]).rstrip(b"\r"), b"", end + 1
+            if self.state == "trailer":
+                self.done = not line
+                continue
+            try:
+                size = int(line.split(b";", 1)[0].strip(), 16)
+            except ValueError:
+                self.kind = "close"
+                return
+            self.state, self.left = ("trailer", 0) if size == 0 else ("data", size + 2)
 
 
 class _Reader:

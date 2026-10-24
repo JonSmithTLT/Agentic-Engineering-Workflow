@@ -1277,8 +1277,10 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   upgrade refused (501, naming the http transport AEW sets), a body framed by length or chunks, TLS by the system's
   default verifying context. Each refusal is a fixed answer with a reason code in `X-AEW-Refusal` that says what to do.
 - **Streaming:** the response goes back as it comes, one thread per connection, reading the upstream only once the
-  client has taken the last chunk (backpressure). A client that goes away (a cancelled turn) closes the upstream
-  connection at once and is counted `cancelled`.
+  client has taken the last chunk (backpressure). A client that goes away closes the upstream connection at once. It
+  is counted `cancelled` only when it went before the response's end, by its `Content-Length` or its last chunk:
+  OpenCode closes as soon as it has a whole answer, before the upstream's own close arrives (seen in the live lane
+  below), and that is no cancelled turn. A body with neither length nor chunks ends only when the upstream closes.
 
 ### Egress (F28 §3.4; CS-3a's proxy)
 - **When:** under `proxy_only`, when the allowlist names something: the policy's `containment.network.egress_allow`
@@ -1337,10 +1339,11 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   back, which the relay does by construction (it reads the upstream only once the client has taken the last chunk).
 - **The upstream's IPv6 address** could not be tried: the VM has no IPv6 route.
 
+- **The live lane's counts predate a fix:** at that head the relay counted `cancelled` whenever the client closed
+  first, so most finished steps were counted too (6 of run 1's 7). The count now waits for the response's end, as
+  the streaming bullet above says.
+
 ### What this does not claim
-- **`cancelled` also counts a complete answer whose client closed first.** OpenCode closes its connection as soon as
-  it has a whole answer, before the upstream's end arrives, so in the live lane most finished steps were counted
-  `cancelled` too. The count is not a count of cancelled turns.
 - **OpenCode's glob and grep tools need ripgrep on the host's `PATH`.** Without it 2.0.18 downloads ripgrep from
   github.com, which a `proxy_only` run's egress proxy refuses (github.com is on no allowlist), so in the live lane
   those tools failed in two of the three runs, which still ended with evidence. The Rocky VM has no ripgrep.
@@ -1355,7 +1358,8 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   credential headers; a credential header without one unchanged; hop-by-hop headers dropped and `Connection: close`
   both ways; absolute-form, `CONNECT` and a bad version refused with nothing connected; an upgrade refused; a chunked
   body relayed whole; `Expect` answered and not forwarded; the response streamed; a client going away closing the
-  upstream, counted `cancelled`; an unreachable upstream; the operator's proxy's `CONNECT` and its refusal; the label.
+  upstream, counted `cancelled` only before the response's end (by length, by last chunk, and a chunked body followed
+  however it is split); an unreachable upstream; the operator's proxy's `CONNECT` and its refusal; the label.
 - `tests/unit/test_containment_netns.py`: the mode, a check's network, `--unshare-net` and the binds, the upstream and
   its refusal, the allowlist, the operator's proxy, the harness's environment (sentinels, `HTTPS_PROXY` only), the
   label and the counts, a refused start leaving no directory, and the shim's spec.

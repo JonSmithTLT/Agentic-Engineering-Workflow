@@ -265,27 +265,37 @@ def test_a_local_default_route_covers_every_address(family):
     assert peer.local_routes(family, read=dump(route(None, 0, family=family) + END)) == [every]
 
 
-@pytest.mark.parametrize("datagrams", [
-    [message(ERROR, struct.pack("=i", -1) + bytes(16)) + END],
-    [route("3ffe:1::", 64) + message(DONE, struct.pack("=i", -16))],
-    [route("3ffe:1::", 64, flags=DUMP_INTR) + END],
-    [route("3ffe:1::", 64)],
-    [],
-    [route("3ffe:1::", 64)[:-8], END],
-    [bytes(8)],
-    [message(OVERRUN) + END],
-    [message(NEWROUTE, struct.pack("=BBBBBBBBI", socket.AF_INET6, 64, 0, 0, 255, 0, 0, LOCAL, 0)
-             + struct.pack("=HH", 64, 1) + bytes(16)) + END],
-    [route(None, 24, raw_destination=bytes(4)) + END],
-    [route(None, 64) + END],
-    [route("3ffe:1::", 129) + END],
-    [message(NEWROUTE, bytes(8)) + END],
-], ids=["error", "done-with-error", "interrupted", "no-end-marker", "nothing", "message-cut-short",
-        "header-cut-short", "overrun", "attribute-cut-short", "destination-wrong-size", "prefix-without-destination",
-        "prefix-too-long", "route-cut-short"])
+NOT_WHOLE = {
+    "error": [message(ERROR, struct.pack("=i", -1) + bytes(16)) + END],
+    "done-with-error": [route("3ffe:1::", 64) + message(DONE, struct.pack("=i", -16))],
+    "interrupted": [route("3ffe:1::", 64, flags=DUMP_INTR) + END],
+    "no-end-marker": [route("3ffe:1::", 64)],
+    "nothing": [],
+    "message-cut-short": [route("3ffe:1::", 64)[:-8], END],
+    "header-cut-short": [bytes(8), END],
+    "overrun": [message(OVERRUN) + END],
+    "attribute-cut-short": [message(NEWROUTE, struct.pack("=BBBBBBBBI", socket.AF_INET6, 64, 0, 0, 255, 0, 0, LOCAL, 0)
+                                    + struct.pack("=HH", 64, 1) + bytes(16)) + END],
+    "destination-wrong-size": [route(None, 24, raw_destination=bytes(4)) + END],
+    "prefix-without-destination": [route(None, 64) + END],
+    "prefix-too-long": [route("3ffe:1::", 129) + END],
+    "route-cut-short": [message(NEWROUTE, bytes(8)) + END],
+}
+NO_END_MARKER = {"no-end-marker", "nothing"}  # the cases whose point is the missing end marker
+
+
+@pytest.mark.parametrize("datagrams", list(NOT_WHOLE.values()), ids=list(NOT_WHOLE))
 def test_a_route_dump_that_is_not_whole_is_never_read_as_complete(datagrams):
     with pytest.raises(ValueError):
         peer.local_routes(socket.AF_INET6, read=dump(*datagrams))
+
+
+def test_every_dump_that_is_not_whole_but_the_missing_marker_ends_with_the_kernels_end_marker():
+    """So each case is refused by its own check, never only by the missing end marker."""
+    for name, datagrams in NOT_WHOLE.items():
+        tail = datagrams[-1][-len(END):] if datagrams else b""
+        ends = len(tail) == len(END) and struct.unpack_from("=IHHII", tail)[:2] == (len(END), DONE)
+        assert ends == (name not in NO_END_MARKER), name
 
 
 def cannot_read(error: Exception):

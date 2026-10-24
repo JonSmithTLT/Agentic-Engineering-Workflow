@@ -259,8 +259,10 @@ def is_host_address(ip: IP) -> bool:
     tables that cannot be read, count as local.
 
     Residual: with ``net.ipv4.ip_nonlocal_bind=1`` (or its IPv6 twin) every address binds, so every address counts as
-    local and the proxy refuses all egress. Safe, and surprising: the refusal's reason is ``host_interface``. Each
-    check reads every table, which is slow only on a host that carries a full Internet routing table."""
+    local and the proxy refuses all egress. Safe, and surprising: the refusal's reason is ``host_interface``. Likewise,
+    a ``local`` route that covers every address, in any table, makes every address of its family local, whatever
+    chooses that table, so the proxy refuses all of that family's egress. Each check reads every table, which is slow
+    only on a host that carries a full Internet routing table."""
     family = socket.AF_INET if isinstance(ip, ipaddress.IPv4Address) else socket.AF_INET6
     if _binds(ip, family):
         return True

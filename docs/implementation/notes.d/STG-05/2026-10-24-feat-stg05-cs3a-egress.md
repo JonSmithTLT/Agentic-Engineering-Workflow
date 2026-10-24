@@ -24,7 +24,9 @@ condition stands: nothing may call Linux runs network-contained before its live 
 - **Known limits**, which CS-3b or CS-4 decide where the shim, the proxy's only client, exists:
   - concurrent tunnels are unbounded;
   - an established tunnel has no idle timeout;
-  - under `net.ipv4.ip_nonlocal_bind=1`, every address counts as local, so all egress is refused.
+  - under `net.ipv4.ip_nonlocal_bind=1`, every address counts as local, so all egress is refused;
+  - a `local` route that covers every address, in any table, makes its whole family local, so all of that family's
+    egress is refused.
 - **CS-3b,** after CS-2 merges, wires it in: the AF_UNIX listener and its bind, the shim, the relay, the namespace, the
   label and the self-test row. F28's row has one note, which points here
   ([`../F28/2026-10-23-feat-stg05-cs3a-egress.md`](../F28/2026-10-23-feat-stg05-cs3a-egress.md)). CS-3's later notes

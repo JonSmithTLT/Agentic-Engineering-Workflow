@@ -164,7 +164,8 @@ class Queue:
 
     def _lost_worker(self, lease: dict[str, Any], custodian: dict[str, Any]) -> str | None:
         """Why the lease's active custodian has lost its custody worker (S2), or None: its registered worker is gone
-        (its pid with its start time, on this host; a worker on another host is not observable here), or no worker
+        (its pid with its start id, or its start time if it registered before start ids, on this host; a worker on
+        another host is not observable here), or no worker
         registered within ``custody_register_s`` of the grant. Liveness data only: it ends the custodian, which marks
         the lease for reconciliation, and never releases anything (plan v3 §2.3)."""
         from aew.harness import procs
@@ -172,7 +173,7 @@ class Queue:
         worker = custodian.get("worker")
         if worker is not None:
             if worker.get("host") == socket.gethostname() and not procs.same_process(
-                    worker.get("host_pid"), float(worker.get("started_at") or 0)):
+                    worker.get("host_pid"), procs.recorded(worker.get("start_id"), worker.get("started_at"))):
                 return f"custodian {lease['custodian']}'s custody worker (pid {worker.get('host_pid')}) is gone"
             return None
         granted = datetime.strptime(lease["granted_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)

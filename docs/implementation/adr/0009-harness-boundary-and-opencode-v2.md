@@ -879,3 +879,106 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   - the entry-point table against the tree, both ways: every module that runs as a process is a row, and every row is
     one;
   - a guard that no code outside the store calls `store.read()` but the manifest reload.
+
+## Amendment 2026-10-23 — a process's identity survives a wall-clock step
+
+This amends **Process ownership** above ("tooling that must act on a pid checks the process start time against the
+run's custody time"), and every record that names a process by its pid and start time, including ADR-0004's custody
+worker, which registers `{host_pid, started_at}`. It is a correctness fix, found while closing a test race.
+
+### The defect
+- **The cause:** on Linux, `procs.started_at` was `/proc/stat` `btime` plus the process's start ticks (`/proc/<pid>/stat`
+  field 22) over `SC_CLK_TCK`. `btime` is the wall clock minus the time since boot, so it moves every time the wall
+  clock is stepped: by NTP, on a VM, after suspend and resume, and by WSL's clock sync. On WSL Ubuntu, `btime` was
+  measured stepping +3 s about every 35 s.
+- **The effect:** `procs.same_process(pid, started_by)` required `start <= started_by + 2.0`. After a net forward step of
+  more than 2 s it judged a live process gone. A live validation executor could then be recovered, or a live custody
+  worker's custodian ended, while it still ran. Teardown could also miss a live supervisor, and a live broker could be
+  reported as crashed. The dashboard's and the operator endpoint's locators could likewise read their own process as
+  stale.
+- **No epoch time can fix it.** For the same process, the stored and the current value differ by the net step. For a
+  reused pid, they differ by the later start. The two look the same, so a wider tolerance only defers the misjudgement:
+  steps accumulate without bound.
+- **Windows** uses `GetProcessTimes`, an absolute creation time, and was not affected.
+
+### The invariant
+On Linux a process's identity, its pid together with its start, never changes while the process lives, whatever the
+wall clock does. A reused pid, or the same pid after a reboot, is still told apart.
+
+### Decision
+- **`procs.start_id(pid)`** names a process in the boot clock's domain:
+  - Linux: `linux:<boot id>:<start ticks>`, from `/proc/sys/kernel/random/boot_id` and `/proc/<pid>/stat` field 22.
+    The tick count is an integer, fixed for the process's life.
+  - Windows: `win:<creation time in 100 ns since 1601>`.
+
+  It is compared for equality only, so no tolerance is involved. An id from another platform or another boot, an id of
+  another process, and a malformed id never match. `started_at` stays, for display and for records written before.
+- **The comm is arbitrary bytes:** a file name cut to 15 bytes, or whatever `prctl(PR_SET_NAME)` set.
+  So every read of `/proc/<pid>/stat` and `/proc/<pid>/status` in `src` is a bytes read, decoded as latin-1, which
+  never fails. None is in text mode, which would turn a `\r` into a newline. The status file is split on `\n` alone.
+  The kernel escapes only a newline and a backslash in its `Name:` line.
+  - A comm that is not valid UTF-8 still has a start id, and its host pid and parent can still be read.
+  - A comm that holds a carriage return, or another line break that `str.splitlines` knows, cannot add a line of its
+    own, such as a forged `PPid:` (review of #250, M1 and M2).
+  - A unit test scans `src` and enforces the rule. Only `/proc/stat` and `/proc/sys/kernel/random/boot_id` may be
+    read as text: they are kernel ASCII and hold no comm.
+- **`procs.same_process(pid, started_by)`** keeps its two arguments.
+  - `started_by` is the record's start id (a string, compared exactly) or, in a record from before start ids, its epoch
+    time (a number, the old check).
+  - `procs.recorded(start, started)` picks between them for a reader.
+  - A start id that is not a string names no process, so it fails closed.
+- **Every record that names a process carries a start id beside its pid, from every writer.** Every reader that judges
+  the process prefers it.
+
+  | record | where | field | writer | reader |
+  |---|---|---|---|---|
+  | validation executor | control state, `work.<id>.integration.<slot>.executor` | `start_id` | `validation_ops` (the run's start) | `executor_alive` |
+  | custody worker | control state, `invocations.<id>.worker` | `start_id` | `custody_ops.register` | `queue_ops._lost_worker` |
+  | operator locator | `local/operator/endpoint.json` | `start_id` | `operator_endpoint` | `operator_client.same_process`, `status` |
+  | broker liveness | `local/lead/broker.json` | `start_id` | `broker_liveness.Beat` | `judge` (through the locator's check), `Beat.close` |
+  | dashboard endpoint | `local/dashboard/server.json` | `start_id` | `dashboard.service` | `locate` |
+  | run record | `run.json` | `supervisor_start_id`, `harness_start_ids` | the supervisor | `runlog.end_supervisor`, the harness test helpers |
+
+  A control-state record omits the field when its writer cannot read the start id; a local record holds `null`. The
+  reader then falls back to the record's start time. The broker record's reader refuses a `start_id` that is neither a string nor
+  `null`, as it refuses every malformed field.
+- **The schema stays `aew/control/v2`, additive.**
+  - The custody worker's `start_id` is an optional string, so a state from before it still loads.
+  - An engine from before it refuses a state that carries one, because the worker object is closed. That is the fail
+    closed of ADR-0004's schema rule and ADR-0012.
+  - A test pins both, against the vendored schema of main before this change
+    (`tests/fixtures/baseline/control.schema.0f59742.json`).
+  - The executor's object is not schema-closed. None of the local records has a schema file: their readers ignore an
+    unknown key, so an older reader reads the record by its start time.
+
+### Residuals (documented, not closed)
+- **Records written before this change** keep the start-time check, with its misjudgement after a step, until the
+  process that wrote them exits. The custody worker's custodian is the longest-lived such record.
+- **An unreadable start id** (no `/proc`, an unreadable boot id) leaves the record its writer makes on the start-time
+  check. A *reader* that cannot read the id of a record that holds one (an unreadable boot id, or an unreadable
+  `/proc/<pid>/stat`) judges the process gone. There is no fallback there: that is the same direction as before this
+  change, where an unreadable start time also read as gone (review of #250, N2).
+- **A time namespace** (Linux 5.6 and later) shows a process's start ticks relative to its own boot offset. AEW creates
+  none (bubblewrap does not), and every writer and reader here is an AEW process on the host.
+- **The local records stay forgeable by the same uid**, as before: they only notify or locate, and grant nothing.
+
+### Tests
+- **`tests/unit/test_process_identity.py`:**
+  - a simulated `btime` step (`/proc/stat` patched where it is read) moves `started_at` but never `start_id`, and
+    keeps `same_process` true;
+  - a reused pid, another boot, another platform's id and malformed ids read as another process;
+  - on Linux, a child whose comm is not valid UTF-8 has the start id that a byte-level parse gives. One whose comm
+    also spells a `PPid:` line, after a record separator or a carriage return, still has its host pid read, and still
+    descends from its real parent;
+  - the guard: no read of a `/proc` file in `src` is a text read but the two allowed files. It follows strings,
+    f-strings, `Path(...)` with parts, `/` on a path, a name bound to a path, and a script held in a string. Planted
+    reads check it both ways;
+  - a record from before start ids keeps its check;
+  - one test per reader (executor, worker, locator, broker and its close, dashboard, teardown), with the clock stepped
+    after the record was written. The step is simulated on Linux in `btime`, and elsewhere in each epoch start time.
+- **`tests/integration/test_process_identity_records.py`:**
+  - the custody worker's start id, with the schema tests;
+  - a state from before start ids that loads and is judged by its start time, while the run its worker executes
+    records its executor's start id;
+  - the dashboard's endpoint file;
+  - the run record's supervisor and harness processes.

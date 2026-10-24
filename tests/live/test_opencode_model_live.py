@@ -59,7 +59,14 @@ from typing import Any
 import pytest
 from aewflow import assign, create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab, credential_hits
-from harness_conformance import FREE_MODEL, NO_WINDOW, PROVIDER_SECRET, evidence_of
+from harness_conformance import (
+    FREE_MODEL,
+    NO_WINDOW,
+    PROVIDER_SECRET,
+    evidence_of,
+    harness_processes,
+    supervisor_gone,
+)
 from invariants import assert_control_invariants
 
 from aew.harness import contract as K
@@ -213,10 +220,9 @@ def observe(lab: HarnessLab, wid: str, inv: str, run: str, before: dict[str, Any
     assert pin["status"] == "active"
     if read_only and changed:
         assert not produced & expected, "a read-only role's evidence was accepted from a workspace it changed"
-    lab.until(lambda: not procs.same_process(record.get("supervisor_pid"), epoch(record["custody_at"])), 30,
-              "the supervisor to exit")
-    for pid in record.get("harness_pids") or []:
-        lab.until(lambda pid=pid: not procs.same_process(pid, epoch(record["started_at"])), 30,
+    lab.until(lambda: supervisor_gone(record), 30, "the supervisor to exit")
+    for pid, named in harness_processes(record) if record.get("harness_pids") else []:
+        lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), 30,
                   f"harness process {pid} to exit")
     assert_control_invariants(lab.project)
 

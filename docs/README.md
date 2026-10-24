@@ -215,6 +215,17 @@ The first vertical slice against the architecture workspace's adopted STG-01 v0.
 | [Initial joint-wrapper review](stg02/reviews/review-joint-wrapper-041595cf.md) | Original test-wrapper findings |
 | [Corrected joint-wrapper review](stg02/reviews/review-joint-wrapper-f8dd097c.md) | Exact-commit wrapper recheck and limits |
 
+## The generated as-built reference ([`reference/`](reference/README.md))
+
+What the code is, enumerated from the code by `python tools/reference.py render` and kept true by `python tools/reference.py check`, which `tests/unit/test_reference.py` runs in CI. It states what the code is, never what it should be. These files are generated: change the code, then render (a pull request that changes enumerated code commits the re-render). One row per file, in file order.
+
+| File | What it is |
+|---|---|
+| [`README.md`](reference/README.md) | What the directory is, the files, how to read a record, and what to do when a change moves it |
+| [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
+| [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |
+| [`index.json`](reference/index.json) | The machine index: every record by id, with its anchor, basis and coverage label, and the measured counts |
+
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))
 
 A proposal's adoption state is in its status line and here. "Design frozen, proposed" means the designer has settled its

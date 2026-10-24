@@ -18,7 +18,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 - **Code:** `src/aew/` — `engine/` (the control engine: transitions, gates, dispatch, the integration queue,
   validation), `harness/` (supervisors, process ownership, containment), `policy/`, `knowledge/` (evidence, context),
   `workspace/`, `cli/`, `dashboard/` (the read API), `schemas/`.
-- **Tools:** `tools/register.py` (the register), `tools/ci/` (lanes, assurance), `tools/perf/`.
+- **Tools:** `tools/register.py` (the register), `tools/reference.py` (the generated as-built reference),
+  `tools/ci/` (lanes, assurance), `tools/perf/`.
 
 ## Authority and escalation
 
@@ -74,6 +75,11 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   fast-lane test modules or `tests/durations.json` (the `fast` tier; shadow for now, so its run stays full), runs
   `core` and no heavy lane. During shadow a red `fastbase` check is informational, not a merge blocker. Force a full
   run with a `CI-Full: yes` trailer on the head commit or the `full-ci` label, then **Re-run all jobs**.
+- **`docs/reference/` is generated from the code** (`python tools/reference.py render`; never edit it by hand). A
+  fast-lane test runs `python tools/reference.py check`, so a pull request that changes what it enumerates (an entry
+  point, a module's imports, a spawn site) runs `render` and commits the result. The second of two changes to merge
+  re-renders; after a merge conflict in the directory, take either side and run `render`. It needs an absolute
+  `PYTHONPATH` to this tree's `src` in a worktree, like every test.
 - **Run long suites from a separate worktree** at the commit under test, so the checkout you edit stays free. Do not
   edit a checkout while its test run is in progress.
 - **A worktree's tests need an absolute `PYTHONPATH`** to that worktree's `src` when the venv's `aew` is an editable

@@ -1,0 +1,1075 @@
+"""Where a path expression points: the value-flow reading behind the ``writers`` family (STG-12 S12-2, DOC-01).
+
+A write primitive names its destination as an expression (``root / STORE_REL``, ``path``, ``self.path``,
+``cold_rel(subject)``). This module evaluates such an expression to the set of values it can take, reading the source
+with ``ast`` and nothing else: no module is imported and nothing runs. A value is one of
+
+* ``ROOT``: the ``.aew`` directory itself;
+* ``TPL``: a path under it, as a template (``state/log``, ``work/{}/completion.md``: ``{}`` is a computed segment);
+* ``STR``: a plain string that is not (yet) known to be a path under ``.aew``;
+* ``OUT``: a path known to be outside it (a temporary directory, the device null, a console);
+* ``UNK``: unknown, with the reason. Never a guess.
+
+What it follows, each to a bounded depth: a name bound in the function (every assignment, so a union), a module
+constant (its own, or the owner's by import source), a ``self`` attribute (every ``self.x = ...`` in the class), a
+parameter (the arguments of every static call of the function, and of the class's constructor for ``__init__``), and a
+call of an AEW function (the function's ``return`` expressions, with the arguments bound). A computed first segment, a
+call on an object whose class is unknown, a name nothing binds and an expression this module does not model are
+``UNK``: the caller lists them.
+
+``.aew`` is recognised from the root expression, not from the string alone: a name or attribute spelled ``aew_root``,
+or any path joined with a string that evaluates to ``.aew`` (the owner's ``AEW_DIR``). A relative string is a path
+under ``.aew`` only where the primitive's own meaning makes it one (the store transaction's ``write(path, ...)``).
+"""
+
+from __future__ import annotations
+
+import ast
+from dataclasses import dataclass, field
+from typing import NamedTuple
+
+from reference_families import common as C
+
+ROOT, TPL, STR, OUT, UNK = "root", "tpl", "str", "out", "unk"
+AEW_DIRECTORY = ".aew"
+ROOT_NAME = "aew_root"  # the repository's spelling of the .aew directory (checked by the family's convention test)
+REPO_NAME = "repo_root"  # the repository's working tree: a path under it is outside `.aew`
+WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a method of the kernel): outside `.aew`
+DEPTH = 6  # calls and parameters followed in a chain
+CALLERS = 24  # call sites of one function that are evaluated; more is UNK
+VALUES = 16  # distinct values one expression may take before it is UNK
+PLACEHOLDER = "{}"
+TYPING_DEPTH = 3  # receivers typed through receivers
+UTIL_MODULE = "aew.util"
+
+# Callees that return their argument's path unchanged, or a sibling of it: by where they were imported from.
+SAME_PATH_CALLS = frozenset({"pathlib.Path", "pathlib.PurePath", "pathlib.PurePosixPath", "pathlib.PosixPath",
+                             "pathlib.PureWindowsPath", "pathlib.WindowsPath", "Path", "str", "os.fspath",
+                             "os.path.abspath", "os.path.realpath", "os.path.normpath", "os.path.expanduser",
+                             "os.path.expandvars"})
+JOIN_CALLS = frozenset({"os.path.join", "posixpath.join", "ntpath.join"})
+# A path derived from another by these is taken as the same path: a sibling (`with_name`, `with_suffix`, `with_stem`) is
+# the temp or queue file of the write protocol of the path it came from, and the others return the path itself.
+SAME_PATH_METHODS = frozenset({"resolve", "absolute", "expanduser", "as_posix", "with_name", "with_suffix",
+                               "with_stem"})
+TEMP_CALLS = frozenset({"tempfile.mkdtemp", "tempfile.gettempdir", "tempfile.mkstemp", "tempfile.TemporaryDirectory",
+                        "tempfile.NamedTemporaryFile", "tempfile.mktemp"})
+# Strings that name a place outside `.aew` and are not absolute paths.
+OUTSIDE_LITERALS = {"CONOUT$": "the Windows console", "CONIN$": "the Windows console", "nul": "the Windows null device",
+                    ":memory:": "an in-memory database"}
+
+
+class Val(NamedTuple):
+    kind: str
+    text: str  # the template (ROOT: ""), or for OUT and UNK the reason
+
+
+Values = frozenset[Val]
+
+
+def unk(why: str) -> Values:
+    return frozenset({Val(UNK, why)})
+
+
+def one(kind: str, text: str = "") -> Values:
+    return frozenset({Val(kind, text)})
+
+
+def capped(values: set[Val] | Values) -> Values:
+    if len(values) > VALUES:
+        return unk(f"more than {VALUES} possible values")
+    return frozenset(values)
+
+
+# ------------------------------------------------------------------------------------------------------ the program
+
+@dataclass(eq=False)
+class Func:
+    module: str
+    qual: str  # `Class.method`, `outer.inner` or `name`
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef  # a ClassDef for a dataclass's generated `__init__`
+    cls: str | None  # the innermost enclosing class, for `self`
+    parent: Func | None  # the enclosing function, for a closure
+    params: list[str]
+    assigns: dict[str, list[ast.expr]] = field(default_factory=dict)
+    opaque: set[str] = field(default_factory=set)  # names bound by `with ... as`, an unpacking, `except ... as`
+    loops: dict[str, list[ast.expr]] = field(default_factory=dict)  # `for name in <iterable>`
+    withs: dict[str, list[ast.expr]] = field(default_factory=dict)  # `with <context> as name`
+    appends: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name.append(<element>)`
+    subkeys: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name[<key>] = ...`
+    key_loops: dict[str, list[ast.expr]] = field(default_factory=dict)  # `for name, _ in <mapping>.items()`
+    returns: list[ast.expr] = field(default_factory=list)
+    calls: list[ast.Call] = field(default_factory=list)
+    defaults: dict[str, ast.expr] = field(default_factory=dict)
+    annotations: dict[str, ast.expr] = field(default_factory=dict)  # parameter name -> its annotation
+    returns_annotation: ast.expr | None = None
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.module, self.qual)
+
+
+@dataclass(eq=False)
+class Module:
+    name: str
+    is_package: bool
+    tree: ast.Module
+    aliases: C.Aliases
+    consts: dict[str, ast.expr] = field(default_factory=dict)
+    funcs: dict[str, Func] = field(default_factory=dict)
+    classes: set[str] = field(default_factory=set)
+    bases: dict[str, list[ast.expr]] = field(default_factory=dict)
+    attrs: dict[tuple[str, str], list[tuple[Func | None, ast.expr]]] = field(default_factory=dict)
+    module_calls: list[ast.Call] = field(default_factory=list)  # calls outside any function
+
+
+def _targets(node: ast.expr) -> list[ast.Name]:
+    if isinstance(node, ast.Name):
+        return [node]
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return [n for e in node.elts for n in _targets(e)]
+    if isinstance(node, ast.Starred):
+        return _targets(node.value)
+    return []
+
+
+class _Scan(ast.NodeVisitor):
+    """One walk of a module: its constants, functions (with their assignments, returns and calls), classes and the
+    ``self`` attributes each class assigns."""
+
+    def __init__(self, mod: Module) -> None:
+        self.mod = mod
+        self.func: Func | None = None
+        self.cls: list[str] = []
+
+    # -- scopes
+    def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        outer = self.func
+        qual = ".".join([*self.cls, node.name]) if outer is None else f"{outer.qual}.{node.name}"
+        a = node.args
+        positional = [x.arg for x in (*a.posonlyargs, *a.args)]
+        params = [*positional, *([a.vararg.arg] if a.vararg else []), *[x.arg for x in a.kwonlyargs],
+                  *([a.kwarg.arg] if a.kwarg else [])]
+        defaults = dict(zip(reversed(positional), reversed(a.defaults), strict=False))
+        defaults.update({x.arg: d for x, d in zip(a.kwonlyargs, a.kw_defaults, strict=True) if d is not None})
+        func = Func(self.mod.name, qual, node, self.cls[-1] if self.cls and outer is None else
+                    (outer.cls if outer else None), outer, params, defaults=defaults,
+                    annotations={x.arg: x.annotation for x in (*a.posonlyargs, *a.args, *a.kwonlyargs)
+                                 if x.annotation is not None},
+                    returns_annotation=node.returns)
+        self.mod.funcs[qual] = func
+        self.func = func
+        for stmt in node.body:
+            self.visit(stmt)
+        self.func = outer
+
+    visit_FunctionDef = _function
+    visit_AsyncFunctionDef = _function
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        if self.func is None and not self.cls:
+            self.mod.classes.add(node.name)
+        else:
+            self.mod.classes.add(".".join([*self.cls, node.name]))
+        self.mod.bases[".".join([*self.cls, node.name])] = list(node.bases)
+        self.cls.append(node.name)
+        for stmt in node.body:
+            self.visit(stmt)
+        self._dataclass_init(node)
+        self.cls.pop()
+
+    def _dataclass_init(self, node: ast.ClassDef) -> None:
+        """A ``@dataclass`` without its own ``__init__``: the fields are the constructor's parameters, in order, and
+        each ``self.field`` is the parameter of that name."""
+        mod = self.mod
+        qual = ".".join(self.cls)
+        decorated = any((C.dotted(d.func if isinstance(d, ast.Call) else d) or "").split(".")[-1] == "dataclass"
+                        for d in node.decorator_list)
+        if not decorated or f"{qual}.__init__" in mod.funcs:
+            return
+        fields = [(s.target.id, s.value) for s in node.body
+                  if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)]
+        init = Func(mod.name, f"{qual}.__init__", node, qual, None, ["self", *[n for n, _ in fields]],
+                    defaults={n: v for n, v in fields if v is not None})
+        mod.funcs[init.qual] = init
+        for name, _ in fields:
+            kept: list[tuple[Func | None, ast.expr]] = [(src, rhs) for src, rhs in mod.attrs.get((qual, name), [])
+                                                        if src is not None]
+            kept.append((init, ast.Name(id=name, ctx=ast.Load())))
+            mod.attrs[(qual, name)] = kept
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self.generic_visit(node)
+
+    # -- bindings
+    def _bind(self, target: ast.expr, value: ast.expr | None) -> None:
+        func = self.func
+        if isinstance(target, ast.Name):
+            if func is not None:
+                if value is None:
+                    func.opaque.add(target.id)
+                else:
+                    func.assigns.setdefault(target.id, []).append(value)
+            elif not self.cls and value is not None:
+                self.mod.consts[target.id] = value
+        elif (isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
+              and self.cls and value is not None):
+            self.mod.attrs.setdefault((self.cls[-1], target.attr), []).append((func, value))
+        else:
+            for name in _targets(target):
+                if func is not None:
+                    func.opaque.add(name.id)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name) and self.func is not None:
+                self.func.subkeys.setdefault(target.value.id, []).append(target.slice)
+            self._bind(target, node.value if isinstance(target, (ast.Name, ast.Attribute)) else None)
+        if self.func is None and self.cls and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            self.mod.attrs.setdefault((self.cls[-1], node.targets[0].id), []).append((None, node.value))
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._bind(node.target, node.value)
+            if self.func is None and self.cls and isinstance(node.target, ast.Name):
+                self.mod.attrs.setdefault((self.cls[-1], node.target.id), []).append((None, node.value))
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            if self.func is not None:
+                self.func.opaque.add(node.target.id)
+        self.generic_visit(node)
+
+    def _loop(self, target: ast.expr, iterable: ast.expr) -> None:
+        if self.func is None:
+            return
+        if isinstance(target, ast.Name):
+            self.func.loops.setdefault(target.id, []).append(iterable)
+        elif (isinstance(target, ast.Tuple) and target.elts and isinstance(target.elts[0], ast.Name)
+              and isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Attribute)
+              and iterable.func.attr == "items" and not iterable.args):
+            self.func.key_loops.setdefault(target.elts[0].id, []).append(iterable.func.value)
+            self.func.opaque.update(n.id for n in _targets(target) if n.id != target.elts[0].id)
+        else:
+            self.func.opaque.update(n.id for n in _targets(target))
+
+    def visit_For(self, node: ast.For) -> None:
+        self._loop(node.target, node.iter)
+        self.generic_visit(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._loop(node.target, node.iter)
+        self.generic_visit(node)
+
+    def visit_comprehension(self, node: ast.comprehension) -> None:
+        self._loop(node.target, node.iter)
+        self.generic_visit(node)
+
+    def _with(self, items: list[ast.withitem]) -> None:
+        for item in items:
+            if item.optional_vars is not None and self.func is not None:
+                if isinstance(item.optional_vars, ast.Name):
+                    self.func.withs.setdefault(item.optional_vars.id, []).append(item.context_expr)
+                else:
+                    self.func.opaque.update(n.id for n in _targets(item.optional_vars))
+
+    def visit_With(self, node: ast.With) -> None:
+        self._with(node.items)
+        self.generic_visit(node)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._with(node.items)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name and self.func is not None:
+            self.func.opaque.add(node.name)
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if self.func is not None:
+            self.func.opaque.add(node.target.id)
+        self.generic_visit(node)
+
+    def visit_Return(self, node: ast.Return) -> None:
+        if self.func is not None and node.value is not None:
+            self.func.returns.append(node.value)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        (self.func.calls if self.func is not None else self.mod.module_calls).append(node)
+        f = node.func
+        if (self.func is not None and isinstance(f, ast.Attribute) and f.attr == "append"
+                and isinstance(f.value, ast.Name) and len(node.args) == 1):
+            self.func.appends.setdefault(f.value.id, []).append(node.args[0])
+        self.generic_visit(node)
+
+
+@dataclass
+class Program:
+    """The parsed package: every module's constants, functions and class attributes, and every static call."""
+
+    modules: dict[str, Module]
+    callers: dict[tuple[str, str], list[tuple[Func | None, Module, ast.Call]]] = field(default_factory=dict)
+    _typing: int = 0
+    _returned: dict[tuple[str, str], tuple[Module, str]] = field(default_factory=dict)
+    _returning: set[tuple[str, str]] = field(default_factory=set)
+
+    @classmethod
+    def of(cls, trees: dict[str, tuple[ast.Module, bool]]) -> Program:
+        modules = {}
+        for name, (tree, is_package) in sorted(trees.items()):
+            index = C.index_of(tree, name, is_package)
+            mod = Module(name, is_package, tree, index.aliases)
+            _Scan(mod).visit(tree)
+            modules[name] = mod
+        program = cls(modules)
+        program._index_callers()
+        return program
+
+    # -- names
+    def split(self, dotted: str) -> tuple[str, str] | None:
+        """``aew.x.NAME`` as (module ``aew.x``, ``NAME``): the longest module prefix the program holds."""
+        parts = dotted.split(".")
+        for cut in range(len(parts) - 1, 0, -1):
+            module = ".".join(parts[:cut])
+            if module in self.modules:
+                return module, ".".join(parts[cut:])
+        return None
+
+    def target(self, mod: Module, func: Func | None, callee: ast.expr) -> Func | None:
+        """The function a call statically names: a name of this module or imported, a method on ``self``, or a class
+        (its ``__init__``). None when the callee is anything else (a method of an object whose class is not known)."""
+        if isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name) and callee.value.id in ("self",
+                                                                                                           "cls"):
+            if func is not None and func.cls:
+                return self.method(mod, func.cls, callee.attr)
+            return None
+        if isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Call):
+            inner = callee.value.func
+            if isinstance(inner, ast.Name) and inner.id == "super":
+                if func is not None and func.cls:
+                    return self.method(mod, func.cls, callee.attr, skip_own=True)
+                return None
+            if self._typing >= TYPING_DEPTH:
+                return None
+            self._typing += 1
+            try:  # `Class(...).method(...)`, `f(...).method(...)` with `f` typed `-> Class` or building one
+                klass = self._call_class(mod, func, callee.value, TYPING_DEPTH)
+            finally:
+                self._typing -= 1
+            if klass is not None:
+                return self.method(klass[0], klass[1], callee.attr)
+            return None
+        if isinstance(callee, ast.Attribute) and isinstance(callee.value, (ast.Name, ast.Attribute)):
+            if self._typing >= TYPING_DEPTH:  # typing a receiver names callees, which type their receivers
+                return None
+            self._typing += 1
+            try:
+                klass = self.receiver_class(mod, func, callee.value, TYPING_DEPTH)
+            finally:
+                self._typing -= 1
+            if klass is not None:
+                return self.method(klass[0], klass[1], callee.attr)
+        dotted = mod.aliases.resolve(callee)
+        if dotted is None:
+            return None
+        if func is not None and isinstance(callee, ast.Name):  # a function defined inside this one or an enclosing one
+            scope: Func | None = func
+            while scope is not None:
+                nested = mod.funcs.get(f"{scope.qual}.{dotted}")
+                if nested is not None:
+                    return nested
+                scope = scope.parent
+        found = self._local(mod, dotted)  # a name of this module (`helper`, `Class`, `Class.method`)
+        if found is not None:
+            return found
+        located = self.split(dotted)
+        if located is None:
+            return None
+        module, name = located
+        return self._local(self.modules[module], name)
+
+    def _local(self, mod: Module, name: str) -> Func | None:
+        if name in mod.funcs:
+            return mod.funcs[name]
+        if name in mod.classes:
+            return self.method(mod, name, "__init__")
+        return None
+
+    def receiver_class(self, mod: Module, func: Func | None, expr: ast.expr, depth: int) -> tuple[Module, str] | None:
+        """The class of a receiver when it is evident: ``self`` (the function's class), a parameter annotated with a
+        class, a local assigned a call of a class (or of a function annotated ``-> Class``), and a ``self`` attribute
+        that every assignment in the class gives such a class. None otherwise (never a guess)."""
+        if depth <= 0:
+            return None
+        if isinstance(expr, ast.Name):
+            if expr.id in ("self", "cls") and func is not None and func.cls:
+                return mod, func.cls
+            scope = func
+            while scope is not None:
+                if expr.id in scope.annotations and expr.id not in scope.assigns:
+                    return self.class_of(self.modules[scope.module], scope.annotations[expr.id])
+                if expr.id in scope.assigns:
+                    built = {self._call_class(self.modules[scope.module], scope, rhs, depth - 1)
+                             for rhs in scope.assigns[expr.id]}
+                    return next(iter(built)) if len(built) == 1 and None not in built else None
+                scope = scope.parent
+            return None
+        if isinstance(expr, ast.Attribute):
+            owner = self.receiver_class(mod, func, expr.value, depth - 1)
+            if owner is None:
+                return None
+            kinds: set[tuple[Module, str] | None] = set()
+            for m, k in self.mro(owner[0], owner[1]):
+                for source, rhs in m.attrs.get((k, expr.attr), []):
+                    holder = self.modules[source.module] if source else m
+                    if isinstance(rhs, ast.Name) and source is not None and rhs.id in source.annotations:
+                        kinds.add(self.class_of(holder, source.annotations[rhs.id]))
+                    elif isinstance(rhs, (ast.Name, ast.Attribute)):
+                        kinds.add(self.receiver_class(holder, source, rhs, depth - 1))
+                    else:
+                        kinds.add(self._call_class(holder, source, rhs, depth - 1))
+            return next(iter(kinds)) if len(kinds) == 1 and None not in kinds else None
+        return None
+
+    def _call_class(self, mod: Module, func: Func | None, expr: ast.expr, depth: int) -> tuple[Module, str] | None:
+        """The class a call expression yields: a constructor, or a function annotated ``-> Class``."""
+        if not isinstance(expr, ast.Call):
+            return None
+        if isinstance(expr.func, ast.Name) and expr.func.id == "cls" and func is not None and func.cls:
+            return mod, func.cls  # `cls(...)` in a classmethod builds the class
+        target = self.target(mod, func, expr.func)
+        if target is None:
+            return None
+        if target.cls and target.qual.endswith(".__init__"):
+            return self.modules[target.module], target.cls
+        if target.returns_annotation is not None:
+            return self.class_of(self.modules[target.module], target.returns_annotation)
+        return self._returned_class(target, depth)
+
+    def _returned_class(self, target: Func, depth: int) -> tuple[Module, str] | None:
+        """The one class every ``return`` expression of an unannotated function builds, or None."""
+        if target.key in self._returned:
+            return self._returned[target.key]
+        if depth <= 0 or not target.returns or target.key in self._returning:
+            return None  # a function that returns itself, through any chain, types as unknown
+        self._returning.add(target.key)
+        try:
+            mod = self.modules[target.module]
+            kinds = {self._call_class(mod, target, ret, depth - 1) for ret in target.returns}
+        finally:
+            self._returning.discard(target.key)
+        result = next(iter(kinds)) if len(kinds) == 1 and None not in kinds else None
+        if result is not None:  # only an answer is kept: an unknown may be the depth's, not the function's
+            self._returned[target.key] = result
+        return result
+
+    def class_of(self, mod: Module, annotation: ast.expr) -> tuple[Module, str] | None:
+        """The program class a parameter's annotation names (``Thread``, ``mod.Thread``, ``Thread | None``)."""
+        if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+            return self.class_of(mod, annotation.left) or self.class_of(mod, annotation.right)
+        dotted = mod.aliases.resolve(annotation)
+        if dotted is None:
+            return None
+        if dotted in mod.classes:
+            return mod, dotted
+        located = self.split(dotted)
+        if located and located[1] in self.modules[located[0]].classes:
+            return self.modules[located[0]], located[1]
+        return None
+
+    def mro(self, mod: Module, cls: str, _depth: int = 0) -> list[tuple[Module, str]]:
+        """The class and its bases that the program holds, most derived first (a depth-first reading: enough to find
+        where an attribute or a method is defined)."""
+        out = [(mod, cls)]
+        if _depth > 6:
+            return out
+        for base in mod.bases.get(cls, []):
+            dotted = mod.aliases.resolve(base)
+            if dotted is None:
+                continue
+            owner, name = (mod, dotted) if dotted in mod.classes else (None, "")
+            if owner is None:
+                located = self.split(dotted)
+                if located and located[1] in self.modules[located[0]].classes:
+                    owner, name = self.modules[located[0]], located[1]
+            if owner is not None:
+                for item in self.mro(owner, name, _depth + 1):
+                    if item not in out:
+                        out.append(item)
+        return out
+
+    def prop(self, mod: Module, cls: str, name: str) -> Func | None:
+        """``cls.name`` when it is a property (or cached property) of the class or its nearest base."""
+        found = self.method(mod, cls, name)
+        if found is None or not isinstance(found.node, ast.FunctionDef | ast.AsyncFunctionDef):
+            return None
+        decorated = any((C.dotted(d) or "").split(".")[-1] in ("property", "cached_property")
+                        for d in found.node.decorator_list)
+        return found if decorated else None
+
+    def method(self, mod: Module, cls: str, name: str, *, skip_own: bool = False) -> Func | None:
+        """``cls.name`` as the class or its nearest base defines it."""
+        for owner, klass in self.mro(mod, cls)[1 if skip_own else 0:]:
+            found = owner.funcs.get(f"{klass}.{name}")
+            if found is not None:
+                return found
+        return None
+
+    def _index_callers(self) -> None:
+        for mod in self.modules.values():
+            for func in mod.funcs.values():
+                for call in func.calls:
+                    callee = self.target(mod, func, call.func)
+                    if callee is not None:
+                        self.callers.setdefault(callee.key, []).append((func, mod, call))
+            for call in mod.module_calls:
+                callee = self.target(mod, None, call.func)
+                if callee is not None:
+                    self.callers.setdefault(callee.key, []).append((None, mod, call))
+
+
+# ------------------------------------------------------------------------------------------------- the evaluation
+
+@dataclass(frozen=True)
+class Env:
+    module: str
+    func: tuple[str, str] | None  # the function's key, None at module level
+    bindings: tuple[tuple[str, Values], ...] = ()  # parameters bound by the call being inlined
+
+
+def _join(a: Val, b: Val) -> Val:
+    """``a / b``. A path joined with the string ``.aew`` is the ``.aew`` directory (the owner's ``AEW_DIR``); a
+    computed segment makes the template's tail (or, under the root, its first segment) a placeholder."""
+    if a.kind == UNK:
+        return a
+    if b.kind == STR and b.text == AEW_DIRECTORY:
+        return Val(ROOT, "")
+    if a.kind == OUT:
+        return a
+    if b.kind == OUT:
+        return b
+    if b.kind == UNK:
+        if a.kind == ROOT:
+            return Val(TPL, PLACEHOLDER)
+        return Val(a.kind, f"{a.text}/{PLACEHOLDER}" if a.text else PLACEHOLDER)
+    if b.kind == ROOT:
+        return b
+    tail = b.text
+    if a.kind == ROOT:
+        return Val(TPL, tail)
+    if not a.text:
+        return Val(a.kind, tail)
+    return Val(a.kind, f"{a.text}/{tail}" if tail else a.text)
+
+
+def _parent(v: Val) -> Val:
+    if v.kind in (ROOT, OUT, UNK):
+        return v
+    head, sep, _ = v.text.rpartition("/")
+    if not sep:
+        return Val(ROOT, "") if v.kind == TPL else Val(STR, "")
+    return Val(v.kind, head)
+
+
+class Evaluator:
+    def __init__(self, program: Program) -> None:
+        self.p = program
+        self._memo: dict[tuple[int, Env], Values] = {}
+
+    # -- entry
+    def value(self, mod: Module, func: Func | None, expr: ast.expr) -> Values:
+        env = Env(mod.name, func.key if func else None)
+        return self._ev(expr, env, DEPTH, frozenset()) or unk("nothing assigns it a path")
+
+    def _func(self, env: Env) -> Func | None:
+        return self.p.modules[env.module].funcs.get(env.func[1]) if env.func else None
+
+    def _ev(self, e: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        memo_key = (id(e), env)
+        if not seen and memo_key in self._memo:
+            return self._memo[memo_key]
+        out = capped(self._eval(e, env, depth, seen))
+        if not seen:
+            self._memo[memo_key] = out
+        return out
+
+    # -- the expression forms
+    def _eval(self, e: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        if isinstance(e, ast.Constant):
+            return self._constant(e)
+        if isinstance(e, ast.JoinedStr):
+            return self._fstring(e, env, depth, seen)
+        if isinstance(e, ast.Name):
+            return self._name(e, env, depth, seen)
+        if isinstance(e, ast.Attribute):
+            return self._attribute(e, env, depth, seen)
+        if isinstance(e, ast.BinOp):
+            return self._binop(e, env, depth, seen)
+        if isinstance(e, ast.Call):
+            return self._call(e, env, depth, seen)
+        if isinstance(e, ast.IfExp):
+            return capped(set(self._ev(e.body, env, depth, seen)) | set(self._ev(e.orelse, env, depth, seen)))
+        if isinstance(e, ast.BoolOp):
+            merged: set[Val] = set()
+            for v in e.values:
+                merged |= self._ev(v, env, depth, seen)
+            return capped(merged)
+        if isinstance(e, ast.Subscript):
+            return self._subscript(e, env, depth, seen)
+        return unk(f"an expression this reading does not model, `{_src(e)}`")
+
+    def _subscript(self, e: ast.Subscript, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """``name["key"]`` where ``name`` is bound to a dict literal in the function: that key's value. Anything else
+        (a computed key, a dict from elsewhere) is UNK."""
+        func = self._func(env)
+        key = e.slice
+        if (isinstance(e.value, ast.Name) and isinstance(key, ast.Constant) and isinstance(key.value, str)
+                and func is not None and e.value.id in func.assigns):
+            out: set[Val] = set()
+            for rhs in func.assigns[e.value.id]:
+                if isinstance(rhs, ast.Constant) and rhs.value is None:
+                    continue  # `x = None` before `x = {...}`
+                if not isinstance(rhs, ast.Dict):
+                    return unk(f"`{_src(e)}`, from a value that is not a dict literal")
+                for k, v in zip(rhs.keys, rhs.values, strict=True):
+                    if isinstance(k, ast.Constant) and k.value == key.value:
+                        out |= self._ev(v, env, depth, seen)
+            return capped(out)
+        return unk(f"a subscript, `{_src(e)}`")
+
+    def _constant(self, e: ast.Constant) -> Values:
+        if e.value is None:
+            return frozenset()  # `self.x = None` before it is set: the other assignments are the values
+        if not isinstance(e.value, str):
+            return unk("a constant that is not a string")
+        text = e.value
+        if text in OUTSIDE_LITERALS:
+            return one(OUT, OUTSIDE_LITERALS[text])
+        if text.startswith("/") or (len(text) > 1 and text[1] == ":" and text[0].isalpha()):
+            return one(OUT, "an absolute path")
+        return one(STR, text)
+
+    def _fstring(self, e: ast.JoinedStr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        first = e.values[0] if e.values else None
+        if isinstance(first, ast.FormattedValue):
+            lead = self._ev(first.value, env, depth, seen)
+            if lead and all(v.kind in (TPL, OUT) for v in lead):
+                return lead  # `f"{path}.tmp"`, `f"{path}{suffix}"`: a sibling of `path`, taken as the same path
+        parts = [""]
+        for piece in e.values:
+            if isinstance(piece, ast.Constant):
+                parts = [p + str(piece.value) for p in parts]
+                continue
+            inner = self._ev(piece.value, env, depth, seen) if isinstance(piece, ast.FormattedValue) else unk("?")
+            texts = sorted({v.text for v in inner if v.kind == STR})
+            if inner and len(inner) == len(texts) and len(texts) <= 4:
+                parts = [p + t for p in parts for t in texts]
+            else:
+                parts = [p + PLACEHOLDER for p in parts]
+        return capped({Val(STR, p) for p in parts})
+
+    def _binop(self, e: ast.BinOp, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        if isinstance(e.op, ast.Div):
+            left = self._ev(e.left, env, depth, seen) or unk("nothing assigns it a path")
+            right = self._ev(e.right, env, depth, seen) or unk("nothing assigns it a path")
+            return capped({_join(a, b) for a in left for b in right})
+        if isinstance(e.op, ast.Add):
+            left, right = self._ev(e.left, env, depth, seen), self._ev(e.right, env, depth, seen)
+            out = set()
+            for a in left:
+                for b in right:
+                    if a.kind == STR and b.kind == STR:
+                        out.add(Val(STR, a.text + b.text))
+                    elif a.kind == STR and b.kind == UNK:
+                        out.add(Val(STR, a.text + PLACEHOLDER))
+                    elif a.kind == UNK:
+                        out.add(a)
+                    else:
+                        out.add(Val(UNK, f"a sum this reading does not model, `{_src(e)}`"))
+            return capped(out)
+        return unk(f"an operator this reading does not model, `{_src(e)}`")
+
+    def _name(self, e: ast.Name, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        name = e.id
+        for bound, values in env.bindings:
+            if bound == name:
+                return values
+        if name == ROOT_NAME:
+            return one(ROOT)
+        if name == REPO_NAME:
+            return one(OUT, "the repository's working tree")
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        scope = func
+        while scope is not None:
+            token = ("name", scope.module, scope.qual, name)
+            if (name in scope.assigns or name in scope.opaque or name in scope.params or name in scope.loops
+                    or name in scope.withs or name in scope.key_loops):
+                if token in seen:
+                    return frozenset()
+                out: set[Val] = set()
+                inner_env = Env(env.module, scope.key, env.bindings if scope is func else ())
+                for rhs in scope.assigns.get(name, []):
+                    out |= self._ev(rhs, inner_env, depth, seen | {token})
+                for iterable in scope.loops.get(name, []):
+                    out |= self._element(iterable, inner_env, depth, seen | {token})
+                for context in scope.withs.get(name, []):
+                    out |= self._context(context, inner_env, name)
+                for mapping in scope.key_loops.get(name, []):
+                    out |= self._keys(mapping, inner_env, depth, seen | {token})
+                if name in scope.opaque:
+                    out.add(Val(UNK, f"`{name}` is bound by a `with`, an unpacking or an `except`"))
+                if name in scope.params:
+                    out |= self._param(scope, name, depth, seen | {token})
+                return capped(out)
+            scope = scope.parent
+        if name in mod.consts:
+            token = ("const", mod.name, name)
+            if token in seen:
+                return frozenset()
+            return self._ev(mod.consts[name], Env(mod.name, None), depth, seen | {token})
+        imported = mod.aliases.names.get(name)
+        if imported:
+            located = self.p.split(imported)
+            if located and located[1] in self.p.modules[located[0]].consts:
+                owner = self.p.modules[located[0]]
+                token = ("const", owner.name, located[1])
+                if token in seen:
+                    return frozenset()
+                return self._ev(owner.consts[located[1]], Env(owner.name, None), depth, seen | {token})
+        return unk(f"the name `{name}` is not bound to a value this reading can follow")
+
+    def _attribute(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        if e.attr == ROOT_NAME:
+            return one(ROOT)
+        if e.attr == REPO_NAME:
+            return one(OUT, "the repository's working tree")
+        if e.attr == "parent":
+            return capped({_parent(v) for v in self._ev(e.value, env, depth, seen)})
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        if isinstance(e.value, ast.Name) and e.value.id == "self" and func is not None and func.cls:
+            token = ("attr", env.module, func.cls, e.attr)
+            if token in seen:
+                return frozenset()
+            chain = self.p.mro(mod, func.cls)
+            sources = [(owner, rhs) for m, k in chain for owner, rhs in m.attrs.get((k, e.attr), [])]
+            prop = self.p.prop(mod, func.cls, e.attr)  # a property: its return expressions are the value
+            if not sources and prop is None:
+                return unk(f"`self.{e.attr}` is not assigned in its class")
+            out: set[Val] = set()
+            for owner, rhs in sources:
+                out |= self._ev(rhs, Env(owner.module if owner else env.module, owner.key if owner else None), depth,
+                                seen | {token})
+            if not sources and prop is not None:
+                for ret in prop.returns:
+                    out |= self._ev(ret, Env(prop.module, prop.key), depth, seen | {token})
+            return capped(out)
+        instance = self._instance_attribute(e, env, depth, seen)
+        if instance is not None:
+            return instance
+        typed = self._typed_attribute(e, env, depth, seen)
+        if typed is not None:
+            return typed
+        dotted = mod.aliases.resolve(e)
+        if dotted == "os.devnull":
+            return one(OUT, "the null device")
+        if dotted == "os.sep" or dotted == "os.linesep":
+            return unk("a separator")
+        located = self.p.split(dotted) if dotted else None
+        if located and located[1] in self.p.modules[located[0]].consts:
+            owner = self.p.modules[located[0]]
+            token = ("const", owner.name, located[1])
+            if token in seen:
+                return frozenset()
+            return self._ev(owner.consts[located[1]], Env(owner.name, None), depth, seen | {token})
+        return unk(f"the attribute `{_src(e)}` is not a value this reading can follow")
+
+    def _call(self, e: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        callee = mod.aliases.resolve(e.func)
+        if callee in SAME_PATH_CALLS or (callee and callee.split(".")[-1] in ("Path", "PurePath", "PurePosixPath")
+                                         and callee.startswith("pathlib")):
+            if not e.args:
+                return unk("a path with no argument")
+            values = self._ev(e.args[0], env, depth, seen)
+            for extra in e.args[1:]:
+                tail = self._ev(extra, env, depth, seen)
+                values = capped({_join(a, b) for a in values for b in tail})
+            return values
+        if callee in JOIN_CALLS:
+            values = self._ev(e.args[0], env, depth, seen) if e.args else unk("os.path.join with no argument")
+            for extra in e.args[1:]:
+                tail = self._ev(extra, env, depth, seen)
+                values = capped({_join(a, b) for a in values for b in tail})
+            return values
+        if callee == f"{UTIL_MODULE}.write_temp" and e.args:  # returns the new temporary file, in its directory
+            return capped({_join(v, Val(UNK, "a temporary file")) for v in self._ev(e.args[0], env, depth, seen)})
+        if callee in TEMP_CALLS:
+            return one(OUT, "a temporary directory")
+        if (C.dotted(e.func) or "").split(".")[-1] == WORKSPACES_NAME:
+            return one(OUT, "the task workspaces' directory")
+        if isinstance(e.func, ast.Attribute):
+            method = e.func.attr
+            if method in SAME_PATH_METHODS:
+                return self._ev(e.func.value, env, depth, seen)
+            if method == "joinpath":
+                values = self._ev(e.func.value, env, depth, seen)
+                for extra in e.args:
+                    tail = self._ev(extra, env, depth, seen)
+                    values = capped({_join(a, b) for a in values for b in tail})
+                return values
+            if method == "format" and isinstance(e.func.value, ast.Constant) and isinstance(e.func.value.value, str):
+                return one(STR, _format_template(e.func.value.value))
+        if depth <= 0:
+            return unk("resolution depth limit")
+        target = self.p.target(mod, func, e.func)
+        if target is None:
+            return unk(f"the result of `{_src(e.func)}(...)`, a callee this reading cannot name")
+        if not target.returns:
+            return unk(f"`{target.qual}` returns no expression")
+        args = self._bind_args(target, e, env, depth, seen)
+        inner = Env(target.module, target.key, tuple(sorted(args.items(), key=lambda kv: kv[0])))
+        out: set[Val] = set()
+        for ret in target.returns:
+            out |= self._ev(ret, inner, depth - 1, seen)
+        return capped(out)
+
+    def _context(self, context: ast.expr, env: Env, name: str) -> Values:
+        """``with <context> as name``: a temporary directory is outside ``.aew``; any other context manager yields an
+        object this reading does not follow."""
+        mod = self.p.modules[env.module]
+        callee = mod.aliases.resolve(context.func) if isinstance(context, ast.Call) else None
+        if callee in TEMP_CALLS:
+            return one(OUT, "a temporary directory")
+        return unk(f"`{name}` is bound by `with {_src(context)}`")
+
+    def _keys(self, mapping: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The keys of a mapping: those of a dict literal, or of every dict literal bound to the name in the function,
+        plus each ``name[key] = ...``; for a parameter, those of the mapping every static call passes. A ``**``
+        unpacking, or a mapping from anywhere else, is UNK."""
+        if isinstance(mapping, ast.Dict):
+            out: set[Val] = set()
+            for key in mapping.keys:
+                out |= self._ev(key, env, depth, seen) if key is not None else unk("a `**` unpacking in a mapping")
+            return capped(out)
+        if not isinstance(mapping, ast.Name):
+            return unk(f"the keys of `{_src(mapping)}`, a mapping this reading cannot read")
+        func = self._func(env)
+        if func is None:
+            return unk(f"the keys of `{mapping.id}`, a mapping this reading cannot read")
+        token = ("keys", func.module, func.qual, mapping.id)
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else unk("resolution depth limit")
+        out = set()
+        for rhs in func.assigns.get(mapping.id, []):
+            out |= self._keys(rhs, env, depth, seen | {token})
+        for key in func.subkeys.get(mapping.id, []):
+            out |= self._ev(key, env, depth, seen | {token})
+        if mapping.id in func.params:
+            for caller, caller_mod, call in self.p.callers.get(func.key, [])[:CALLERS]:
+                arg = _argument(func, mapping.id, call)
+                if arg is not None:
+                    out |= self._keys(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
+                                      seen | {token})
+        if not out:
+            out.add(Val(UNK, f"the keys of `{mapping.id}`, a mapping this reading cannot read"))
+        return capped(out)
+
+    def _element(self, iterable: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """What a ``for`` target takes from its iterable: a path under the receiver for ``glob``, ``rglob``,
+        ``iterdir``, ``os.listdir`` and ``os.scandir``; through ``sorted``, ``list``, ``tuple``, ``set`` and
+        ``reversed`` to their argument; the elements of a list, tuple or set literal. Anything else is UNK."""
+        mod = self.p.modules[env.module]
+        if isinstance(iterable, (ast.List, ast.Tuple, ast.Set)):
+            out: set[Val] = set()
+            for item in iterable.elts:
+                if isinstance(item, ast.Starred):
+                    out |= self._element(item.value, env, depth, seen)
+                else:
+                    out |= self._ev(item, env, depth, seen)
+            return capped(out)
+        if isinstance(iterable, ast.Name):
+            return self._elements_of_name(iterable.id, env, depth, seen)
+        if isinstance(iterable, ast.Call):
+            callee = mod.aliases.resolve(iterable.func)
+            if callee in ("sorted", "list", "tuple", "set", "reversed", "filter") and iterable.args:
+                return self._element(iterable.args[-1], env, depth, seen)
+            if callee in ("os.listdir", "os.scandir") and iterable.args:
+                return capped({_join(v, Val(UNK, "a directory entry")) for v in self._ev(iterable.args[0], env, depth,
+                                                                                         seen)})
+            if isinstance(iterable.func, ast.Attribute) and iterable.func.attr in ("glob", "rglob", "iterdir"):
+                return capped({_join(v, Val(UNK, "a directory entry"))
+                               for v in self._ev(iterable.func.value, env, depth, seen)})
+        return unk(f"a loop variable over `{_src(iterable)}`")
+
+    def _elements_of_name(self, name: str, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The elements of a local list: those of every list, tuple or comprehension assigned to it, and every
+        ``name.append(element)``. A list that comes from anywhere else (a parameter, a call) is UNK."""
+        func = self._func(env)
+        if func is None or name not in func.assigns:
+            return unk(f"a loop variable over `{name}`, a list this reading cannot read")
+        token = ("elements", func.module, func.qual, name)
+        if token in seen:
+            return frozenset()
+        out: set[Val] = set()
+        for rhs in func.assigns[name]:
+            if isinstance(rhs, (ast.List, ast.Tuple, ast.Set)):
+                out |= self._element(rhs, env, depth, seen | {token})
+            elif isinstance(rhs, ast.ListComp):
+                out |= self._ev(rhs.elt, env, depth, seen | {token})
+            else:
+                out.add(Val(UNK, f"a loop variable over `{name}`, a list this reading cannot read"))
+        for item in func.appends.get(name, []):
+            out |= self._ev(item, env, depth, seen | {token})
+        return capped(out)
+
+    def _typed_attribute(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                         ) -> Values | None:
+        """``name.attr`` where ``name`` is a parameter annotated with an AEW class: that class's ``self.attr``, as every
+        construction of it gives it. None when ``name`` is not such a parameter."""
+        func = self._func(env)
+        if not (isinstance(e.value, ast.Name) and func is not None and e.value.id in func.annotations):
+            return None
+        mod = self.p.modules[env.module]
+        owner = self.p.class_of(mod, func.annotations[e.value.id])
+        if owner is None:
+            return None
+        cmod, cls = owner
+        token = ("typed", cmod.name, cls, e.attr)
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else unk("resolution depth limit")
+        sources = [(src, rhs) for m, k in self.p.mro(cmod, cls) for src, rhs in m.attrs.get((k, e.attr), [])]
+        prop = self.p.prop(cmod, cls, e.attr)
+        if not sources and prop is None:
+            return unk(f"`{cls}.{e.attr}` is not assigned in its class")
+        out: set[Val] = set()
+        for source, rhs in sources:
+            out |= self._ev(rhs, Env(source.module if source else cmod.name, source.key if source else None),
+                            depth - 1, seen | {token})
+        if not sources and prop is not None:
+            for ret in prop.returns:
+                out |= self._ev(ret, Env(prop.module, prop.key), depth - 1, seen | {token})
+        return capped(out)
+
+    def _instance_attribute(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                            ) -> Values | None:
+        """``name.attr`` where ``name`` is bound in this function to a call of an AEW class: that class's ``self.attr``,
+        with the constructor's arguments bound. None when ``name`` is not such a local."""
+        func = self._func(env)
+        if not (isinstance(e.value, ast.Name) and func is not None and e.value.id in func.assigns):
+            return None
+        mod = self.p.modules[env.module]
+        out: set[Val] = set()
+        for rhs in func.assigns[e.value.id]:
+            if not isinstance(rhs, ast.Call):
+                return None
+            init = self.p.target(mod, func, rhs.func)
+            if init is None or not init.cls or not init.qual.endswith(".__init__"):
+                return None
+            owner = self.p.modules[init.module]
+            sources = [(src, rhs) for m, k in self.p.mro(owner, init.cls) for src, rhs in m.attrs.get((k, e.attr), [])]
+            prop = self.p.prop(owner, init.cls, e.attr)
+            if not sources and prop is None:
+                return unk(f"`{init.cls}.{e.attr}` is not assigned in its class")
+            token = ("instance", init.module, init.cls, e.attr)
+            if token in seen:
+                continue
+            args = self._bind_args(init, rhs, env, depth, seen)
+            bound = Env(init.module, init.key, tuple(sorted(args.items(), key=lambda kv: kv[0])))
+            for source, value in sources:
+                out |= self._ev(value, bound if source is not None and source.key == init.key else
+                                Env(source.module if source else init.module, source.key if source else None),
+                                depth - 1, seen | {token})
+            if not sources and prop is not None:
+                for ret in prop.returns:
+                    out |= self._ev(ret, Env(init.module, prop.key, bound.bindings), depth - 1, seen | {token})
+        return capped(out)
+
+    # -- parameters and arguments
+    def _bind_args(self, target: Func, call: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                   ) -> dict[str, Values]:
+        """The call's arguments, evaluated in the caller's environment, bound to the callee's parameter names."""
+        params = list(target.params)
+        if params and params[0] in ("self", "cls") and target.cls:
+            params = params[1:]
+        bound: dict[str, Values] = {}
+        for param, arg in zip(params, call.args, strict=False):
+            if not isinstance(arg, ast.Starred):
+                bound[param] = self._ev(arg, env, depth, seen)
+        for kw in call.keywords:
+            if kw.arg and kw.arg in target.params:
+                bound[kw.arg] = self._ev(kw.value, env, depth, seen)
+        return bound
+
+    def _param(self, func: Func, name: str, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """A parameter, read at the function's static call sites. A function nothing statically calls is UNK."""
+        if depth <= 0:
+            return unk("resolution depth limit")
+        if name == ROOT_NAME:
+            return one(ROOT)
+        sites = self.p.callers.get(func.key, [])
+        if not sites:
+            default = func.defaults.get(name)
+            if default is not None:
+                return self._ev(default, Env(func.module, None), depth - 1, seen)
+            return unk(f"`{name}` of `{func.qual}`, which no static call binds")
+        if len(sites) > CALLERS:
+            return unk(f"`{name}` of `{func.qual}`, which has more than {CALLERS} call sites")
+        out: set[Val] = set()
+        for caller, caller_mod, call in sites:
+            inner = Env(caller_mod.name, caller.key if caller else None)
+            arg = _argument(func, name, call)
+            if arg is None:
+                default = func.defaults.get(name)
+                if default is None:
+                    out.add(Val(UNK, f"`{name}` of `{func.qual}` is not passed at a call"))
+                else:
+                    out |= self._ev(default, Env(func.module, None), depth - 1, seen)
+                continue
+            out |= self._ev(arg, inner, depth - 1, seen)
+        return capped(out)
+
+
+def _argument(func: Func, name: str, call: ast.Call) -> ast.expr | None:
+    for kw in call.keywords:
+        if kw.arg == name:
+            return kw.value
+    params = list(func.params)
+    if params and params[0] in ("self", "cls") and func.cls:
+        params = params[1:]
+    if name in params:
+        i = params.index(name)
+        if i < len(call.args) and not any(isinstance(a, ast.Starred) for a in call.args[: i + 1]):
+            return call.args[i]
+    return None
+
+
+def _src(node: ast.AST) -> str:
+    text = ast.unparse(node)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _format_template(text: str) -> str:
+    """``"work/{}/{x}".format(...)`` as a template: every replacement field becomes a placeholder."""
+    out, depth, field_open = [], 0, False
+    for ch in text:
+        if ch == "{":
+            depth += 1
+            if depth == 1:
+                field_open = True
+                out.append(PLACEHOLDER)
+            continue
+        if ch == "}":
+            depth = max(0, depth - 1)
+            if depth == 0:
+                field_open = False
+            continue
+        if not field_open:
+            out.append(ch)
+    return "".join(out)

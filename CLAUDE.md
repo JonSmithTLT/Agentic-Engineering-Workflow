@@ -77,7 +77,9 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
   run with a `CI-Full: yes` trailer on the head commit or the `full-ci` label, then **Re-run all jobs**.
 - **`docs/reference/` is generated from the code** (`python tools/reference.py render`; never edit it by hand). A
   fast-lane test runs `python tools/reference.py check`, so a pull request that changes what it enumerates (a
-  module, its imports, an entry point, a spawn site) runs `render` and commits the result. The second of two
+  module, its imports, an entry point, a spawn site, a place that writes under `.aew`) runs `render` and commits the
+  result. A new directory directly under `.aew` is declared first (`TOP_LEVEL` in
+  `tools/reference_families/writers.py`). The second of two
   changes to merge re-renders: two that change the records always conflict, on the `digest` line of `counts`, so
   take either side and run `render`. It needs an absolute `PYTHONPATH` to this tree's `src` in a worktree, like
   every test.

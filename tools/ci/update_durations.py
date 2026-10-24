@@ -31,6 +31,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_assurance import latest_attempts  # noqa: E402  (tools/ci/check_assurance.py)
+
 DURATIONS_SCHEMA = "aew/test-durations/v1"
 HISTORY_SCHEMA = "aew/test-durations-history/v1"
 REPORT_SCHEMA = "aew/lane-report/v1"
@@ -198,9 +201,14 @@ def table(history: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_reports(dirs: list[Path]) -> list[dict[str, Any]]:
-    reports = [json.loads(p.read_text(encoding="utf-8")) for d in dirs for p in sorted(d.rglob("*.json"))
-               if AUTOPSY_DIR not in p.relative_to(d).parts]
-    return [r for r in reports if r.get("schema") == REPORT_SCHEMA]
+    """Each directory's lane reports (one run's), its shards' latest attempts only: a re-run shard's earlier report
+    adds no timings of its own (check_assurance.latest_attempts)."""
+    reports = []
+    for d in dirs:
+        found = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(d.rglob("*.json"))
+                 if AUTOPSY_DIR not in p.relative_to(d).parts]
+        reports += latest_attempts([r for r in found if r.get("schema") == REPORT_SCHEMA])
+    return reports
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:

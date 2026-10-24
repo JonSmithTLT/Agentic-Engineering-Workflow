@@ -176,6 +176,20 @@ def test_an_interrupted_narrowing_runs_again_until_the_store_directory_is_owner_
 
 
 @posix
+def test_files_an_earlier_version_writes_into_a_narrowed_store_are_narrowed_at_the_next_open(tmp_path, umask):
+    """An earlier AEW (CS-1's) committing into a store already narrowed writes its control file and new files
+    group-readable, into directories that stay owner-only: the control file alone takes the narrowing to them."""
+    umask(0o022)
+    root = tmp_path / ".aew"
+    one_transaction(init(root))
+    assert not_exact(store_modes(root)) == {}
+    for rel in ("control.yaml", "CURRENT.md", "log/000001.yaml"):
+        os.chmod(root / "state" / rel, CS1_FILE)
+    make_store(root).read()
+    assert not_exact(store_modes(root)) == {}
+
+
+@posix
 @pytest.mark.parametrize("refusal", [None, errno.EPERM, errno.EOPNOTSUPP], ids=["does_nothing", "eperm", "eopnotsupp"])
 def test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once(
         tmp_path, umask, monkeypatch, refusal):

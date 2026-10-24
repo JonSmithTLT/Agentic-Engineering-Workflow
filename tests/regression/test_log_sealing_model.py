@@ -19,6 +19,7 @@ from store_model import (  # noqa: E402
     make_store,
     one_transaction,
     outbox_violations,
+    publish_lock,
     reader_race_violations,
     segment_violations,
 )
@@ -141,12 +142,12 @@ def test_resolution_order_unsealed_then_sealed_with_equivalence_when_both_exist(
     unsealed = outbox.read_record(tmp_path, 9, since=since)
     assert unsealed is not None and not (tmp_path / outbox.segment_path(0)).exists()  # only unsealed
     # both, equivalent (a crash after the segment was published): either resolves, the same
-    for _ in log_compact.seal_steps(tmp_path, 0, since):
+    for _ in log_compact.seal_steps(tmp_path, 0, since, publish_lock(tmp_path)):
         break
     assert (tmp_path / outbox.segment_path(0)).exists() and (tmp_path / outbox.record_path(9)).exists()
     assert outbox.read_record(tmp_path, 9, since=since) == unsealed
     # only sealed
-    for _ in log_compact.seal_steps(tmp_path, 0, since):
+    for _ in log_compact.seal_steps(tmp_path, 0, since, publish_lock(tmp_path)):
         pass
     assert not (tmp_path / outbox.record_path(9)).exists()
     assert outbox.read_record(tmp_path, 9, since=since) == unsealed
@@ -428,7 +429,8 @@ def b_seals_inside_as_first(monkeypatch, root: Path, since: int, name: str) -> l
     def racing(*args, **kwargs):
         if not ran:
             ran.append(1)
-            for _ in log_compact.seal_steps(root, 0, since):  # B, with the real (unpatched once ran) reads
+            # B, with the real (unpatched once ran) reads
+            for _ in log_compact.seal_steps(root, 0, since, publish_lock(root)):
                 pass
         return original(*args, **kwargs)
 
@@ -445,7 +447,7 @@ def test_a_compactor_whose_files_another_compactor_sealed_mid_build_verifies_tha
     state = long_log(tmp_path, SEG + 14, overflow_every=37)
     truth = everything(tmp_path, state)
     ran = b_seals_inside_as_first(monkeypatch, tmp_path, 0, name)
-    steps = list(log_compact.seal_steps(tmp_path, 0, 0))  # A
+    steps = list(log_compact.seal_steps(tmp_path, 0, 0, publish_lock(tmp_path)))  # A
     assert ran and (tmp_path / outbox.segment_path(0)).exists()
     assert [s["step"] for s in steps][0] == "verified"  # A published nothing: it verified B's segment
     monkeypatch.undo()

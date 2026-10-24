@@ -984,8 +984,10 @@ def covered(refs: list[tuple[str, str, str]], source: Path, tracked: list[str]) 
 
 # Readers that run only in the core lanes, or never: the register tool is exercised by tests/unit/test_register.py
 # and the frontend importer by tests/unit/test_dashboard_static.py (both fast lane); eval/reviews holds archived
-# review probes kept as they ran, which nothing executes.
-CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py")
+# review probes kept as they ran, which nothing executes. The reference generator's entry reads and writes
+# docs/reference and runs only under tests/unit/test_reference.py; its family modules take every path as an argument
+# and name no document, so the heavy lanes' tests may import those (tests/integration/test_reference_entry_points.py).
+CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py", "tools/reference.py")
 # Rooted expressions without a literal base that do not read the repository widely (PR #163 review, V7-3), by file
 # and source text. Each needs its reason; anything new of this shape fails the guard until it is listed or rewritten.
 _CONTRACT = "ROOT / CT.CONTRACT_REL"  # the dashboard contract: its literal path is in src/aew/dashboard/contract.py,

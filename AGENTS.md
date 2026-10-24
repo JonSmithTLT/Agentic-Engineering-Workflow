@@ -44,7 +44,8 @@ either withdraws it or the operator decides.
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
 - the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the verdict of the review the
-  review guide requires), or the latest is a quick check whose points need no further check (review guide §8) and the
+  review guide requires), or the latest is a quick check that raised points needing no further check (review guide
+  §8), the commits since it change only what those points name, apart from a re-render (review guide §7), and the
   author's comment at that commit lists how each was fixed;
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a

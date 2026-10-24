@@ -9,7 +9,9 @@ owns this guide: a change to it is merged by the operator (`AGENTS.md` rule 5). 
 - **A full review** (a "full round") covers the whole diff against `main`, with the reviewer's own choice of tests. It
   is the default, and a pull request gets one (§8).
 - **A delta review** follows a CLEAR whose only open points are nits (§7).
-- **A quick check** follows a full review whose verdict is FINDINGS (§8). It covers the whole diff since that review.
+- **A quick check** follows a full review or a delta review whose verdict is FINDINGS, or a merge of `main` that is
+  not a re-render, or a rebase (§7, §8). It covers the whole diff since the full review, or after such a merge or a
+  rebase, the whole diff against `main`.
 - **A re-render check** (§7) is mechanical, not a review: it carries the last verdict to a head that only merges
   `main` and re-renders.
 - Delta reviews and quick checks have the same shape (§7). Everything in this guide applies to every kind unless a
@@ -65,8 +67,8 @@ The operator, 2026-10-10; the product rule of the Cross-Feature Integration Desi
 - **A point the delta review raises.** A nit whose fix changes only the wording of a document, a comment or a
   docstring, and nothing that runs or that tests or operators read (a doctest, help text, an error message or a reason
   code), is fixed and checked by one more short delta check of that fix alone. Any other point it raises, or a nit
-  whose fix changes anything else, is fixed and takes a quick check (§8). What that check raises is handled as §8
-  says.
+  whose fix changes anything else, is fixed and takes a quick check (§8). What either check raises is handled as §8
+  says for a quick check's points.
 - **A merge of `main` or a rebase** takes the work off this path: the next review is a quick check of the whole diff
   against `main` at the new head, unless the merge is a re-render.
 - **A re-render keeps the verdict** (operator, 2026-10-24). With R the reviewed head, H the new head, M the newest
@@ -103,8 +105,8 @@ It replaces the repeated rounds of the stop rule of 2026-10-21. A pull request g
   finds an agent-reachable blocker or major in a fix (§10), that fix is mended and checked again quickly. Any other
   point it raises (a minor, a nit or an ordinary bug) is fixed in the pull request, which then merges on green CI with
   no further check. So the path ends.
-- **A merge of `main` that is not a re-render (§7), or a rebase,** is covered by the next quick check, which then
-  covers the whole diff against `main` at the new head.
+- **A merge of `main` that is not a re-render (§7), or a rebase,** made while the pull request is on this path, takes
+  one quick check of the whole diff against `main` at the new head. CI at the head checks how the two combine.
 - **Work already past one full round** on 2026-10-24 gets only its quick check.
 
 ## 9. Proportion in a test-only pull request (operator, 2026-10-24; M1 stands)
@@ -137,8 +139,8 @@ AEW's security work is for three things, and only these:
 - a contained agent cannot read a credential, or act as the operator outside its sandbox.
 
 What follows from them:
-- **A security finding counts only if a contained agent can do one of those on its own,** with what AEW gives it. An
-  AEW bug that lets an agent do one of the three counts.
+- **A security finding counts only if a contained agent can do one of those on its own,** with what AEW gives it:
+  such a finding is agent-reachable. An AEW bug that lets an agent do one of the three is agent-reachable, and counts.
 - **Anything else is not filed:** not as a finding, not as a residual, and not as a register row. That covers a
   precondition needing root, the host's own configuration, hardware, a compromised host, malware, an unusual
   deployment, or a second fault the agent cannot cause. Residuals and register rows already written stay.

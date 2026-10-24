@@ -16,6 +16,7 @@ Windows has no OS filesystem containment (``workdir_separation_only``); its proc
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -83,9 +84,11 @@ def normalize(value: Any) -> dict[str, Any]:
 
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,
-              policy: dict[str, Any] | None, project: str | None = None) -> tuple[Layout | None, dict[str, Any]]:
+              policy: dict[str, Any] | None, project: str | None = None,
+              env: Mapping[str, str] | None = None) -> tuple[Layout | None, dict[str, Any]]:
     """The run's layout, self-tested, and its label. ``(None, weaker label)`` when containment is unavailable and
-    the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it."""
+    the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
+    environment, for the credential paths and sockets it names (default: this process's)."""
     from aew.harness.containment import probe
 
     wanted = mode(policy)
@@ -102,12 +105,12 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
             raise ContainmentUnavailable("a contained run needs its project root, to keep its writable binds off "
                                          "AEW's store and the control lock out of its sandbox; none was given")
         layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
-                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent)
+                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
         # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) The bridge's
         # directory holds the run's own socket, which the inventory lists as its own.
         test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
-                               own=(bridge_dir,) if bridge_dir else ())
+                               own=(bridge_dir,) if bridge_dir else (), env=env)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:

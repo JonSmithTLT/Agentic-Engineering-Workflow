@@ -41,7 +41,15 @@ from pathlib import Path
 from typing import Any
 
 from aew.harness.containment import sockets
-from aew.harness.containment.layout import DISPLAY_ENV, SANDBOX_TMP, VAR_RUN, Layout, _within, bwrap_argv
+from aew.harness.containment.layout import (
+    DISPLAY_ENV,
+    SANDBOX_TMP,
+    VAR_RUN,
+    Layout,
+    _within,
+    bwrap_argv,
+    host_masks,
+)
 
 TIMEOUT_S = 30.0
 VERSION_TIMEOUT_S = 10.0
@@ -199,7 +207,7 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     spec = {"sentinel": str(sentinel), "sibling": str(sibling), "name": name,
             "writable": list(layout.writable), "protected": [*layout.protected, *extra],
             "walk_budget_s": walk_budget_s, "unwalked_fs": sorted(sockets.UNWALKED_FS),
-            "host_masks": list(layout.hide_host), "inside_host_masks": list(layout.inside_host_masks()),
+            "host_masks": list(_host_masks(layout)), "inside_host_masks": list(layout.inside_host_masks()),
             "var_run": VAR_RUN, "display_files": list(layout.display_files), "unset_env": list(DISPLAY_ENV),
             "hide_dirs": list(layout.hide_dirs), "hide_files": list(layout.hide_files),
             "hide_runs": list(layout.hide_runs),
@@ -254,10 +262,16 @@ def _row(name: str, problems: list[str], **facts: Any) -> dict[str, Any]:
     return {"name": name, "ok": not problems, "reason": "; ".join(problems) or None, **facts}
 
 
+def _host_masks(layout: Layout) -> tuple[str, ...]:
+    """The trees row 2 finds masked: the host's runtime trees as they are now (``layout.host_masks``), whatever the
+    layout says, and the layout's own: a layout that lost its ``/run`` mask fails the row instead of passing it."""
+    return tuple(dict.fromkeys((*host_masks(), *layout.hide_host)))
+
+
 def _row2(layout: Layout, seen: dict[str, Any], *, own: tuple[str, ...], env: Mapping[str, str]) -> dict[str, Any]:
     problems = []
     masks = seen.get("host_masks") or {}
-    for h in layout.hide_host:
+    for h in _host_masks(layout):
         mask = masks.get(h) or {}
         if mask.get("type") != "tmpfs" or not mask.get("readonly"):
             problems.append(f"{h} is not a read-only tmpfs inside (it is {mask.get('type')}, "
@@ -265,8 +279,8 @@ def _row2(layout: Layout, seen: dict[str, Any], *, own: tuple[str, ...], env: Ma
         if mask.get("extra"):
             problems.append(f"{h} holds what the layout did not put there: {', '.join(mask['extra'][:5])}")
     var_run = seen.get("var_run")
-    if var_run is not None and not any(_within(var_run, h) for h in layout.hide_host):
-        problems.append(f"{VAR_RUN} leads to {var_run}, outside the masked {', '.join(layout.hide_host)}")
+    if var_run is not None and not any(_within(var_run, h) for h in _host_masks(layout)):
+        problems.append(f"{VAR_RUN} leads to {var_run}, outside the masked {', '.join(_host_masks(layout))}")
     inventory = seen.get("inventory") or {}
     found = [{"path": p, "class": sockets.classify(p, own=own, env=env)} for p in inventory.get("sockets") or []]
     failing = [s for s in found if s["class"] in sockets.FAILING]

@@ -13,7 +13,8 @@ F46.1 merged.
   ended stage intents, byte for byte as before) refuse to write past the same bound. A read bound alone would have let
   one deep value in a free-form object of control state make the project's own store unreadable. A commit whose state
   nests too deep is refused before anything touches disk. The refusal names the document and the top-level key the
-  writer refused under, shared objects included (review of #236, R2-F1). The bound costs about 6% of a dump.
+  writer refused under, shared objects, tuples and mapping keys included (review of #236, R2-F1, R3-F1). The bound
+  costs about 6% of a dump.
 - **The store's own reads too.** Control state and redo records pass the bound like every other read. Their checksums
   keep out damage, not a writer: a same-account process, a worker on Windows or a git checkout can write them and
   recompute the hash, so skipping the pass would have turned a deep file into a process killed with no error, `aew
@@ -25,8 +26,13 @@ F46.1 merged.
   13 levels). It counts every place in `src/aew` that composes or writes YAML, or drives a loader or dumper class,
   outside `util`'s bounded functions, by file and function, with the reason each is safe. Sites are found from the
   installed yaml package, not a hand list (R2-F2): each `yaml.` chain is resolved against the module, a class is
-  composing or writing by what it can do, every function of the yaml module is classified, and a test fails when
-  PyYAML adds one. It also requires every import of yaml to be the bare module, counts every bare `yaml` name and
-  dynamic lookup, and refuses another module reaching `util`'s own yaml objects. Its limits are stated beside it: a
-  module or class reached through an arbitrary object at run time, `exec` and `eval`, and YAML parsed inside a C
-  extension or a dependency.
+  composing or writing by what it can do and is a site where it is called or subclassed, and every function defined in
+  `yaml/__init__` is classified, so a test fails when PyYAML adds one there. It also requires every import of yaml to be
+  `import yaml`, counts every bare `yaml` name and every `getattr`, `vars` or `__dict__` lookup on it, and refuses
+  another module reaching `util`'s own yaml objects by an absolute import of `aew.util`. This is a lower bound on the
+  spellings, not a proof (R3-F2). Not seen, and stated beside the tests: a class
+  bound to a name and then driven, or held in a data structure; a submodule of yaml handed on; `util` reached by a
+  relative import, `import aew` or `import_module`; `util`'s own names driven inside `util.py`; another AEW module's
+  `yaml`; yaml found by `pkgutil.resolve_name`, `sys.modules`, `globals()` or a computed import name; a function that
+  `yaml/__init__` re-exports from a submodule, or a C function; `exec` and `eval`; and YAML parsed inside a C extension
+  or a dependency. None of these spellings occurs in `src/aew` today (grep, 2026-10-24).

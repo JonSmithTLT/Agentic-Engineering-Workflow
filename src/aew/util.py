@@ -178,7 +178,10 @@ def _bounded_dump(data: Any, source: str | None, **options: Any) -> str:
         # Named here, not in the representer: the refusal says what was refused (review of #236, F3). The key is found
         # again only on this path, so writing costs nothing for it.
         key = _top_level_key_too_deep(data)
-        where = f" under its top-level key {key!r}" if key is not None else ""
+        try:
+            where = f" under its top-level key {key!r}" if key is not None else ""
+        except RecursionError:  # a tuple key nested past Python's recursion limit has no repr: refuse without naming it
+            where = ""
         raise ValidationFailed(f"{source + ': ' if source else ''}the data nests deeper than {YAML_MAX_DEPTH} levels"
                                f"{where}: AEW does not write a YAML document it would not read back; give that value "
                                "less nesting", reason=YAML_TOO_DEEP, limit=YAML_MAX_DEPTH) from None
@@ -186,22 +189,26 @@ def _bounded_dump(data: Any, source: str | None, **options: Any) -> str:
 
 def _top_level_key_too_deep(data: Any) -> Any:
     """The top-level key of a mapping under which the writer refused, or None. It walks as the writer writes: in
-    insertion order, each object expanded where it is first met and an alias, a leaf, wherever it is met again, the
-    top-level mapping included (review of #236, R2-F1: shared objects are real, control state's snapshots are one).
+    insertion order, a mapping's key before its value (a top-level key too), each object expanded where it is first met
+    and an alias, a leaf, wherever it is met again, the top-level mapping included (review of #236, R2-F1: shared
+    objects are real, control state's snapshots are one). The empty tuple is the one object never aliased (R3-F1).
     Walked with a stack, not recursion: the data may be nested far deeper than Python's recursion limit."""
     if not isinstance(data, dict):
         return None
     seen = {id(data)}  # the writer registers the top-level mapping before it writes a value
     for key, value in data.items():
-        stack = [(value, 2)]  # the top-level mapping is level 1
+        stack = [(value, 2), (key, 2)]  # the top-level mapping is level 1; the key is popped first, then the value
         while stack:
             obj, depth = stack.pop()
-            if not isinstance(obj, (dict, list, set)) or id(obj) in seen:
+            if not isinstance(obj, (dict, list, tuple, set)):  # a tuple is written as a sequence (SafeRepresenter)
                 continue
-            seen.add(id(obj))
+            if not (isinstance(obj, tuple) and not obj):  # the writer never aliases ()
+                if id(obj) in seen:
+                    continue
+                seen.add(id(obj))
             if depth > YAML_MAX_DEPTH:
                 return key
-            children = list(obj.values()) if isinstance(obj, dict) else list(obj)
+            children = [part for item in obj.items() for part in item] if isinstance(obj, dict) else list(obj)
             stack.extend((child, depth + 1) for child in reversed(children))  # popped first to last, as written
     return None
 

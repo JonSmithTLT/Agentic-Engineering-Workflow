@@ -193,21 +193,38 @@ def test_every_yaml_document_in_the_repository_is_within_the_bound():
 # (file, the function it is in). A new site joins a list with its reason, or goes through `util.load_yaml`,
 # `util.dump_yaml` or `util.safe_dump_yaml`; a second site in a listed function is red too (review of #236, F2).
 #
-# What is enumerated, derived from the installed yaml package rather than restated (review of #236, R2-F2):
-# - every chain `yaml.a.b...` is resolved against the yaml module, prefix by prefix. A prefix that is one of the
-#   composing or writing functions is a site, whatever follows it (`yaml.safe_load.__call__`). Every function of the
-#   yaml module is classified once, below, and a test fails when PyYAML adds one.
+# What is seen, derived from the installed yaml package rather than restated (review of #236, R2-F2, R3-F2). It is a
+# lower bound on the spellings in src/aew, not a proof that no site exists:
+# - a chain `yaml.a.b...` written with the bare name `yaml` is resolved against the yaml module, prefix by prefix. A
+#   prefix that is one of the composing or writing functions is a site, whatever follows it (`yaml.safe_load.__call__`).
+#   Every function defined in `yaml/__init__` is classified once, below, and a test fails when PyYAML adds one there.
 # - a class is composing when it has `get_single_node` (the composer: every loader, `Composer`, libyaml's `CParser`) and
 #   writing when it has `represent`, `serialize` or `emit` (every dumper, the representers, `Serializer`, `Emitter`,
-#   `CEmitter`). Such a class is a site where it is instantiated, subclassed or reached through `__call__`/`__new__`;
-#   passing one as an argument (`Loader=yaml.BaseLoader`) composes nothing.
+#   `CEmitter`). Such a class is a site where it is written out and driven in place: called, subclassed, or reached
+#   through `__call__`/`__new__`. Passing one as an argument (`Loader=yaml.BaseLoader`) composes nothing.
 # - a chain that does not resolve, reaches a namespace (`yaml.__dict__`), or is assigned to is a lookup site, and so is
 #   every bare `yaml` name that is not the root of a chain: `getattr(yaml, ...)`, `vars(yaml)`, `y = yaml`, `f(yaml)`.
-# - the precondition all of that rests on: every import of yaml is a bare `import yaml` (no `from yaml import`, alias,
-#   submodule import, `__import__` or `import_module`, its name positional or keyword), and no module reaches util's
-#   own yaml objects (`util.yaml`, `_SafeLoader`, the dumpers: every name util binds to a yaml object, derived).
-# Limits, not claimed: a module or class reached through an arbitrary object at run time (a loader held in a data
-# structure or passed in, then instantiated), `exec` and `eval`, and YAML parsed inside a C extension or a dependency.
+# - yaml is imported as `import yaml` only: `from yaml import`, an alias, a submodule import, and `__import__` or
+#   `import_module` of the constant "yaml" (its name positional or keyword) are sites.
+# - util's own yaml objects (`util.yaml`, `_SafeLoader`, the dumpers: every name util binds to a yaml object, derived)
+#   are sites where another module reaches them by `from aew import util`, `import aew.util` or `from aew.util import`.
+# Limits, not claimed. None of these is seen, and none of these spellings occurs in src/aew today (grep, 2026-10-24; its
+# two computed imports, doctor.py's `__import__(module)` and harness/registry.py's `import_module(where)`, take names
+# from AEW's own lists and compose nothing):
+# 1. a composing or writing class bound to a name and then driven (`L = yaml.SafeLoader; L(t)`, or the backend choice
+#    `yaml.CSafeLoader if yaml.__with_libyaml__ else yaml.SafeLoader`); a class used as a decorator, in `type(...)`,
+#    with `object.__new__` or `getattr(cls, "__call__")`; one held in a tuple or a default argument, or in `partial`;
+# 2. a submodule of yaml handed on (`m = yaml.cyaml; m.CParser(t)`, `getattr(yaml.loader, "SafeLoader")`, `vars(...)`);
+# 3. util reached other than by those three absolute imports: a relative import, `import aew` or `import aew.x.y` then
+#    `aew.util.`, or `importlib.import_module("aew.util")`;
+# 4. util's own names driven inside util.py (`_SafeLoader(t)` or `_Dumper(s)` in a new function there; only a new
+#    module-level class built on them is seen, by `test_utils_own_yaml_objects_are_derived_from_util`);
+# 5. another AEW module's yaml (`from aew.cli.fields import yaml as y`, `fields.yaml.safe_load`);
+# 6. yaml found by name another way: `pkgutil.resolve_name`, `sys.modules["yaml"]`, `globals()["yaml"]`, or an import by
+#    a computed name;
+# 7. a function that `yaml/__init__` re-exports from a submodule, or a C function: the completeness test below does
+#    not list it, and a call to it is counted as nothing (a new class is seen, by what it can do);
+# and `exec` and `eval`, and YAML parsed inside a C extension or a dependency.
 COMPOSERS = {"load", "safe_load", "full_load", "unsafe_load", "load_all", "safe_load_all", "full_load_all",
              "unsafe_load_all", "compose", "compose_all"}
 DUMPERS = {"dump", "safe_dump", "dump_all", "safe_dump_all", "serialize", "serialize_all", "emit"}
@@ -377,8 +394,9 @@ def test_every_import_of_yaml_is_the_bare_module_that_the_enumeration_sees():
 
 
 def test_every_function_of_the_yaml_module_is_classified_once():
-    """The function lists are checked against the installed yaml package, so a function PyYAML adds is classified
-    before it can be used unseen (review of #236, R2-F2)."""
+    """The function lists are checked against the installed yaml package, so a function PyYAML defines in
+    `yaml/__init__` is classified before it can be used unseen (review of #236, R2-F2). One it re-exports from a
+    submodule, or a C function, is not listed here: limit 7 above (R3-F2)."""
     functions = {name for name, value in vars(yaml).items() if inspect.isfunction(value) and value.__module__ == "yaml"}
     assert functions == COMPOSERS | DUMPERS | set(NEITHER)
     assert not (COMPOSERS & DUMPERS or COMPOSERS & set(NEITHER) or DUMPERS & set(NEITHER))
@@ -485,11 +503,12 @@ def _writer_key(data: dict) -> object:
     return Probe.current
 
 
-def _named_key(data: dict) -> object:
+def _named_key(data: dict) -> str | None:
+    """The key the refusal names, as written in it (a repr)."""
     with pytest.raises(ValidationFailed) as refused:
         util.dump_yaml(data)
     message = refused.value.message
-    return message.split("top-level key ", 1)[1].split(":", 1)[0].strip("'") if "top-level key" in message else None
+    return message.split("top-level key ", 1)[1].split(": AEW does not", 1)[0] if "top-level key" in message else None
 
 
 def _shared_cases() -> list[dict]:
@@ -502,33 +521,73 @@ def _shared_cases() -> list[dict]:
             leaf = {"k": leaf}
         return leaf
 
+    def tupled(n: int) -> object:  # n tuples, one inside the other
+        leaf: object = "x"
+        for _ in range(n):
+            leaf = (leaf,)
+        return leaf
+
     return [{"a": [shared, over(40, shared)], "c": nested(70)},  # met shallow first, then deep: the writer refuses c
             {"a": [over(40, also), also]},  # met deep first
-            top]  # the top-level mapping is itself a value: an alias
+            top,  # the top-level mapping is itself a value: an alias
+            # what the writer writes beyond mappings and lists (review of #236, R3-F1):
+            {"a": (nested(70),), "b": 1},  # a tuple is a sequence: the writer refuses a
+            {"a": {tupled(70): 1}, "b": nested(70)},  # a mapping's key is written before its value
+            {"s": 1, tupled(70): 1, "z": nested(70)},  # a top-level key is written under the mapping too
+            {"a": [()], "b": over(63, ())}]  # the empty tuple is never an alias: written again at level 65
 
 
 def _random_dags(count: int, seed: int = 236) -> list[dict]:
-    """Data that shares objects at random, as control state does (an invocation's snapshot is its workspace's)."""
+    """Data that shares objects at random, as control state does (an invocation's snapshot is its workspace's), and that
+    holds what the writer also writes: tuples, the empty tuple and tuples as mapping keys (review of #236, R3-F1). The
+    search is bounded and asserts what it found, so when the writer refuses none the test fails instead of looping
+    (R3-F3); its depth is the bound's, so a raised bound still yields refusals."""
     rng, found = random.Random(seed), []
-    while len(found) < count:
-        nodes: list = ["x"]
-        for _ in range(rng.randint(70, 110)):  # each node holds 1-3 earlier ones, mostly recent: the depth grows
-            kids = [nodes[max(0, len(nodes) - 1 - int(rng.expovariate(1.2)))] for _ in range(rng.randint(1, 3))]
-            nodes.append({f"k{i}": c for i, c in enumerate(kids)} if rng.random() < 0.5 else kids)
-        data = {f"t{i}": rng.choice(nodes[len(nodes) // 2:]) for i in range(rng.randint(1, 4))}
+
+    def recent(pool: list) -> object:  # mostly the latest: the depth grows
+        return pool[max(0, len(pool) - 1 - int(rng.expovariate(1.2)))]
+
+    for _ in range(50 * count):
+        if len(found) == count:
+            break
+        nodes: list = ["x", ()]
+        keys: list = ["x", ()]  # tuple chains, which can be a mapping's key (a tuple's hash expands what it shares)
+        for _ in range(rng.randint(util.YAML_MAX_DEPTH + 6, util.YAML_MAX_DEPTH + 46)):  # each holds 1-3 earlier ones
+            kids = [recent(nodes) for _ in range(rng.randint(1, 3))]
+            shape = rng.random()
+            nodes.append(tuple(kids) if shape < 0.2 else
+                         {(recent(keys) if rng.random() < 0.3 else f"k{i}"): c for i, c in enumerate(kids)}
+                         if shape < 0.6 else kids)
+            keys.append((recent(keys),))
+        data = {(rng.choice(keys[len(keys) // 2:]) if rng.random() < 0.25 else f"t{i}"): rng.choice(
+            nodes[len(nodes) // 2:]) for i in range(rng.randint(1, 4))}
         try:
             util.dump_yaml(data)
         except ValidationFailed:
             found.append(data)
+    assert len(found) == count, f"the writer refused {len(found)} of the {count} documents that nest past the bound"
     return found
 
 
 def test_a_write_refusal_names_the_key_the_writer_refused_under_when_the_data_shares_objects():
     """The writer expands an object where it first meets it and writes an alias wherever it meets it again, the
-    top-level mapping included; the key the refusal names is the one it was writing (review of #236, R2-F1)."""
+    top-level mapping included, except the empty tuple; it writes a tuple as a sequence and a mapping's key before its
+    value. The key the refusal names is the one it was writing (review of #236, R2-F1, R3-F1)."""
     cases = _shared_cases() + _random_dags(60)
     assert [_writer_key(d) for d in cases[:3]] == ["c", "a", "z"]
-    assert [_named_key(d) for d in cases] == [_writer_key(d) for d in cases]
+    assert [_named_key(d) for d in cases] == [repr(_writer_key(d)) for d in cases]
+
+
+def test_a_write_refusal_still_refuses_when_the_key_it_would_name_has_no_repr():
+    """A tuple key nested past Python's recursion limit hashes but cannot be written as text: the refusal stays a
+    ValidationFailed and leaves the key unnamed (review of #236, R3-F1)."""
+    key: object = ()
+    for _ in range(5_000):
+        key = (key,)
+    with pytest.raises(ValidationFailed) as refused:
+        util.dump_yaml({"s": 1, key: 1})
+    assert refused.value.message.startswith("the data nests deeper than 64 levels: ")
+    assert refused.value.details == {"reason": util.YAML_TOO_DEEP, "limit": util.YAML_MAX_DEPTH}
 
 
 def test_a_deep_control_state_says_to_restore_it_since_aew_never_writes_one(tmp_path):
@@ -571,7 +630,7 @@ def test_a_deep_redo_record_is_the_damaged_record_it_is(tmp_path, monkeypatch):
     with pytest.raises(IntegrityError) as refused:
         make_store(tmp_path).read()
     assert refused.value.message == f"redo record state/txn/{redo.name} is damaged"
-    assert refused.value.details["reason"] == util.YAML_TOO_DEEP
+    assert refused.value.details == {"reason": util.YAML_TOO_DEEP, "limit": util.YAML_MAX_DEPTH, "line": 1}
 
 
 # Every writer that names its document in a depth refusal, and the name (review of #236, R2-N2): the refusal's text is

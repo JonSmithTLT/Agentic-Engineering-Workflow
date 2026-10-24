@@ -12,13 +12,20 @@ research document goes untracked, and none is lost between versions (operator, 2
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+_spec = importlib.util.spec_from_file_location("register", ROOT / "tools" / "register.py")
+assert _spec is not None and _spec.loader is not None
+register = importlib.util.module_from_spec(_spec)
+sys.modules["register"] = register
+_spec.loader.exec_module(register)
 LEDGER = yaml.safe_load((ROOT / "docs" / "design" / "requirements-ledger.yaml").read_text(encoding="utf-8"))
 SOURCES = {s["prefix"]: s for s in LEDGER["sources"]}
 REQUIREMENTS: dict[str, dict] = LEDGER["requirements"]
@@ -47,8 +54,8 @@ def headings(path: Path) -> list[str]:
 
 
 def register_ids() -> set[str]:
-    text = (ROOT / "docs" / "implementation" / "future-work.md").read_text(encoding="utf-8")
-    return set(re.findall(r"^### ([A-Z][0-9]+(?:\.[0-9]+)?)$", text, re.M))  # each row's heading (tools/register.py)
+    """Every row of the register that has an id, as tools/register.py (the owner of the id grammar) reads them."""
+    return {r["id"] for r in register.rows(register.load(), open_only=False) if r["id"] and r["id"] != "Gate"}
 
 
 FIRST_LEDGER_ADR = 12
@@ -62,6 +69,13 @@ def test_every_design_and_research_document_is_in_the_ledger():
     known = {s["path"] for s in LEDGER["sources"]} | set(LEDGER["legacy"])
     assert sorted(docs - known) == [], "ingest these into the requirements ledger, every requirement tracked"
     assert sorted(known - docs - {s["path"] for s in LEDGER["sources"] if s["path"].startswith("docs/archive/")}) == []
+
+
+def test_a_requirement_may_be_tracked_by_a_build_stage_row():
+    """The ids come from the register's own reader, so a row form it accepts (``STG-05``, one row per build stage of the
+    architecture map) is a row a requirement can name; a hand-copied grammar refused it (review of #240, m1)."""
+    ids = register_ids()
+    assert {"F2", "E13", "STG-05", "STG-12"} <= ids
 
 
 def test_legacy_documents_name_register_rows():
@@ -113,7 +127,7 @@ def test_every_requirement_is_well_formed_and_tracked():
         assert req.get("kind") in kinds, f"{rid}: kind {req.get('kind')!r}"
         assert str(req.get("statement", "")).strip(), f"{rid}: statement"
         assert req.get("tracked_by") and set(req["tracked_by"]) <= ids, \
-            f"{rid}: tracked_by {req.get('tracked_by')} must name register rows in future-work.md"
+            f"{rid}: tracked_by {req.get('tracked_by')} must name rows of the register (future-work.yaml)"
         assert "status" not in req or STATUS.match(req["status"]), f"{rid}: status {req['status']!r}"
 
 

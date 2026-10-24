@@ -98,15 +98,21 @@ OWNERS = ("operator", "designer", "operator and designer")
 SCHEMA = "aew/register/v1"
 TARGETS = ("Gate", "M4", "M5", "M6", "Hierarchy revision", "M4 candidate", "Designer", "Evaluation",
            "On measured need", "Unscheduled", "Stage")
-TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|M4|M5|M6|Hierarchy revision|M4 candidate|Designer|Evaluation|"
-                       r"On measured need|Unscheduled|Stage)")
+# Derived from TARGETS (the one list; the preamble's table names the same ones, test_register keeps them equal). The
+# longest name is tried first so that ``M4 candidate`` is not read as ``M4``, and nothing ends a match, so the M4 phases
+# (``**M4-E.**``) still read as ``M4``.
+TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|" + "|".join(
+    re.escape(t) for t in sorted((t for t in TARGETS if t != "Gate"), key=len, reverse=True)) + ")")
 SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
 COLUMNS_RE = re.compile(r"^<!-- columns: (.+) -->$")
 ROW_RE = re.compile(r"^### (.+)$")
 BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
 # A row id is a letter and a number (``F2``, ``F15.5``), or a build stage of the architecture map (``STG-05``: one row
 # per stage, each slice noting on it; designer ruling D-CS1-12, 2026-10-23).
-ID_RE = re.compile(r"^(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})$")
+_ID = r"(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})"
+ID_RE = re.compile(rf"^{_ID}$")
+# An id beside a label in parentheses, which three closed rows carry (``E33 (part)``, ``Q9 (decisions)``).
+LABELLED_ID_RE = re.compile(rf"^{_ID}(?: \([^()\n]+\))?$")
 ID_KEY_RE = re.compile(r"^([A-Z]+)-?([0-9]+)((?:\.[0-9]+)*)")
 CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
 NOTES = ROOT / "docs" / "implementation" / "notes.d"
@@ -451,7 +457,8 @@ def rows(data: dict[str, Any], *, open_only: bool = True) -> list[dict[str, Any]
 
 
 def problems(data: dict[str, Any]) -> list[str]:
-    """What a consumer would stumble on: duplicate ids, open rows without a recognised target."""
+    """What a consumer would stumble on: duplicate ids, a row outside §1 headed by something that is not an id, open
+    rows without a recognised target."""
     out = []
     ids = Counter(r["id"] for r in rows(data, open_only=False) if r["id"] and r["id"] != "Gate")
     out += [f"id {i} appears {n} times" for i, n in sorted(ids.items()) if n > 1]
@@ -464,6 +471,11 @@ def problems(data: dict[str, Any]) -> list[str]:
             if not first.strip() or "\n" in first:
                 out.append(f"§{section['number']}: a row's first cell is its heading, so it is one non-empty line: "
                            f"{first[:40]!r}")
+            elif section["number"] != 1 and first != "Gate" and not LABELLED_ID_RE.match(first):
+                # A near-miss (``STG-6``, ``STG05``, ``F-2``) would render, and get no pointer, no note and no place
+                # in the id order; the three closed rows that carry a label keep theirs (review of #240, m2).
+                out.append(f"§{section['number']} {first[:20]!r}: a row outside §1 is headed by its id (a letter and a "
+                           "number, or STG-NN), optionally followed by a label in parentheses, or by Gate (closed)")
             out += [f"§{section['number']} {first[:20]}: its {column} holds a blank line, which would end its paragraph"
                     for column, value in row.items() if BLANK_LINE_RE.search(value)]
         if section["title"].startswith("Closed") and section["rows"] != closed_order(section):

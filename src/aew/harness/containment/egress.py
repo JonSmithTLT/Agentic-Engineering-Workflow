@@ -1,0 +1,412 @@
+"""F28's generic egress proxy: credentialless, CONNECT only, with two policies and R-6 (STG-05 CS-3a; F28 §3.4).
+
+The proxy serves the sandbox's optional non-provider egress, such as OpenCode's catalog fetch in connected mode. It
+runs in the host's network namespace, outside the run's sandbox, and holds no credential: it never sees or adds
+one, and it forwards no request header. Provider traffic never comes here: it goes through the credentialing relay
+(F28 §3.3, decision 5).
+
+**Policies.** :class:`Allowlist` is a bounded ``host:port`` list, the workers' policy. Web, browser and
+package-manager destinations are never added to it just because a harness supports them (F28 §3.4). :class:`AnyPublic`
+admits any public address, for the Lead (the operator, 2026-10-21, decision 3; CS-4 selects it), with every port. A
+policy decides only what is asked; R-6 then judges every address, under either policy, and cannot be turned off.
+
+**A request, in order:**
+
+1. Parse ``CONNECT host:port``. Anything else is refused.
+2. Ask the policy about ``host:port``. The allowlist answers before any DNS.
+3. Resolve the name, once. A literal address is not resolved.
+4. Judge every answer (:func:`aew.harness.containment.peer.host_route`, then the policy's address rule).
+5. Connect to the literal address, never to the name.
+6. Judge the connected socket's peer address the same way.
+7. Answer ``200`` and splice bytes both ways, unchanged.
+
+**One refused answer refuses the name,** under both policies (the Lead, 2026-10-24). A name whose answers mix public
+and host-local addresses looks like rebinding or split-horizon tricks, and refusing it whole is simpler to prove than
+picking among its answers. A refusal is ``403`` with a stable reason code in ``X-AEW-Refusal``. It names the refused
+address class, never the address: under any-public, the address would let the model map the host's private DNS.
+
+**Not here:** the AF_UNIX listener and its bind into the sandbox, the shim that forwards to it, the label and the
+self-test row are CS-3b's. The proxy serves whatever listening socket it is given.
+
+**Known limit:** the number of concurrent tunnels is unbounded. F28 gives no number, and the shim, its only client,
+is CS-3b's. Under any-public, the names the model asks for reach the host's resolver, and so the DNS.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import re
+import selectors
+import socket
+import threading
+from collections.abc import Callable, Iterable
+from typing import Any, Protocol
+
+from aew.errors import ValidationFailed
+from aew.harness.containment import peer
+
+# Implementation bounds, not policy. A CONNECT from Bun or curl is under 200 bytes; 8 KiB is Apache httpd's default
+# request-line and header-field limit (LimitRequestLine, LimitRequestFieldSize: 8190 bytes), rounded up.
+MAX_HEADER = 8192
+# The shim forwards a CONNECT as soon as the harness sends it, so a silent client only holds a thread.
+HEADER_TIMEOUT = 10.0
+# A refused or unreachable address fails in milliseconds (F28 §1, P1); this bounds only a SYN nobody answers.
+CONNECT_TIMEOUT = 10.0
+# How long close() waits for each connection's thread after shutting its sockets down.
+JOIN_TIMEOUT = 5.0
+CHUNK = 64 * 1024
+
+_LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
+_PHRASES = {400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 408: "Request Timeout",
+            431: "Request Header Fields Too Large", 502: "Bad Gateway"}
+
+Resolver = Callable[[str, int], Iterable[Any]]
+Connector = Callable[[peer.IP, int, float], socket.socket]
+
+
+def authority(text: str) -> tuple[str, int]:
+    """``host:port`` as ``(host, port)``, normalized: a lowercase name without its trailing dot, or an address in its
+    compressed form (an IPv6 one in brackets). Raises ``ValueError`` saying what is wrong. The allowlist's entries and
+    every request go through it, so they compare equal exactly when they name the same target."""
+    if text.startswith("["):
+        inside, sep, rest = text[1:].partition("]")
+        if not sep or not rest.startswith(":"):
+            raise ValueError("an IPv6 address is written [address]:port")
+        host, port_text = str(ipaddress.IPv6Address(inside)), rest[1:]
+    else:
+        host, sep, port_text = text.rpartition(":")
+        if not sep or not host:
+            raise ValueError("the target is host:port")
+        if ":" in host:
+            raise ValueError("an IPv6 address is written [address]:port")
+        try:
+            host = str(ipaddress.IPv4Address(host))
+        except ValueError:
+            host = host.lower().removesuffix(".")
+            labels = host.split(".")
+            if len(host) > 253 or not all(_LABEL.fullmatch(label) for label in labels):
+                raise ValueError(f"{host!r} is neither an IP address nor a host name") from None
+    if not (port_text.isascii() and port_text.isdigit() and 0 < int(port_text) < 65536):
+        raise ValueError(f"the port must be a number from 1 to 65535, not {port_text!r}")
+    return host, int(port_text)
+
+
+def _literal(host: str) -> peer.IP | None:
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        return None
+
+
+class Policy(Protocol):
+    def admits(self, host: str, port: int) -> str | None:
+        """Why ``host:port`` is refused before anything is resolved, or None."""
+
+    def refuses(self, ip: peer.IP) -> str | None:
+        """Why an address is refused beyond R-6, or None."""
+
+    def describe(self) -> dict[str, Any]: ...
+
+
+class Allowlist:
+    """F28 §3.4's bounded allowlist, the workers' policy: exact ``host:port`` entries, no patterns. A listed entry
+    is still refused when it resolves to an address R-6 refuses."""
+
+    def __init__(self, entries: Iterable[str]) -> None:
+        allowed: set[tuple[str, int]] = set()
+        for entry in entries:
+            try:
+                allowed.add(authority(entry))
+            except ValueError as exc:
+                raise ValidationFailed(f"egress allowlist entry {entry!r} is not host:port: {exc}", entry=entry,
+                                       reason="bad_allowlist_entry") from None
+        self._allowed = frozenset(allowed)
+
+    def admits(self, host: str, port: int) -> str | None:
+        return None if (host, port) in self._allowed else "not_allowlisted"
+
+    def refuses(self, ip: peer.IP) -> str | None:
+        return None
+
+    def describe(self) -> dict[str, Any]:
+        """For the run's label (``network.egress_allow``, F28 §3.1; CS-3b records it)."""
+        shown = sorted(f"[{h}]:{p}" if ":" in h else f"{h}:{p}" for h, p in self._allowed)
+        return {"policy": "allowlist", "allow": shown}
+
+
+class AnyPublic:
+    """Any public address, on any port: the Lead's policy (CS-4 selects it). "Public" is
+    :func:`aew.harness.containment.peer.not_public`'s."""
+
+    def admits(self, host: str, port: int) -> str | None:
+        return None
+
+    def refuses(self, ip: peer.IP) -> str | None:
+        return peer.not_public(ip)
+
+    def describe(self) -> dict[str, Any]:
+        return {"policy": "any_public"}
+
+
+class _Refused(Exception):
+    def __init__(self, status: int, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.status, self.reason, self.message = status, reason, message
+
+    def response(self) -> bytes:
+        body = self.message.encode()
+        head = (f"HTTP/1.1 {self.status} {_PHRASES[self.status]}\r\nX-AEW-Refusal: {self.reason}\r\n"
+                f"Content-Type: text/plain; charset=utf-8\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n")
+        return head.encode() + body
+
+
+def _resolve(host: str, port: int) -> list[Any]:
+    return [info[4][0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)]
+
+
+def _connect(ip: peer.IP, port: int, timeout: float) -> socket.socket:
+    sock = socket.socket(socket.AF_INET if ip.version == 4 else socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(timeout)
+        sock.connect((str(ip), port))  # a literal: nothing is resolved here
+    except BaseException:
+        sock.close()
+        raise
+    return sock
+
+
+def _shutdown(sock: socket.socket, how: int = socket.SHUT_RDWR) -> None:
+    try:
+        sock.shutdown(how)
+    except OSError:
+        pass
+
+
+class EgressProxy:
+    """Serves ``listener`` (any listening socket; the proxy owns it from here) under ``policy``. Without a listener
+    it serves only the connections passed to :meth:`handle`.
+
+    ``resolve``, ``connect`` and ``is_local`` are seams for tests: the defaults are the host's resolver, a plain
+    connect to a literal address, and the kernel's local table. Nothing a request carries reaches them."""
+
+    def __init__(self, policy: Policy, *, listener: socket.socket | None = None, resolve: Resolver = _resolve,
+                 connect: Connector = _connect, is_local: Callable[[peer.IP], bool] = peer.is_host_address,
+                 header_timeout: float = HEADER_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT) -> None:
+        self.listener = listener
+        self.policy = policy
+        self._resolve, self._connect, self._is_local = resolve, connect, is_local
+        self.header_timeout, self.connect_timeout = header_timeout, connect_timeout
+        # Telemetry: how many requests were tunnelled ("allowed") or refused, by reason. Never targets or payload.
+        self.decisions: dict[str, int] = {}
+        self._lock = threading.Lock()
+        self._open: set[socket.socket] = set()
+        self._handlers: set[threading.Thread] = set()
+        self._closed = threading.Event()
+        self._wake_r, self._wake_w = socket.socketpair()
+        self._thread = threading.Thread(target=self._serve, name="aew-egress", daemon=True)
+
+    def start(self) -> EgressProxy:
+        if self.listener is None:
+            raise ValueError("an egress proxy without a listener serves only handle()")
+        self._thread.start()
+        return self
+
+    def __enter__(self) -> EgressProxy:
+        return self.start()
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Stop accepting, end every tunnel, and wait for their threads. The wake byte is never read, so every
+        selector that watches the wake socket (the accept loop's and each tunnel's) sees it."""
+        with self._lock:
+            if self._closed.is_set():
+                return
+            self._closed.set()
+            live, handlers = list(self._open), list(self._handlers)
+        try:
+            self._wake_w.send(b"x")
+        except OSError:
+            pass
+        if self._thread.is_alive():
+            self._thread.join(JOIN_TIMEOUT)
+        for sock in live:
+            _shutdown(sock)
+        for thread in handlers:
+            thread.join(JOIN_TIMEOUT)
+        for sock in (self._wake_r, self._wake_w, self.listener):
+            if sock is not None:
+                sock.close()
+
+    def _count(self, outcome: str) -> None:
+        with self._lock:
+            self.decisions[outcome] = self.decisions.get(outcome, 0) + 1
+
+    def _track(self, sock: socket.socket) -> bool:
+        with self._lock:
+            if self._closed.is_set():
+                return False
+            self._open.add(sock)
+            return True
+
+    def _untrack(self, sock: socket.socket) -> None:
+        with self._lock:
+            self._open.discard(sock)
+        sock.close()
+
+    def _serve(self) -> None:
+        listener = self.listener
+        assert listener is not None  # start() refuses to run without one
+        with selectors.DefaultSelector() as selector:
+            selector.register(listener, selectors.EVENT_READ)
+            selector.register(self._wake_r, selectors.EVENT_READ)
+            while not self._closed.is_set():
+                for key, _ in selector.select():
+                    if key.fileobj is self._wake_r:
+                        return
+                    try:
+                        conn, _ = listener.accept()
+                    except OSError:
+                        continue
+                    thread = threading.Thread(target=self._handle_then_forget, args=(conn,),
+                                              name="aew-egress-conn", daemon=True)
+                    with self._lock:
+                        self._handlers.add(thread)
+                    thread.start()
+
+    def _handle_then_forget(self, conn: socket.socket) -> None:
+        try:
+            self.handle(conn)
+        finally:
+            with self._lock:
+                self._handlers.discard(threading.current_thread())
+
+    def handle(self, conn: socket.socket) -> None:
+        """Serve one client connection to its end, and close it."""
+        if not self._track(conn):
+            conn.close()
+            return
+        upstream: socket.socket | None = None
+        try:
+            conn.settimeout(self.header_timeout)
+            host, port, early = self._read_request(conn)
+            upstream = self._open_upstream(host, port)
+            if not self._track(upstream):
+                return
+            conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            self._count("allowed")
+            conn.settimeout(None)
+            upstream.settimeout(None)
+            if early:  # bytes the client sent behind its request, such as a TLS ClientHello
+                upstream.sendall(early)
+            self._splice(conn, upstream)
+        except _Refused as refused:
+            self._count(refused.reason)
+            try:
+                conn.sendall(refused.response())
+            except OSError:
+                pass
+        except OSError:
+            pass  # the client or the upstream went away mid-tunnel
+        finally:
+            if upstream is not None:
+                self._untrack(upstream)
+            self._untrack(conn)
+
+    def _read_request(self, conn: socket.socket) -> tuple[str, int, bytes]:
+        buf = b""
+        while True:
+            end = buf.find(b"\r\n\r\n")
+            if 0 <= end <= MAX_HEADER:
+                break
+            if len(buf) > MAX_HEADER:
+                raise _Refused(431, "header_too_large", f"the request's header exceeds {MAX_HEADER} bytes")
+            try:
+                data = conn.recv(4096)
+            except TimeoutError:
+                raise _Refused(408, "header_timeout", "no complete request arrived in time") from None
+            if not data:
+                raise _Refused(400, "incomplete", "the connection closed before its request was complete")
+            buf += data
+        line = buf[:buf.find(b"\r\n")]
+        try:
+            method, target, version = line.decode("ascii").split(" ")
+        except (UnicodeDecodeError, ValueError):
+            raise _Refused(400, "bad_request", "the request line is not METHOD target HTTP/1.1") from None
+        if method != "CONNECT":
+            raise _Refused(405, "method", "this egress proxy serves CONNECT only (F28 §3.4)")
+        if version not in ("HTTP/1.1", "HTTP/1.0"):
+            raise _Refused(400, "bad_request", f"unsupported version {version!r}")
+        try:
+            host, port = authority(target)
+        except ValueError as exc:
+            raise _Refused(400, "bad_request", f"CONNECT {target}: {exc}") from None
+        return host, port, buf[end + 4:]
+
+    def _refusal(self, value: Any) -> str | None:
+        """R-6 first, whatever the policy; then the policy's own address rule."""
+        ip = peer.address(value)
+        return peer.host_route(ip, is_local=self._is_local) or self.policy.refuses(ip)
+
+    def _open_upstream(self, host: str, port: int) -> socket.socket:
+        target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+        reason = self.policy.admits(host, port)
+        if reason:
+            raise _Refused(403, reason, f"CONNECT {target} refused: it is not on this run's egress allowlist "
+                           "(F28 §3.4). A destination is added by the operator's execution policy, never by a run.")
+        literal = _literal(host)
+        try:
+            answers = [literal] if literal is not None else [peer.address(a) for a in self._resolve(host, port)]
+        except (OSError, ValueError, UnicodeError):
+            answers = []
+        if not answers:
+            raise _Refused(502, "unresolved", f"CONNECT {target}: the name did not resolve")
+        answers = list(dict.fromkeys(answers))
+        for ip in answers:  # one refused answer refuses the target (see the module docstring)
+            reason = self._refusal(ip)
+            if reason:
+                raise _Refused(403, reason, self._why(target, reason))
+        for ip in answers:
+            try:
+                sock = self._connect(ip, port, self.connect_timeout)
+            except OSError:
+                continue
+            try:
+                reason = self._refusal(sock.getpeername())  # R-6 on the address actually connected
+            except (OSError, ValueError):
+                reason = "peer_unknown"
+            if reason:
+                sock.close()
+                raise _Refused(403, reason, self._why(target, reason))
+            return sock
+        raise _Refused(502, "unreachable", f"CONNECT {target}: no address of it could be connected")
+
+    @staticmethod
+    def _why(target: str, reason: str) -> str:
+        if reason in peer.HOST_ROUTE_REASONS or reason == "peer_unknown":
+            return (f"CONNECT {target} refused: it reaches a {reason} address. The egress proxy runs on the host and "
+                    "never connects to the host's own addresses, even allowlisted ones (R-6). Provider traffic goes "
+                    "through the provider relay, not this proxy.")
+        return (f"CONNECT {target} refused: it reaches a {reason} address, which is not public; this run's egress "
+                "admits public addresses only.")
+
+    def _splice(self, conn: socket.socket, upstream: socket.socket) -> None:
+        """Relay both ways until either side closes, then return; ``handle`` closes both (RFC 9110 §9.3.6: a tunnel
+        closes when either side does, after passing on what that side sent). ``close()`` ends it through the wake
+        socket, which stays readable once written: on Windows a shutdown does not wake a blocked ``recv``.
+        ``sendall`` blocks while the other side does not read, which is the backpressure."""
+        other = {conn: upstream, upstream: conn}
+        with selectors.DefaultSelector() as selector:
+            selector.register(self._wake_r, selectors.EVENT_READ)
+            for sock in other:
+                selector.register(sock, selectors.EVENT_READ)
+            while True:
+                for key, _ in selector.select():
+                    if key.fileobj is self._wake_r:
+                        return
+                    src = conn if key.fileobj is conn else upstream
+                    data = src.recv(CHUNK)
+                    if not data:
+                        return
+                    other[src].sendall(data)

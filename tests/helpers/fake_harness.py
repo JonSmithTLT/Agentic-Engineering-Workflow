@@ -16,12 +16,14 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from aew.harness import contract as K
-from aew.harness import runlog
+from aew.harness import procs, runlog
 from aew.harness.base import HarnessAdapter
 from aew.harness.contract import CREDENTIAL_RE, TERMINAL, LaunchContract
 from aew.util import dump_yaml
@@ -29,6 +31,36 @@ from aew.util import dump_yaml
 HERE = Path(__file__).resolve().parent
 AGENT = HERE / "fake_agent.py"
 SCRIPTS_ENV = "AEW_FAKE_SCRIPTS"
+
+# What teardown reads and kills through, as imported. A test may patch any attribute of these two modules
+# (``observed_status``, ``same_process``, ``STALE_AFTER_S``, ...), and a teardown that runs in the test body or in a
+# fixture sharing its ``monkeypatch`` runs while the patch is live: the fixture undoes it only after the test. The
+# snapshot is taken when this module is first imported, at collection, before any test body.
+_REAL = {module: dict(vars(module)) for module in (runlog, procs)}
+_ABSENT = object()
+
+
+@contextmanager
+def real_runtime() -> Iterator[None]:
+    """``runlog`` and ``procs`` as imported, whatever a test has patched since; the patches are put back on exit, so
+    the test's own undo still finds what it set. Teardown must end every process a lab started, and what it reads to
+    find them and the identity check that guards the kill are exactly what a test patches to stage a lost or stale run.
+    One thread at a time: teardown runs when the test's own threads are done."""
+    swapped = []
+    for module, original in _REAL.items():
+        for name, value in original.items():
+            patched = vars(module).get(name, _ABSENT)
+            if patched is not value:
+                swapped.append((module, name, patched))
+                setattr(module, name, value)
+    try:
+        yield
+    finally:
+        for module, name, patched in swapped:
+            if patched is _ABSENT:
+                delattr(module, name)
+            else:
+                setattr(module, name, patched)
 
 
 class FakeAdapter(HarnessAdapter):
@@ -211,32 +243,41 @@ class HarnessLab:
         raise AssertionError(f"timed out after {timeout}s waiting for {what}")
 
     def cleanup(self) -> None:
-        """End every run this lab started. A live run is stopped through the Lead (a request file alone is refused,
-        independent review R1); when the project's Lead token no longer holds the seat, or a supervisor does not
-        answer, the supervisor is killed if its pid still names the same process (pids are reused, and other tests'
-        processes run in parallel). Its job object / sentinel then takes the harness tree. A Lead session still
-        running is killed first (its own Popen handle: never a bare pid)."""
-        from aew.engine.api import Engine
-        from aew.errors import AEWError
-
+        """End every run this lab started, whatever the test patched or the runs' status says. A live run is stopped
+        through the Lead (a request file alone is refused, independent review R1); when the project's Lead token no
+        longer holds the seat, or a supervisor does not answer, the supervisor is killed if its pid still names the
+        same process (pids are reused, and other tests' processes run in parallel). Its job object / sentinel then
+        takes the harness tree. Last, every run's supervisor gets that same identity-checked kill, not only those
+        that read as live: a run staged as lost, or whose heartbeat went stale, is still a process. A Lead session
+        still running is killed first (its own Popen handle: never a bare pid)."""
         for proc in self.sessions:
             if proc.poll() is None:
                 proc.kill()
                 proc.communicate()
+        with real_runtime():
+            self._end_runs()
+
+    def _end_runs(self) -> None:
+        from aew.engine.api import Engine
+        from aew.errors import AEWError
+
         runs = runlog.run_dir(self.aew_root, "x").parent
         dirs = sorted(runs.glob("*")) if runs.is_dir() else []
-        live = [d for d in dirs if runlog.observed_status(d)[0] in (K.STARTING, K.RUNNING)]
-        engine = Engine(self.root, self.aew_root) if live else None
-        for directory in live:
-            try:
-                engine.harness_stop(token=self.project.token, run=directory.name, reason="test teardown")
-            except AEWError:
+        try:
+            live = [d for d in dirs if runlog.observed_status(d)[0] in (K.STARTING, K.RUNNING)]
+            engine = Engine(self.root, self.aew_root) if live else None
+            for directory in live:
+                try:
+                    engine.harness_stop(token=self.project.token, run=directory.name, reason="test teardown")
+                except AEWError:
+                    runlog.end_supervisor(directory)
+            deadline = time.monotonic() + 20
+            for directory in live:
+                while runlog.observed_status(directory)[0] in (K.STARTING, K.RUNNING) and time.monotonic() < deadline:
+                    time.sleep(0.1)
+        finally:  # a failure above (an Engine a test broke) never skips the kill
+            for directory in dirs:
                 runlog.end_supervisor(directory)
-        deadline = time.monotonic() + 20
-        for directory in live:
-            while runlog.observed_status(directory)[0] in (K.STARTING, K.RUNNING) and time.monotonic() < deadline:
-                time.sleep(0.1)
-            runlog.end_supervisor(directory)
 
 
 def run_contained(lab: HarnessLab, run: str) -> bool:

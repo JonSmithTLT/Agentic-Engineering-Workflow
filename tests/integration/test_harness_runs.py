@@ -11,7 +11,8 @@ from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_plan
 from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
-from aew.harness import runlog
+from aew.harness import contract as K
+from aew.harness import procs, runlog
 
 
 @pytest.fixture
@@ -390,6 +391,54 @@ def test_a_stop_reason_too_long_for_the_supervisor_is_refused(lab, tmp_path):
     assert lab.project.rev() == rev
     assert not list((runlog.run_dir(lab.aew_root, run) / "requests").glob("*.json"))
     lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")
+
+
+@pytest.mark.parametrize("staged", ["status_lost", "heartbeat_stale", "status_and_identity_lost",
+                                    "heartbeat_not_a_file"])
+def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, monkeypatch, staged):
+    """The lab's invariant: ``cleanup`` ends every supervisor and harness process the lab started, even while the
+    test's own patches make the run read as lost or stale (and, in the third case, make the supervisor's identity
+    check refuse), and when a run really reads lost while its supervisor lives (a heartbeat the run replaced with a
+    directory, ``runlog.beat``). A teardown in the test body, or in a fixture sharing its ``monkeypatch``, runs before
+    those patches are undone: on 2026-10-24 one such run's supervisor and hanging agent outlived their test by 3.5
+    hours."""
+    _, out = launch_assign(lab, tmp_path, [{"do": "hang"}])
+    run = out["launch"]["run"]
+    directory = runlog.run_dir(lab.aew_root, run)
+
+    def holding() -> dict | None:
+        r = lab.record(run)
+        return r if r.get("supervisor_pid") and r.get("custody_at") and r.get("harness_pids") else None
+
+    def heartbeat_made_a_directory() -> bool:
+        try:  # the supervisor beats every second and recreates a missing file: retried until the directory wins
+            (directory / "heartbeat").unlink()
+            (directory / "heartbeat").mkdir()
+        except OSError:
+            return False
+        return True
+
+    record = lab.until(holding, what="the supervisor to hold a live harness")
+    watches = [procs.Watch(pid) for pid in (record["supervisor_pid"], *record["harness_pids"])]  # pid reuse: a handle
+    try:
+        with monkeypatch.context() as patched:
+            if staged == "heartbeat_stale":
+                patched.setattr(runlog, "STALE_AFTER_S", -1.0)  # every heartbeat is older than that
+            elif staged == "heartbeat_not_a_file":
+                lab.until(heartbeat_made_a_directory, what="the heartbeat to become a directory")
+            else:
+                patched.setattr(runlog, "observed_status", lambda d, *a, **k: (K.LOST, None))
+            if staged == "status_and_identity_lost":
+                patched.setattr(procs, "same_process", lambda pid, started_by: False)
+            assert runlog.observed_status(directory)[0] == K.LOST  # the run reads lost, its processes alive
+            assert all(w.alive() for w in watches)
+            lab.cleanup()  # while the patches are live
+            lab.until(lambda: not any(w.alive() for w in watches), 30, "the run's processes to be gone")
+    finally:  # a failure leaks nothing: only the processes recorded above are ended
+        for w in watches:
+            if w.alive():
+                procs.kill_pid(w.pid)
+            w.close()
 
 
 # G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).

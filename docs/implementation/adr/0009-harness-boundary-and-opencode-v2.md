@@ -936,17 +936,38 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
 - bubblewrap's own processes stay in the caller's process group, so ending the run's process group still ends the
   sandbox.
 
-### The socket inventory (CB-03; `aew.harness.containment.sockets`)
+### The socket inventory (CB-03; designer rulings D-CS2-2 to D-CS2-5; `aew.harness.containment.sockets`)
 - **What it finds:** a socket nobody listed. The masks close the doors somebody did list (`/run` whole, the secret
-  directories). The probe walks every mount the sandbox sees, the read-only root included. Each mount point is
-  walked once from its path, never into another mount point, following no link.
-- **What it does not walk:** kernel interfaces, which hold no socket a process could bind (`proc`, `sysfs`, `cgroup`
-  and the rest of `sockets.UNWALKED_FS`), or read-only image filesystems (`squashfs`, `iso9660`, `erofs`), which are
-  made before they are mounted. Nor does it walk `autofs` mount points, which would mount what they serve when walked;
-  the mounts they have already made are walked. The label lists every mount not walked.
-- **Its budget:** half the self-test's bound (15 s; the Lead's ruling Q3). An inventory that did not finish cannot
-  certify row 2, so row 2 fails.
-- **The classes,** one owner (`sockets.classify`), first match wins:
+  directories).
+- **Where it comes from:** the kernel's table of Unix sockets (`/proc/net/unix`), read by the launcher in its network
+  namespace. It holds every bound socket, by path or by abstract name, at a cost of O(sockets + mounts), with no walk
+  of the filesystem and no budget.
+- **The control:** before reading the table, the launcher binds a listener of its own. A table that does not list it
+  is not this namespace's.
+- **Reachable** means the same socket file, by device and inode, is at a path inside the sandbox: its own path, or
+  any other the sandbox's mount table exposes it at (a bind of it or of a parent, found through
+  `/proc/self/mountinfo`). A same-named socket of the sandbox's own, or a mask in its place, does not count.
+- **A socket linked into place:** it is bound under a temporary name and linked to its final name in the same
+  directory, as OpenSSH's ControlMaster does (mux.c's `muxserver_listen`). The table lists it under the name that is
+  gone, so every socket file in that directory is checked, each taking the worse of its own class and the listed
+  one's.
+- **An abstract socket** has no file. It is listed with its class under the network label, `shared`, until CS-3 gives
+  runs their own network namespace. `required` claims nothing about it, and `aew doctor` shows a failing-class one
+  as WARN, naming its class and that CS-3 closes it (D-CS2-5).
+- **What it cannot see is named on the label** (D-CS2-3):
+  - a socket bound in another network namespace;
+  - one bound in another mount namespace, whose path does not resolve here (`unresolved`);
+  - one bound by a relative path (`relative`: reported and counted, not failed);
+  - one moved or linked into another directory.
+
+  These are accepted for two reasons. The primary controls for the failing classes do not depend on the inventory:
+  `/run` masked whole, the private `/tmp`, CS-3's network namespace. And under the threat model, a host process, not
+  an agent, would have to put such a socket into an exposed tree.
+- **Before this ruling** the probe walked every mount within a 15 s budget. On CI's runners it never finished
+  (240k–784k entries at 15 s), and every contained launch failed closed. On the Rocky 8 VM a full walk took 0.6 s for
+  542k entries, warm. The walk is a data point now, not a mechanism (D-CS2-4).
+- **The classes,** one owner (`sockets.classify`, by name; `sockets.by_executable`, by the listening process's
+  executable when that process is the launching user's own), first match wins, the worse of the two kept:
   - **own:** under the run's own bridge directory;
   - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`; AEW's runtime directories count only
     directly in a runtime root: `/run`, `/var/run`, `/tmp` or the launching `XDG_RUNTIME_DIR`, so a checkout or a
@@ -962,16 +983,23 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
 ### The self-test records CB-12's rows 2 to 5 on the label (`probe.self_test`)
 - **Row 2, `/run` and the sockets:** each host mask is a read-only tmpfs inside, holding only what the layout put
   there, and `/var/run` leads into a mask. The masks checked are the host's runtime trees as they are now
-  (`layout.host_masks`), not only the layout's, so a layout that lost its `/run` mask fails. The inventory is complete,
-  with no failing socket.
+  (`layout.host_masks`), not only the layout's, so a layout that lost its `/run` mask fails. No path socket of a
+  failing class is reachable. The row fails closed on a table that cannot be read, a table without the control, and a
+  check inside that errors.
 - **Row 3, the display:** no display credential reads as anything but absent, empty or unreadable. No `DISPLAY_ENV`
   variable reaches the probe, which is handed each of them set, so a sandbox that does not unset them fails.
 - **Row 4, the terminal:** read on the started process itself, `tty_nr` is 0 in its own `/proc/self/stat` and
   `/dev/tty` gives `ENXIO`. Whether it leads its session is recorded, not required: under `--new-session` the
   session's leader is bubblewrap's own process in the sandbox (seen on CI's runners and the Rocky 8 VM).
 - **Row 5, the binds and masks:** the M4-B checks. A runs mask that is missing inside now fails too.
-- **Recorded pass or fail:** each row has its name, `ok`, its reason and its facts. Row 2's facts include the
-  sockets, how many entries were walked and how long it took. `required` refuses a failing self-test, with the rows in
+- **Recorded pass or fail:** each row has its name, `ok`, its reason and its facts. Row 2's facts are:
+  - the reachable sockets with their classes and inside paths;
+  - the table's size and how many path sockets were checked;
+  - the abstract sockets;
+  - the residuals;
+  - how long the host and the probe took.
+
+  `required` refuses a failing self-test, with the rows in
   the refusal's details. `allow_weaker` launches the run labelled `workdir_separation_only`, with the rows on its
   label. Row 1, the network, is CS-3's.
 
@@ -982,9 +1010,9 @@ amendment of 2026-10-23). `READER_GIT_GAP` is empty, and the worker-surface test
 digest on both faces. That paragraph stays as the record of CS-1.
 
 ### What this does not claim
-- **The walk is measured on CI's runners and the Rocky 8 VM only.** On the work host, measure it before relying on
-  `required` there: a host with a larger tree could exceed the budget, and its launches would then be refused.
-- **Row 2 certifies the sandbox as the run starts.** The inventory is taken by the launch self-test.
+- **Row 2 certifies the sandbox as the run starts.** The inventory is taken by the launch self-test, so a socket
+  bound after it is not in it.
+- **The residuals above** are named, not closed.
 - The claim is still filesystem integrity with the network shared. CS-3 gives runs their own network namespace.
 
 ### Tests
@@ -1004,13 +1032,26 @@ digest on both faces. That paragraph stays as the record of CS-1.
   - the display files and the `XAUTHORITY` file masked by type;
   - every argv unsetting the display variables and starting a new session;
   - no contained environment builder passing a display variable.
-- **`tests/unit/test_containment_sockets.py`:** each failing class on planted paths and nothing else, an unlisted
-  socket reported, the launching environment's sockets, and the run's own bridge.
-- **`tests/unit/test_containment_probe.py`:** each row's judgement on synthetic probe output, passing and failing
-  closed, row 4 included. In a test's sandbox, no launcher has a controlling terminal to lose.
+- **`tests/unit/test_containment_sockets.py`**, all on synthetic inputs:
+  - each failing class on planted names and nothing else;
+  - an unlisted socket reported;
+  - the launching environment's sockets, the run's own bridge, and AEW's runtime directories only in a runtime root;
+  - the table's parsing, and an unreadable table;
+  - the abstract names and the executable classes;
+  - the inventory's candidates, classes and control;
+  - the same-directory rule;
+  - the residuals recorded;
+  - each socket's filesystem and its path within it.
+- **`tests/unit/test_containment_probe.py`**, on synthetic probe output:
+  - each row's judgement, passing and failing closed, row 4 included;
+  - row 2's fail-closed cases (an unreadable table, a missing control, a check inside that errors);
+  - row 2's residuals and its abstract fact;
+  - the probe's own matching on synthetic mount tables: every mount of the socket's filesystem, and the same file by
+    device and inode only;
+  - `aew doctor`'s WARN.
 - **`tests/integration/test_containment.py`** (Linux). Every planted item is synthetic, in the test's own 0700
   directory, and removed in a `finally`. The launching environment is built from scratch.
-  - A passing run records rows 2 to 5, with the walk's facts printed.
+  - A passing run records rows 2 to 5, with the table's facts printed.
   - An ordinary planted socket is reported and the run starts. One the launching environment names as its agent
     fails the launch.
   - A socket on a read-only bind can still be connected to: the reason for the inventory.
@@ -1021,7 +1062,6 @@ digest on both faces. That paragraph stays as the record of CS-1.
   - The display's credentials and variables never reach a contained process, and no credential reaches git.
   - Each row fails closed when its protection is taken out of the self-test's argv: `/run`'s mask, a display file's
     mask, the variables' unsetting, a runs mask.
-  - An incomplete walk fails row 2.
   - A launcher that has a controlling terminal (a pseudo-terminal of the test's own) starts the probe, which has none;
     without `--new-session` it inherits the launcher's, and row 4 fails.
   - A project under a stand-in for `/run`, masked as `/run` is: bound back with its workspace, recorded with the

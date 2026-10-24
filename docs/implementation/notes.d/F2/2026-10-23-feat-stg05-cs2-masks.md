@@ -19,10 +19,13 @@ socket inventory and the self-test's rows 2 to 5; and the reader git gap closed 
     store helper's file.
   - The display, session-bus and ssh-agent variables are unset, and every process starts in a new session.
 - **The launch self-test records CB-12's rows 2 to 5 on the label,** pass or fail, and fails closed in `required`:
-  - row 2, `/run` and the socket inventory (`aew.harness.containment.sockets`);
+  - row 2, `/run` and the socket inventory (`aew.harness.containment.sockets`): built from the kernel's socket table
+    rather than a walk of the filesystem (the designer's D-CS2-2; a walk could not finish on CI's runners), with
+    what the table cannot show named on the label (D-CS2-3);
   - row 3, the display;
   - row 4, no controlling terminal, read on the started process;
   - row 5, the binds and masks.
 - **Waiting on a ruling:** `working_diff`'s keep-or-remove question, for a later batch of flagged code, never a
   containment slice (the designer, 2026-10-23).
-- **Not measured here:** the work host. Measure the socket walk there before relying on `required` mode.
+- **Not measured here:** the work host. The inventory's cost there is O(sockets + mounts), so nothing scales with
+  the size of its filesystem.

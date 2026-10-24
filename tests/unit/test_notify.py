@@ -36,14 +36,34 @@ def event(**over: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------- delivery
 
 
+def whole_pids(text: str | None) -> list[str] | None:
+    """The two words of a whole `parent child` record, else None, so a poll answers "not yet" until it is whole."""
+    words = (text or "").split()
+    return words if len(words) == 2 else None
+
+
+@pytest.mark.parametrize("text", [None, "", "123", "123 ", "123 456 789"])
+def test_the_pids_poll_waits_for_a_whole_record(text):
+    assert whole_pids(text) is None
+
+
+@pytest.mark.parametrize("text", ["123 456", "123 456\n", "  123   456 "])
+def test_the_pids_poll_answers_once_both_pids_are_there(text):
+    assert whole_pids(text) == ["123", "456"]
+
+
 def test_notifier_timeout_kills_the_process_tree(tmp_path):
     """Past `timeout_s` the notifier and everything it started are killed, and the delivery is a failure."""
     pids = tmp_path / "pids"
+    # The child stages the record and replaces it into place, so it appears whole or not at all; the poll also waits
+    # for both words (whole_pids), belt and braces against a record written in place.
     body = f"""\
 import os, subprocess, sys, time
 kw = {{"creationflags": 0x08000000}} if sys.platform == "win32" else {{}}
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **kw)
-open({str(pids)!r}, "w").write(f"{{os.getpid()}} {{child.pid}}")
+with open({str(pids.with_suffix(".tmp"))!r}, "w") as f:
+    f.write(f"{{os.getpid()}} {{child.pid}}")
+os.replace({str(pids.with_suffix(".tmp"))!r}, {str(pids)!r})
 time.sleep(120)
 """
     started = time.monotonic()
@@ -51,7 +71,7 @@ time.sleep(120)
                          max_output_bytes=1024)
     assert out["outcome"] == "failed" and out["reason"] == "timeout" and out["timed_out"]
     assert time.monotonic() - started < 30
-    parent, child = (int(p) for p in until(lambda: (read_text_or_none(pids) or "").split(), what="the pids"))
+    parent, child = (int(p) for p in until(lambda: whole_pids(read_text_or_none(pids)), what="the pids"))
     until(lambda: not procs.pid_alive(parent) and not procs.pid_alive(child), 15, "the notifier's tree to be killed")
 
 

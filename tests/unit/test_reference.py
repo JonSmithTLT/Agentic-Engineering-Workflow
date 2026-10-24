@@ -172,12 +172,35 @@ def test_the_privacy_check_sees_this_machines_home_directory_in_every_spelling()
         assert any("home directory" in p for p in C.text_problems("f", f"x {spelling} y", home)), spelling
 
 
+# The shape of the design workspace's requirement IDs, exactly as its pack cutter matches it. The cutter checks each
+# match against its own index of requirements, so a code fact passes there; this repository has no such index, so here
+# a match is a hit unless it is allowed below, each entry with its reason. Measured over the committed pages when this
+# test was written: 2 matches, both `STG-02` (the table's reason for the STG-02 slice's producer).
+ID_SHAPE = re.compile(
+    r"(?<![\w/.-])([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-[A-Z]?\d{1,3}[a-z]?(?:\.[a-z0-9]{1,3})?)(?![\w-])")
+ID_ALLOWED = {
+    "SHA-256": "an external standard: the hash",
+    "UTF-8": "an external standard: the encoding",
+    "DOC-01": "a family of this reference (the writer map), the document's own name, not a requirement",
+    "DOC-02": "a family of this reference (the entry points), the document's own name, not a requirement",
+    "DOC-03": "a family of this reference (concurrency), the document's own name, not a requirement",
+    "DOC-04": "a family of this reference (the layout), the document's own name, not a requirement",
+    "STG-02": "a stage: the code's own name for the slice (`aew.process_kind`'s reason for `aew.stg02.server`)",
+}
+
+
+def id_hits(text: str) -> list[str]:
+    """What in ``text`` is a requirement or register ID and is not allowed: the design workspace's shape, and the
+    repository's own ledger prefixes and register row ids, each exactly as its owner has it."""
+    found = {m.group(1) for m in ID_SHAPE.finditer(text)} | {m.group(0) for m in derived_id_pattern().finditer(text)}
+    return sorted(found - set(ID_ALLOWED))
+
+
 @cache
-def requirement_id_pattern() -> re.Pattern[str]:
+def derived_id_pattern() -> re.Pattern[str]:
     """The IDs the repository itself owns, built from their owners (derive, don't restate): the requirements ledger's
     source prefixes (``<PREFIX>-<n>``, the shape ``test_requirements_ledger`` gives them), the register's row-id shape
-    (``tools/register.py``'s ``ID_RE``) and the register's own row ids, ``STG-NN`` included. The design workspace's
-    own IDs (``CRD-``, ``MOD-``, ``WIS-``, ``D-CS1-``...) are not in this repository: that part is a stated limit."""
+    (``tools/register.py``'s ``ID_RE``) and the register's own row ids, ``STG-NN`` included."""
     import yaml
 
     ledger = yaml.safe_load((ROOT / "docs" / "design" / "requirements-ledger.yaml").read_text(encoding="utf-8"))
@@ -198,24 +221,34 @@ def requirement_id_pattern() -> re.Pattern[str]:
 
 
 def test_no_requirement_id_is_in_the_reference():
-    """The trace is the design side's: the repository states what the code is, never what it should be. Limit: only the
-    IDs this repository owns are caught (see ``requirement_id_pattern``)."""
-    pattern = requirement_id_pattern()
-    found = {name: sorted(set(pattern.findall(data.decode("utf-8")))) for name, data in committed().items()}
+    """The trace is the design side's: the repository states what the code is, never what it should be, and holds no
+    requirement ID. The design side's pack cutter checks each ID it finds against its index at the cut; this test is
+    the earlier, shape-based check. (Requirement text, as against an ID, is not something either can match.)"""
+    found = {name: id_hits(data.decode("utf-8")) for name, data in committed().items()}
     assert {name: hits for name, hits in found.items() if hits} == {}
 
 
-@pytest.mark.parametrize("text", ["see CRD-13", "register F44", "row F15.2 says", "AIR-75.", "(WCA-3)", "CRD-13a",
-                                  "E71"])
+@pytest.mark.parametrize("text", [
+    "see CRD-13", "MOD-08", "WIS-01a", "D-CS1-12", "CS-01", "CB-09", "AIR-75.", "(WCA-3)", "CRD-13a",   # design shapes
+    "STG-05",                                           # a stage name nobody has allowed: the allowlist is deliberate
+    "register F44", "row F15.2 says", "E71"])           # the register's own row ids
 def test_the_id_check_sees_each_wrong_case(text):
-    assert requirement_id_pattern().search(text), text
+    assert id_hits(text), text
 
 
-@pytest.mark.parametrize("text", ["UTF-8", "SHA-256", "aew.process_kind:ENTRY_POINTS", "python3.11",
-                                  "http-problem-matrix", "src/aew/engine/store.py", "version 0.5.4",
-                                  "entry-points:aew.stg02.server", "an ordinary sentence."])
-def test_the_id_check_leaves_what_is_not_an_id_alone(text):
-    assert requirement_id_pattern().search(text) is None, text
+@pytest.mark.parametrize("text", [
+    "UTF-8", "SHA-256", "DOC-02", "STG-02",                                             # allowed, each with its reason
+    "aew.process_kind:ENTRY_POINTS", "python3.11", "http-problem-matrix", "src/aew/engine/store.py", "version 0.5.4",
+    "entry-points:aew.stg02.server", "an ordinary sentence."])
+def test_the_id_check_leaves_what_is_allowed_or_not_an_id_alone(text):
+    assert id_hits(text) == [], text
+
+
+def test_every_allowed_id_has_its_reason_and_would_otherwise_be_a_hit():
+    """An allowlist entry that the shape would not match is dead weight, and one without a reason is a hole."""
+    for entry, reason in ID_ALLOWED.items():
+        assert reason.strip(), entry
+        assert ID_SHAPE.search(entry), f"{entry} is not matched by the shape, so it needs no entry"
 
 
 def test_the_committed_index_is_in_the_shape_the_trace_reads():

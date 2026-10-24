@@ -366,51 +366,70 @@ skipped:
       Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
       Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by
       value and by the object store's digest, in test_fingerprint_reads.py.
-    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask077]: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask[umask002]: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask077]: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600[umask002]: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_changed_later: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_an_interrupted_migration_runs_again_until_the_control_file_has_the_mode: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
-    tests/integration/test_store_modes.py::test_the_migration_changes_only_what_lacks_the_bits_and_finishes_past_a_path_it_may_not_change: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+    tests/integration/test_store_modes.py::test_every_path_the_engine_writes_in_the_store_is_owner_only_whatever_the_umask[umask077]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_every_path_the_engine_writes_in_the_store_is_owner_only_whatever_the_umask[umask002]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_is_owner_only_whatever_the_umask[umask077]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_an_overflow_sidecar_the_engine_stages_is_owner_only_whatever_the_umask[umask002]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_a_new_store_is_owner_only_from_its_first_file_even_under_an_empty_umask: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_a_store_written_wider_is_narrowed_once_and_doctor_reports_a_path_widened_later[cs1_group_readable]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_a_store_written_wider_is_narrowed_once_and_doctor_reports_a_path_widened_later[before_cs1_umask022]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_an_interrupted_narrowing_runs_again_until_the_store_directory_is_owner_only: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_files_an_earlier_version_writes_into_a_narrowed_store_are_narrowed_at_the_next_open: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[does_nothing]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[eperm]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_where_the_file_system_keeps_no_permission_bits_no_open_walks_the_store_and_doctor_says_so_once[eopnotsupp]: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_a_control_file_that_is_a_link_is_never_followed_and_doctor_names_it: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_store_modes.py::test_the_narrowing_changes_only_what_has_group_or_other_bits_and_finishes_past_a_path_it_may_not_change: >-
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
     tests/integration/test_store_modes.py::test_a_path_the_compactor_prunes_during_a_walk_fails_neither_the_migration_nor_doctor: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
     tests/integration/test_store_modes.py::test_a_store_directory_that_is_a_link_still_gets_the_stores_modes: >-
-      POSIX permission bits (STG-05 CB-08, the store's modes); Windows has none, so write_temp ignores the mode
-      there. Covered on Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
-      test_store_processes.py, test_log_sealing.py and test_doctor.py, and the group rule through
-      test_the_primary_group_check_names_what_makes_a_group_not_user_private.
+      POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
+      Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
+      test_store_processes.py, test_log_sealing.py and test_doctor.py.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

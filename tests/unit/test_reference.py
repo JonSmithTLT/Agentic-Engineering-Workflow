@@ -344,6 +344,18 @@ MUTATIONS = {
                                                           "complete-by-construction without its check"),
     "complete-by-construction without its registry": plant(lambda i: t1(i)["coverage"].pop("registry"),
                                                            "complete-by-construction without its registry"),
+    # the clauses of those rules (review of #241, N3): an empty registry; a check that is a string, or has a non-string;
+    # an unresolved item, and a gap, with an empty why. The generator refuses each; a reader that checks presence only
+    # accepts them, so nothing else holds them
+    "complete-by-construction with an empty registry": plant(lambda i: t1(i)["coverage"].update(registry=""),
+                                                             "complete-by-construction without its registry"),
+    "complete-by-construction with a check that is a string": plant(
+        lambda i: t1(i)["coverage"].update(check="tests/x.py::t"), "complete-by-construction without its check"),
+    "complete-by-construction with a non-string in its check": plant(
+        lambda i: t1(i)["coverage"].update(check=["tests/x.py::t", 3]), "complete-by-construction without its check"),
+    "an unresolved item with an empty why": plant(lambda i: mod_b(i)["coverage"]["unresolved"][0].update(why=""),
+                                                  "an unresolved item is not"),
+    "a gap with an empty why": plant(lambda i: i["gaps"][0].update(why=""), "a gap is not", sealed=False),
     "lower-bound without its unresolved list": plant(lambda i: mod_b(i)["coverage"].pop("unresolved"),
                                                      "lower-bound without its unresolved list"),
     "an unresolved item without its why": plant(lambda i: mod_b(i)["coverage"]["unresolved"][0].pop("why"),
@@ -400,8 +412,9 @@ def test_a_sound_index_has_no_problems_and_each_planted_fault_is_refused_by_its_
         problems = C.index_problems(broken)
         for fragment in fragments:
             assert any(fragment in p for p in problems), (what, fragment, problems)
-        if sealed:  # the digest must not be what refused it
+        if sealed:  # neither the digest nor a stale gaps summary may be what refused it (review of #241, N4)
             assert not any(DIGEST in p for p in problems), (what, problems)
+            assert not any("gaps is not the summary" in p for p in problems), (what, problems)
         if only:
             assert len(problems) == 1, (what, problems)
 

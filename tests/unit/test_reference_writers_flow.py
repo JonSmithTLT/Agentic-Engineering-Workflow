@@ -26,16 +26,16 @@ def _tools():
     here = str(ROOT / "tools")
     sys.path.insert(0, here)
     try:
-        from reference_families import common, writers, writers_flow, writers_reach, writers_text
+        from reference_families import common, writers, writers_flow, writers_reach, writers_roles, writers_text
     finally:
         sys.path.remove(here)
-    return common, writers, writers_flow, writers_reach, writers_text
+    return common, writers, writers_flow, writers_reach, writers_roles, writers_text
 
 
-C, W, F, R, T = _tools()
+C, W, F, R, K, T = _tools()
 TOP = frozenset({"state", "local", "work", "evidence", "records", "project.yaml"})
-KINDS = {"aew": "store_writer", "aew lead mcp": "non_writer", "aew.harness.supervisor": "store_writer",
-         "aew.stg02.server": "non_writer"}
+KINDS = {"aew": "store_writer", "aew lead mcp": "non_writer", "aew (worker run)": "non_writer",
+         "aew.harness.supervisor": "store_writer", "aew.stg02.server": "non_writer"}
 HEAD = ("import os\nimport shutil\nimport sqlite3\nimport tempfile\nfrom pathlib import Path\n"
         "from aew.util import atomic_write, create_exclusive\n")
 
@@ -44,8 +44,8 @@ def program(sources: dict[str, str]) -> Any:
     return F.Program.of({name: (ast.parse(text), False) for name, text in sources.items()})
 
 
-def analysed(source: str, *, extra: dict[str, str] | None = None, top=TOP, roots=None, dispatchers=None) -> Any:
-    return W.analyse(program({"aew.m": HEAD + source, **(extra or {})}), top, roots or {}, KINDS, dispatchers or set())
+def analysed(source: str, *, extra: dict[str, str] | None = None, top=TOP, roots=None) -> Any:
+    return W.analyse(program({"aew.m": HEAD + source, **(extra or {})}), top, roots or {}, KINDS)
 
 
 def writers_of(a: Any, template: str) -> list[tuple[str, str, str, tuple[str, ...]]]:
@@ -102,6 +102,9 @@ PRIMITIVES = [
     ("def f(p, mode):\n    open(p, mode=mode)", {"open?": 1}),
     ("def f(p, m):\n    p.open(mode=m)", {"Path.open?": 1}),
     ("def f(p):\n    flags = os.O_RDONLY | extra\n    os.open(p, flags)", {"os.open?": 1}),
+    # P1 (quick check of #254): a name that is only augmented started as something the function does not show
+    ("def f(p, flags):\n    flags |= os.O_NOFOLLOW\n    os.open(p, flags)", {"os.open?": 1}),
+    ("def f(p, mode):\n    mode += 'b'\n    open(p, mode)", {"open?": 1}),
 ]
 NOT_WRITES = [
     "text.replace('a', 'b')",                    # str.replace takes two arguments
@@ -156,7 +159,7 @@ PROBES = {
     "positional-open-mode": "def f(p, req):\n    OPENER.open(req, timeout=3)",
     "metadata-calls": "os.utime(p)\nos.chmod(p, 0o700)\nfsync_dir(d)",
 }
-THE_REST = {"cross-function-path"}  # about a destination, not a primitive: probed below
+THE_REST = {"cross-function-path", "handler-by-name"}  # about a destination or a handler: probed below
 
 
 def test_the_cannot_see_list_has_a_probe_for_each_class_and_nothing_else():
@@ -251,6 +254,66 @@ def test_a_sibling_with_a_fixed_name_is_a_file_of_its_own():
                  "    open(locator.with_name(locator.name + '.queue'), 'a+b')\n")
     assert sorted(a.writers) == ["local/operator/endpoint.json.queue", "local/operator/endpoint.lock",
                                  "local/operator/endpoint.tmp", "local/operator/endpoint2.json"]
+
+
+def test_a_sibling_named_from_the_paths_own_name_suffix_or_stem_with_a_fixed_end_is_a_file_of_its_own():
+    """Quick check of #254, P2: the f-string and `.suffix +` spellings of the forms the fixed-name rule already has."""
+    a = analysed("def f(aew_root):\n"
+                 "    p = aew_root / 'local' / 'operator' / 'endpoint.json'\n"
+                 "    open(p.with_name(f'{p.name}.queue'), 'a+b')\n"
+                 "    p.with_suffix(p.suffix + '.bak').write_text('x')\n"
+                 "    p.with_suffix(f'{p.suffix}.old').write_text('x')\n"
+                 "    p.with_stem(p.stem + '2').write_text('x')\n")
+    assert sorted(a.writers) == ["local/operator/endpoint.json.bak", "local/operator/endpoint.json.old",
+                                 "local/operator/endpoint.json.queue", "local/operator/endpoint2.json"]
+
+
+def test_many_own_name_siblings_are_each_a_record_whatever_the_allocator_does():
+    """The fixed end of an own-name sibling is a node the evaluator makes; its memo is keyed by node id, so a node freed
+    early lets a later one be answered with the earlier one's value (found by a flaky ablation: 15 of 200 records were
+    lost). The nodes are kept."""
+    n = 200
+    src = "def f(aew_root):\n    p = aew_root / 'local' / 'endpoint.json'\n" + "".join(
+        f"    p.with_name(f'{{p.name}}.s{i}').write_text('x')\n" for i in range(n))
+    a = analysed(src)
+    assert sorted(a.writers) == sorted(f"local/endpoint.json.s{i}" for i in range(n))
+
+
+def test_a_sibling_named_by_a_value_that_is_neither_fixed_nor_made_by_the_process_cannot_be_placed():
+    """Quick check of #254, P2: a name held in a parameter used to fold into the path it came from, which hid a file of
+    its own. One built from the process (through a local name too) is still the write protocol of its path."""
+    a = analysed("def f(aew_root, name):\n    p = aew_root / 'local' / 's.json'\n"
+                 "    p.with_name(name).write_text('x')\n")
+    assert a.writers == {} and any("neither fixed nor made by the process" in r for r in reasons(a))
+    b = analysed("def f(aew_root):\n    p = aew_root / 'local' / 's.json'\n    suffix = f'.{os.getpid()}.tmp'\n"
+                 "    p.with_name(p.name + suffix).write_text('x')\n")
+    assert sorted(b.writers) == ["local/s.json"] and b.unresolved == {}
+
+
+def test_the_page_states_the_rule_for_siblings():
+    a = analysed("def f(aew_root):\n    (aew_root / 'local' / 'x').write_text('x')\n")
+    assert "A sibling of a path" in W.page(a, W.records_of(a), tuple(sorted(TOP)))
+
+
+def test_a_with_statements_implicit_calls_are_not_followed_and_an_explicit_call_is():
+    """Review of #258, F1: the limit the reach states and the page names. `with Lock():` runs `Lock.__enter__`, which
+    no call names; `Lock().__enter__()` is a call."""
+    src = ("def lock_write(aew_root):\n    (aew_root / 'local' / 'l').write_text('x')\n\n"
+           "class Lock:\n    def __enter__(self):\n        lock_write(None)\n        return self\n\n"
+           "    def __exit__(self, *a):\n        pass\n\n"
+           "def by_with():\n    with Lock():\n        pass\n\n"
+           "def by_name():\n    Lock().__enter__()\n\n"
+           "def main():\n    by_with()\n\ndef main2():\n    by_name()\n")
+    a = analysed(src, roots={("aew.m", "main"): {"aew.harness.supervisor"}, ("aew.m", "main2"): {"aew.stg02.server"}})
+    assert a.reach[("aew.m", "lock_write")] == {"aew.stg02.server"}
+    assert ("aew.m", "Lock.__enter__") not in {k for k, v in a.reach.items() if "aew.harness.supervisor" in v}
+
+
+def test_the_page_states_the_with_limit_and_names_its_live_case():
+    a = analysed("def f(aew_root):\n    (aew_root / 'local' / 'x').write_text('x')\n")
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
+    assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
 
 
 def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
@@ -490,9 +553,7 @@ REACH = ("def w(aew_root):\n    (aew_root / 'local' / 'w').write_text('x')\n\n"
          "def lonely(aew_root):\n    (aew_root / 'local' / 'l').write_text('x')\n\n"
          "def names_only():\n    cb = w\n    return cb\n\ndef root_b():\n    names_only()\n\n"
          "def inner_user():\n    def helper(aew_root):\n        (aew_root / 'local' / 'i').write_text('x')\n"
-         "    helper(ROOT)\n\ndef main2():\n    inner_user()\n\n"
-         "def command(a):\n    (ROOT / 'local' / 'c').write_text('x')\n\n"
-         "def build(p):\n    p.set_defaults(handler=command)\n\ndef cli_main():\n    build(None)\n")
+         "    helper(ROOT)\n\ndef main2():\n    inner_user()\n")
 
 
 def test_a_writer_is_reached_by_a_chain_of_calls_from_the_function_that_declares_an_entry_point():
@@ -503,16 +564,6 @@ def test_a_writer_is_reached_by_a_chain_of_calls_from_the_function_that_declares
     assert a.reach[("aew.m", "inner_user.helper")] == {"aew.stg02.server"}, "a nested function is reached by its name"
 
 
-def test_a_registered_cli_handler_is_reached_from_the_function_that_declares_the_clis_roles():
-    a = analysed(REACH, roots={("aew.m", "cli_main"): {"aew", "aew lead mcp"}}, dispatchers={("aew.m", "cli_main")})
-    assert a.reach[("aew.m", "command")] == {"aew", "aew lead mcp"}
-    plain = analysed(REACH, roots={("aew.m", "cli_main"): {"aew", "aew lead mcp"}})
-    assert ("aew.m", "command") not in plain.reach, "without the dispatch edge the handler is not reached"
-    wrapped = analysed(REACH.replace("handler=command", "handler=lambda a: command(a)"),
-                       roots={("aew.m", "cli_main"): {"aew"}}, dispatchers={("aew.m", "cli_main")})
-    assert wrapped.reach[("aew.m", "command")] == {"aew"}, "a lambda handler registers the function it names"
-
-
 def test_a_writer_no_chain_reaches_is_unresolved_on_its_records_and_a_reached_one_is_not():
     a = analysed(REACH, roots={("aew.m", "main"): {"aew"}})
     by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
@@ -521,44 +572,164 @@ def test_a_writer_no_chain_reaches_is_unresolved_on_its_records_and_a_reached_on
     assert W.NO_CHAIN not in [i["why"] for i in reached.fact_coverage["writers"]["unresolved"]]  # type: ignore[index]
 
 
-SHARED = ("def writer(aew_root):\n    (aew_root / 'local' / 'c').write_text('x')\n\n"
-          "def solo(aew_root):\n    (aew_root / 'local' / 's').write_text('x')\n\n"
-          "def command(a):\n    writer(AEW)\n\ndef build(p):\n    p.set_defaults(handler=command)\n\n"
-          "def cli_main():\n    build(None)\n\ndef sup_main():\n    solo(AEW)\n")
-SHARED_ROOTS = {("aew.m", "cli_main"): {"aew", "aew lead mcp"}, ("aew.m", "sup_main"): {"aew.harness.supervisor"}}
+# ------------------------------------------------------------------------------- the CLI cut per role (addendum 4)
+
+GENERAL, NAMED, WORKER = "aew", "aew lead mcp", "aew (worker run)"
+CLI_ROOT = ("aew.m", "cli_main")
+CLI = ("import argparse\n\n"
+       "def store_write(aew_root):\n    (aew_root / 'state' / 's').write_text('x')\n\n"
+       "def local_write(aew_root):\n    (aew_root / 'local' / 'l').write_text('x')\n\n"
+       "def common_write(aew_root):\n    (aew_root / 'state' / 'c').write_text('x')\n\n"
+       "def cmd_store(a):\n    store_write(None)\n\n"
+       "def cmd_mcp(a):\n    local_write(None)\n    store_write(None)\n\n"
+       "def register(sub):\n"
+       "    p = sub.add_parser('init')\n    p.set_defaults(handler=cmd_store)\n"
+       "    lead = sub.add_parser('lead')\n    lsub = lead.add_subparsers(dest='x')\n"
+       "    q = lsub.add_parser('mcp')\n    q.set_defaults(handler=lambda a: cmd_mcp(a))\n\n"
+       "def build():\n    parser = argparse.ArgumentParser(prog='aew')\n"
+       "    register(parser.add_subparsers(dest='command'))\n    common_write(None)\n    return parser\n\n"
+       "def cli_main(argv):\n    build()\n")
 
 
-def shared_analysis():
-    return analysed(SHARED, roots=SHARED_ROOTS, dispatchers={("aew.m", "cli_main")})
+def role_of(path: tuple[str, ...]) -> str:
+    return NAMED if tuple(path[:2]) == ("lead", "mcp") else GENERAL
 
 
-def test_a_writer_that_a_shared_declaring_function_reaches_says_on_its_record_that_the_role_is_not_decided():
-    """Review of #254, F1: the CLI's roles share one declaring function, so the writer it reaches lists them all; the
-    record carries an unresolved item at that function (the trace reads records only), and a writer reached from a
-    function that declares one entry point does not."""
-    a = shared_analysis()
+def cli_analysis(source: str = CLI) -> Any:
+    prog = program({"aew.m": HEAD + source})
+    roles = K.Roles(GENERAL, frozenset({NAMED}), WORKER)
+    cli = ({CLI_ROOT}, roles, K.cut_of(prog, role_of))
+    return W.analyse(prog, TOP, {CLI_ROOT: {GENERAL, NAMED, WORKER}}, KINDS, cli)
+
+
+def test_a_handler_is_reached_by_the_role_of_its_command_and_the_clis_own_calls_by_every_role():
+    a = cli_analysis()
+    assert a.reach[("aew.m", "cmd_store")] == {GENERAL}
+    assert a.reach[("aew.m", "cmd_mcp")] == {NAMED}
+    assert a.reach[("aew.m", "register.<handler1>")] == {NAMED}, "a lambda handler is a function of its own"
+    assert a.reach[("aew.m", "local_write")] == {NAMED}
+    assert a.reach[("aew.m", "store_write")] == {GENERAL, NAMED}
+    assert a.reach[("aew.m", "register")] == {GENERAL, NAMED, WORKER}, "the parser's construction is every role's"
+    assert a.reach[("aew.m", "common_write")] == {GENERAL, NAMED, WORKER}
+    assert WORKER not in a.reach[("aew.m", "cmd_store")], "the environment's role is reached by no command"
+
+
+def test_a_lambda_handler_does_not_put_its_calls_on_the_path_every_command_shares():
+    """The lambda is called by the CLI's dispatch, not by the function that registers it: else the engine would be
+    on the common path and every role would reach every writer."""
+    funcs = program({"aew.m": HEAD + CLI}).modules["aew.m"].funcs
+    assert [ast.unparse(c.func) for c in funcs["register.<handler1>"].calls] == ["cmd_mcp"]
+    assert "cmd_mcp" not in {ast.unparse(c.func) for c in funcs["register"].calls}
+
+
+def test_the_store_writes_a_non_writer_role_reaches_are_the_finding_and_its_local_writes_are_permitted():
+    a = cli_analysis()
+    records = W.records_of(a)
+    store, local = W.role_reach(a, records)
+    assert store[NAMED] == {("aew.m", "store_write"), ("aew.m", "common_write")}
+    assert local[NAMED] == {("aew.m", "local_write")}
+    assert store[WORKER] == {("aew.m", "common_write")} and local[WORKER] == set()
+    lines = W.page(a, records, tuple(sorted(TOP))).splitlines()
+    checked = next(line for line in lines if line.startswith("**Checked:**"))
+    permitted = next(line for line in lines if line.startswith("**Permitted:**"))
+    assert "`aew.m:store_write`" in checked and "`aew.m:common_write`" in checked
+    assert "`aew.m:local_write`" in permitted and "`aew.m:local_write`" not in checked
+
+
+@pytest.mark.parametrize(("directory", "mechanism", "store"), [
+    ("state", W.DIRECT, True), ("state", W.STORE_TRANSACTION, True), ("local", W.DIRECT, False),
+    ("local", W.STORE_TRANSACTION, True), (".gitignore", W.DIRECT, True)])
+def test_a_write_is_to_the_store_by_its_prefix_and_its_mechanism(directory, mechanism, store):
+    assert W.store_class(directory, mechanism) is store
+
+
+def test_a_store_transaction_write_under_local_that_a_non_writer_role_reaches_is_the_finding():
+    a = cli_analysis(CLI + "\ndef txn_local(session):\n    session.write('local/z', 'x')\n\n"
+                     "def cmd_txn(a):\n    txn_local(None)\n\n"
+                     "def more(sub):\n    lsub = sub.add_parser('lead').add_subparsers()\n"
+                     "    lsub.add_parser('mcp').set_defaults(handler=cmd_txn)\n\n"
+                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+    store, local = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "txn_local") in store[NAMED] and ("aew.m", "txn_local") not in local[NAMED]
+
+
+def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
+    """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
+    item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever
+    the writer writes; a writer the named role reaches alone, and one the common path gives every role, do not."""
+    a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
+                     "def cmd_local(a):\n    local_only(None)\n\n"
+                     "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
+                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
     by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
-    item = C.unresolved_item("aew.m", "cli_main", W.role_why(("aew", "aew lead mcp")))
-    assert item in by_key["local/c"].fact_coverage["writers"]["unresolved"]  # type: ignore[index]
-    assert item not in by_key["local/s"].fact_coverage["writers"]["unresolved"]  # type: ignore[index]
-    assert W.shared_roots(a.roots) == {("aew.m", "cli_main"): ("aew", "aew lead mcp")}
+    gate = W.gate_item(a.roles)
+    listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
+    assert gate in listed["state/s"], "a store write the general handlers reach"
+    assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
+    assert gate not in listed["local/l"], "a writer only the named role reaches"
+    assert gate not in listed["state/c"], "the common path gives the worker role this one"
+    assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}
-    assert W.record_problems(records, KINDS, W.shared_roots(a.roots)) == []
-
-
-def test_a_record_that_leaves_out_the_role_item_of_a_shared_writer_is_refused():
-    a = shared_analysis()
-    records = {r.id: r.as_json() for r in W.records_of(a)}
+    assert W.record_problems(records, KINDS, a.roles, a.undecided) == []
     cut = copy.deepcopy(records)
-    cut["writers:local/c"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
-    problems = W.record_problems(cut, KINDS, W.shared_roots(a.roots))
-    assert any("does not say which of them is not decided" in p for p in problems), problems
+    cut["writers:state/s"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
+    problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
+    assert any("the call graph gives that role nothing" in p for p in problems), problems
 
 
-def test_a_non_writer_root_is_exclusive_only_when_its_function_declares_no_store_writer():
-    roots = {("aew.cli", "main"): {"aew", "aew lead mcp"}, ("aew.stg", "main"): {"aew.stg02.server"},
-             ("aew.sup", "main"): {"aew.harness.supervisor"}}
-    assert W.exclusive_non_writers(roots, KINDS) == {"aew.stg02.server"}
+UNREAD = CLI.replace("    lead = sub.add_parser('lead')\n", "    lead = mystery(sub)\n")
+
+
+def test_a_handler_of_a_command_that_cannot_be_read_is_run_by_every_role_and_its_writers_say_so():
+    """Fail closed: the registration's parser comes from a call this reading cannot follow, so its handler may be a
+    non-writer's. Its writers list every role and name the function that registers it."""
+    assert cli_analysis().undecided == {}
+    a = cli_analysis(UNREAD)
+    assert a.reach[("aew.m", "cmd_mcp")] == {GENERAL, NAMED, WORKER}
+    assert a.undecided[("aew.m", "cmd_mcp")] == {("aew.m", "register")}
+    item = W.undecided_item(("aew.m", "register"))
+    by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
+    assert item in by_key["local/l"].fact_coverage["writers"]["unresolved"]  # type: ignore[index]
+    store, _ = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "store_write") in store[WORKER], "a handler of no known command is every role's"
+    records = {r.id: r.as_json() for r in W.records_of(a)}
+    assert W.record_problems(records, KINDS, a.roles, a.undecided) == []
+    cut = copy.deepcopy(records)
+    cut["writers:local/l"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
+    problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
+    assert any("for a command this reading could not read" in p for p in problems), problems
+
+
+BYNAME = ("class Eng:\n    def publish(self, aew_root):\n        (aew_root / 'state' / 'p').write_text('x')\n\n"
+          "def eng(a) -> Eng:\n    return Eng()\n\n"
+          "def register(sub):\n    for name, method in (('publish', 'publish'),):\n"
+          "        sub.add_parser(name).set_defaults(handler=lambda a, m=method: getattr(eng(a), m)(None))\n\n"
+          "def build():\n    register(argparse.ArgumentParser().add_subparsers())\n\n"
+          "def cli_main(argv):\n    build()\n")
+
+
+def test_a_handler_that_calls_its_engine_method_by_a_name_held_in_a_variable_is_the_pinned_limit():
+    """The `handler-by-name` class of the page's `cannot see` list: the command is read (its lambda is a function of its
+    own, reached by its role), the method behind `getattr(...)` is not, so its writer has no chain."""
+    a = cli_analysis(BYNAME)
+    assert a.cut.handlers == {GENERAL: {("aew.m", "register.<handler1>")}}
+    assert a.reach[("aew.m", "register.<handler1>")] == {GENERAL}
+    assert ("aew.m", "Eng.publish") not in a.reach
+    by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
+    assert W.NO_CHAIN in [i["why"] for i in by_key["state/p"].fact_coverage["writers"]["unresolved"]]  # type: ignore[index]
+
+
+def test_the_page_says_how_many_registrations_and_which_it_could_not_read():
+    page = W.page(cli_analysis(), W.records_of(cli_analysis()), tuple(sorted(TOP)))
+    assert "2 registrations of a command handler" in page
+    line = page.split("The parser cut:")[1].splitlines()[0]
+    assert "cannot read: none. " in line and line.endswith("can name: none.")
+    unread = W.page(cli_analysis(UNREAD), W.records_of(cli_analysis(UNREAD)), tuple(sorted(TOP)))
+    said = unread.split("The parser cut:")[1].splitlines()[0]
+    assert "cannot read: `aew.m:register` (" in said and said.endswith("can name: none.")
+    nameless = cli_analysis(CLI.replace("handler=cmd_store", "handler=mystery"))
+    said = W.page(nameless, W.records_of(nameless), tuple(sorted(TOP))).split("The parser cut:")[1].splitlines()[0]
+    assert "cannot read: none. " in said and said.endswith("can name: `aew.m:register`."), said
 
 
 # ----------------------------------------------------------------------- the family's own record rules, planted

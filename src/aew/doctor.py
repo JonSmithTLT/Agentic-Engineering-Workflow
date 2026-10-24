@@ -47,7 +47,7 @@ def environment_checks() -> list[dict[str, str]]:
     and the other checks still run (doctor reports, never crashes; review of #230, m5)."""
     checks: list[dict[str, str]] = []
     for name, check in (("platform", platform_qualification), ("python", _python), ("git", _git),
-                        ("modules", _modules), ("yaml", _yaml), ("primary-group", primary_group)):
+                        ("modules", _modules), ("yaml", _yaml)):
         try:
             found = check()
         except Exception as exc:
@@ -94,112 +94,6 @@ def _yaml() -> dict[str, str]:
         return _check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state")
     return _check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and writes the "
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
-
-
-def primary_group() -> dict[str, str] | None:
-    """Whether the operator's primary group is user-private (STG-05 CB-08): the store is group-readable, so its group
-    must hold the operator alone. None on Windows, which has no such groups. AEW never changes or creates a group."""
-    if sys.platform == "win32":  # pragma: windows-only
-        return None
-    import os  # pragma: posix-only
-
-    try:
-        import grp
-        import pwd
-    except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups to check
-        return None
-    try:
-        user = pwd.getpwuid(os.getuid())
-    except KeyError:  # a container's or a user namespace's uid, or a directory account while its directory is down
-        return _check("primary-group", "WARN", f"your uid {os.getuid()} has no account entry on this host, so nobody "
-                      f"can tell who else is in your group (gid {os.getgid()}); AEW's store is readable by that group")
-    try:
-        group = grp.getgrgid(user.pw_gid)
-    except KeyError:
-        return _check("primary-group", "WARN", f"your primary group (gid {user.pw_gid}) has no entry on this host, "
-                      "so nobody can tell who else is in it; the store is readable by that group")
-    accounts = pwd.getpwall()
-    sharing = sorted(u.pw_name for u in accounts if u.pw_gid == user.pw_gid and u.pw_name != user.pw_name)
-    remote, idle = directory_sources()
-    return private_group_check(user.pw_name, group.gr_name, group.gr_mem, sharing, listed=len(accounts),
-                               remote=remote, idle=idle)
-
-
-# Name-service sources whose accounts are all on this host, so enumerating them lists every account they hold.
-# `compat` is one unless the files hold NIS `+`/`-` lines, which bring in accounts this host does not list.
-LOCAL_SOURCES = frozenset({"files", "compat", "systemd", "altfiles"})
-# sssd's name-service responder: `sss` in nsswitch.conf serves nothing while it is absent (RL8's default authselect
-# profile lists `sss` whether or not sssd runs; review of #230, m7).
-SSS_NSS_PIPE = Path("/var/lib/sss/pipes/nss")
-
-
-def directory_sources(nsswitch: Path = Path("/etc/nsswitch.conf"), *, sss_pipe: Path = SSS_NSS_PIPE,
-                      etc: Path = Path("/etc")) -> tuple[list[str], list[str]]:
-    """``(serving, idle)``: the name-service sources for accounts and groups other than this host's own files
-    (``sss``, ``ldap``, ``nis``, ``winbind`` ...), whose accounts need not all be listed when enumerated, so a group
-    check cannot see them all; and those configured but not serving now (``sss`` without its responder)."""
-    try:
-        text = nsswitch.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return [], []
-    found: list[str] = []
-    for line in text.splitlines():
-        db, _, rest = line.split("#", 1)[0].partition(":")
-        if db.strip() in ("passwd", "group"):
-            for word in rest.split():
-                if word == "compat" and _nis_lines(etc):
-                    word = "compat (NIS lines in /etc/passwd or /etc/group)"
-                elif word.startswith("[") or word in LOCAL_SOURCES:
-                    continue
-                if word not in found:
-                    found.append(word)
-    idle = [w for w in found if w == "sss" and not sss_pipe.exists()]
-    return [w for w in found if w not in idle], idle
-
-
-def _nis_lines(etc: Path) -> bool:
-    """Whether ``passwd`` or ``group`` under ``etc`` has a NIS ``+``/``-`` line, which `compat` resolves remotely."""
-    for name in ("passwd", "group"):
-        try:
-            lines = (etc / name).read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        if any(line.startswith(("+", "-")) for line in lines):
-            return True
-    return False
-
-
-def private_group_check(user: str, group: str, members: list[str], sharing: list[str], *, listed: int,
-                        remote: list[str], idle: list[str] | tuple[str, ...] = ()) -> dict[str, str]:
-    """``primary-group``: a user-private group is named for ``user``, has no member but ``user``, and is no other
-    account's primary group (``sharing``, among the ``listed`` accounts this host lists). Accounts from a directory
-    service (``remote``) may not all be listed, so then a group that looks private is reported as not confirmed. A
-    source configured but not serving (``idle``) is named, and does not stop a PASS. The check is of the group, not of
-    the store's files: ``store-group`` checks that their group is this one."""
-    problems = []
-    if group != user:
-        problems.append(f"it is named {group!r}, not for you")
-    others = sorted(set(members) - {user})
-    if others:
-        problems.append(f"it has other members ({', '.join(others)})")
-    if sharing:
-        problems.append(f"it is also the primary group of {', '.join(sharing)}")
-    if problems:
-        return _check("primary-group", "WARN", f"your primary group {group!r} is not user-private: "
-                      f"{'; '.join(problems)}. AEW's store is group-readable, so they can read it too, and a reader "
-                      "that relies on the group holding only you (the work-item fact issuer) does not qualify on this "
-                      "host. AEW changes no group: your administrator can give your account a user-private primary "
-                      "group")
-    seen = (f"your primary group {group!r} is named for you and has no other member among the {listed} accounts "
-            "this host lists")
-    if remote:
-        return _check("primary-group", "WARN", f"{seen}, but this host also takes accounts and groups from "
-                      f"{', '.join(remote)}, which need not all be listed, so AEW cannot confirm that only you are in "
-                      "it (AEW's store is group-readable). Your administrator can confirm it")
-    note = (f" ({', '.join(idle)} is configured for accounts but not serving now; if it starts, this check cannot "
-            "confirm the group any more)") if idle else ""
-    return _check("primary-group", "PASS", f"{seen}: it is user-private{note}. Store files with this group are "
-                  "readable by you alone (`store-group` checks their group)")
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:

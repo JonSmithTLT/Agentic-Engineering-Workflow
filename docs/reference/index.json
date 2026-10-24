@@ -20,7 +20,7 @@
         "lower-bound": 163
       }
     },
-    "digest": "sha256:aedb243fb552ad90a3fd7939c24860a6b649c26f3c2c0f58f006724a5b933b95",
+    "digest": "sha256:8b1cbd5bc65a6f90c43929b799981ea26fc4e83375fb9693b25e6518379d6632",
     "records": 346,
     "unresolved": 71
   },
@@ -60,12 +60,6 @@
       "module": "aew",
       "symbol": null,
       "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
-    },
-    {
-      "family": "writers",
-      "module": "aew.cli.main",
-      "symbol": "_main",
-      "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
     },
     {
       "family": "writers",
@@ -408,6 +402,12 @@
       "module": "aew.history.store",
       "symbol": "prewrite",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
+    },
+    {
+      "family": "writers",
+      "module": "aew.process_kind",
+      "symbol": "require_writer",
+      "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
     },
     {
       "family": "writers",
@@ -4875,14 +4875,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -4907,9 +4903,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -4944,14 +4940,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -4976,9 +4968,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5013,14 +5005,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -5031,14 +5019,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -5049,14 +5033,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -5081,9 +5061,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5174,14 +5154,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.base",
@@ -5206,9 +5182,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5238,14 +5214,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.evidence_ops",
@@ -5256,14 +5228,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.validation_ops",
@@ -5288,9 +5256,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5320,14 +5288,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.evidence_ops",
@@ -5338,14 +5302,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.validation_ops",
@@ -5370,9 +5330,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5402,14 +5362,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.evidence_ops",
@@ -5434,9 +5390,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5583,14 +5539,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -5615,9 +5567,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5647,14 +5599,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -5679,9 +5627,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5711,14 +5659,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -5743,9 +5687,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5775,14 +5719,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -5793,14 +5733,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -5811,14 +5747,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -5840,14 +5772,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -5859,14 +5787,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.history.index",
@@ -5891,14 +5815,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.queue_ops",
               "symbol": "Queue._checkout_sync_lock",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5933,14 +5857,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -5966,9 +5886,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -5998,14 +5918,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -6031,9 +5947,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6130,14 +6046,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6162,9 +6074,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6194,14 +6106,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6226,9 +6134,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6380,14 +6288,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
-              "store_writer"
+              "non_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew dashboard serve"
             ],
             "mechanism": "direct",
             "module": "aew.dashboard.service",
@@ -6398,14 +6302,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6416,14 +6316,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6448,9 +6344,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6485,14 +6381,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
-              "store_writer"
+              "non_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew dashboard serve"
             ],
             "mechanism": "direct",
             "module": "aew.dashboard.service",
@@ -6503,14 +6395,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
-              "store_writer"
+              "non_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew dashboard serve"
             ],
             "mechanism": "direct",
             "module": "aew.dashboard.service",
@@ -6533,11 +6421,6 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
-            },
-            {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6572,14 +6455,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6604,9 +6483,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6636,14 +6515,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -6668,9 +6543,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6705,14 +6580,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
-              "store_writer"
+              "non_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew dashboard serve"
             ],
             "mechanism": "direct",
             "module": "aew.dashboard.service",
@@ -6723,14 +6594,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
-              "store_writer"
+              "non_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew dashboard serve"
             ],
             "mechanism": "direct",
             "module": "aew.dashboard.service",
@@ -6753,11 +6620,6 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
-            },
-            {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7235,14 +7097,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.harness_ops",
@@ -7267,9 +7125,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7299,14 +7157,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -7332,9 +7186,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7364,14 +7218,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -7397,9 +7247,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7429,14 +7279,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.harness_ops",
@@ -7461,9 +7307,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7493,14 +7339,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.harness_ops",
@@ -7525,9 +7367,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7557,14 +7399,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.runlog",
@@ -7589,9 +7427,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7621,14 +7459,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.runlog",
@@ -7653,9 +7487,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7685,14 +7519,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -7718,9 +7548,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7750,14 +7580,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -7783,9 +7609,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7815,14 +7641,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.harness_ops",
@@ -7847,9 +7669,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -7884,14 +7706,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.history_ops",
@@ -7902,14 +7720,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.history.index",
@@ -7920,14 +7734,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.history.index",
@@ -7938,14 +7748,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.history.index",
@@ -7970,9 +7776,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8258,14 +8064,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -8276,14 +8078,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -8294,14 +8092,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.maps.store",
@@ -8326,9 +8120,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8363,14 +8157,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.maps.store",
@@ -8395,9 +8185,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8432,14 +8222,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.maps.store",
@@ -8464,9 +8250,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8501,14 +8287,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -8533,9 +8315,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8565,14 +8347,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -8597,9 +8375,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8634,14 +8412,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.maps.store",
@@ -8666,9 +8440,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -8698,14 +8472,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.maps.store",
@@ -8730,9 +8500,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9008,14 +8778,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -9026,14 +8792,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -9044,14 +8806,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.operator_endpoint",
@@ -9076,9 +8834,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9113,14 +8871,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.operator_endpoint",
@@ -9131,14 +8885,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.operator_endpoint",
@@ -9163,9 +8913,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9195,14 +8945,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -9227,9 +8973,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9259,14 +9005,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
@@ -9291,9 +9033,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9323,14 +9065,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.harness.operator_endpoint",
@@ -9355,9 +9093,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9397,14 +9135,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.context_ops",
@@ -9429,14 +9163,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.context_ops",
               "symbol": "ContextPacks.build_pack",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9466,14 +9200,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.recall",
@@ -9498,9 +9228,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9535,14 +9265,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.recall",
@@ -9553,14 +9279,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.recall",
@@ -9585,9 +9307,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9736,14 +9458,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.validation_ops",
@@ -9768,9 +9486,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9800,14 +9518,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -9833,9 +9547,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9865,14 +9579,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.validation_ops",
@@ -9897,9 +9607,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9929,14 +9639,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -9962,9 +9668,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -9994,14 +9700,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10027,9 +9729,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10059,14 +9761,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10092,9 +9790,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10124,14 +9822,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10157,9 +9851,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10189,14 +9883,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10222,9 +9912,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10254,14 +9944,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10287,9 +9973,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10319,14 +10005,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.validation_ops",
@@ -10351,9 +10033,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10388,14 +10070,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
               "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp",
               "aew.harness.supervisor"
             ],
             "mechanism": "direct",
@@ -10423,9 +10101,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10455,14 +10133,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10487,9 +10161,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10519,14 +10193,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10551,9 +10221,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10588,14 +10258,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10620,9 +10286,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10652,14 +10318,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10684,9 +10346,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10716,14 +10378,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10748,9 +10406,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -10902,14 +10560,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.api",
@@ -10920,14 +10574,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -10952,9 +10602,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11096,14 +10746,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.steering",
@@ -11128,9 +10774,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11160,14 +10806,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11192,9 +10834,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11224,14 +10866,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11256,9 +10894,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11303,14 +10941,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11335,14 +10969,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.store",
               "symbol": "ControlStore._commit_unprofiled",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11387,14 +11021,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11419,14 +11049,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.store",
               "symbol": "ControlStore._commit_unprofiled",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11456,14 +11086,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.lead_ops",
@@ -11488,9 +11114,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11529,14 +11155,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11561,9 +11183,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11593,14 +11215,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.log_compact",
@@ -11625,9 +11243,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11657,14 +11275,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11689,9 +11303,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11721,14 +11335,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.log_compact",
@@ -11753,9 +11363,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11785,14 +11395,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.log_compact",
@@ -11803,14 +11409,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11835,9 +11437,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11872,14 +11474,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11904,9 +11502,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -11936,14 +11534,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11954,14 +11548,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -11986,9 +11576,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -12018,14 +11608,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -12050,9 +11636,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -12148,14 +11734,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.store",
@@ -12180,14 +11762,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.store",
               "symbol": "ControlStore._commit_unprofiled",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13308,14 +12890,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.hierarchy_ops",
@@ -13340,9 +12918,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13372,14 +12950,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.history.store",
@@ -13404,9 +12978,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13436,14 +13010,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.history.store",
@@ -13478,14 +13048,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.history.store",
               "symbol": "prewrite",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13515,14 +13085,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.hierarchy_ops",
@@ -13547,9 +13113,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13589,14 +13155,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.nonmutating_ops",
@@ -13621,14 +13183,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.integration_ops",
               "symbol": "Integration._finish_publish",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13739,14 +13301,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -13757,14 +13315,10 @@
           },
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "direct",
             "module": "aew.engine.coordination_ops",
@@ -13789,14 +13343,14 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
-            },
-            {
               "module": "aew.engine.coordination_ops",
               "symbol": "Coordination._write",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -13994,14 +13548,10 @@
         "writers": [
           {
             "entry_kinds": [
-              "non_writer",
               "store_writer"
             ],
             "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
+              "aew"
             ],
             "mechanism": "store-transaction",
             "module": "aew.engine.validation_ops",
@@ -14026,9 +13576,9 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
-              "module": "aew.cli.main",
-              "symbol": "_main",
-              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }

@@ -76,7 +76,8 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "- A `modules` record also has `imports`, a top-level key: the AEW modules it imports, statically.", "",
         "## When a change moves it", "",
         "A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site, a place "
-        "that writes under `.aew`) runs `python tools/reference.py render` and commits `docs/reference/`. A new "
+        "that writes under `.aew`, a CLI command's handler) runs `python tools/reference.py render` and commits "
+        "`docs/reference/`. A new "
         "directory or file directly under `.aew` is declared first (`TOP_LEVEL` in "
         "`tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge "
         "conflict here, take either side and run `render`: the output is a function of the code, so the second change "

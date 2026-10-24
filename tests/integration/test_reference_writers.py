@@ -272,6 +272,14 @@ def test_the_with_limit_the_page_names_is_still_the_live_case():
         assert dashboard not in reached and reached == {ANALYSIS.roles.general}, (key, reached)
 
 
+def test_the_directory_the_finding_treats_as_local_is_one_the_project_keeps_out_of_git():
+    """Review of #258, N1: `LOCAL` is declared in the generator; the fact (rebuildable data, git-ignored) is owned by
+    `AEW_GITIGNORE`, and this holds the two together."""
+    from aew.engine.api import AEW_GITIGNORE
+
+    assert f"{W.LOCAL}/" in AEW_GITIGNORE.splitlines()
+
+
 def test_the_gate_the_records_name_exists_is_called_by_the_control_lock_and_is_tested_at_run_time():
     module, symbol = W.GATE_SYMBOL
     assert symbol in PROGRAM.modules[module].funcs

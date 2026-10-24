@@ -796,6 +796,36 @@ def test_a_handler_of_a_command_that_cannot_be_read_is_run_by_every_role_and_its
     assert any("for a command this reading could not read" in p for p in problems), problems
 
 
+def test_a_root_that_is_not_the_clis_does_not_reach_the_handler_of_a_command_that_cannot_be_read():
+    """Review of #258, N2: the handlers of an unread command are run by every role the CLI declares, and by no other
+    entry point (a second, non-CLI root must not be given them)."""
+    prog = program({"aew.m": HEAD + UNREAD + "\ndef sup_main():\n    pass\n"})
+    roles = K.Roles(GENERAL, frozenset({NAMED}), WORKER)
+    cli = ({CLI_ROOT}, roles, K.cut_of(prog, role_of))
+    roots = {CLI_ROOT: {GENERAL, NAMED, WORKER}, ("aew.m", "sup_main"): {"aew.harness.supervisor"}}
+    a = W.analyse(prog, TOP, roots, KINDS, cli)
+    assert a.reach[("aew.m", "cmd_mcp")] == {GENERAL, NAMED, WORKER}
+    assert all("aew.harness.supervisor" not in keys for keys in a.reach.values() if keys != {"aew.harness.supervisor"})
+
+
+BOTH = ("def both(aew_root):\n    (aew_root / 'state' / 'b').write_text('x')\n"
+        "    (aew_root / 'local' / 'b').write_text('x')\n\n"
+        "def cmd_both(a):\n    both(None)\n\n"
+        "def more(sub):\n    lsub = sub.add_parser('lead').add_subparsers()\n"
+        "    lsub.add_parser('mcp').set_defaults(handler=cmd_both)\n\n"
+        "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+
+
+def test_a_function_that_writes_both_the_store_and_local_is_a_store_writer_only():
+    """Review of #258, N3: it counts once, as a store writer; it is not also listed as permitted."""
+    a = cli_analysis(CLI + "\n" + BOTH)
+    store, local = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "both") in store[NAMED] and ("aew.m", "both") not in local[NAMED]
+    lines = W.page(a, W.records_of(a), tuple(sorted(TOP))).splitlines()
+    permitted = next(line for line in lines if line.startswith("**Permitted:**"))
+    assert "`aew.m:both`" not in permitted
+
+
 BYNAME = ("class Eng:\n    def publish(self, aew_root):\n        (aew_root / 'state' / 'p').write_text('x')\n\n"
           "def eng(a) -> Eng:\n    return Eng()\n\n"
           "def register(sub):\n    for name, method in (('publish', 'publish'),):\n"

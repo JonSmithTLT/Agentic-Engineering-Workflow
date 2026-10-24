@@ -20,6 +20,7 @@ import lanes
 import proctree
 import pytest
 from conftest import IS_WINDOWS
+from racing_read import read_text_or_none
 
 HELPERS = Path(lanes.__file__).resolve().parent
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
@@ -400,8 +401,8 @@ def test_a_controller_killed_abruptly_leaves_no_session_process_alive(tmp_path, 
         sdir = session_dir(hangs)
         if not IS_WINDOWS:  # by event: the sentinel's snapshot (its view of the set on Linux) includes the child
             snapshot = sdir / "sentinel-snapshot.txt"
-            bounds.bounded_wait("test.snapshot_has_child", lambda: snapshot.exists() and re.search(
-                rf"^\s*{child[0]}\s", snapshot.read_text(encoding="utf-8"), re.M), seconds=60)
+            bounds.bounded_wait("test.snapshot_has_child", lambda: re.search(
+                rf"^\s*{child[0]}\s", read_text_or_none(snapshot) or "", re.M), seconds=60)
         assert proctree.end(controller)  # abrupt: no hook runs
         bounds.bounded_wait("test.abnormal_exit", lambda: (sdir / "abnormal-exit.txt").exists(), seconds=60)
         sentinel_ends(sdir)

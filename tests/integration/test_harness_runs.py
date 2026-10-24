@@ -419,7 +419,9 @@ def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, 
         return True
 
     record = lab.until(holding, what="the supervisor to hold a live harness")
-    watches = [procs.Watch(pid) for pid in (record["supervisor_pid"], *record["harness_pids"])]  # pid reuse: a handle
+    # A handle where the OS has one (Windows; a pidfd on Linux 5.3+), so a reused pid is never taken for the process;
+    # where it has none, ``Watch`` checks the pid alone.
+    watches = [procs.Watch(pid) for pid in (record["supervisor_pid"], *record["harness_pids"])]
     try:
         with monkeypatch.context() as patched:
             if staged == "heartbeat_stale":

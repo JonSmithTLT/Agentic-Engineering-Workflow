@@ -302,13 +302,14 @@ def _row3(seen: dict[str, Any]) -> dict[str, Any]:
 
 
 def _row4(seen: dict[str, Any]) -> dict[str, Any]:
+    """No controlling terminal, read on the started process itself: ``tty_nr`` 0 in its own ``/proc/self/stat`` and
+    ``ENXIO`` from ``/dev/tty``. Whether it leads its session is a fact on the label, not a condition: under
+    bubblewrap's ``--new-session`` the session's leader is bubblewrap's own process in the sandbox (seen on CI)."""
     term = seen.get("terminal") or {}
     problems = []
     if term.get("tty_nr") != 0 or term.get("dev_tty") != errno.errorcode[errno.ENXIO]:
         problems.append(f"the process has a controlling terminal (tty_nr {term.get('tty_nr')}, /dev/tty "
                         f"{term.get('dev_tty')})")
-    if not term.get("session_leader"):
-        problems.append("the process does not lead its own session")
     return _row("terminal", problems, **term)
 
 

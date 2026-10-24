@@ -318,6 +318,24 @@ skipped:
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); row 2's judgement of an incomplete walk is tested on every platform in
       tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[contained]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); row 4's judgement is tested on every platform in tests/unit/test_containment_probe.py, and
+      the new session on every argv in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[without_new_session]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); row 4 failing closed is tested on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_a_project_under_run_is_bound_back_and_row_2_allows_exactly_that: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the bind-backs, their reason and their modes are tested on every platform in
+      tests/unit/test_containment_layout.py (the operator's ruling of 2026-10-23 on R-1).
+    tests/integration/test_containment.py::test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the socket classes are tested on every platform in tests/unit/test_containment_sockets.py.
+    tests/unit/test_containment_layout.py::test_a_project_reached_through_a_symlink_is_bound_back_at_its_real_path_and_a_link_path_is_refused: >-
+      Making a symlink needs a privilege on Windows (STG-05 CS-2, the operator's ruling of 2026-10-23 on R-1,
+      condition 1). Covered on Linux; the bind-backs at their real paths are tested on every platform
+      (test_a_project_under_run_is_bound_back_only_by_its_own_binds_at_their_real_paths_and_modes).
     tests/unit/test_containment_layout.py::test_the_resolv_conf_exception_is_the_first_path_under_run_on_its_chain_when_the_chain_ends_at_a_file: >-
       /etc/resolv.conf's link chain is POSIX's, and making a symlink needs a privilege on Windows (STG-05 CS-2, the
       operator's ruling of 2026-10-24). Covered on Linux; the exception's place in the argv is tested on every platform

@@ -7,7 +7,9 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 * ``/run`` is masked whole (STG-05 CB-03, ruling R-1): an empty tmpfs at its depth, remounted read-only once what
   the layout binds back into it is there. ``/var/run`` is the usual link to it (or masked too, where it is a
   directory of its own). Every service socket there (G3's, the work-item fact issuer's, the session and system buses,
-  the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`';
+  the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`', and a project
+  on removable media under ``/run`` is bound back with its workspace, on the conditions the operator's ruling sets
+  (:data:`RUN_BIND_BACK`, :func:`_refuse_run_bind_backs`);
 * every contained process starts in a new session, so it has no controlling terminal (CB-05, ruling R-7), and
   without the display's and the operator's session variables (:data:`DISPLAY_ENV`, CB-04);
 * the project's ``.aew/local`` (and the runs directory, wherever it lives) is hidden behind an empty tmpfs, and only
@@ -42,6 +44,7 @@ import shutil
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +85,13 @@ VAR_RUN = "/var/run"
 # Exceptions to the /run mask a harness needs (CB-03, ruling R-1: measured, never guessed; each a path bound back
 # read-only by name, with why). None is measured: the host-derived one is :func:`_resolv_exception`'s.
 RUN_EXCEPTIONS: tuple[tuple[str, str], ...] = ()
+# A project under /run (removable media) is bound back into the mask, its workspace with it, on the designer's five
+# conditions (:func:`_refuse_run_bind_backs`); the label records each bind-back with this reason.
+RUN_BIND_BACK = "operator ruling 2026-10-23: a project under /run is bound back, on five conditions (R-1)"
+# What under a host mask nothing is bound back into, whatever the ruling above lets in (condition 2): shell patterns
+# for the first name below the mask. A bind-back that is the mask itself, or lies under one of these, is refused.
+# Adding a pattern only tightens. aew-*: G3's aew-g3, the fact issuer's aew-wis, and any later AEW service.
+RUN_PROTECTED = ("aew-*", "user", "dbus", "systemd")
 RESOLV_CONF = "/etc/resolv.conf"
 MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Linux include/linux/namei.h)
 # Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
@@ -153,23 +163,24 @@ class Layout:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
                 "readonly": list(self.readonly),
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files],
-                "run_exceptions": [{"path": p, "why": why} for p, why in self.run_exceptions],
-                "inside_host_masks": list(self.inside_host_masks()), "display_files": list(self.display_files),
-                "unset_env": list(DISPLAY_ENV), "session": "new", "operator_writable": list(self.operator_writable)}
+                "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
+                "display_files": list(self.display_files), "unset_env": list(DISPLAY_ENV), "session": "new",
+                "operator_writable": list(self.operator_writable)}
+
+    def bind_backs(self) -> tuple[tuple[str, str], ...]:
+        """(path, why) for every path this layout itself puts inside a ``hide_host`` mask: the exceptions, then any
+        bind or runs mask under one, which is a project under ``/run`` (removable media) and its workspace, bound
+        back by the operator's ruling (:data:`RUN_BIND_BACK`; :func:`_refuse_run_bind_backs` holds its conditions for
+        a layout :func:`for_run` makes). Nothing else may be there (the self-test's row 2)."""
+        out = dict(self.run_exceptions)
+        for p in (*self.visible, *self.writable, *self.readonly, *self.hide_runs):
+            if p not in out and any(_within(p, h) and p != h for h in self.hide_host):
+                out[p] = RUN_BIND_BACK
+        return tuple(out.items())
 
     def inside_host_masks(self) -> tuple[str, ...]:
-        """Every path this layout itself puts inside a ``hide_host`` mask: the exceptions, and any bind or runs mask
-        that lies under one. Nothing else may be there (the self-test's row 2).
-
-        Ruling R-1 binds nothing back but measured exceptions. A project on a path under ``/run`` (removable media,
-        ``/run/media/<user>/...``) stays usable, its workspaces and git metadata with it: its binds land inside the
-        mask by depth (the Lead, 2026-10-23, on CS-2's plan). That reading of R-1 waits on the operator's and the
-        designer's ruling (CS-2 plan, Q10); refusing such a layout instead is a refusal in :func:`for_run` of
-        whatever this lists beyond the exceptions."""
-        exceptions = tuple(p for p, _ in self.run_exceptions)
-        inside = [p for p in (*self.visible, *self.writable, *self.readonly, *self.hide_runs)
-                  if any(_within(p, h) and p != h for h in self.hide_host)]
-        return tuple(dict.fromkeys((*exceptions, *inside)))
+        """The paths of :meth:`bind_backs`."""
+        return tuple(p for p, _ in self.bind_backs())
 
 
 def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None) -> list[str]:
@@ -458,6 +469,46 @@ def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str
                 reason="store_path_writable")
 
 
+def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> None:
+    """The operator's ruling of 2026-10-23 on R-1 (:data:`RUN_BIND_BACK`): a project under ``/run`` is bound back into
+    the mask on the designer's five conditions, and a layout that would bind anything else back is refused. This
+    holds the two that bound what comes back:
+
+    1. only the layout's own binds of the project and this run's workspace (each at or under one of them), at their
+       resolved real paths, with the modes they have anywhere else (the same entries of the one bind order); never an
+       ancestor, such as ``/run/media/<user>``;
+    2. none is a host mask itself or lies under :data:`RUN_PROTECTED`.
+
+    Condition 3 is the operator-root guard (:func:`_guarded`); 4 and 5 are the self-test's row 2, which walks the
+    sandbox after every bind-back and allows exactly :meth:`Layout.bind_backs`. The name-resolution exception
+    (:func:`run_exceptions`) is the operator's ruling of its own, and is not one of these."""
+    exceptions = {p for p, _ in layout.run_exceptions}
+    for p in (*layout.visible, *layout.writable, *layout.readonly, *layout.hide_runs):
+        mask = next((h for h in layout.hide_host if _within(p, h)), None)
+        if mask is None or p in exceptions:
+            continue
+        first = "" if p == mask else os.path.relpath(p, mask).replace(os.sep, "/").split("/")[0]
+        where = f"the {layout.role} layout would bind {p} back into {mask}, which is masked whole"
+        if not first or any(fnmatchcase(first, pattern) for pattern in RUN_PROTECTED):
+            raise ContainmentUnavailable(
+                f"{where}, and {p} is {'the mask itself' if not first else 'under ' + os.path.join(mask, first)}, "
+                f"where nothing is bound back (G3's and AEW's services, the operator's runtime directory, the "
+                "buses, systemd's); the launch is refused. Keep the project and its workspaces elsewhere, such as "
+                "removable media under /run/media", role=layout.role, path=p, mask=mask,
+                protected=[os.path.join(mask, n) for n in RUN_PROTECTED], reason="run_bind_back_protected")
+        if not (_within(p, project) or _within(p, workspace)):
+            raise ContainmentUnavailable(
+                f"{where}, and only the project ({project}) and this run's workspace ({workspace}) are bound back "
+                "there (the operator's ruling of 2026-10-23 on R-1); the launch is refused. Keep it outside "
+                f"{mask}, or inside the project", role=layout.role, path=p, mask=mask, project=project,
+                workspace=workspace, reason="run_bind_back_outside_project")
+        if _real(p) != p:
+            raise ContainmentUnavailable(
+                f"{where}, by a path that is not its real one ({_real(p)}): a bind-back is made at its resolved "
+                "path only; the launch is refused", role=layout.role, path=p, mask=mask, real=_real(p),
+                reason="run_bind_back_not_real")
+
+
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
@@ -533,4 +584,5 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected),
                     env=contained, hide_host=hide_host, display_files=display_files(home, env))
     _refuse_store_binds(role, project, order(layout))
+    _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     return layout

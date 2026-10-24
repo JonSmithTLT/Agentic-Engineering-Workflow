@@ -137,7 +137,8 @@ def write(repo: Path, rel: str, text: str) -> None:
 # Each case builds a workspace state and returns (the workspace, the base commit or None, fingerprint options).
 def edits(root: Path):
     repo = new_repo(root)
-    for rel in ("a.txt", "b.txt", "d/c.txt", "gone.txt", "becomes_dir", "docs/x.md", ".aew/state/s.json"):
+    for rel in ("a.txt", "b.txt", "d/c.txt", "gone.txt", "becomes_dir", "becomes_file/x.txt", "docs/x.md",
+                ".aew/state/s.json"):
         write(repo, rel, rel + "\n")
     write(repo, ".gitignore", "*.log\nbuild/\n")
     base = commit(repo)
@@ -146,6 +147,8 @@ def edits(root: Path):
     (repo / "gone.txt").unlink()
     (repo / "becomes_dir").unlink()
     write(repo, "becomes_dir/inner.txt", "inner\n")  # a tracked file replaced by a directory
+    shutil.rmtree(repo / "becomes_file")
+    write(repo, "becomes_file", "now a file\n")  # a tracked directory replaced by a file
     write(repo, "x.log", "ignored\n")
     write(repo, "build/out.txt", "ignored, then included\n")
     write(repo, "docs/x.md", "excluded change\n")

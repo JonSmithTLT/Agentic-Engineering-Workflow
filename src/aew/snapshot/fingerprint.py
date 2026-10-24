@@ -136,11 +136,11 @@ def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | No
 
 def _stage(workspace: Path, env: dict[str, str], spec: list[str]) -> None:
     """What ``git add -A <spec>`` does to the index in ``env``, writing no object (D-CS2-1). The tracked paths come with
-    the statuses ``add -A`` acts on (``diff-files``, which reports a file replaced by a directory as deleted): a
-    deleted one is removed, any other (modified, type-changed, unmerged) re-added. Then every untracked path that is
-    not ignored is added; a trailing ``/`` marks an embedded repository, recorded as its commit, as ``add -A`` does.
-    ``--info-only`` hashes through the same filters and stores nothing; ``--replace`` lets a path take the place of a
-    file or directory it conflicts with."""
+    the statuses ``add -A`` acts on (``diff-files``, which reports a file replaced by a directory, or a directory's
+    files replaced by a file, as deleted): a deleted one is removed first, so no path added after it conflicts with an
+    entry, and any other (modified, type-changed, unmerged) re-added. Then every untracked path that is not ignored is
+    added; a trailing ``/`` marks an embedded repository, recorded as its commit, as ``add -A`` does. ``--info-only``
+    hashes through the same filters and stores nothing."""
     raw = git.git("diff-files", "-z", "--name-status", "--no-renames", *spec, cwd=workspace, env=env).stdout
     fields = raw.split(b"\0")
     status = dict(zip(fields[1::2], fields[0::2], strict=False))
@@ -161,7 +161,7 @@ def _add(workspace: Path, env: dict[str, str], paths: list[bytes]) -> None:
     if sys.platform == "win32" and (found := reserved_device_names([p.decode("utf-8", "replace") for p in paths])):
         raise _device_named(workspace, found)
     if paths:
-        git.git("update-index", "--add", "--replace", "--info-only", "-z", "--stdin", cwd=workspace, env=env,
+        git.git("update-index", "--add", "--info-only", "-z", "--stdin", cwd=workspace, env=env,
                 input=b"\0".join(paths) + b"\0")
 
 

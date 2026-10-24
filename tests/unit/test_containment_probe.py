@@ -40,12 +40,20 @@ def test_a_good_sandbox_passes_rows_2_to_4_with_their_facts():
 
 @pytest.mark.parametrize(("change", "says"), [
     ({"terminal": {"tty_nr": 34816, "dev_tty": "opened", "session_leader": True}}, "controlling terminal"),
-    ({"terminal": {"tty_nr": 0, "dev_tty": "ENXIO", "session_leader": False}}, "own session"),
+    ({"terminal": {"tty_nr": 0, "dev_tty": "opened", "session_leader": False}}, "controlling terminal"),
+    ({"terminal": {"tty_nr": 34816, "dev_tty": "ENXIO", "session_leader": False}}, "controlling terminal"),
     ({"terminal": {}}, "controlling terminal"),  # nothing reported: fails closed
 ])
-def test_row_4_fails_closed_on_a_controlling_terminal_or_a_shared_session(change, says):
+def test_row_4_fails_closed_on_a_controlling_terminal(change, says):
     row = probe._row4({**GOOD, **change})
     assert row["ok"] is False and says in row["reason"]
+
+
+def test_row_4_records_whether_the_process_leads_its_session_and_does_not_require_it():
+    """Under --new-session bubblewrap's own process in the sandbox leads the session (seen on CI): what the kernel's
+    TIOCSTI check reads is the controlling terminal, which the process has none of."""
+    row = probe._row4({**GOOD, "terminal": {"tty_nr": 0, "dev_tty": "ENXIO", "session_leader": False}})
+    assert row["ok"] is True and row["session_leader"] is False
 
 
 @pytest.mark.parametrize(("change", "says"), [
@@ -67,7 +75,8 @@ def test_row_2_checks_the_hosts_run_even_when_the_layout_lost_its_mask():
     lost = L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=(), hide_host=())
     row = probe._row2(lost, {**GOOD, "host_masks": {"/run": {"type": "tmpfs", "readonly": False, "extra": ["/x"]}}},
                       own=(), env={})
-    assert row["ok"] is False and "/run" in row["reason"]
+    assert row["ok"] is False
+    assert "/run is not a read-only tmpfs inside" in row["reason"] and "/run holds what" in row["reason"]
 
 
 @pytest.mark.parametrize(("change", "says"), [

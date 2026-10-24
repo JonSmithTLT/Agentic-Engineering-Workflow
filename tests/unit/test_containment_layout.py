@@ -24,6 +24,13 @@ def fake_bwrap(monkeypatch):
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
 
 
+@pytest.fixture
+def tmp_unmasked(monkeypatch):
+    """pytest's ``tmp_path`` is under /tmp on Linux, which a sandbox's own /tmp hides whole, so no mask under it is on
+    the argv: a test that reads a mask's flags from the argv sees them as it would for a home anywhere else."""
+    monkeypatch.setattr(L, "SANDBOX_TMP", "/sandbox-tmp")
+
+
 def repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
@@ -135,7 +142,7 @@ def test_secrets_are_masked_by_type_and_only_when_present(tmp_path, fake_bwrap):
 
 @pytest.mark.parametrize(("rel", "kind"), [(".claude.json", "file"), (".config/anthropic", "dir")])
 def test_a_provider_config_location_is_masked_by_its_type_when_present_and_skipped_when_absent(tmp_path, fake_bwrap,
-                                                                                            rel, kind):
+                                                                                            tmp_unmasked, rel, kind):
     assert rel in (L.SECRET_FILES if kind == "file" else L.SECRET_DIRS)
     home = tmp_path / "home"
     home.mkdir()
@@ -159,7 +166,8 @@ def test_a_provider_config_location_is_masked_by_its_type_when_present_and_skipp
         assert flags[flags.index(real) - 1] == "--tmpfs"                # an empty directory
 
 
-def test_a_suffixed_copy_of_a_provider_config_file_is_masked_as_a_file_and_only_a_regular_file(tmp_path, fake_bwrap):
+def test_a_suffixed_copy_of_a_provider_config_file_is_masked_as_a_file_and_only_a_regular_file(tmp_path, fake_bwrap,
+                                                                                            tmp_unmasked):
     assert ".claude.json." in L.SECRET_FILE_PREFIXES
     home = tmp_path / "home"
     home.mkdir()
@@ -453,8 +461,8 @@ def test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described
     assert flags[i - 1] == "--ro-bind" and flags[i + 1] == RESOLV  # read-only, by name
     assert flags.index("/run") < i < flags.index("--remount-ro")
     described = layout.describe()
-    assert described["run_exceptions"] == [{"path": RESOLV, "why": "name resolution until CS-3"}]
-    assert described["inside_host_masks"] == [RESOLV] and "/run" in described["hidden"]
+    assert described["bound_back"] == [{"path": RESOLV, "why": "name resolution until CS-3"}]
+    assert "/run" in described["hidden"]
     assert L.RUN_EXCEPTIONS == ()  # no exception is measured; the host-derived one is the operator's ruling
 
 
@@ -489,15 +497,16 @@ def test_the_resolv_conf_exception_is_the_first_path_under_run_on_its_chain_when
 
 def test_a_project_under_a_masked_prefix_stays_visible_and_a_writable_project_stays_writable():
     """The project's visible bind is in the one bind order (the Lead's approval, 2026-10-23): a project on removable
-    media under /run lands inside the mask, after it, with its workspaces (CS-2 plan, Q10: the rule waits on the
-    operator's and designer's ruling, and lives in ``Layout.inside_host_masks``). Within a depth the visible bind comes
-    first, so the Lead's R-2 shape (the project writable, CS-4) keeps its writable bind."""
+    media under /run lands inside the mask, after it, with its workspaces, each recorded with the operator's ruling
+    (2026-10-23, on R-1) as its reason. Within a depth the visible bind comes first, so the Lead's R-2 shape (the
+    project writable, CS-4) keeps its writable bind."""
     proj, ws = "/run/media/u/d/proj", "/run/media/u/d/.aew-workspaces/ws"
     layout = masked_layout(visible=(proj,), writable=(ws, "/s"))
     flags = C.bwrap_argv(layout, ["agent"])
     assert flags.index("/run") < flags.index(proj) and flags.index("/run") < flags.index(ws)
     assert mask_problems(flags, layout.hide_host) == []
-    assert set(layout.inside_host_masks()) == {RESOLV, proj, ws}
+    assert dict(layout.bind_backs()) == {RESOLV: "name resolution until CS-3", proj: L.RUN_BIND_BACK,
+                                         ws: L.RUN_BIND_BACK}
     r2 = L.bind_order(["/p"], ["/p/.aew"], visible=["/p"])
     assert r2 == [("--ro-bind", "/p"), ("--bind", "/p"), ("--ro-bind", "/p/.aew")]
 
@@ -513,8 +522,96 @@ def test_a_mask_under_an_already_masked_tree_is_dropped():
     assert not any(p in flags for p in ("/run/user/1000/gdm/Xauthority", "/tmp/xauth-1000", "/run/user/1000/keyring"))
 
 
+def layout_of(tmp_path: Path, project: Path, ws: Path, run: Path, role: str) -> C.Layout:
+    return C.for_run(role=role, scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
+                     bridge_dir=None, policy=None, home=str(tmp_path / "home"), project=str(project),
+                     runs=str(run.parent), env={})
+
+
+def project_under(tmp_path: Path, monkeypatch, under: str, *,
+                  role: str = "implementer") -> tuple[Path, Path, Path, Path, C.Layout]:
+    """``(stand-in for /run, project, workspace, run directory, layout)``: a project and its workspace under ``under``
+    below a directory of the test's own, which the layout masks as it masks /run. The run directory is where AEW keeps
+    it, under the project's ``.aew/local``."""
+    run_root = tmp_path / "run"
+    (run_root / under).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(L, "host_masks", lambda: (L._real(run_root),))
+    repo, ws = repo_with_worktree(run_root / under)
+    (repo / ".aew").mkdir()
+    run = repo / ".aew" / "local" / "harness" / "runs" / "R-1"
+    return run_root, repo, ws, run, layout_of(tmp_path, repo, ws, run, role)
+
+
+@pytest.mark.parametrize("role", ["implementer", "reviewer"])
+def test_a_project_under_run_is_bound_back_only_by_its_own_binds_at_their_real_paths_and_modes(tmp_path, monkeypatch,
+                                                                                                fake_bwrap, role):
+    """The operator's ruling of 2026-10-23 on R-1, condition 1: what comes back into the mask is the layout's own binds
+    of the project and this run's workspace, at their real paths, each with the mode the same layout gives it
+    anywhere else; the bind order is the one without the mask plus the mask, so no ancestor (the media directory, the
+    user's) comes back. Each bind-back is recorded with the ruling as its reason."""
+    run_root, repo, ws, run, layout = project_under(tmp_path, monkeypatch, "media/u/d", role=role)
+    mask = L._real(run_root)
+    back = {p: why for p, why in layout.bind_backs() if p not in dict(layout.run_exceptions)}
+    assert {L._real(repo), L._real(ws)} <= set(back)
+    assert all(L._within(p, L._real(repo)) or L._within(p, L._real(ws)) for p in back), sorted(back)
+    assert all(L._real(p) == p for p in back) and set(back.values()) == {L.RUN_BIND_BACK}
+    monkeypatch.setattr(L, "host_masks", lambda: ())
+    elsewhere = layout_of(tmp_path, repo, ws, run, role)  # the same layout, with nothing masked over the media
+    assert [e for e in L.order(layout) if e != ("--tmpfs", mask)] == L.order(elsewhere)
+    assert ("--tmpfs", mask) in L.order(layout)
+    assert {b["path"]: b["why"] for b in layout.describe()["bound_back"]} == dict(layout.bind_backs())
+
+
+def test_a_bind_under_run_that_is_neither_the_project_nor_its_workspace_is_refused(tmp_path, monkeypatch, fake_bwrap):
+    """Condition 1's other side: the interpreter's environment on the same media, outside the project, would be a
+    bind-back of something else, so the launch is refused, naming it."""
+    venv = tmp_path / "run" / "media" / "u" / "d" / "venv"
+    venv.mkdir(parents=True)
+    monkeypatch.setattr(sys, "prefix", str(venv))
+    with pytest.raises(ContainmentUnavailable, match="only the project") as refused:
+        project_under(tmp_path, monkeypatch, "media/u/d")
+    assert refused.value.details["reason"] == "run_bind_back_outside_project"
+    assert refused.value.details["path"] == L._real(venv)
+
+
+@pytest.mark.parametrize("under", ["aew-g3/x", "aew-wis/x", "aew-later/x", "user/1000/gvfs/d", "dbus/x",
+                                   "systemd/x"])
+def test_a_project_under_a_protected_run_path_is_refused(tmp_path, monkeypatch, fake_bwrap, under):
+    """Condition 2: nothing is bound back under G3's or the fact issuer's directory (or any later AEW service's), the
+    operator's runtime directory, the buses or systemd's, whatever the ruling lets in (``L.RUN_PROTECTED``)."""
+    with pytest.raises(ContainmentUnavailable, match="where nothing is bound back") as refused:
+        project_under(tmp_path, monkeypatch, under)
+    assert refused.value.details["reason"] == "run_bind_back_protected"
+
+
+def test_a_bind_back_that_is_the_mask_itself_is_refused():
+    """Condition 2's "is or contains": a project at /run itself would contain every protected path."""
+    layout = masked_layout(visible=("/run",), run_exceptions=())
+    with pytest.raises(ContainmentUnavailable, match="the mask itself") as refused:
+        L._refuse_run_bind_backs(layout, project="/run", workspace="/elsewhere/ws")
+    assert refused.value.details["reason"] == "run_bind_back_protected"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need a privilege on Windows; the check is POSIX's")
+def test_a_project_reached_through_a_symlink_is_bound_back_at_its_real_path_and_a_link_path_is_refused(tmp_path,
+                                                                                                       monkeypatch,
+                                                                                                       fake_bwrap):
+    """Condition 1's real paths: a project named through a symlink is bound back where it really is, and a layout
+    that would bind back the link's path is refused."""
+    run_root, repo, ws, run, _ = project_under(tmp_path, monkeypatch, "media/u/d")
+    link = run_root / "media" / "u" / "link"
+    link.symlink_to(repo)
+    layout = layout_of(tmp_path, link, ws, run, "reviewer")
+    assert os.path.realpath(repo) in layout.inside_host_masks() and str(link) not in layout.inside_host_masks()
+    linked = masked_layout(hide_host=(os.path.realpath(run_root),), visible=(str(link),), run_exceptions=())
+    with pytest.raises(ContainmentUnavailable, match="not its real one") as refused:
+        L._refuse_run_bind_backs(linked, project=str(link), workspace=str(ws))
+    assert refused.value.details["reason"] == "run_bind_back_not_real"
+
+
 def test_an_operator_root_under_or_containing_run_is_refused(tmp_path, fake_bwrap):
-    """R-1 binds nothing back into /run but measured exceptions (the Lead, Q6): an operator root there would be one."""
+    """R-1 binds nothing back into /run but measured exceptions (the Lead, Q6): an operator root there would be one.
+    It stays refused for a project there (the operator's ruling of 2026-10-23, condition 3)."""
     _, ws = repo_with_worktree(tmp_path)
     guarded = L._guarded(ws, project=None, runs=None, bridge_dir=None, masks=(), host=(L.RUN,))
     under = L._real("/run/media/u/build")

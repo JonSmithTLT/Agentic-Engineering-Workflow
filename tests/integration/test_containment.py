@@ -740,7 +740,7 @@ def test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run(lab, mo
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
     assert rows["2"]["complete"] and rows["2"]["walked"] > 0
     assert [s for s in rows["2"]["sockets"] if s["class"] in sockets.FAILING] == []
-    assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"], rows["4"]["session_leader"]) == (0, "ENXIO", True)
+    assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"]) == (0, "ENXIO")
     print(f"socket walk: {rows['2']['walked']} entries in {rows['2']['seconds']}s, {len(rows['2']['sockets'])} "
           f"sockets, {rows['2']['unlistable']} unlistable, not walked: {rows['2']['unwalked_mounts']}")
 
@@ -899,3 +899,105 @@ def test_an_incomplete_socket_walk_fails_row_2(lab):
     result = probe.self_test(lab.layout("reviewer"), sentinel_dir=lab.outside, sibling_dir=lab.root, walk_budget_s=0)
     row = result["rows"]["2"]
     assert result["ok"] is False and row["complete"] is False and "did not finish" in row["reason"]
+
+
+# A launcher with a controlling terminal: it leads a new session (start_new_session) and opens a pseudo-terminal the
+# test made, so that terminal becomes its own. It then runs the launch self-test in the run's layout, rebuilt from JSON
+# as eval's scoring child rebuilds one, and prints row 4. ``drop`` takes one word out of the sandbox's argv.
+TERMINAL_LAUNCHER = """
+import json, os, sys
+from pathlib import Path
+from aew.harness.containment import layout as L, probe
+terminal = os.open(sys.argv[1], os.O_RDWR)
+os.close(os.open("/dev/tty", os.O_RDONLY))  # the control: this launcher has a controlling terminal
+spec = json.loads(sys.argv[2])
+layout = L.Layout(**{k: tuple(v) if isinstance(v, list) else v for k, v in spec["layout"].items()})
+if spec["drop"]:
+    real = probe.bwrap_argv
+    probe.bwrap_argv = lambda lay, cmd, **kw: [a for a in real(lay, cmd, **kw) if a != spec["drop"]]
+test = probe.self_test(layout, sentinel_dir=Path(spec["dir"]), sibling_dir=Path(spec["dir"]), env={})
+print(json.dumps(test["rows"]["4"]))
+"""
+
+
+@pytest.mark.parametrize("drop", [None, "--new-session"], ids=["contained", "without_new_session"])
+def test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one(lab, drop):
+    """CB-05 (ruling R-7), checked on the process started in the run's layout (the designer's condition on Q7): a
+    launcher that has a controlling terminal starts the self-test's probe, which has none (``tty_nr`` 0, ``/dev/tty``
+    gives ENXIO). Without --new-session the probe inherits the launcher's terminal, and row 4 fails."""
+    import json
+    import pty
+
+    spec = {"layout": dataclasses.asdict(lab.layout("reviewer")), "drop": drop, "dir": str(lab.outside)}
+    env = {"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8"}
+    if os.environ.get("PYTHONPATH"):
+        env["PYTHONPATH"] = os.environ["PYTHONPATH"]  # the code under test, where it is not the installed package
+    controller, terminal = pty.openpty()
+    proc = None
+    try:
+        proc = subprocess.Popen([sys.executable, "-c", TERMINAL_LAUNCHER, os.ttyname(terminal), json.dumps(spec)],
+                                start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, env=env)
+        out, err = proc.communicate(timeout=90)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=10)
+        os.close(controller)
+        os.close(terminal)
+    assert proc.returncode == 0, err
+    row = json.loads(out.strip().splitlines()[-1])
+    if drop is None:
+        assert row["ok"] and (row["tty_nr"], row["dev_tty"]) == (0, "ENXIO"), row
+    else:
+        assert row["ok"] is False and "controlling terminal" in row["reason"], row
+
+
+@pytest.fixture
+def media_lab(visible, monkeypatch):
+    """A lab whose project and workspaces are on removable media under a stand-in for /run: a directory of the test's
+    own, masked as /run is (both are this test's host masks). The run directory is where AEW keeps it, under the
+    project's .aew/local."""
+    run_root = visible / "run"
+    base = run_root / "media" / "u" / "d"
+    base.mkdir(parents=True)
+    masks = (*L.host_masks(), os.path.realpath(run_root))
+    monkeypatch.setattr(L, "host_masks", lambda: masks)
+    monkeypatch.setattr(probe, "host_masks", lambda: masks)
+    lab = Lab(base)
+    (lab.repo / ".aew").mkdir()
+    lab.run = lab.repo / ".aew" / "local" / "harness" / "runs" / "R-1"
+    return lab, os.path.realpath(run_root)
+
+
+def test_a_project_under_run_is_bound_back_and_row_2_allows_exactly_that(media_lab, monkeypatch):
+    """The operator's ruling of 2026-10-23 on R-1, condition 5: the project and its workspace are bound back into the
+    mask, each recorded with the ruling as its reason, and row 2 finds the mask holding exactly them. Nothing else
+    on the media comes back: another workspace, the media's other files. Taken out of the sandbox, the mask fails
+    row 2."""
+    lab, run_root = media_lab
+    layout, label = establish(lab, monkeypatch)
+    assert layout is not None
+    rows = label["self_test"]["rows"]
+    assert rows["2"]["ok"], rows["2"]["reason"]
+    assert rows["2"]["host_masks"][run_root] == {"type": "tmpfs", "readonly": True, "extra": []}
+    back = {b["path"]: b["why"] for b in label["layout"]["bound_back"]}
+    assert back[os.path.realpath(lab.repo)] == back[os.path.realpath(lab.ws)] == L.RUN_BIND_BACK
+    done = lab.sh(layout, f"git status --porcelain >/dev/null && test ! -e {lab.other} && test ! -e {lab.outside}")
+    assert done.returncode == 0, done.stderr
+    without(monkeypatch, ("--tmpfs", run_root), ("--remount-ro", run_root))
+    with pytest.raises(C.ContainmentUnavailable, match="row 2 "):
+        establish(lab, monkeypatch)
+
+
+def test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory(media_lab, monkeypatch):
+    """Condition 4: the walk runs in the finished sandbox, after the bind-back, so a socket inside the project tree
+    that reaches a credential (here a synthetic one the launching environment names as its agent) still fails the
+    launch."""
+    lab, _ = media_lab
+    path = lab.repo / "tools" / "synthetic.sock"
+    with listening(path):
+        with pytest.raises(C.ContainmentUnavailable, match="credential socket is reachable") as refused:
+            establish(lab, monkeypatch, env={"SSH_AUTH_SOCK": str(path)})
+    row = refused.value.details["self_test"]["rows"]["2"]
+    assert {"path": str(path), "class": sockets.CREDENTIAL} in row["sockets"]

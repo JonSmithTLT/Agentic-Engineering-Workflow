@@ -1799,92 +1799,6 @@ sections:
       F4 withholds; diagnostics never change behaviour; and the scrubbing must never weaken credential custody, so a bundle
       carries no credential material in any mode'
 
-  - '#': F38
-    Work: 'M6a Gate A, machine-policy closure: the M6a authorization model encoded as single-sourced machine data, and a
-      checker that fails closed on any missing input (v0.9 §18''s fifteen: the principal/status tuple table, the selector
-      table, the implication table, the active grant-family mapping, the reserved-family registry, the active role-to-family
-      table, the operator-approved named profile catalog, the shipped operation/projection catalog generated from the runtime
-      definitions, the target and endpoint registries with canonical resource identities, the enforcement-path declaration
-      table, the combination predicates, project policy overlays, pinned provider and harness projection hashes) and demonstrates
-      every invariant over the actual shipped catalog: a total status with default `ILLEGAL`, deterministic attribution
-      with its floors, implication closure, the active-family bijection with the reserved registry kept apart, selector
-      coverage, profile safety and role liveness, operation catalog closure, one enforcement declaration per shipped tuple
-      and delivery mechanism, registry consistency, and the Gate A fixtures'
-    Source (governing): '[M6a capability and effect authorization model v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md)
-      (ledger CEA), overlaid for Gate A encoding by [v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md)
-      (ledger GAE); designer candidates, not yet governing; concept frozen at v0.9'
-    Belongs to or gated by: '**M6** (M6a), with F12 and F13, whose registry, operations and profiles are the checker''s
-      inputs; the model''s adoption comes first ([decisions due](decisions-due.md))'
-    Notes: 'Passing permits only the policy claim (GAE-32), never the deployment claim, which is Gate B''s (F39; CEA-01).
-      The first encoding is expected to fail loudly on a missing row, implication or enforcement declaration, a dead profile
-      grant, an unqualified projection, an unregistered resource or a reserved family in use; those are implementation or
-      schema defects, and the design reopens only for an authority distinction the frozen model cannot represent (GAE-31).
-      The checker reads the same generated operation and projection definitions the runtime uses, never a parallel copy,
-      and the catalog holds qualified providers only (GAE-21). Its inputs are legality-affecting (CEA-58; the policy digests
-      of F15.4). Scope: engineering and workbench effects only; Lead and operator workflow commands stay with the typed
-      control plane (CEA-06). Where v0.9 changed a v0.8 requirement, the ledger marks the CEA id `superseded-by:` the GAE
-      id (safety and liveness for "combination predicates are satisfiable", the Reviewer''s network cells, the four reserved
-      families, the form of the selector table (v0.8''s selector rows stand, CEA-63), the fixture lists and the freeze claim).
-      **Conflicts decided by the designer (2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
-      ledger MCD):** D1, M6 supersedes ADR-0009/ADR-0006 native source mutation, with read-only source, writable scratch,
-      mediated authoritative mutation and the shell kept (MCD-01, MCD-02; F40, whose ADR amendments are due with M6); D2,
-      the knowledge adoption governs over v0.8''s table, knowledge and safe navigation C for every admitted role and independence
-      selector-controlled (MCD-03 to MCD-05; CEA-36 superseded by MCD-04 for its knowledge cells and, as far as safe navigation
-      goes, its derived-read cells, the Verifier''s P standing for the rest until this row''s encoding says what is safe;
-      F21); D3, the messaging-enabled operator switch is an approved authorization overlay or profile carrying `G_AEW_COORDINATE`
-      (MCD-06; F9), which the named profile catalog models. These do not adopt the model; its adoption is still this row''s
-      item in [decisions due](decisions-due.md). **Cross-feature integration v0.5 (frozen 2026-10-10, [cross-feature integration
-      design v0.5](../design/cross-feature-integration-design-v0.5.md) §3.1; ledger CFI-11, CFI-12, CFI-15):** until dedicated
-      Planner/Researcher rows exist, planning children resolve against the Investigator row plus the planning-child narrowing;
-      dedicated rows, if wanted, are an input to this row (F41.2)'
-
-  - '#': F39
-    Work: 'M6a Gate B, deployed bypass-freedom: proof, against the exact pinned deployment (harness, providers, containment),
-      that every model-reachable effect has a real enforcement owner, mediator and containment coverage is complete, no
-      alternate harness or provider path bypasses policy, resource aliases cannot cross classes, project-authored code borrows
-      no parent authority, and escape surfaces are absent or modeled; its preconditions (worker native authoritative edit/write
-      hidden, F40; provider relay completeness; bridge and broker IPC isolation; the project-code process namespace; real
-      mount and network containment; real target and endpoint canonicalization; filtered-shell enforcement; native child
-      suppression or scoping; session-resume authority) and adversarial fixtures, with the written mediator-completeness
-      argument for that deployment'
-    Source (governing): '[M6a authorization model v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md)
-      §1, §17 to §21, §32 (ledger CEA) and [v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md)
-      §20 (ledger GAE); designer candidates, not yet governing; concept frozen at v0.9'
-    Belongs to or gated by: '**M6** (M6a), after F38''s Gate A passes, against a qualified harness pin'
-    Notes: 'Gate A does not imply Gate B (CEA-01); this row is where the deployment claim is earned. It builds on the containment
-      already built or planned: filesystem containment and process ownership (F2, built in M4-B) and the isolation strategies
-      (F3), network containment (F28), the supervisor bridge (F15.3, F15.8), harness qualification (E35 for OpenCode, F18.12
-      for Codex). The AEW-owned plan store, the plan hash checked at the enforcement owner and re-planning on a provider
-      change are runtime work under F12; their fixtures are here (CEA-48, CEA-49)'
-
-  - '#': F40
-    Work: 'Worker source mutation only through an AEW source-mutation mediator (v0.9 §7, the designer''s decision): harness-native
-      authoritative source edit/write tools disabled in AEW worker profiles, the Implementer''s included; a candidate delta
-      or patch goes through the mediator, which checks the ticket revision, workspace and root before `write(source_tree)`;
-      project-authored tools write only to the copy-on-write overlay or scratch and yield attributable candidate deltas;
-      native `edit`, `write` and equivalents hidden or denied in the worker''s model-visible schema, and provider and harness
-      conformance proving them absent or unable to reach authoritative source; fixtures `native_source_edit_hidden`, `source_mutation_bypasses_mediator`
-      and `source_tool_direct_write_blocked`'
-    Source (governing): '[M6a authorization model v0.9](../design/proposals/m6a-authorization-model-v0.9-gate-a-encoding-candidate.md)
-      §7, §15, §20 (ledger GAE-12 to GAE-14, GAE-25, GAE-29); [v0.8](../design/proposals/m6a-capability-and-effect-authorization-model-v0.8.md)
-      §19, §26 (CEA-47, CEA-55); designer candidates, not yet governing; concept frozen at v0.9'
-    Belongs to or gated by: '**M6** (M6a): a Gate B precondition for the qualified worker harness pin (F39)'
-    Notes: A future harness-native edit path qualifies only if it is bound to the same AEW mutation contract and becomes
-      an explicitly modeled delivery mechanism (GAE-14). **Near-term coupling (a cross-reference, not new scope for those
-      rows):** whether a harness's native edit and write tools can be hidden or denied in the worker's model-visible schema,
-      not only refused when called, is first established by the OpenCode worker profile (E35) and the Codex and Claude Code
-      runtime probes (F24.1, F24.2). **Differs from accepted ADRs (recorded when v0.8 and v0.9 were ingested):** ADR-0009
-      projects OpenCode's `edit` for implementers, and ADR-0006 maps the implementer's `source_mutation` capability to it.
-      ADR-0009 also records an `edit` deny bypassed through the shell, so hiding the tool is not enough without containment
-      (F2, F39). **Decided by the designer (D1, 2026-10-10; [decision record](../design/decisions-2026-10-10-m6a-conflicts-and-codex.md),
-      MCD-01, MCD-02):** M6 supersedes ADR-0009/ADR-0006 native source mutation; the worker gets read-only source, writable
-      scratch and mediated authoritative mutation, and keeps its shell (shell writes are stopped by the read-only source,
-      not by a shell-less worker). The ADR-0009 and ADR-0006 amendments are due with this row when M6 lands; until then
-      both ADRs govern the current build unchanged. The model's adoption itself is still F38's item in [decisions due](decisions-due.md).
-      **Designer decisions of 2026-10-10, evening ([decision record](../design/decisions-2026-10-10-m4h-instrument-and-claude-code.md),
-      ledger MIC):** D7 confirms that a harness whose shell can write qualifies under §7 with a read-only source and mediated
-      authoritative mutation, the same rule for every harness (MIC-13; first applied to Claude Code, F24.2)
-
   - '#': F41
     Work: 'Cross-feature integration, the activation gate: the design that connects the adopted owners (plans as governed
       parent work, section binding, a non-blocking interface-dependency edge, overlap, health, operator validation, delta
@@ -3884,6 +3798,36 @@ sections:
       a separate full model OS account NOT REQUIRED; Lead inactivity expiry DEFERRED (E50); an operator-approved exact-commit
       push ALLOWED as a delivery capability (F33); automated PR and merge-provider integration DEFERRED, and Q14 no longer
       an internal-alpha gate'
+
+  - '#': F38
+    Was: 'M6a Gate A, machine-policy closure: the M6a authorization model encoded as single-sourced machine data, with a
+      fail-closed checker over the shipped catalog'
+    Closed: '2026-10-24'
+    By: 'The operator closed M6a''s rows (2026-10-24) on the condition that the requirements they served are still met;
+      the designer''s record of it, `00-governance/decisions/2026-10-24-operator-close-M6a-register-commands-in-scope-SPT-as-MCP-store.md`
+      in the architecture workspace (`b9d6d01`) shows where each is served now. Capability routing never bypassing an effect
+      grant, and no capability reaching control-plane mutation: the capability register position (STG-15) and the owners''
+      typed command paths. Protected enforcement and configuration that never enlarges a capability: the register''s provider
+      records and operator-only changes. The model was never adopted, and its adoption item in decisions due closes with
+      this row. F12 and F13 take the capability register position as their design input in place of M6a'
+
+  - '#': F39
+    Was: 'M6a Gate B, deployed bypass-freedom: proof against the pinned deployment that every model-reachable effect has
+      an enforcement owner and that escape surfaces are absent or modeled'
+    Closed: '2026-10-24'
+    By: 'Closed with F38 by the same operator decision (2026-10-24). No inherited credential and confined tool routes: the
+      credential custody already built and the containment build''s credential slice. No escape surface (mounts, network,
+      IPC, `/run`, nested namespaces): the containment build (slices CS-1 to CS-4) and the worker containment already built'
+
+  - '#': F40
+    Was: Worker source mutation only through an AEW source-mutation mediator, with the harness's native edit and write tools
+      hidden from workers
+    Closed: '2026-10-24'
+    By: Closed with F38 by the same operator decision (2026-10-24). Its outcome, a worker writes only its own Ticket's workspace,
+      is served by containment's writable binds and the integration's checks on a candidate; hiding the harness's native
+      edit tools would add friction for no route an agent can reach (the operator's posture). The designer's MCD-01 and
+      MCD-02 lapse with it, so the ADR-0006 and ADR-0009 amendments that were due with this row are no longer due, and both
+      ADRs stand as they are
 
   - '#': O1
     Was: A file named `nul` failed the fingerprint with git's raw error

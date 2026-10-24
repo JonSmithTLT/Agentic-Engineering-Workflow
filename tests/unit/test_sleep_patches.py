@@ -4,12 +4,21 @@
 #237's run 40035060397 a thread an earlier test left running had its sleeps counted by ``test_store_read_committed``
 (15 for 7 retries), and a no-op patch makes such a thread spin. The class is a test that patches ``sleep`` on the shared
 module directly. Two detectors written separately enumerate it over every test file, and must agree:
-- an AST one: ``setattr``/``patch.object`` on a target named ``time`` (``time`` or ``<x>.time``) with ``"sleep"``, and
-  ``setattr``/``patch`` with the string ``"time.sleep"``;
+- an AST one;
 - a text one: regular expressions for the same spellings.
 
-What both miss (pinned below): the ``time`` module bound to another name (``import time as clock``), and a target
-built at run time (``getattr``). Such a patch is a defect the reviewer reads for; neither detector claims it.
+Each sees these spellings, and only these:
+- ``setattr`` or ``patch.object`` called with positional arguments, the first being ``time`` or ``<x>.time`` and the
+  second the string ``"sleep"``;
+- ``setattr`` or ``patch`` called with a first positional argument that is the string ``"time.sleep"`` or a dotted
+  string ending in ``.time.sleep`` (``"aew.engine.store.time.sleep"``).
+
+What both miss (pinned in ``BOTH_MISS``): every other spelling and binding. The realistic ones are a plain assignment,
+keyword arguments, an aliased ``patch``, ``patch.multiple``, the module's ``time`` binding replaced, a ``from time
+import sleep`` binding patched, the ``time`` module bound to another name (``import time as clock``) and a target built
+at run time (``getattr``). Such a patch is a defect the reviewer reads for; neither detector claims it. A check by
+binding (a hook that tests, around each test body, that ``time.sleep`` is still real) is not done: it would not see a
+patch the test undoes inside its own body, so the spelling check is what is enforced and its boundary is the one above.
 """
 
 from __future__ import annotations
@@ -30,7 +39,7 @@ EXEMPT = {Path(__file__).resolve(), (TESTS / "helpers" / "sleep_patch.py").resol
 
 TEXT_FORMS = (
     re.compile(r"""\bsetattr\(\s*(?:[\w.]+\.)?time\s*,\s*["']sleep["']"""),
-    re.compile(r"""\b(?:setattr|patch)\(\s*["']time\.sleep["']"""),
+    re.compile(r"""\b(?:setattr|patch)\(\s*["'](?:[\w.]+\.)?time\.sleep["']"""),
     re.compile(r"""\bpatch\.object\(\s*(?:[\w.]+\.)?time\s*,\s*["']sleep["']"""),
 )
 
@@ -42,6 +51,12 @@ def _names_time(node: ast.expr) -> bool:
 
 def _const(node: ast.expr, value: str) -> bool:
     return isinstance(node, ast.Constant) and node.value == value
+
+
+def _names_time_sleep(node: ast.expr) -> bool:
+    """The string ``"time.sleep"``, or a dotted one ending in ``.time.sleep``."""
+    return isinstance(node, ast.Constant) and isinstance(node.value, str) and (
+        node.value == "time.sleep" or node.value.endswith(".time.sleep"))
 
 
 def ast_patches(source: str) -> set[int]:
@@ -58,7 +73,7 @@ def ast_patches(source: str) -> set[int]:
         second = node.args[1] if len(node.args) > 1 else None
         if name == "setattr" and second is not None and _names_time(first) and _const(second, "sleep"):
             found.add(node.lineno)
-        elif name in ("setattr", "patch") and _const(first, "time.sleep"):
+        elif name in ("setattr", "patch") and _names_time_sleep(first):
             found.add(node.lineno)
         elif name == "object" and owner == "patch" and second is not None and _names_time(first) \
                 and _const(second, "sleep"):
@@ -99,16 +114,37 @@ PLANTED_WRONG = [
     'patch("time.sleep", new=f)',
     'mock.patch.object(time, "sleep")',
     'patch.object(mod.time, "sleep", f)',
+    'monkeypatch.setattr("aew.engine.store.time.sleep", f)',  # the dotted-string idiom the tree uses for monotonic
+    'mock.patch("aew.engine.store.time.sleep")',
+    'mocker.patch("tools.ci.tier.time.sleep", return_value=None)',
 ]
 PLANTED_RIGHT = [
     "patch_sleep(monkeypatch, store)",
     'monkeypatch.setattr(store, "_run", f)',
     'monkeypatch.setattr(time, "monotonic", f)',
     'monkeypatch.setattr(store.os, "replace", f)',
+    'monkeypatch.setattr("aew.harness.supervisor.time.monotonic", f)',  # test_usage_record.py's dotted string
+    'patch("mytime.sleep")',  # a name that merely ends in time.sleep
 ]
 BOTH_MISS = [
     'monkeypatch.setattr(clock, "sleep", f)',  # import time as clock
     'monkeypatch.setattr(getattr(store, "time"), "sleep", f)',
+    "time.sleep = f",  # a plain assignment
+    "store.time.sleep = f",
+    'mock.patch(target="time.sleep")',  # keyword arguments
+    'mock.patch.object(target=time, attribute="sleep")',
+    'monkeypatch.setattr(target=time, name="sleep", value=f)',
+    "mock.patch.multiple(time, sleep=f)",  # patch.multiple
+    'mock.patch.multiple("time", sleep=f)',
+    'from unittest.mock import patch as p\np("time.sleep")',  # an aliased patch
+    'po = mock.patch.object\npo(time, "sleep")',
+    'monkeypatch.setattr(store, "time", fake_time)',  # the module's time binding replaced
+    'monkeypatch.setattr(store, "sleep", f)  # store did `from time import sleep`',
+    # more spellings the review of #239 (F1) planted: pinned so that every one is either seen or stated
+    'monkeypatch.setitem(vars(time), "sleep", f)',
+    'NAME = "sleep"\nmonkeypatch.setattr(time, NAME, f)',
+    'monkeypatch.setattr(sys.modules["time"], "sleep", f)',
+    't = store.time\nmonkeypatch.setattr(t, "sleep", f)',
 ]
 
 
@@ -132,7 +168,7 @@ def test_the_detectors_report_the_line_a_multiline_call_starts_on():
     assert ast_patches(src) == text_patches(src) == {2}
 
 
-def test_patch_sleep_records_only_its_own_thread_and_other_threads_still_sleep(monkeypatch):
+def test_patch_sleep_records_and_skips_its_own_threads_sleeps_and_other_threads_sleep_for_real(monkeypatch):
     shared = types.SimpleNamespace(time=time)  # a module whose `time` is the shared one, as every module's is
     sleeps = patch_sleep(monkeypatch, shared)
     slept: list[float] = []
@@ -144,6 +180,10 @@ def test_patch_sleep_records_only_its_own_thread_and_other_threads_still_sleep(m
 
     thread = threading.Thread(target=other)
     thread.start()
+    start = time.monotonic()
     time.sleep(30)  # recorded and skipped: this is the patching thread
+    skipped_for = time.monotonic() - start
     thread.join(10)
-    assert sleeps == [30] and len(slept) == 1 and slept[0] >= 0.04
+    assert sleeps == [30]
+    assert skipped_for < 5  # a skip that regressed to a real sleep would take 30 s
+    assert len(slept) == 1 and slept[0] >= 0.04

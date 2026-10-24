@@ -186,6 +186,7 @@ pre {
   padding: 26px 20px 28px;
   align-items: center;
 }
+.nav-close { display: none; }
 .brand strong {
   font-size: 19px;
   letter-spacing: 0.5px;
@@ -534,6 +535,7 @@ dd {
   }
 }
 @media (max-width: 1023px) {
+  .nav-close { display: block; align-self: flex-start; margin: 12px 12px 0; }
   .sidebar {
     display: none;
     position: fixed;

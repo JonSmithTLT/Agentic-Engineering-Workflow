@@ -446,12 +446,30 @@ def test_run_is_masked_after_the_root_bind_in_bind_order_and_remounted_read_only
 
 
 def test_var_run_is_masked_too_where_it_is_a_directory_of_its_own(monkeypatch):
+    monkeypatch.setattr(L, "GSSPROXY", "/nonexistent/gssproxy")  # whatever this host has
     islink, isdir = os.path.islink, os.path.isdir
     monkeypatch.setattr(L.os.path, "islink", lambda p: p != L.VAR_RUN and islink(p))
     monkeypatch.setattr(L.os.path, "isdir", lambda p: p == L.VAR_RUN or isdir(p))
     assert L.host_masks() == (L.RUN, L.VAR_RUN)
     monkeypatch.setattr(L.os.path, "islink", lambda p: p == L.VAR_RUN or islink(p))
     assert L.host_masks() == (L.RUN,)  # the usual link to /run: masked with it
+
+
+def test_the_gss_api_proxys_directory_is_masked_whole_where_it_exists(monkeypatch):
+    """The designer's D-CS2-6: /var/lib/gssproxy is one of the host's masks where it is a directory, so every layout
+    (eval's included) hides it as it hides /run: an empty tmpfs at its depth, remounted read-only, and row 2 checks it
+    (its host masks are layout.host_masks)."""
+    islink, isdir = os.path.islink, os.path.isdir
+    monkeypatch.setattr(L.os.path, "islink", lambda p: p != L.GSSPROXY and islink(p))
+    monkeypatch.setattr(L.os.path, "isdir", lambda p: p == L.GSSPROXY or (p != L.VAR_RUN and isdir(p)))
+    assert L.host_masks() == (L.RUN, L.GSSPROXY)
+    layout = C.Layout(role="x", access="read", bwrap="/usr/bin/bwrap", writable=("/s",), readonly=())
+    assert L.GSSPROXY in layout.hide_host and L.GSSPROXY in layout.describe()["hidden"]
+    flags = C.bwrap_argv(layout, ["agent"])
+    assert flags[flags.index(L.GSSPROXY) - 1] == "--tmpfs"
+    assert mask_problems(flags, layout.hide_host) == []
+    monkeypatch.setattr(L.os.path, "isdir", lambda p: p != L.GSSPROXY and p != L.VAR_RUN and isdir(p))
+    assert L.host_masks() == (L.RUN,)  # a host without it masks nothing in its place
 
 
 def test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described_with_its_reason():

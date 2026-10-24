@@ -22,7 +22,9 @@ PLANTED = {
     S.CREDENTIAL: ["/tmp/ssh-XXXX/agent.1234", "/home/u/.gnupg/S.gpg-agent", "/run/user/1000/gnupg/S.gpg-agent.ssh",
                    "/run/user/1000/gnupg/S.scdaemon", "/home/u/.gnupg/S.keyboxd",
                    "/home/u/.cache/git/credential/socket", "/home/u/.git-credential-cache/socket",
-                   "/run/user/1000/keyring/control", "/run/user/1000/bus"],
+                   "/run/user/1000/keyring/control", "/run/user/1000/bus", "/home/u/.1password/agent.sock",
+                   "/home/u/.bitwarden-ssh-agent.sock", "/home/u/.cache/vault-agent.socket", "/run/user/1000/gcr/ssh",
+                   "/srv/keys/agent.sock"],
     S.ESCAPE: ["/run/dbus/system_bus_socket", "/tmp/tmux-1000/default", "/run/screen/S-u/123.pts-0.host",
                "/tmp/emacs1000/server", "/run/user/1000/vscode-ipc-0a1b.sock", "/var/run/docker.sock",
                "/run/user/1000/podman/podman.sock", "/run/containerd/containerd.sock",
@@ -184,7 +186,8 @@ def test_the_launching_environments_abstract_display_and_bus_are_failing_whereve
 @pytest.mark.parametrize(("exe", "cls"), [
     ("Xwayland", S.DISPLAY), ("Xorg", S.DISPLAY), ("ssh", S.CREDENTIAL), ("ssh-agent", S.CREDENTIAL),
     ("gpg-agent", S.CREDENTIAL), ("dbus-broker-launch", S.CREDENTIAL), ("tmux: server", S.ESCAPE),
-    ("systemd", S.ESCAPE), ("python3.11", None), ("sshd", None), (None, None),
+    ("systemd", S.ESCAPE), ("1password", S.CREDENTIAL), ("bitwarden", S.CREDENTIAL), ("keepassxc", S.CREDENTIAL),
+    ("python3.11", None), ("sshd", None), (None, None),
 ])
 def test_a_listener_is_classified_by_its_executable(exe, cls):
     assert S.by_executable(exe) == cls
@@ -207,8 +210,8 @@ def fake_host(monkeypatch, *, entries, listeners=None, stats=None, directories=N
     {inode: executable}, lstat results {path: (dev, ino) or an exception}, directory listings {dir: [(path, dev,
     ino)] or an exception}, the host's mount table, directories that resolve elsewhere {dir: resolved}, and the
     launching user's processes that cannot be read."""
-    def stat_of(dev: int, ino: int) -> SimpleNamespace:
-        return SimpleNamespace(st_mode=SOCK, st_dev=dev, st_ino=ino)
+    def stat_of(dev: int, ino: int, uid: int = 0) -> SimpleNamespace:  # owned by root unless given
+        return SimpleNamespace(st_mode=SOCK, st_dev=dev, st_ino=ino, st_uid=uid)
 
     def lstat(path):
         found = (stats or {}).get(path, FileNotFoundError(path))
@@ -230,6 +233,7 @@ def fake_host(monkeypatch, *, entries, listeners=None, stats=None, directories=N
     monkeypatch.setattr(S, "_socket_files", socket_files)
     monkeypatch.setattr(S, "_majmin", lambda dev: f"{dev >> 8}:{dev & 0xff}")
     monkeypatch.setattr(S, "_realdir", lambda directory: (realdirs or {}).get(directory, directory))
+    monkeypatch.setattr(S, "_uid", lambda: 1000)  # the launching user
 
 
 def test_the_inventory_lists_each_path_socket_with_its_class_and_records_the_control(monkeypatch):
@@ -345,3 +349,22 @@ def test_the_inventory_carries_the_processes_it_could_not_read(monkeypatch):
     fake_host(monkeypatch, entries=[(1, CONTROL, True)], stats={CONTROL: (0x0801, 9)},
               unreadable=[{"pid": 11, "name": "svc"}])
     assert S.inventory(control=CONTROL, env={})["unreadable"] == [{"pid": 11, "name": "svc"}]
+
+
+@pytest.mark.parametrize(("held", "owner", "listening", "cls"), [
+    ({}, 1000, True, S.CREDENTIAL),               # the launching user's, listening, its holder unknown
+    ({5: "python3.11"}, 1000, True, S.REPORTED),  # its holder identified: classified as usual
+    ({}, 0, True, S.REPORTED),                    # another user's socket
+    ({}, 1000, False, S.REPORTED),                # not listening
+], ids=["unidentified", "identified", "another-owner", "not-listening"])
+def test_a_listening_socket_the_launching_user_owns_whose_holder_cannot_be_identified_is_a_credential(
+        monkeypatch, held, owner, listening, cls):
+    """The designer's D-CS2-6: a listening socket the launching user owns, held by no process of the launching user's
+    that the launcher can read (here a synthetic holder it cannot read), is a credential, marked so for row 2 and
+    doctor; a socket whose holder is identified, another user's, or one that is not listening keeps its class."""
+    path = "/home/u/tools/svc.sock"
+    fake_host(monkeypatch, entries=[(5, path, listening)], listeners=held, stats={path: (0x0802, 50, owner)},
+              unreadable=[] if held else [{"pid": 11, "name": "svc"}])
+    got = S.inventory(control=CONTROL, env={})["candidates"]
+    assert [(c["path"], c["class"], c.get("holder")) for c in got] == [
+        (path, cls, S.UNIDENTIFIED if cls == S.CREDENTIAL else None)]

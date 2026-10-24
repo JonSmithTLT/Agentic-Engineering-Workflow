@@ -9,7 +9,8 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   directory of its own). Every service socket there (G3's, the work-item fact issuer's, the session and system buses,
   the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`, and a project
   on removable media under ``/run`` is bound back with its workspace, on the conditions the operator's ruling sets
-  (:data:`RUN_BIND_BACK`, :func:`_refuse_run_bind_backs`);
+  (:data:`RUN_BIND_BACK`, :func:`_refuse_run_bind_backs`). The GSS-API proxy's directory is masked the same way, where
+  there is one (:data:`GSSPROXY`, D-CS2-6);
 * every contained process starts in a new session, so it has no controlling terminal (CB-05, ruling R-7), and
   without the display's and the operator's session variables (:data:`DISPLAY_ENV`, CB-04);
 * the project's ``.aew/local`` (and the runs directory, wherever it lives) is hidden behind an empty tmpfs, and only
@@ -93,6 +94,10 @@ RUN_BIND_BACK = "operator ruling 2026-10-23: a project under /run is bound back,
 # for the first name below the mask. A bind-back that is the mask itself, or lies under one of these, is refused.
 # Adding a pattern only tightens. aew-*: G3's aew-g3, the fact issuer's aew-wis, and any later AEW service.
 RUN_PROTECTED = ("aew-*", "user", "dbus", "systemd")
+# The GSS-API credential proxy's socket directory (gssproxy; the designer's D-CS2-6): masked whole where it exists, as
+# /run is. A site configuration that serves users makes its socket a Kerberos credential route, and nothing inside
+# needs it (GSS_USE_PROXY is off by default; the kernel's NFS client does not use the sandbox's view).
+GSSPROXY = "/var/lib/gssproxy"
 RESOLV_CONF = "/etc/resolv.conf"
 MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Linux include/linux/namei.h)
 # Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
@@ -107,9 +112,15 @@ SANDBOX_TMP = "/tmp"  # noqa: S108  # <run dir>/.aew-mask: the empty file bound 
 
 
 def host_masks() -> tuple[str, ...]:
-    """The host's runtime trees masked whole (CB-03): ``/run``, and ``/var/run`` where it is a directory of its own
-    rather than the usual link to ``/run`` (a host fact, read when the layout is made)."""
-    return (RUN, VAR_RUN) if os.path.isdir(VAR_RUN) and not os.path.islink(VAR_RUN) else (RUN,)
+    """The host's trees masked whole (CB-03): ``/run``; ``/var/run`` where it is a directory of its own rather than
+    the usual link to ``/run``; and the GSS-API proxy's directory where there is one (:data:`GSSPROXY`). Host facts,
+    read when the layout is made."""
+    out = [RUN]
+    if os.path.isdir(VAR_RUN) and not os.path.islink(VAR_RUN):
+        out.append(VAR_RUN)
+    if os.path.isdir(GSSPROXY) and not os.path.islink(GSSPROXY):
+        out.append(GSSPROXY)
+    return tuple(out)
 
 
 def run_exceptions() -> tuple[tuple[str, str], ...]:

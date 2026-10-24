@@ -62,6 +62,11 @@ TIMEOUT_S = 30.0
 VERSION_TIMEOUT_S = 10.0
 BOUND_S = TIMEOUT_S + VERSION_TIMEOUT_S  # the self-test and the mechanism check, at a run's start
 CANARY = "aew-self-test"  # the value of each DISPLAY_ENV variable the probe is handed
+# Row 2's words for a reachable socket of the launching user's whose holder cannot be identified (D-CS2-6), which
+# `aew doctor` shows with the row's reason
+UNIDENTIFIED_REMEDY = (" (its holder, a process of the launching user's, cannot be identified, so it counts as a "
+                       "credential: stop that process, move its socket under a masked path, or set containment.mode: "
+                       "allow_weaker to run labelled workdir_separation_only)")
 
 # Standard library only, and isolated (-I): it runs in the sandbox. Its definitions come first, so a test can read them
 # without running it (``exec`` with another ``__name__``).
@@ -358,10 +363,12 @@ def _row2(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
                  for e in inside.get("errors") or []]
     classes = {c["path"]: c for c in inventory.get("candidates") or []}
     found = [{"path": r["path"], "class": classes[r["path"]]["class"], "inside": r["inside"],
-              **({"listed": classes[r["path"]]["listed"]} if classes[r["path"]]["listed"] != r["path"] else {})}
+              **({"listed": classes[r["path"]]["listed"]} if classes[r["path"]]["listed"] != r["path"] else {}),
+              **({"holder": classes[r["path"]]["holder"]} if classes[r["path"]].get("holder") else {})}
              for r in inside.get("reachable") or [] if r["path"] in classes]
     problems += [f"a {s['class']} socket is reachable: {s['path']}"
                  + (f" (inside at {', '.join(s['inside'])})" if s["inside"] != [s["path"]] else "")
+                 + (UNIDENTIFIED_REMEDY if s.get("holder") == sockets.UNIDENTIFIED else "")
                  for s in found if s["class"] in sockets.FAILING]
     # checked at their own paths only: no mount of their filesystem above them on the host (review of #244)
     untranslated = [{"path": c["path"], "class": c["class"]} for c in classes.values()

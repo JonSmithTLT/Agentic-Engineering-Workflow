@@ -152,6 +152,37 @@ def test_a_table_that_does_not_parse_is_an_error_the_row_fails_on_never_a_crash(
     assert row["ok"] is False and "could not parse" in row["reason"]
 
 
+UNKNOWN_HOLDER = {"path": "/home/u/tools/svc.sock", "listed": "/home/u/tools/svc.sock", "class": sockets.CREDENTIAL,
+                  "holder": sockets.UNIDENTIFIED, "dev": 2050, "ino": 50, "majmin": "8:2",
+                  "fspath": "/u/tools/svc.sock"}
+REACHED = {**GOOD, "inventory": {**INVENTORY, "candidates": [*INVENTORY["candidates"], UNKNOWN_HOLDER],
+                                 "unreadable": [{"pid": 11, "name": "svc"}]},
+           "inside": {**GOOD["inside"], "reachable": [{"path": UNKNOWN_HOLDER["path"],
+                                                        "inside": [UNKNOWN_HOLDER["path"]]}]}}
+
+
+def test_a_reachable_socket_whose_holder_cannot_be_identified_fails_row_2_naming_the_remedy():
+    """The designer's D-CS2-6: a reachable listening socket of the launching user's whose holder the launcher cannot
+    identify is a credential; the row fails, naming the socket and the remedy, and records the unreadable process."""
+    row = probe._row2(LAYOUT, REACHED)
+    assert row["ok"] is False
+    assert row["reason"] == ("a credential socket is reachable: /home/u/tools/svc.sock" + probe.UNIDENTIFIED_REMEDY)
+    assert row["sockets"] == [{"path": UNKNOWN_HOLDER["path"], "class": sockets.CREDENTIAL,
+                               "inside": [UNKNOWN_HOLDER["path"]], "holder": sockets.UNIDENTIFIED}]
+    assert row["unreadable_processes"] == [{"pid": 11, "name": "svc"}]
+
+
+def test_doctor_names_a_socket_whose_holder_cannot_be_identified_and_the_remedy(monkeypatch):
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
+    row = probe._row2(LAYOUT, REACHED)
+    monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {"ok": False, "reason": f"row 2 (run_and_sockets): "
+                                                                f"{row['reason']}", "rows": {"2": row}})
+    status, detail = C.doctor({"containment": {"mode": "required"}}, "unsupported")
+    assert status == "FAIL" and "/home/u/tools/svc.sock" in detail
+    assert "stop that process, move its socket under a masked path, or set containment.mode: allow_weaker" in detail
+
+
 def test_row_2_records_what_the_host_could_not_check():
     """A socket path the launcher could not check (an error other than its absence) is on the label, with its class
     and why, and so is each of the launching user's processes it could not read (review of #244)."""

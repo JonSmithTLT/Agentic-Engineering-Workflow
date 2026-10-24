@@ -23,10 +23,12 @@ own: a table that does not list it is not this namespace's, and the launch fails
 * **The kernel's tables** (``/proc/net/unix``, ``/proc/self/mountinfo``) are read as bytes and split where the kernel
   delimits a record; a record that does not parse fails the launch closed, never dropped.
 
-This module is the one owner of the classes, by name and by the listening process's executable:
+This module is the one owner of the classes, by name and by the listening process's executable, a known list never
+complete (D-CS2-6):
 
 * a socket that reaches the display, G3, an AEW service other than the run's own, a credential, or an escape route
-  (something that runs commands as the operator outside the sandbox) fails the launch;
+  (something that runs commands as the operator outside the sandbox) fails the launch. A listening socket the
+  launching user owns, whose holder the launcher cannot identify, is a credential (:data:`UNIDENTIFIED`, D-CS2-6);
 * the run's own bridge socket is listed as its own;
 * any other socket (a site's ordinary services, such as SSSD's pipes under ``/var/lib/sss/pipes``) is reported, never
   refused.
@@ -73,7 +75,9 @@ ANCESTORS: tuple[tuple[str, str], ...] = (
 # without the "@" (X11's is "/tmp/.X11-unix/X0"). The table is the CS-2 hand-off's list and the Lead's rulings on
 # CS-2's plan (2026-10-23): the system bus, terminal multiplexers, editor servers, container engines and the user
 # service manager, each an escape route, since each runs commands as the operator, outside the sandbox (or as root);
-# and the designer's D-CS2-2 for the abstract names.
+# the designer's D-CS2-2 for the abstract names, and D-CS2-6 for the agents' names. The names here and the
+# executables below are a known list, never complete (D-CS2-6): what neither names is caught, if at all, by
+# UNIDENTIFIED's rule.
 CLASSES: tuple[tuple[str, str, str, str], ...] = (
     (DISPLAY, "X*", ".X11-unix", "*"),                    # X11
     (DISPLAY, "wayland-*", "*", "*"),                     # Wayland compositors
@@ -86,6 +90,10 @@ CLASSES: tuple[tuple[str, str, str, str], ...] = (
     (CREDENTIAL, "*", "keyring", "*"),                    # gnome-keyring
     (CREDENTIAL, "bus", "*", "user"),                     # the session bus, /run/user/<uid>/bus (the Secret Service)
     (CREDENTIAL, "dbus-*", "tmp", "*"),                   # a session bus at /tmp/dbus-* (abstract, or a file)
+    (CREDENTIAL, "agent.sock", "*", "*"),                 # an agent by its common names (D-CS2-6): 1Password's
+    (CREDENTIAL, "*-agent.sock", "*", "*"),               # ~/.1password/agent.sock, Bitwarden's
+    (CREDENTIAL, "*-agent.socket", "*", "*"),             # ~/.bitwarden-ssh-agent.sock, and the like
+    (CREDENTIAL, "ssh", "gcr", "*"),                      # gcr's ssh agent, $XDG_RUNTIME_DIR/gcr/ssh
     (ESCAPE, "system_bus_socket", "dbus", "*"),           # the system bus: polkit can prompt the operator
     (ESCAPE, "*", "tmux-*", "*"),                         # tmux
     (ESCAPE, "*", "S-*", "screen*"),                      # GNU screen
@@ -104,11 +112,16 @@ EXECUTABLES: tuple[tuple[str, str], ...] = (
     (DISPLAY, "Xorg"), (DISPLAY, "Xwayland"), (DISPLAY, "Xvfb"), (DISPLAY, "Xvnc"),
     (CREDENTIAL, "ssh"),                                  # a ControlMaster, or a forward to a remote socket
     (CREDENTIAL, "ssh-agent"), (CREDENTIAL, "gpg-agent"), (CREDENTIAL, "scdaemon"), (CREDENTIAL, "keyboxd"),
-    (CREDENTIAL, "gnome-keyring-daemon"),
+    (CREDENTIAL, "gnome-keyring-daemon"), (CREDENTIAL, "1password"), (CREDENTIAL, "bitwarden"),
+    (CREDENTIAL, "keepassxc"),                            # password managers' agents (D-CS2-6)
     (CREDENTIAL, "dbus-daemon"), (CREDENTIAL, "dbus-broker*"),  # the launching user's own bus: the session bus
     (ESCAPE, "tmux*"), (ESCAPE, "screen*"), (ESCAPE, "emacs*"), (ESCAPE, "code"), (ESCAPE, "podman"),
     (ESCAPE, "systemd"),                                  # the user's service manager
 )
+# The designer's D-CS2-6: a listening socket the launching user owns, whose holder the launcher cannot identify (no
+# process of the launching user's that it can read holds it), is a credential, and fails the launch where it is
+# reachable. Its candidate says so, for row 2 and doctor to name the socket and the remedy.
+UNIDENTIFIED = "unidentified"
 # What the inventory cannot see, named on every label (D-CS2-3, and the review of #244); each is accepted there, with
 # why. The lists the label carries (unresolved, relative, unchecked, untranslated) are the instances the table shows.
 NOT_COVERED = (
@@ -319,9 +332,15 @@ def inventory(*, control: str, own: tuple[str, ...] = (), env: Mapping[str, str]
     entries = table(path)
     held, unreadable = listeners({e.inode for e in entries})
     classes: dict[str, str] = {}
+    listening, identified = set(), set()
     for e in entries:  # an accepted connection is listed under its listener's name: one class per name
         named = classes.get(e.name) or classify(e.name, own=own, env=env)
         classes[e.name] = worse(named, by_executable(held.get(e.inode)))
+        if e.listening:
+            listening.add(e.name)
+        if e.inode in held:
+            identified.add(e.name)
+    uid = _uid()
     host = mounts()
     candidates: dict[str, dict[str, Any]] = {}
     abstract, relative, unresolved, unchecked = [], [], [], []
@@ -355,8 +374,12 @@ def inventory(*, control: str, own: tuple[str, ...] = (), env: Mapping[str, str]
             real = posixpath.join(_realdir(posixpath.dirname(p)), posixpath.basename(p))  # a sandbox's paths: POSIX
             if real != p:  # each spelling is checked inside, and takes its class (review of #244)
                 mine = worse(mine, classify(real, own=own, env=env))
+            unknown = name in listening and name not in identified and fst.st_uid == uid
+            if unknown:
+                mine = worse(mine, CREDENTIAL)
             prior = candidates.get(p)
             candidates[p] = {"path": p, "listed": name, "class": worse(prior["class"], mine) if prior else mine,
+                             **({"holder": UNIDENTIFIED} if unknown or (prior or {}).get("holder") else {}),
                              "dev": fst.st_dev, "ino": fst.st_ino, **_on_filesystem(p, fst.st_dev, host),
                              "real": None if real == p else
                              {"path": real, "fspath": _on_filesystem(real, fst.st_dev, host)["fspath"]}}

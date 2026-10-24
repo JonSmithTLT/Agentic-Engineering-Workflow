@@ -889,8 +889,9 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
 ### `/run` is masked whole (CB-03, ruling R-1; `layout.host_masks`)
 - **The mask:** every layout, eval's included, puts an empty tmpfs on `/run` at its depth in the one bind order
   (`layout.order`). `/var/run` is masked the same way where it is a directory of its own rather than the usual link
-  to `/run`. Once what the layout binds back into a mask is there, the mask is remounted read-only, so nothing can be
-  made in it.
+  to `/run`, and so is the GSS-API credential proxy's directory, `/var/lib/gssproxy`, where there is one (designer
+  ruling D-CS2-6, `layout.GSSPROXY`): nothing inside needs it. Once what the layout binds back into a mask is there,
+  the mask is remounted read-only, so nothing can be made in it.
 - **Why whole:** a read-only mount refuses writes, not a socket's `connect`. `/run` holds the host's service sockets:
   G3's, the work-item fact issuer's, the session and system buses, and the operator's runtime directory. A list of
   them would miss the next one.
@@ -985,13 +986,24 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`; AEW's runtime directories count only
     directly in a runtime root: `/run`, `/var/run`, `/tmp` or the launching `XDG_RUNTIME_DIR`, so a checkout or a
     reviewer's tree named `aew-*` is no service's), a credential (ssh-agent, gpg-agent,
-    git's credential cache, the keyring, the session bus) or an escape route. An escape route is something that runs
-    commands as the operator, or as root, outside the sandbox: the system bus, tmux, screen, an editor server, a
-    container engine, the user service manager (the Lead's rulings on CS-2's plan);
+    git's credential cache, the keyring, the session bus, and the agents' common names and executables: `agent.sock`,
+    `*-agent.sock`, `*-agent.socket`, gcr's `ssh`, `1password`, `bitwarden`, `keepassxc`; D-CS2-6) or an escape route.
+    An escape route is something that runs commands as the operator, or as root, outside the sandbox: the system bus,
+    tmux, screen, an editor server, a container engine, the user service manager (the Lead's rulings on CS-2's plan);
+  - **a credential by its holder** (designer ruling D-CS2-6): a listening socket the launching user owns, whose holder
+    the launcher cannot identify (no process of the launching user's that it can read holds it), is a credential.
+    Where it is reachable the launch fails, and row 2 (and so `aew doctor`) names the socket and the remedy: stop
+    that process, move its socket under a masked path, or run in `allow_weaker`. The label lists the launching user's
+    processes it could not read;
   - **named by the launching environment:** a socket its `DISPLAY`, `WAYLAND_DISPLAY`, `SSH_AUTH_SOCK` or
     `DBUS_SESSION_BUS_ADDRESS` names is failing wherever it lives. `establish` takes that environment (by default the
     process's own);
-  - **reported:** anything else, such as a site's ordinary services. It is listed on the label, never refused.
+  - **reported:** anything else, such as a site's ordinary services (SSSD's pipes among them, which agents need for
+    name resolution). It is listed on the label, never refused.
+
+  **The classes are a known list, never complete** (D-CS2-6). A socket that no name and no executable here marks, and
+  whose holder is identified, is reported. The primary controls do not depend on the list: `/run` and the other host
+  masks, the private `/tmp`, the secret masks, and CS-3's network namespace.
 
 ### The self-test records CB-12's rows 2 to 5 on the label (`probe.self_test`)
 - **Row 2, `/run` and the sockets:** each host mask is a read-only tmpfs inside, holding only what the layout put
@@ -1032,8 +1044,8 @@ digest on both faces. That paragraph stays as the record of CS-1.
 
 ### Tests
 - **`tests/unit/test_containment_layout.py`:**
-  - the `/run` mask (and `/var/run`, where it is a directory of its own) after the root bind, in the bind order, and
-    remounted read-only;
+  - the `/run` mask (and `/var/run`, where it is a directory of its own, and `/var/lib/gssproxy`, where it exists)
+    after the root bind, in the bind order, and remounted read-only;
   - each exception bound back read-only after the mask, and described with its reason;
   - the `resolv.conf` exception as the first path under `/run` on its chain (POSIX);
   - a project under a masked prefix stays visible, and a writable one writable;
@@ -1041,7 +1053,7 @@ digest on both faces. That paragraph stays as the record of CS-1.
     workspace's own binds come back, at real paths, in the order the same layout has without the mask; a bind of
     something else on the media refused; a project under each protected name refused, and one at the mask itself; a
     project named through a symlink bound back at its real path, and a link path refused (POSIX);
-  - a mask under a masked tree dropped;
+  - a mask under a masked tree dropped, and one inside a bind into it emitted before the tree's remount;
   - an operator root under or containing `/run` refused;
   - a layout's JSON round trip giving the same argv;
   - the display files and the `XAUTHORITY` file masked by type;
@@ -1051,19 +1063,31 @@ digest on both faces. That paragraph stays as the record of CS-1.
   - each failing class on planted names and nothing else;
   - an unlisted socket reported;
   - the launching environment's sockets, the run's own bridge, and AEW's runtime directories only in a runtime root;
-  - the table's parsing, and an unreadable table;
+  - the table's and the mount table's parsing as the kernel writes them, and a table or a record that does not
+    parse;
   - the abstract names and the executable classes;
   - the inventory's candidates, classes and control;
   - the same-directory rule;
+  - the resolved spelling of each listed path, with its class;
+  - a listening socket of the launching user's whose holder cannot be identified, and the launching user's
+    processes that cannot be read (on synthetic `/proc` entries);
   - the residuals recorded;
   - each socket's filesystem and its path within it.
 - **`tests/unit/test_containment_probe.py`**, on synthetic probe output:
   - each row's judgement, passing and failing closed, row 4 included;
-  - row 2's fail-closed cases (an unreadable table, a missing control, a check inside that errors);
-  - row 2's residuals and its abstract fact;
-  - the probe's own matching on synthetic mount tables: every mount of the socket's filesystem, and the same file by
-    device and inode only;
-  - `aew doctor`'s WARN.
+  - row 2's fail-closed cases (an unreadable table, one that does not parse, a missing control, a check inside that
+    errors);
+  - row 2's residuals, its abstract fact, and what the host could not check or read;
+  - the probe's own matching on synthetic mount tables: every mount of the socket's filesystem, each spelling, and
+    the same file by device and inode only;
+  - the probe's own reading of its mount table, and its listing of a masked tree (POSIX);
+  - a reachable socket whose holder cannot be identified failing row 2, with the remedy;
+  - `aew doctor`'s WARN, and its naming of that socket and the remedy.
+
+  **Proved on synthetic inputs only** (the operator's decision of 2026-10-24 on the review of #244: unit tests, with
+  the existing integration tests unchanged): the masks inside a bind into a masked tree, the listing of a masked tree,
+  the kernel tables' parsing, each socket's resolved spelling, the unidentified holder and the unreadable processes,
+  and the gssproxy mask. The integration tests below exercise them on a real sandbox only as far as they already did.
 - **`tests/integration/test_containment.py`** (Linux). Every planted item is synthetic, in the test's own 0700
   directory, and removed in a `finally`. The launching environment is built from scratch.
   - A passing run records rows 2 to 5, with the table's facts printed.

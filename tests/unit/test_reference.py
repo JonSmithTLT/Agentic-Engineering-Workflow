@@ -282,54 +282,137 @@ def small_index() -> dict[str, Any]:
     return C.build_index([mod, other, rec])
 
 
+def reseal(index: dict[str, Any]) -> None:
+    """Recompute the summaries a record edit changes (``gaps``, ``counts`` and its ``digest``) from the mutated records,
+    as the generator would. ``counts.digest`` covers every record, so without this every planted record fault is also
+    refused for a stale digest, and a rule that stopped checking would still pass (review of #241, F9)."""
+    try:
+        gaps = C.gaps_of(index["records"])
+    except (KeyError, TypeError, AttributeError):
+        return  # a malformed unresolved item: index_problems returns early on it, and says so
+    rows = [(r.get("family", ""), r["coverage"]["label"]) for r in index["records"].values()
+            if isinstance(r.get("coverage"), dict) and r["coverage"].get("label") in C.LABELS]
+    index["gaps"] = gaps
+    index["counts"] = {**C.counts_of(rows, len(gaps)), "digest": C.digest_of(index["records"], gaps)}
+
+
+def plant(mutate, *fragments: str, sealed: bool = True, only: bool = False):
+    """A planted fault: how to plant it; the fragments of the message of the rule that must refuse it (a fault refused
+    by another rule does not count); whether the index is resealed after planting (a fault in the summaries themselves
+    is planted on a sealed index and left unsealed); and whether that rule must be the only one to speak."""
+    return mutate, fragments, sealed, only
+
+
+def t1(i: dict[str, Any]) -> dict[str, Any]:
+    return i["records"]["things:t1"]
+
+
+def mod_a(i: dict[str, Any]) -> dict[str, Any]:
+    return i["records"]["modules:aew.a"]
+
+
+def mod_b(i: dict[str, Any]) -> dict[str, Any]:
+    return i["records"]["modules:aew.b"]
+
+
+DIGEST = "counts (with its digest) is not what the records and gaps give"
 MUTATIONS = {
-    "an anchor module with no modules record": lambda i: i["records"]["things:t1"]["anchor"].update(module="aew.zz"),
-    "a basis outside the four": lambda i: i["records"]["things:t1"].update(basis="guessed"),
-    "a record without its basis": lambda i: i["records"]["things:t1"].pop("basis"),
-    "a non-module record without its symbol": lambda i: i["records"]["things:t1"]["anchor"].update(symbol=None),
-    "complete-by-construction without its check": lambda i: i["records"]["things:t1"]["coverage"].pop("check"),
-    "complete-by-construction with an empty check": lambda i: i["records"]["things:t1"]["coverage"].update(check=[]),
-    "complete-by-construction without its registry": lambda i: i["records"]["things:t1"]["coverage"].pop("registry"),
-    "lower-bound without its unresolved list": lambda i: i["records"]["modules:aew.b"]["coverage"].pop("unresolved"),
-    "an unresolved item without its why": lambda i: i["records"]["modules:aew.b"]["coverage"]["unresolved"][0].pop(
-        "why"),
-    "a label outside the three": lambda i: i["records"]["things:t1"]["coverage"].update(label="complete"),
-    "a module without its imports": lambda i: i["records"]["modules:aew.b"].pop("imports"),
-    "imports out of order": lambda i: i["records"]["modules:aew.b"].update(imports=["aew.b", "aew.a"]),
-    "an import with no modules record": lambda i: i["records"]["modules:aew.b"].update(imports=["aew.zz"]),
-    "imports on a record that is not a module": lambda i: i["records"]["things:t1"].update(imports=[]),
-    "a module with a symbol": lambda i: i["records"]["modules:aew.a"]["anchor"].update(symbol="x"),
-    "an id that does not start with its family": lambda i: i["records"].update(
-        {"other:t1": i["records"].pop("things:t1")}),
-    "counts that no longer match": lambda i: i["counts"].update(records=99),
-    "a gap without its why": lambda i: i["gaps"][0].pop("why"),
-    "a wrong schema": lambda i: i.update(schema="aew/reference-index/v0"),
-    "a list fact without its fact_coverage entry": lambda i: i["records"]["things:t1"]["fact_coverage"].pop("items"),
-    "a fact_coverage for a fact the record lacks": lambda i: i["records"]["things:t1"]["fact_coverage"].update(
-        missing={"label": "unknown"}),
-    "a fact_coverage label outside the three": lambda i: i["records"]["things:t1"]["fact_coverage"][
-        "items"].update(label="complete"),
-    "a fact_coverage lower-bound without its unresolved list": lambda i: i["records"]["things:t1"]["fact_coverage"][
-        "items"].pop("unresolved"),
-    "a fact_coverage unresolved item without its why": lambda i: i["records"]["things:t1"]["fact_coverage"][
-        "items"]["unresolved"][0].pop("why"),
-    "a fact_coverage that is not an object": lambda i: i["records"]["things:t1"].update(fact_coverage=[]),
-    "a fact_coverage left inside fact (addendum 3: it belongs on the record)": lambda i: i["records"][
-        "things:t1"]["fact"].update(fact_coverage=i["records"]["things:t1"].pop("fact_coverage")),
-    "an unresolved item of a list fact missing from gaps": lambda i: i.update(
-        gaps=[g for g in i["gaps"] if g["family"] != "things"]),
-    "a gap that is on no record": lambda i: i["gaps"].append(
-        {"family": "things", "module": "aew.a", "symbol": None, "why": "only in gaps"}),
-    "a stale digest": lambda i: i["counts"].update(digest="sha256:" + "0" * 64),
+    # the record-level rules
+    "an anchor module with no modules record": plant(lambda i: t1(i)["anchor"].update(module="aew.zz"),
+                                                     "its module aew.zz has no modules record"),
+    "an anchor without its module": plant(lambda i: t1(i)["anchor"].update(module=""), "no anchor.module"),
+    "a basis outside the four": plant(lambda i: t1(i).update(basis="guessed"), "is not one of"),
+    "a record without its basis": plant(lambda i: t1(i).pop("basis"), "is not one of"),
+    "a non-module record without its symbol": plant(lambda i: t1(i)["anchor"].update(symbol=None),
+                                                    "no anchor.symbol"),
+    "a module with a symbol": plant(lambda i: mod_a(i)["anchor"].update(symbol="x"), "symbol must be null"),
+    "a module without its imports": plant(lambda i: mod_b(i).pop("imports"), "imports is not a sorted list"),
+    "imports out of order": plant(lambda i: mod_b(i).update(imports=["aew.b", "aew.a"]),
+                                  "imports is not a sorted list"),
+    "an import with no modules record": plant(lambda i: mod_b(i).update(imports=["aew.zz"]),
+                                              "imports aew.zz, which has no modules record"),
+    "imports on a record that is not a module": plant(lambda i: t1(i).update(imports=[]),
+                                                      "only a modules record has imports"),
+    "an id that does not start with its family": plant(
+        lambda i: i["records"].update({"other:t1": i["records"].pop("things:t1")}),
+        "does not start with its family"),
+    # the coverage rules, on a record and on a list fact
+    "a coverage that is not an object": plant(lambda i: t1(i).update(coverage=[]), "coverage is not an object"),
+    "complete-by-construction without its check": plant(lambda i: t1(i)["coverage"].pop("check"),
+                                                        "complete-by-construction without its check"),
+    "complete-by-construction with an empty check": plant(lambda i: t1(i)["coverage"].update(check=[]),
+                                                          "complete-by-construction without its check"),
+    "complete-by-construction without its registry": plant(lambda i: t1(i)["coverage"].pop("registry"),
+                                                           "complete-by-construction without its registry"),
+    "lower-bound without its unresolved list": plant(lambda i: mod_b(i)["coverage"].pop("unresolved"),
+                                                     "lower-bound without its unresolved list"),
+    "an unresolved item without its why": plant(lambda i: mod_b(i)["coverage"]["unresolved"][0].pop("why"),
+                                                "an unresolved item is not", "an unresolved item is malformed"),
+    "a label outside the three": plant(lambda i: t1(i)["coverage"].update(label="complete"),
+                                       "coverage label 'complete'"),
+    # addendum 3: how complete a list fact is, on the record beside coverage
+    "a list fact without its fact_coverage entry": plant(lambda i: t1(i)["fact_coverage"].pop("items"),
+                                                         "the list fact 'items' has no fact_coverage entry"),
+    "a fact_coverage for a fact the record lacks": plant(
+        lambda i: t1(i)["fact_coverage"].update(missing={"label": "unknown"}),
+        "fact_coverage for 'missing', which is not a fact of the record"),
+    "a fact_coverage label outside the three": plant(lambda i: t1(i)["fact_coverage"]["items"].update(label="complete"),
+                                                     "fact_coverage.items: coverage label 'complete'"),
+    "a fact_coverage lower-bound without its unresolved list": plant(
+        lambda i: t1(i)["fact_coverage"]["items"].pop("unresolved"),
+        "fact_coverage.items: lower-bound without its unresolved list"),
+    "a fact_coverage unresolved item without its why": plant(
+        lambda i: t1(i)["fact_coverage"]["items"]["unresolved"][0].pop("why"),
+        "fact_coverage.items: an unresolved item is not", "an unresolved item is malformed"),
+    "a fact_coverage that is not an object": plant(lambda i: t1(i).update(fact_coverage=[]),
+                                                   "fact_coverage is not an object"),
+    "a fact_coverage moved inside fact": plant(
+        lambda i: t1(i)["fact"].update(fact_coverage=t1(i).pop("fact_coverage")), "fact_coverage is inside fact"),
+    # the case only the nested-placement rule can refuse: a copy left inside fact with the record-level key present
+    "a fact_coverage left inside fact beside the record-level one": plant(
+        lambda i: t1(i)["fact"].update(fact_coverage=copy.deepcopy(t1(i)["fact_coverage"])),
+        "fact_coverage is inside fact", only=True),
+    # the summaries themselves: planted on a sealed index and left unsealed
+    "no records at all": plant(lambda i: i.update(records={}), "no records object", sealed=False),
+    "a wrong schema": plant(lambda i: i.update(schema="aew/reference-index/v0"), "schema is", sealed=False),
+    "a gap without its why": plant(lambda i: i["gaps"][0].pop("why"), "a gap is not", sealed=False),
+    "an unresolved item of a list fact missing from gaps": plant(
+        lambda i: i.update(gaps=[g for g in i["gaps"] if g["family"] != "things"]), "gaps is not the summary",
+        sealed=False),
+    "a gap that is on no record": plant(
+        lambda i: i["gaps"].append({"family": "things", "module": "aew.a", "symbol": None, "why": "only in gaps"}),
+        "gaps is not the summary", sealed=False),
+    "counts that no longer match": plant(lambda i: i["counts"].update(records=99), DIGEST, sealed=False),
+    "a stale digest": plant(lambda i: i["counts"].update(digest="sha256:" + "0" * 64), DIGEST, sealed=False),
 }
 
 
-def test_a_sound_index_has_no_problems_and_each_planted_fault_is_one():
+def test_a_sound_index_has_no_problems_and_each_planted_fault_is_refused_by_its_own_rule():
+    """Each planted fault is planted on a sealed index (``reseal``) and must be refused by the rule it plants: the
+    message's fragment is asserted, not just a non-empty list, because ``counts.digest`` refuses any edit to a record
+    and would mask every rule (review of #241, F9). The faults in the summaries themselves are left unsealed."""
     assert C.index_problems(small_index()) == []
-    for what, mutate in MUTATIONS.items():
+    for what, (mutate, fragments, sealed, only) in MUTATIONS.items():
         broken = copy.deepcopy(small_index())
         mutate(broken)
-        assert C.index_problems(broken), what
+        if sealed:
+            reseal(broken)
+        problems = C.index_problems(broken)
+        for fragment in fragments:
+            assert any(fragment in p for p in problems), (what, fragment, problems)
+        if sealed:  # the digest must not be what refused it
+            assert not any(DIGEST in p for p in problems), (what, problems)
+        if only:
+            assert len(problems) == 1, (what, problems)
+
+
+def test_a_benign_edit_to_a_record_is_a_problem_only_until_the_index_is_resealed():
+    """Why the planted faults are resealed: the digest alone refuses any edit, benign or not."""
+    benign = small_index()
+    t1(benign)["fact"]["n"] = 2
+    assert C.index_problems(benign) == [DIGEST]
+    reseal(benign)
+    assert C.index_problems(benign) == []
 
 
 def test_two_records_with_one_id_are_refused():

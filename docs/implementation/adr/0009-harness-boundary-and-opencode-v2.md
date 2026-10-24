@@ -879,3 +879,192 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   - the entry-point table against the tree, both ways: every module that runs as a process is a row, and every row is
     one;
   - a guard that no code outside the store calls `store.read()` but the manifest reload.
+
+## Amendment 2026-10-23 — the masks: `/run`, the display, the terminal and the sockets (STG-05 CS-2)
+
+This amends the M4-B amendment's sandbox (2026-10-03) and its self-test. It builds CS-2's outcomes 1 to 4 and 6.
+Outcome 7, a fingerprint is a read (D-CS2-1), is ADR-0002's amendment of the same date. Outcome 5, the
+nested-namespace measurement, is the operator's and is not part of this amendment.
+
+### `/run` is masked whole (CB-03, ruling R-1; `layout.host_masks`)
+- **The mask:** every layout, eval's included, puts an empty tmpfs on `/run` at its depth in the one bind order
+  (`layout.order`). `/var/run` is masked the same way where it is a directory of its own rather than the usual link
+  to `/run`. Once what the layout binds back into a mask is there, the mask is remounted read-only, so nothing can be
+  made in it.
+- **Why whole:** a read-only mount refuses writes, not a socket's `connect`. `/run` holds the host's service sockets:
+  G3's, the work-item fact issuer's, the session and system buses, and the operator's runtime directory. A list of
+  them would miss the next one.
+- **The one host-derived exception** (the operator, 2026-10-24, on CS-2's plan): on a systemd-resolved host,
+  `/etc/resolv.conf` links into `/run`. Its first path under `/run` is bound back read-only by that name, with the
+  reason "name resolution until CS-3", when the link chain ends at a regular file. The chain is followed as the kernel
+  follows it, at most 40 links. Without that file, a contained harness could not resolve its provider's name until
+  CS-3 gives it a network namespace of its own. `Layout.run_exceptions` holds each exception with its reason.
+- **A project under `/run` is bound back** (operator ruling 2026-10-23: a project under /run is bound back, on five
+  conditions, R-1). A project on removable media (`/run/media/<user>/...`) stays usable with its workspace: their binds
+  land inside the mask by depth. The conditions, each with its test:
+  1. only the layout's own binds of the project and the run's workspace come back, at their resolved real paths, with
+     the modes the same layout gives them anywhere else; never an ancestor such as `/run/media/<user>`;
+  2. nothing comes back that is a mask itself or lies under `aew-*` (G3's `aew-g3`, the fact issuer's `aew-wis`, any
+     later AEW service's), `user`, `dbus` or `systemd` below it (`layout.RUN_PROTECTED`, one tuple: adding to it only
+     tightens);
+  3. an operator's writable root under `/run`, or containing it, stays refused (the Lead's ruling Q6), like any other
+     protected location (`CONTAINMENT_UNAVAILABLE`, naming "the host's runtime directory, masked whole");
+  4. the socket inventory runs in the finished sandbox, after every bind-back, so a failing socket inside the project
+     tree still fails the launch;
+  5. row 2 allows exactly what the layout put there (`Layout.bind_backs`).
+
+  `for_run` refuses a layout that breaks 1 or 2 (`CONTAINMENT_UNAVAILABLE`, reasons `run_bind_back_protected`,
+  `run_bind_back_outside_project`, `run_bind_back_not_real`). The label's `layout.bound_back` lists every path inside a
+  mask with why: the exceptions with theirs, a project's binds with the ruling.
+- **A secret mask under a tree that is already masked is not emitted** (`/tmp`, `/run`, a runs mask). It is hidden
+  with its tree, and making its path there would fail on the read-only mask.
+
+### The display's credentials and variables (CB-04)
+- **Files:** `~/.Xauthority`, `~/.ICEauthority` and the file `XAUTHORITY` names are masked by type, like every
+  secret. So are git's credential cache (`~/.cache/git/credential`, `$XDG_CACHE_HOME/git/credential`,
+  `~/.git-credential-cache`) and its store helper's file (`~/.config/git/credentials`,
+  `$XDG_CONFIG_HOME/git/credentials`).
+- **Variables:** `bwrap_argv` unsets `DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`, `DBUS_SESSION_BUS_ADDRESS` and
+  `SSH_AUTH_SOCK` (`layout.DISPLAY_ENV`) in every contained process, whatever its launcher passed. No contained
+  environment builder passes one, and `POSIX_KEEP` and `DISPLAY_ENV` are disjoint.
+
+### No controlling terminal (CB-05, ruling R-7)
+- **Every contained process starts in a new session** (`--new-session`), so it has no controlling terminal.
+- **Why that is enough:** the kernel refuses `TIOCSTI` on a terminal that is not the caller's controlling terminal,
+  to a caller without `CAP_SYS_ADMIN` in the initial user namespace. With no controlling terminal, no descriptor a
+  contained process holds accepts it. Row 4 checks the property; nothing pushes input anywhere.
+- bubblewrap's own processes stay in the caller's process group, so ending the run's process group still ends the
+  sandbox.
+
+### The socket inventory (CB-03; designer rulings D-CS2-2 to D-CS2-5; `aew.harness.containment.sockets`)
+- **What it finds:** a socket nobody listed. The masks close the doors somebody did list (`/run` whole, the secret
+  directories).
+- **Where it comes from:** the kernel's table of Unix sockets (`/proc/net/unix`), read by the launcher in its network
+  namespace. It holds every bound socket, by path or by abstract name, at a cost of O(sockets + mounts), with no walk
+  of the filesystem and no budget.
+- **The control:** before reading the table, the launcher binds a listener of its own. A table that does not list it
+  is not this namespace's.
+- **Reachable** means the same socket file, by device and inode, is at a path inside the sandbox: its own path, or
+  any other the sandbox's mount table exposes it at (a bind of it or of a parent, found through
+  `/proc/self/mountinfo`). A same-named socket of the sandbox's own, or a mask in its place, does not count.
+- **A socket linked into place:** it is bound under a temporary name and linked to its final name in the same
+  directory, as OpenSSH's ControlMaster does (mux.c's `muxserver_listen`). The table lists it under the name that is
+  gone, so every socket file in that directory is checked, each taking the worse of its own class and the listed
+  one's.
+- **An abstract socket** has no file. It is listed with its class under the network label, `shared`, until CS-3 gives
+  runs their own network namespace. `required` claims nothing about it, and `aew doctor` shows a failing-class one
+  as WARN, naming its class and that CS-3 closes it (D-CS2-5).
+- **What it cannot see is named on the label** (D-CS2-3):
+  - a socket bound in another network namespace;
+  - one bound in another mount namespace, whose path does not resolve here (`unresolved`);
+  - one bound by a relative path (`relative`: reported and counted, not failed);
+  - one moved or linked into another directory.
+
+  These are accepted for two reasons. The primary controls for the failing classes do not depend on the inventory:
+  `/run` masked whole, the private `/tmp`, CS-3's network namespace. And under the threat model, a host process, not
+  an agent, would have to put such a socket into an exposed tree.
+- **Before this ruling** the probe walked every mount within a 15 s budget. On CI's runners it never finished
+  (240k–784k entries at 15 s), and every contained launch failed closed. On the Rocky 8 VM a full walk took 0.6 s for
+  542k entries, warm. The walk is a data point now, not a mechanism (D-CS2-4).
+- **The classes,** one owner (`sockets.classify`, by name; `sockets.by_executable`, by the listening process's
+  executable when that process is the launching user's own), first match wins, the worse of the two kept:
+  - **own:** under the run's own bridge directory;
+  - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`; AEW's runtime directories count only
+    directly in a runtime root: `/run`, `/var/run`, `/tmp` or the launching `XDG_RUNTIME_DIR`, so a checkout or a
+    reviewer's tree named `aew-*` is no service's), a credential (ssh-agent, gpg-agent,
+    git's credential cache, the keyring, the session bus) or an escape route. An escape route is something that runs
+    commands as the operator, or as root, outside the sandbox: the system bus, tmux, screen, an editor server, a
+    container engine, the user service manager (the Lead's rulings on CS-2's plan);
+  - **named by the launching environment:** a socket its `DISPLAY`, `WAYLAND_DISPLAY`, `SSH_AUTH_SOCK` or
+    `DBUS_SESSION_BUS_ADDRESS` names is failing wherever it lives. `establish` takes that environment (by default the
+    process's own);
+  - **reported:** anything else, such as a site's ordinary services. It is listed on the label, never refused.
+
+### The self-test records CB-12's rows 2 to 5 on the label (`probe.self_test`)
+- **Row 2, `/run` and the sockets:** each host mask is a read-only tmpfs inside, holding only what the layout put
+  there, and `/var/run` leads into a mask. The masks checked are the host's runtime trees as they are now
+  (`layout.host_masks`), not only the layout's, so a layout that lost its `/run` mask fails. No path socket of a
+  failing class is reachable. The row fails closed on a table that cannot be read, a table without the control, and a
+  check inside that errors.
+- **Row 3, the display:** no display credential reads as anything but absent, empty or unreadable. No `DISPLAY_ENV`
+  variable reaches the probe, which is handed each of them set, so a sandbox that does not unset them fails.
+- **Row 4, the terminal:** read on the started process itself, `tty_nr` is 0 in its own `/proc/self/stat` and
+  `/dev/tty` gives `ENXIO`. Whether it leads its session is recorded, not required: under `--new-session` the
+  session's leader is bubblewrap's own process in the sandbox (seen on CI's runners and the Rocky 8 VM).
+- **Row 5, the binds and masks:** the M4-B checks. A runs mask that is missing inside now fails too.
+- **Recorded pass or fail:** each row has its name, `ok`, its reason and its facts. Row 2's facts are:
+  - the reachable sockets with their classes and inside paths;
+  - the table's size and how many path sockets were checked;
+  - the abstract sockets;
+  - the residuals;
+  - how long the host and the probe took.
+
+  `required` refuses a failing self-test, with the rows in
+  the refusal's details. `allow_weaker` launches the run labelled `workdir_separation_only`, with the rows on its
+  label. Row 1, the network, is CS-3's.
+
+### The reader git gap is closed
+The CS-1 amendment above pins the reader git gap (`READER_GIT_GAP`) and says CS-2 builds D-CS2-1. CS-2 has built it:
+a non-writer computes a fingerprint without writing any object, inside a sandbox and outside one (ADR-0002's
+amendment of 2026-10-23). `READER_GIT_GAP` is empty, and the worker-surface tests check the real object store by
+digest on both faces. That paragraph stays as the record of CS-1.
+
+### What this does not claim
+- **Row 2 certifies the sandbox as the run starts.** The inventory is taken by the launch self-test, so a socket
+  bound after it is not in it.
+- **The residuals above** are named, not closed.
+- The claim is still filesystem integrity with the network shared. CS-3 gives runs their own network namespace.
+
+### Tests
+- **`tests/unit/test_containment_layout.py`:**
+  - the `/run` mask (and `/var/run`, where it is a directory of its own) after the root bind, in the bind order, and
+    remounted read-only;
+  - each exception bound back read-only after the mask, and described with its reason;
+  - the `resolv.conf` exception as the first path under `/run` on its chain (POSIX);
+  - a project under a masked prefix stays visible, and a writable one writable;
+  - the project bind-back's conditions 1 and 2: for an implementer and a reviewer, only the project's and the
+    workspace's own binds come back, at real paths, in the order the same layout has without the mask; a bind of
+    something else on the media refused; a project under each protected name refused, and one at the mask itself; a
+    project named through a symlink bound back at its real path, and a link path refused (POSIX);
+  - a mask under a masked tree dropped;
+  - an operator root under or containing `/run` refused;
+  - a layout's JSON round trip giving the same argv;
+  - the display files and the `XAUTHORITY` file masked by type;
+  - every argv unsetting the display variables and starting a new session;
+  - no contained environment builder passing a display variable.
+- **`tests/unit/test_containment_sockets.py`**, all on synthetic inputs:
+  - each failing class on planted names and nothing else;
+  - an unlisted socket reported;
+  - the launching environment's sockets, the run's own bridge, and AEW's runtime directories only in a runtime root;
+  - the table's parsing, and an unreadable table;
+  - the abstract names and the executable classes;
+  - the inventory's candidates, classes and control;
+  - the same-directory rule;
+  - the residuals recorded;
+  - each socket's filesystem and its path within it.
+- **`tests/unit/test_containment_probe.py`**, on synthetic probe output:
+  - each row's judgement, passing and failing closed, row 4 included;
+  - row 2's fail-closed cases (an unreadable table, a missing control, a check inside that errors);
+  - row 2's residuals and its abstract fact;
+  - the probe's own matching on synthetic mount tables: every mount of the socket's filesystem, and the same file by
+    device and inode only;
+  - `aew doctor`'s WARN.
+- **`tests/integration/test_containment.py`** (Linux). Every planted item is synthetic, in the test's own 0700
+  directory, and removed in a `finally`. The launching environment is built from scratch.
+  - A passing run records rows 2 to 5, with the table's facts printed.
+  - An ordinary planted socket is reported and the run starts. One the launching environment names as its agent
+    fails the launch.
+  - A socket on a read-only bind can still be connected to: the reason for the inventory.
+  - A credential-cache socket in its default place is masked, and the run starts (serial).
+  - The sandbox's `resolv.conf` resolves to a readable file whenever the host's does.
+  - What a harness needs works under the mask: the user database, git status, Python's TLS module, and a name lookup
+    wherever the host itself can resolve one.
+  - The display's credentials and variables never reach a contained process, and no credential reaches git.
+  - Each row fails closed when its protection is taken out of the self-test's argv: `/run`'s mask, a display file's
+    mask, the variables' unsetting, a runs mask.
+  - A launcher that has a controlling terminal (a pseudo-terminal of the test's own) starts the probe, which has none;
+    without `--new-session` it inherits the launcher's, and row 4 fails.
+  - A project under a stand-in for `/run`, masked as `/run` is: bound back with its workspace, recorded with the
+    ruling, row 2 holding exactly them, the media's other directories absent inside (condition 5), and row 2 failing
+    with the mask taken out; a socket inside the project tree that the launching environment names as its agent fails
+    the launch (condition 4).

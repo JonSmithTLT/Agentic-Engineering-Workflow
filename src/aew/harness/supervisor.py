@@ -251,8 +251,9 @@ class Supervisor:
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
                 scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
                 project=str(self.engine.repo_root))
-        except errors.ContainmentUnavailable as exc:
-            self.record["containment"] = containment.label(contained=False, reason=exc.message)
+        except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
+            self.record["containment"] = containment.label(contained=False, reason=exc.message,
+                                                           self_test=exc.details.get("self_test"))
             self._event("containment_refused", reason=exc.message)
             raise
         self._event("containment", filesystem=self.record["containment"]["filesystem"],

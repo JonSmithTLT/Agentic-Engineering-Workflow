@@ -16,6 +16,7 @@ Windows has no OS filesystem containment (``workdir_separation_only``); its proc
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -83,9 +84,11 @@ def normalize(value: Any) -> dict[str, Any]:
 
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,
-              policy: dict[str, Any] | None, project: str | None = None) -> tuple[Layout | None, dict[str, Any]]:
+              policy: dict[str, Any] | None, project: str | None = None,
+              env: Mapping[str, str] | None = None) -> tuple[Layout | None, dict[str, Any]]:
     """The run's layout, self-tested, and its label. ``(None, weaker label)`` when containment is unavailable and
-    the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it."""
+    the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
+    environment, for the credential paths and sockets it names (default: this process's)."""
     from aew.harness.containment import probe
 
     wanted = mode(policy)
@@ -102,26 +105,33 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
             raise ContainmentUnavailable("a contained run needs its project root, to keep its writable binds off "
                                          "AEW's store and the control lock out of its sandbox; none was given")
         layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
-                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent)
+                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
-        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.)
-        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent)
+        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) The bridge's
+        # directory holds the run's own socket, which the inventory lists as its own.
+        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
+                               own=(bridge_dir,) if bridge_dir else (), env=env)
         if not test["ok"]:
-            raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=test)
+            raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:
         retire_private_git(run_dir)
         if wanted == REQUIRED:
             raise
-        return None, label(contained=False, reason=exc.message)
-    return layout, label(contained=True, mechanism=probe.mechanism(layout),
-                         self_test={"ok": True, "probe_pid": test.get("probe_pid")}, layout=layout)
+        return None, label(contained=False, reason=exc.message, self_test=exc.details.get("self_test"))
+    return layout, label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
+
+
+def recorded(test: dict[str, Any]) -> dict[str, Any]:
+    """What a run's label keeps of its launch self-test, pass or fail: the verdict, the probe's pid and each of
+    CB-12's rows with its facts (a self-test that could not run has no rows)."""
+    return {k: test[k] for k in ("ok", "reason", "probe_pid", "rows") if k in test}
 
 
 def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str]:
     """``(status, detail)`` for ``aew doctor``: a live sandbox, built and self-tested in a throwaway directory."""
     import tempfile
 
-    from aew.harness.containment import probe
+    from aew.harness.containment import probe, sockets
 
     wanted = mode(policy)
     if not supported():
@@ -143,10 +153,16 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
             test = probe.self_test(layout, sentinel_dir=root, sibling_dir=root)
             problem = None if test["ok"] else test["reason"]
         except AEWError as exc:  # ContainmentUnavailable, or the throwaway repository could not be made
-            layout, problem = None, exc.message
+            layout, problem, test = None, exc.message, {}
     if problem is None and layout is not None:
-        return "PASS", (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
-                        "(filesystem integrity; the host stays readable and the network is shared)")
+        detail = (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
+                  "(filesystem integrity; the host stays readable and the network is shared)")
+        # The designer's D-CS2-5: until CS-3, an abstract socket of a failing class is a fact, shown here as a WARN
+        shared = sorted({s["class"] for s in test["rows"]["2"]["abstract"]["sockets"] if s["class"] in sockets.FAILING})
+        if shared:
+            return "WARN", detail + "; " + "; ".join(f"abstract {c} socket on the shared network; CS-3's network "
+                                                     "namespace closes it" for c in shared)
+        return "PASS", detail
     if wanted == REQUIRED:
         return "FAIL", f"containment unavailable, so harness launches are refused: {problem}"
     return "WARN", f"containment unavailable; policy allows weaker runs ({WORKDIR_ONLY}): {problem}"

@@ -604,6 +604,23 @@ def test_the_store_writes_a_non_writer_role_reaches_are_the_finding_and_its_loca
     assert "`aew.m:local_write`" in permitted and "`aew.m:local_write`" not in checked
 
 
+@pytest.mark.parametrize(("directory", "mechanism", "store"), [
+    ("state", W.DIRECT, True), ("state", W.STORE_TRANSACTION, True), ("local", W.DIRECT, False),
+    ("local", W.STORE_TRANSACTION, True), (".gitignore", W.DIRECT, True)])
+def test_a_write_is_to_the_store_by_its_prefix_and_its_mechanism(directory, mechanism, store):
+    assert W.store_class(directory, mechanism) is store
+
+
+def test_a_store_transaction_write_under_local_that_a_non_writer_role_reaches_is_the_finding():
+    a = cli_analysis(CLI + "\ndef txn_local(session):\n    session.write('local/z', 'x')\n\n"
+                     "def cmd_txn(a):\n    txn_local(None)\n\n"
+                     "def more(sub):\n    lsub = sub.add_parser('lead').add_subparsers()\n"
+                     "    lsub.add_parser('mcp').set_defaults(handler=cmd_txn)\n\n"
+                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+    store, local = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "txn_local") in store[NAMED] and ("aew.m", "txn_local") not in local[NAMED]
+
+
 def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
     """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
     item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever

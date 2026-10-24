@@ -879,3 +879,127 @@ builds three outcomes of the STG-05 hand-off for CS-1, under the operator's hold
   - the entry-point table against the tree, both ways: every module that runs as a process is a row, and every row is
     one;
   - a guard that no code outside the store calls `store.read()` but the manifest reload.
+
+## Amendment 2026-10-23 — the masks: `/run`, the display, the terminal and the sockets (STG-05 CS-2)
+
+This amends the M4-B amendment's sandbox (2026-10-03) and its self-test. It builds CS-2's outcomes 1 to 4 and 6.
+Outcome 7, a fingerprint is a read (D-CS2-1), is ADR-0002's amendment of the same date. Outcome 5, the
+nested-namespace measurement, is the operator's and is not part of this amendment.
+
+### `/run` is masked whole (CB-03, ruling R-1; `layout.host_masks`)
+- **The mask:** every layout, eval's included, puts an empty tmpfs on `/run` at its depth in the one bind order
+  (`layout.order`). `/var/run` is masked the same way where it is a directory of its own rather than the usual link
+  to `/run`. Once what the layout binds back into a mask is there, the mask is remounted read-only, so nothing can be
+  made in it.
+- **Why whole:** a read-only mount refuses writes, not a socket's `connect`. `/run` holds the host's service sockets:
+  G3's, the work-item fact issuer's, the session and system buses, and the operator's runtime directory. A list of
+  them would miss the next one.
+- **The one host-derived exception** (the operator, 2026-10-24, on CS-2's plan): on a systemd-resolved host,
+  `/etc/resolv.conf` links into `/run`. Its first path under `/run` is bound back read-only by that name, with the
+  reason "name resolution until CS-3", when the link chain ends at a regular file. The chain is followed as the kernel
+  follows it, at most 40 links. Without that file, a contained harness could not resolve its provider's name until
+  CS-3 gives it a network namespace of its own. `Layout.run_exceptions` holds each exception with its reason, and the
+  label records them.
+- **Nothing else is bound back** but what the layout itself puts under a mask (`Layout.inside_host_masks`). A project
+  on a path under `/run` (removable media) stays usable: its binds land inside the mask by depth. That reading of R-1
+  waits on the operator's and the designer's ruling (CS-2's plan, Q10). Refusing such a layout instead would be one
+  refusal in `for_run`, of whatever `inside_host_masks` lists beyond the exceptions.
+- **An operator's writable root under `/run`, or containing it, is refused** (the Lead's ruling Q6), like any other
+  protected location (`CONTAINMENT_UNAVAILABLE`, naming "the host's runtime directory, masked whole").
+- **A secret mask under a tree that is already masked is not emitted** (`/tmp`, `/run`, a runs mask). It is hidden
+  with its tree, and making its path there would fail on the read-only mask.
+
+### The display's credentials and variables (CB-04)
+- **Files:** `~/.Xauthority`, `~/.ICEauthority` and the file `XAUTHORITY` names are masked by type, like every
+  secret. So are git's credential cache (`~/.cache/git/credential`, `$XDG_CACHE_HOME/git/credential`,
+  `~/.git-credential-cache`) and its store helper's file (`~/.config/git/credentials`,
+  `$XDG_CONFIG_HOME/git/credentials`).
+- **Variables:** `bwrap_argv` unsets `DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`, `DBUS_SESSION_BUS_ADDRESS` and
+  `SSH_AUTH_SOCK` (`layout.DISPLAY_ENV`) in every contained process, whatever its launcher passed. No contained
+  environment builder passes one, and `POSIX_KEEP` and `DISPLAY_ENV` are disjoint.
+
+### No controlling terminal (CB-05, ruling R-7)
+- **Every contained process starts in a new session** (`--new-session`), so it has no controlling terminal.
+- **Why that is enough:** the kernel refuses `TIOCSTI` on a terminal that is not the caller's controlling terminal,
+  to a caller without `CAP_SYS_ADMIN` in the initial user namespace. With no controlling terminal, no descriptor a
+  contained process holds accepts it. Row 4 checks the property; nothing pushes input anywhere.
+- bubblewrap's own processes stay in the caller's process group, so ending the run's process group still ends the
+  sandbox.
+
+### The socket inventory (CB-03; `aew.harness.containment.sockets`)
+- **What it finds:** a socket nobody listed. The masks close the doors somebody did list (`/run` whole, the secret
+  directories). The probe walks every mount the sandbox sees, the read-only root included. Each mount point is
+  walked once from its path, never into another mount point, following no link.
+- **What it does not walk:** kernel interfaces, which hold no socket a process could bind (`proc`, `sysfs`, `cgroup`
+  and the rest of `sockets.UNWALKED_FS`). Nor does it walk `autofs` mount points, which would mount what they serve
+  when walked; the mounts they have already made are walked. The label lists every mount not walked.
+- **Its budget:** half the self-test's bound (15 s; the Lead's ruling Q3). An inventory that did not finish cannot
+  certify row 2, so row 2 fails.
+- **The classes,** one owner (`sockets.classify`), first match wins:
+  - **own:** under the run's own bridge directory;
+  - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`), a credential (ssh-agent, gpg-agent,
+    git's credential cache, the keyring, the session bus) or an escape route. An escape route is something that runs
+    commands as the operator, or as root, outside the sandbox: the system bus, tmux, screen, an editor server, a
+    container engine, the user service manager (the Lead's rulings on CS-2's plan);
+  - **named by the launching environment:** a socket its `DISPLAY`, `WAYLAND_DISPLAY`, `SSH_AUTH_SOCK` or
+    `DBUS_SESSION_BUS_ADDRESS` names is failing wherever it lives. `establish` takes that environment (by default the
+    process's own);
+  - **reported:** anything else, such as a site's ordinary services. It is listed on the label, never refused.
+
+### The self-test records CB-12's rows 2 to 5 on the label (`probe.self_test`)
+- **Row 2, `/run` and the sockets:** each host mask is a read-only tmpfs inside, holding only what the layout put
+  there, and `/var/run` leads into a mask. The masks checked are the host's runtime trees as they are now
+  (`layout.host_masks`), not only the layout's, so a layout that lost its `/run` mask fails. The inventory is complete,
+  with no failing socket.
+- **Row 3, the display:** no display credential reads as anything but absent, empty or unreadable. No `DISPLAY_ENV`
+  variable reaches the probe, which is handed each of them set, so a sandbox that does not unset them fails.
+- **Row 4, the terminal:** `tty_nr` is 0, `/dev/tty` gives `ENXIO`, and the probe leads its own session.
+- **Row 5, the binds and masks:** the M4-B checks. A runs mask that is missing inside now fails too.
+- **Recorded pass or fail:** each row has its name, `ok`, its reason and its facts. Row 2's facts include the
+  sockets, how many entries were walked and how long it took. `required` refuses a failing self-test, with the rows in
+  the refusal's details. `allow_weaker` launches the run labelled `workdir_separation_only`, with the rows on its
+  label. Row 1, the network, is CS-3's.
+
+### The reader git gap is closed
+The CS-1 amendment above pins the reader git gap (`READER_GIT_GAP`) and says CS-2 builds D-CS2-1. CS-2 has built it:
+a non-writer computes a fingerprint without writing any object, inside a sandbox and outside one (ADR-0002's
+amendment of 2026-10-23). `READER_GIT_GAP` is empty, and the worker-surface tests check the real object store by
+digest on both faces. That paragraph stays as the record of CS-1.
+
+### What this does not claim
+- **The walk is measured on CI's runners and the Rocky 8 VM only.** On the work host, measure it before relying on
+  `required` there: a host with a larger tree could exceed the budget, and its launches would then be refused.
+- **Row 2 certifies the sandbox as the run starts.** The inventory is taken by the launch self-test.
+- The claim is still filesystem integrity with the network shared. CS-3 gives runs their own network namespace.
+
+### Tests
+- **`tests/unit/test_containment_layout.py`:**
+  - the `/run` mask (and `/var/run`, where it is a directory of its own) after the root bind, in the bind order, and
+    remounted read-only;
+  - each exception bound back read-only after the mask, and described with its reason;
+  - the `resolv.conf` exception as the first path under `/run` on its chain (POSIX);
+  - a project under a masked prefix stays visible, and a writable one writable;
+  - a mask under a masked tree dropped;
+  - an operator root under or containing `/run` refused;
+  - a layout's JSON round trip giving the same argv;
+  - the display files and the `XAUTHORITY` file masked by type;
+  - every argv unsetting the display variables and starting a new session;
+  - no contained environment builder passing a display variable.
+- **`tests/unit/test_containment_sockets.py`:** each failing class on planted paths and nothing else, an unlisted
+  socket reported, the launching environment's sockets, and the run's own bridge.
+- **`tests/unit/test_containment_probe.py`:** each row's judgement on synthetic probe output, passing and failing
+  closed, row 4 included. In a test's sandbox, no launcher has a controlling terminal to lose.
+- **`tests/integration/test_containment.py`** (Linux). Every planted item is synthetic, in the test's own 0700
+  directory, and removed in a `finally`. The launching environment is built from scratch.
+  - A passing run records rows 2 to 5, with the walk's facts printed.
+  - An ordinary planted socket is reported and the run starts. One the launching environment names as its agent
+    fails the launch.
+  - A socket on a read-only bind can still be connected to: the reason for the inventory.
+  - A credential-cache socket in its default place is masked, and the run starts (serial).
+  - The sandbox's `resolv.conf` resolves to a readable file whenever the host's does.
+  - What a harness needs works under the mask: the user database, git status, Python's TLS module, and a name lookup
+    wherever the host itself can resolve one.
+  - The display's credentials and variables never reach a contained process, and no credential reaches git.
+  - Each row fails closed when its protection is taken out of the self-test's argv: `/run`'s mask, a display file's
+    mask, the variables' unsetting, a runs mask.
+  - An incomplete walk fails row 2.

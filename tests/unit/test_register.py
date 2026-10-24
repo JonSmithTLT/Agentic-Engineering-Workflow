@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -96,6 +97,63 @@ def test_ids_sort_naturally():
     assert key("E39") < key("F1") < key("O1") < key("Q1") < key("U1")  # letters first, as the register numbers them
     assert key("Q9") < key("Q9 (decisions)") < key("Q9 (reconciliation)") < key("Q10")
     assert key("Gate") > key("U99")  # anything that is not an id sorts after every id
+    assert key("Q14") < key("STG-05") < key("STG-12") < key("U1")  # a build stage sorts by its letters, then its number
+
+
+def test_a_build_stage_is_an_id_in_exactly_one_form():
+    """One row per build stage of the architecture map, named as the map names it (designer, D-CS1-12)."""
+    assert all(register.ID_RE.match(i) for i in ("F2", "F15.5", "STG-05", "STG-12"))
+    assert not any(register.ID_RE.match(i) for i in ("STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2"))
+    assert {"STG-05", "STG-12"} <= {r["id"] for r in register.rows(DATA)}
+    assert all(r["target"] == "Stage" for r in register.rows(DATA) if (r["id"] or "").startswith("STG-"))
+
+
+def test_a_row_outside_the_gates_is_headed_by_its_id_or_a_labelled_one():
+    """A heading that is not an id would render, yet get no pointer, no note and no place in the id order: a near miss
+    of a stage id (``STG-6``, ``STG05``) or of a letter-number one (``F-2``) is refused by ``problems``, not left to be
+    found by the one who looks for the pointer (review of #240, m2). The closed rows that carry a label and the Gate
+    rows stay, and so do the §1 gates, whose first cell is their name."""
+    labelled = {"E33 (part)", "Q9 (decisions)", "Q9 (reconciliation)", "Gate"}
+    heads = {next(iter(r.values())) for s in DATA["sections"] if s["number"] != 1 for r in s["rows"]}
+    assert labelled <= heads and register.problems(DATA) == []
+    near_misses = ("STG-6", "STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2", "F2 ()", "Q9(x)", "Q9 (a) (b)")
+    for number, closed in ((2, False), (None, True)):
+        for head in near_misses:
+            data = copy.deepcopy(DATA)
+            section = next(s for s in data["sections"] if s["title"].startswith("Closed") == closed
+                           and (closed or s["number"] == number))
+            row = dict(section["rows"][-1])
+            row[section["columns"][0]] = head
+            section["rows"].append(row)
+            found = register.problems(register.normalize(data))
+            assert [p for p in found if repr(head) in p] == found and len(found) == 1, (number, head, found)
+
+
+def test_a_target_is_read_as_the_longest_register_target_it_starts_with():
+    """``TARGET_RE`` is derived from ``TARGETS``, the longest name first and nothing ending a match: ``M4 candidate`` is
+    its own target, not ``M4``, and an M4 phase (``**M4-E.**``, in no list of targets) still reads as ``M4`` (review of
+    #240, m3)."""
+    def read(cell: str) -> str | None:
+        m = register.TARGET_RE.match(cell)
+        return m.group(1) if m else None
+
+    named = [t for t in register.TARGETS if t != "Gate"]
+    assert [read(f"**{t}.** x") for t in named] == named
+    assert read("**Gate: before internal alpha** (§1)") == "Gate: before internal alpha"
+    assert read("**M4 candidate.** x") == "M4 candidate"
+    assert read("**M4-E.** x") == "M4" and read("**M4.** x") == "M4"
+    assert read("**Gate.** x") is None and read("M4. x") is None
+    candidates = sum(row[s["target_column"]].startswith("**M4 candidate") for s in DATA["sections"]
+                     if s.get("target_column") and not s["title"].startswith("Closed") for row in s["rows"])
+    assert candidates and sum(r["target"] == "M4 candidate" for r in register.rows(DATA)) == candidates
+
+
+def test_the_preambles_target_table_names_the_register_targets():
+    """The preamble tells the reader the targets; ``TARGETS`` is what the tool reads. ``Gate: …`` stands for ``Gate``
+    (review of #240, m3: a target added to one and forgotten in the other was caught by nothing)."""
+    cells = [line.split("|")[1] for line in DATA["preamble"].splitlines() if line.startswith("| **")]
+    named = ["Gate" if n.startswith("Gate:") else n for cell in cells for n in re.findall(r"\*\*(.+?)\*\*", cell)]
+    assert sorted(named) == sorted(register.TARGETS)
 
 
 def test_closed_rows_are_gates_first_then_id_order_and_an_appended_row_is_reported():

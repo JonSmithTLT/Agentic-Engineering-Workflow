@@ -19,6 +19,7 @@
 | **Evaluation** | Measurement with no product code, run alongside milestones |
 | **On measured need** | Only if evidence shows the cost or pain |
 | **Unscheduled** | No milestone yet; the next triage it fits may pull it in |
+| **Stage** | A build stage of the architecture map (`STG-NN`), built from the designer's hand-offs in the map's order; each slice adds a note on the stage's row |
 
 The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's plan review ratifies or changes them.
 
@@ -1351,6 +1352,30 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 **Notes:** The verdict is scoped to the profile tested: passing on Linux never qualifies Windows, and passing with restricted credentials never qualifies a host where credentials are reachable. No profile that passes the vertical gate is described as complete egress containment, or as production-qualified where that guarantee is required. Relates to F28 (the §1 gate before internal alpha) and F37: an outbound sanitiser does not close the boundary while the shell or the network can bypass it
 
 *Later notes: `notes.d/F51/`, oldest first (`python tools/register.py show F51`).*
+
+### STG-05
+
+**Work:** Agent containment, built in slices (CS-1 to CS-5): the store's path and the control lock kept out of agents' reach, the store's modes and group, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
+
+**Source (governing):** the designer's STG-05 hand-offs and rulings (D-CS1-1 to D-CS1-13, and the amended D-CS1-10 and D-CS1-11); ADR-0009 and its amendments from 2026-10-21
+
+**Belongs to or gated by:** **Stage.** STG-05, in the slice order the designer set: CS-1 (#230 and #231 merged; its CB-08 group follow-up next), then CS-2 to CS-5 in the map's order
+
+**Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23). CS-1's notes moved here from the closed F2 row.
+
+*Later notes: `notes.d/STG-05/`, oldest first (`python tools/register.py show STG-05`).*
+
+### STG-12
+
+**Work:** As-built reconciliation: a generated, CI-checked reference of what the code is (`docs/reference/`), from the code's own owners, so that a design-side trace can pair it with the requirements
+
+**Source (governing):** the documentation recovery plan v0.3 (adopted 2026-10-23); the designer's S12-2 hand-off and its two addenda
+
+**Belongs to or gated by:** **Stage.** STG-12; S12-2 builds the reference in pull requests one after another
+
+**Notes:** No requirement ids or text in the repository: the trace is the design side's.
+
+*Later notes: `notes.d/STG-12/`, oldest first (`python tools/register.py show STG-12`).*
 
 ## 3. Deferred by the M3 plan (out of M3 scope)
 

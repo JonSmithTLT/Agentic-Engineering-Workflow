@@ -93,7 +93,7 @@ def test_the_table_is_parsed_into_named_sockets_listening_or_not(tmp_path):
     """Every named socket of the table: by path, abstract (@) or relative as bound; an unnamed one is no door by name.
     A connection accepted on a listener is listed under the listener's name (102)."""
     path = tmp_path / "unix"
-    path.write_text(TABLE_TEXT)
+    path.write_bytes(TABLE_TEXT.encode())
     entries = S.table(str(path))
     assert [(e.inode, e.name, e.listening) for e in entries] == [
         (101, "/home/u/.cache/svc/listen.sock", True), (102, "/home/u/.cache/svc/listen.sock", False),
@@ -103,6 +103,65 @@ def test_the_table_is_parsed_into_named_sockets_listening_or_not(tmp_path):
 def test_an_unreadable_table_raises_for_the_caller_to_fail_closed(tmp_path):
     with pytest.raises(OSError):
         S.table(str(tmp_path / "absent"))
+
+
+RECORD = b"0000000000000000: 00000002 00000000 00010000 0001 01 %d %s\n"
+
+
+@pytest.mark.parametrize("byte", [b"\r", b"\x0b", b"\x0c", b"\t", b"\x85"])
+def test_a_name_is_listed_whole_whatever_bytes_it_holds(tmp_path, byte):
+    """Review of #244: the table is read as bytes and split at the newline only."""
+    name = b"/home/u/d" + byte + b"x/s.sock"
+    path = tmp_path / "unix"
+    path.write_bytes(TABLE_TEXT.encode() + RECORD % (107, name))
+    assert S.table(str(path))[-1] == S.Entry(107, name.decode("utf-8", "surrogateescape"), True)
+
+
+@pytest.mark.parametrize("tail", [
+    b"/home/u/d\nx/s.sock\n",
+    b"/home/u/d\n0000000000000000: 00000002 00000000 00010000 0001 01 x9 /a b c\n",
+    b"/home/u/s.sock\n\n",
+], ids=["short", "malformed", "empty"])
+def test_a_record_that_does_not_parse_raises_for_the_row_to_fail_closed(tmp_path, tail):
+    """A line that matches no record of the kernel's format makes the table raise ValueError; it is never dropped (the
+    row then fails closed, tests/unit/test_containment_probe.py)."""
+    path = tmp_path / "unix"
+    path.write_bytes(TABLE_TEXT.encode() + b"0000000000000000: 00000002 00000000 00010000 0001 01 107 " + tail)
+    with pytest.raises(ValueError, match="is not a socket's record"):
+        S.table(str(path))
+
+
+def test_a_table_without_its_header_or_its_last_newline_raises(tmp_path):
+    path = tmp_path / "unix"
+    path.write_bytes(TABLE_TEXT.encode().split(b"\n", 1)[1])
+    with pytest.raises(ValueError, match="no header"):
+        S.table(str(path))
+    path.write_bytes(TABLE_TEXT.encode().rstrip(b"\n"))
+    with pytest.raises(ValueError, match="does not end with a newline"):
+        S.table(str(path))
+
+
+MOUNTINFO = (b"22 1 8:1 / / ro,relatime shared:1 - xfs /dev/sda1 rw\n"
+             b"23 22 8:2 /u/p\\040q /media/a\\134b\\011c ro - xfs /dev/sda2 rw\n")
+
+
+@pytest.mark.parametrize("byte", [b"\r", b"\x0b", b"\x0c"])
+def test_the_mount_table_is_split_at_single_spaces_and_unescaped(tmp_path, byte):
+    """Review of #244: mountinfo escapes a space, a tab, a newline and a backslash in a path as octal and writes every
+    other byte raw, so its fields are split at single spaces only."""
+    path = tmp_path / "mountinfo"
+    path.write_bytes(MOUNTINFO + b"24 22 8:3 /x /mnt/p" + byte + b"t rw - ext4 /dev/sda3 rw\n")
+    assert S.mounts(str(path)) == [("8:1", "/", "/"), ("8:2", "/u/p q", "/media/a\\b\tc"),
+                                   ("8:3", "/x", "/mnt/p" + byte.decode() + "t")]
+
+
+@pytest.mark.parametrize("line", [b"24 22 8:3 /x /mnt/p rw ext4 /dev/sda3 rw\n", b"24 22 x /x /mnt rw - ext4 s rw\n",
+                                  b"24 22 8:3 /x\n", b"\n"], ids=["no-separator", "majmin", "short", "empty"])
+def test_a_mount_line_that_does_not_parse_raises(tmp_path, line):
+    path = tmp_path / "mountinfo"
+    path.write_bytes(MOUNTINFO + line)
+    with pytest.raises(ValueError, match="is not a mount's"):
+        S.mounts(str(path))
 
 
 @pytest.mark.parametrize(("name", "cls"), [
@@ -142,10 +201,12 @@ SOCK = stat.S_IFSOCK | 0o755
 CONTROL = "/tmp/aew-probe-x/control"
 
 
-def fake_host(monkeypatch, *, entries, listeners=None, stats=None, directories=None, mounts=()):
+def fake_host(monkeypatch, *, entries, listeners=None, stats=None, directories=None, mounts=(), realdirs=None,
+              unreadable=None):
     """The inventory's host inputs, all synthetic: the table's entries, the launching user's listeners
     {inode: executable}, lstat results {path: (dev, ino) or an exception}, directory listings {dir: [(path, dev,
-    ino)] or an exception}, and the host's mount table."""
+    ino)] or an exception}, the host's mount table, directories that resolve elsewhere {dir: resolved}, and the
+    launching user's processes that cannot be read."""
     def stat_of(dev: int, ino: int) -> SimpleNamespace:
         return SimpleNamespace(st_mode=SOCK, st_dev=dev, st_ino=ino)
 
@@ -162,11 +223,13 @@ def fake_host(monkeypatch, *, entries, listeners=None, stats=None, directories=N
         return [(p, stat_of(dev, ino)) for p, dev, ino in found]
 
     monkeypatch.setattr(S, "table", lambda path=S.TABLE: [S.Entry(*e) for e in entries])
-    monkeypatch.setattr(S, "listeners", lambda inodes: {i: x for i, x in (listeners or {}).items() if i in inodes})
+    monkeypatch.setattr(S, "listeners", lambda inodes: ({i: x for i, x in (listeners or {}).items() if i in inodes},
+                                                        list(unreadable or [])))
     monkeypatch.setattr(S, "mounts", lambda path=S.MOUNTINFO: list(mounts))
     monkeypatch.setattr(S, "_stat", lstat)
     monkeypatch.setattr(S, "_socket_files", socket_files)
     monkeypatch.setattr(S, "_majmin", lambda dev: f"{dev >> 8}:{dev & 0xff}")
+    monkeypatch.setattr(S, "_realdir", lambda directory: (realdirs or {}).get(directory, directory))
 
 
 def test_the_inventory_lists_each_path_socket_with_its_class_and_records_the_control(monkeypatch):
@@ -218,3 +281,67 @@ def test_each_socket_carries_its_filesystem_and_its_path_within_it_from_the_deep
     got = {c["path"]: c for c in S.inventory(control=CONTROL, env={})["candidates"]}
     assert (got["/home/u/proj/s.sock"]["majmin"], got["/home/u/proj/s.sock"]["fspath"]) == ("8:2", "/u/proj/s.sock")
     assert (got["/opt/x/s.sock"]["majmin"], got["/opt/x/s.sock"]["fspath"]) == ("8:5", None)  # no mount of it above
+
+
+def test_a_socket_listed_through_a_link_is_checked_at_its_resolved_path_too(monkeypatch):
+    """Review of #244: a listed path whose directory resolves elsewhere on the host carries that resolved spelling,
+    with its own place in its filesystem, for the probe to check inside as well; the class is the worse of the two
+    spellings'. A path that resolves to itself carries none."""
+    fake_host(monkeypatch, entries=[(1, "/srv/a/link/s.sock", True), (2, "/home/u/svc/s.sock", True),
+                                    (3, "/srv/a/link/m.Xy12", True)],
+              stats={"/srv/a/link/s.sock": (0x0802, 40), "/home/u/svc/s.sock": (0x0802, 41)},
+              directories={"/srv/a/link": [("/srv/a/link/master", 0x0802, 42)]},
+              realdirs={"/srv/a/link": "/home/u/.gnupg"}, mounts=[("8:1", "/", "/"), ("8:2", "/", "/home")])
+    got = {c["path"]: c for c in S.inventory(control=CONTROL, env={})["candidates"]}
+    assert got["/srv/a/link/s.sock"]["real"] == {"path": "/home/u/.gnupg/s.sock", "fspath": "/u/.gnupg/s.sock"}
+    assert got["/srv/a/link/s.sock"]["class"] == S.REPORTED
+    assert got["/srv/a/link/master"]["real"] == {"path": "/home/u/.gnupg/master", "fspath": "/u/.gnupg/master"}
+    assert got["/home/u/svc/s.sock"]["real"] is None
+    fake_host(monkeypatch, entries=[(1, "/srv/a/link/agent.1234", True)],
+              stats={"/srv/a/link/agent.1234": (0x0802, 45)}, realdirs={"/srv/a/link": "/tmp/ssh-Xy12"})
+    assert S.inventory(control=CONTROL, env={})["candidates"][0]["class"] == S.CREDENTIAL  # the resolved one's
+
+
+def test_the_launching_users_processes_are_read_for_their_sockets_and_those_it_cannot_read_are_named(monkeypatch):
+    """By the launching user's own processes (/proc/<pid>/fd). One whose /proc entries it cannot read is named by pid
+    and name for the label, one /proc shows as root's while its real uid is the launching user's included (review of
+    #244). Another user's processes, root's own and one that is gone are skipped."""
+    procs = {  # pid: (owner shown, real uid, exe, descriptors), or what reading it raises
+        "10": (1000, 1000, "/usr/bin/ssh", ["socket:[5]", "pipe:[1]"]),
+        "11": (0, 1000, PermissionError(13, "denied"), PermissionError(13, "denied")),
+        "12": (0, 0, "/usr/sbin/sshd", ["socket:[6]"]),
+        "13": (1001, 1001, "/usr/bin/tmux", ["socket:[7]"]),
+        "14": (1000, 1000, FileNotFoundError(2, "gone"), []),
+    }
+
+    def field(n):
+        def read(pid):
+            value = procs[pid][n]
+            if isinstance(value, Exception):
+                raise value
+            return value
+        return read
+
+    monkeypatch.setattr(S, "_uid", lambda: 1000)
+    monkeypatch.setattr(S, "_pids", lambda: list(procs))
+    monkeypatch.setattr(S, "_owner", field(0))
+    monkeypatch.setattr(S, "_real_uid", field(1))
+    monkeypatch.setattr(S, "_exe", field(2))
+    monkeypatch.setattr(S, "_fds", field(3))
+    monkeypatch.setattr(S, "_comm", lambda pid: {"11": "svc"}.get(pid))
+    assert S.listeners({5, 6, 7}) == ({5: "ssh"}, [{"pid": 11, "name": "svc"}])
+
+
+def test_a_status_file_is_read_as_bytes_for_its_real_uid(tmp_path):
+    path = tmp_path / "status"
+    path.write_bytes(b"Name:\tsvc\nUmask:\t0077\nState:\tS (sleeping)\nUid:\t1000\t1000\t1000\t1000\n"
+                     b"Gid:\t1000\t1000\t1000\t1000\n")
+    assert S._status_uid(str(path)) == 1000
+    path.write_bytes(b"Name:\tx\nState:\tS\n")
+    assert S._status_uid(str(path)) is None
+
+
+def test_the_inventory_carries_the_processes_it_could_not_read(monkeypatch):
+    fake_host(monkeypatch, entries=[(1, CONTROL, True)], stats={CONTROL: (0x0801, 9)},
+              unreadable=[{"pid": 11, "name": "svc"}])
+    assert S.inventory(control=CONTROL, env={})["unreadable"] == [{"pid": 11, "name": "svc"}]

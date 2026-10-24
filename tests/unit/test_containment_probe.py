@@ -8,8 +8,10 @@ here on synthetic host inventories and synthetic probe output, and the probe's o
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -60,13 +62,25 @@ def test_a_good_sandbox_passes_rows_2_to_4_with_their_facts():
 
 
 def test_row_2_names_every_residual_of_the_inventory_on_the_label():
-    """D-CS2-3: what the table cannot show is named on the label, each of the four: another network namespace and a
-    move or link into another directory (always), another mount namespace (the paths that do not resolve) and a
-    relative bind (counted)."""
+    """D-CS2-3 and the review of #244: every limit of the inventory is named on the label, always, and the instances
+    the table shows are listed: paths that do not resolve here (another mount namespace), relative binds (counted),
+    and sockets checked at their own paths only, as no mount of their filesystem is known above any spelling."""
     row = probe._row2(LAYOUT, GOOD)
-    assert row["not_covered"] == ["a socket bound in another network namespace",
-                                  "a socket moved or linked into another directory"]
+    assert row["not_covered"] == [
+        "a socket bound in another network namespace",
+        "a socket moved or linked into another directory",
+        "a socket bound in another mount namespace at a path that names a different socket here",
+        "a socket bound after the launch's check: the inventory is as of the launch",
+        "a socket bound through a file descriptor's path (/proc/self/fd/<n>/...): unresolved or unchecked here",
+        "a socket whose path the launcher could not check: recorded under unchecked, not failed"]
     assert row["unresolved"] == INVENTORY["unresolved"] and row["relative"] == INVENTORY["relative"]
+    assert row["untranslated"] == []
+    nss = {**INVENTORY["candidates"][0], "fspath": None}
+    alone = [{"path": nss["path"], "class": sockets.REPORTED}]
+    for real, untranslated in ((None, alone), ({"path": "/srv/nss", "fspath": None}, alone),
+                               ({"path": "/srv/nss", "fspath": "/srv/nss"}, [])):
+        inventory = {**INVENTORY, "candidates": [{**nss, "real": real}, INVENTORY["candidates"][1]]}
+        assert probe._row2(LAYOUT, {**GOOD, "inventory": inventory})["untranslated"] == untranslated
 
 
 def test_an_abstract_socket_of_a_failing_class_is_a_fact_of_the_shared_network_and_does_not_fail_the_row():
@@ -123,6 +137,32 @@ def test_an_unreadable_table_is_an_error_the_row_fails_on(monkeypatch):
     assert probe._row2(LAYOUT, {**GOOD, "inventory": got})["ok"] is False
 
 
+def test_a_table_that_does_not_parse_is_an_error_the_row_fails_on_never_a_crash(monkeypatch):
+    """Review of #244: a record of the kernel's tables that does not parse (sockets.table, sockets.mounts) refuses the
+    launch with a reason on the label; it is neither dropped nor an exception out of the self-test."""
+    def unparsed(**_kw):
+        raise ValueError("line 9 of /proc/net/unix is not a socket's record: b'x'")
+
+    monkeypatch.setattr(sockets, "inventory", unparsed)
+    monkeypatch.setattr(probe, "_control", lambda: contextlib.nullcontext(("/tmp/c/control", "/tmp/c")))
+    got = probe._inventory(own=(), env={})
+    assert got["error"] == ("the socket inventory could not parse the kernel's tables (line 9 of /proc/net/unix is "
+                            "not a socket's record: b'x')")
+    row = probe._row2(LAYOUT, {**GOOD, "inventory": got})
+    assert row["ok"] is False and "could not parse" in row["reason"]
+
+
+def test_row_2_records_what_the_host_could_not_check():
+    """A socket path the launcher could not check (an error other than its absence) is on the label, with its class
+    and why, and so is each of the launching user's processes it could not read (review of #244)."""
+    unchecked = [{"path": "/home/other/private/s.sock", "class": sockets.REPORTED, "error": "Permission denied"}]
+    row = probe._row2(LAYOUT, {**GOOD, "inventory": {**INVENTORY, "unchecked": unchecked}})
+    assert row["unchecked"] == unchecked
+    unreadable = [{"pid": 11, "name": "svc"}]  # the launching user's, not readable in /proc
+    row = probe._row2(LAYOUT, {**GOOD, "inventory": {**INVENTORY, "unreadable": unreadable}})
+    assert row["unreadable_processes"] == unreadable and row["ok"] is True
+
+
 # ----------------------------------------------------------------------------------------- the probe's matching
 def payload() -> dict:
     """The probe's definitions, without running it (its main part runs only as ``__main__``)."""
@@ -142,6 +182,24 @@ def test_the_probe_looks_for_a_socket_at_every_mount_of_its_filesystem_that_hold
     assert inside_paths(socket, MOUNTS) == ["/home/u/proj/s", "/run/media/p/s"]
     assert inside_paths({**socket, "fspath": None}, MOUNTS) == ["/home/u/proj/s"]  # no mount of it known: its own path
     assert inside_paths({**socket, "majmin": "8:9"}, MOUNTS) == ["/home/u/proj/s"]  # another filesystem's mounts
+
+
+def test_the_probe_checks_a_socket_at_its_resolved_spelling_too():
+    """Review of #244: a socket is also looked for at the path its directory resolves to on the host, and at that
+    spelling's place under every mount of its filesystem."""
+    ns = payload()
+    linked = {"path": "/srv/link/s", "dev": 2050, "ino": 9, "majmin": "8:2", "fspath": None,
+              "real": {"path": "/home/u/proj/s", "fspath": "/u/proj/s"}}
+    assert ns["inside_paths"](linked, MOUNTS) == ["/srv/link/s", "/home/u/proj/s", "/run/media/p/s"]
+
+    def lstat(path):
+        if path != "/home/u/proj/s":
+            raise FileNotFoundError(2, "absent", path)
+        return SimpleNamespace(st_mode=stat.S_IFSOCK | 0o755, st_dev=2050, st_ino=9)
+
+    ns["os"] = SimpleNamespace(lstat=lstat)
+    assert ns["reachable"]([linked], MOUNTS) == ([{"path": "/srv/link/s", "inside": ["/home/u/proj/s"]}], [])
+    assert ns["reachable"]([{**linked, "real": None}], MOUNTS) == ([], [])
 
 
 def test_the_probe_counts_a_socket_reachable_only_when_the_same_file_is_there():
@@ -167,6 +225,64 @@ def test_the_probe_counts_a_socket_reachable_only_when_the_same_file_is_there():
     ], MOUNTS)
     assert found == [{"path": "/home/u/proj/s", "inside": ["/home/u/proj/s", "/run/media/p/s"]}]
     assert failed == [{"path": "/home/u/locked/s", "error": "EACCES"}]
+
+
+@pytest.mark.parametrize("byte", [b"\r", b"\x0b", b"\x0c"])
+def test_the_probe_reads_its_mount_table_as_the_kernel_writes_it(tmp_path, byte):
+    """Review of #244: inside, as on the host (sockets.mounts), fields are split at single spaces only and unescaped,
+    and a line that does not parse raises, which the row fails on (`inside.errors`)."""
+    mountinfo = payload()["mountinfo"]
+    path = tmp_path / "mountinfo"
+    path.write_bytes(b"22 1 8:1 / / ro,relatime shared:1 - xfs /dev/sda1 rw\n"
+                     b"23 22 8:2 /u/p\\040q /media/p" + byte + b"t rw - xfs /dev/sda2 rw\n"
+                     b"24 22 0:50 / /run ro,nosuid - tmpfs tmpfs ro\n")
+    assert mountinfo(str(path)) == [("8:1", "/", "/", "xfs", True),
+                                    ("8:2", "/u/p q", "/media/p" + byte.decode() + "t", "xfs", False),
+                                    ("0:50", "/", "/run", "tmpfs", True)]
+    path.write_bytes(b"22 1 8:1 / / ro - xfs /dev/sda1 rw\n23 22 8:2 /u/p /media/p\n")
+    with pytest.raises(ValueError, match="is not a mount's"):
+        mountinfo(str(path))
+
+
+def test_a_mount_table_the_probe_cannot_read_or_parse_is_an_error_row_2_fails_on(tmp_path):
+    mount_table = payload()["mount_table"]
+    path = tmp_path / "mountinfo"
+    path.write_bytes(b"22 1 8:1 / / ro - xfs /dev/sda1 rw\n")
+    assert mount_table(str(path)) == ([("8:1", "/", "/", "xfs", True)], [])
+    path.write_bytes(b"22 1 8:1 / / ro xfs /dev/sda1 rw\n")
+    table, errors = mount_table(str(path))
+    assert table == [] and [e["path"] for e in errors] == [str(path)] and "is not a mount's" in errors[0]["error"]
+    assert mount_table(str(tmp_path / "absent"))[1][0]["path"] == str(tmp_path / "absent")
+    row = probe._row2(LAYOUT, {**GOOD, "inside": {**GOOD["inside"], "errors": errors}})
+    assert row["ok"] is False and f"could not check {path} inside" in row["reason"]
+
+
+def test_the_probe_is_handed_each_spelling_of_each_socket():
+    linked = {**INVENTORY["candidates"][1], "real": {"path": "/srv/cm/master", "fspath": "/srv/cm/master"}}
+    assert probe._candidates({**INVENTORY, "candidates": [INVENTORY["candidates"][0], linked]}) == [
+        {"path": "/var/lib/sss/pipes/nss", "dev": 2050, "ino": 7, "majmin": "8:2", "fspath": "/var/lib/sss/pipes/nss",
+         "real": None},
+        {"path": "/home/u/.cache/cm/master", "dev": 2050, "ino": 8, "majmin": "8:2", "fspath": "/u/.cache/cm/master",
+         "real": {"path": "/srv/cm/master", "fspath": "/srv/cm/master"}}]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the probe runs in a Linux sandbox: its paths are POSIX, and a "
+                                                    "symlink needs a privilege on Windows")
+def test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_there(tmp_path):
+    """Review of #244, m2: row 2's "holding only what the layout put there" rests on the probe's listing of each mask.
+    In a synthetic tree, the paths the layout put there and the directories on the way to them are not listed, nor is
+    anything under them; any other entry is, a link on the way included."""
+    masked_tree = payload()["masked_tree"]
+    root = tmp_path / "run"
+    allowed = root / "media" / "u" / "d" / "proj"
+    (allowed / "inside").mkdir(parents=True)
+    (root / "media" / "u" / "other").write_text("x")
+    (root / "media" / "u" / "d" / ".hidden").mkdir()
+    (root / "lnk").symlink_to(root / "media")
+    assert sorted(masked_tree(str(root), {str(allowed)})) == sorted(
+        str(p) for p in (root / "media" / "u" / "other", root / "media" / "u" / "d" / ".hidden", root / "lnk"))
+    assert masked_tree(str(root), {str(allowed), str(root / "media" / "u" / "other"),
+                                   str(root / "media" / "u" / "d" / ".hidden"), str(root / "lnk")}) == []
 
 
 # --------------------------------------------------------------------------------------------- aew doctor

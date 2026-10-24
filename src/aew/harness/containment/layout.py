@@ -7,7 +7,7 @@ A :class:`Layout` says what a contained process may write. Everything else is th
 * ``/run`` is masked whole (STG-05 CB-03, ruling R-1): an empty tmpfs at its depth, remounted read-only once what
   the layout binds back into it is there. ``/var/run`` is the usual link to it (or masked too, where it is a
   directory of its own). Every service socket there (G3's, the work-item fact issuer's, the session and system buses,
-  the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`', and a project
+  the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`, and a project
   on removable media under ``/run`` is bound back with its workspace, on the conditions the operator's ruling sets
   (:data:`RUN_BIND_BACK`, :func:`_refuse_run_bind_backs`);
 * every contained process starts in a new session, so it has no controlling terminal (CB-05, ruling R-7), and
@@ -28,10 +28,11 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   the workspace's ``.git`` pointer, the bridge directory), and a writable bind under a read-only re-bind stays
   writable. A reader's workspace stays read-only whole: an operator root inside it is not bound;
 * no writable bind may change the store's path (STG-05 CB-07, ruling R-3; :func:`_refuse_store_binds`);
-* secret masks, the display's credentials among them, come last and depend on the path's type: a directory is
-  replaced by an empty tmpfs, a file by an empty read-only file (``/dev/null`` would do, but SELinux refuses a device
-  node bound over a home file). One under a tree that is masked already (``/tmp``, ``/run``, a runs mask) is not
-  emitted: it is hidden with its tree, and making its path there would fail on a read-only mask.
+* secret masks, the display's credentials among them, come after every bind and depend on the path's type: a
+  directory is replaced by an empty tmpfs, a file by an empty read-only file (``/dev/null`` would do, but SELinux
+  refuses a device node bound over a home file). One in a tree that is masked whole (``/tmp``, ``/run``, a runs mask)
+  is hidden with its tree and not emitted, unless it lies in one of the layout's binds into that tree, such as a
+  project under ``/run`` or ``/tmp`` (:func:`_hidden_with_its_tree`).
 
 The claim is filesystem integrity, not confidentiality: apart from the masks, a contained process can read what
 the operator's account can read.
@@ -193,18 +194,28 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
         out += ["--unsetenv", name]
     for flag, path in order(layout):
         out += [flag, path] if flag == "--tmpfs" else [flag, path, path]
-    for path in (*layout.hide_host, *layout.hide_runs):  # after the bind-backs into them, which keep their own flags
-        out += ["--remount-ro", path]
-    masked = (SANDBOX_TMP, *layout.hide_host, *layout.hide_runs)
-    for path in layout.hide_dirs:
-        if not any(_within(path, m) for m in masked):
+    for path in layout.hide_dirs:  # after every bind; before the remounts, as a mask inside a bind-back may be there
+        if not _hidden_with_its_tree(layout, path):
             out += ["--tmpfs", path]
     for path in layout.hide_files:
-        if not any(_within(path, m) for m in masked):
+        if not _hidden_with_its_tree(layout, path):
             out += ["--ro-bind", layout.mask_file, path]
+    for path in (*layout.hide_host, *layout.hide_runs):  # after the bind-backs into them, which keep their own flags
+        out += ["--remount-ro", path]
     if cwd is not None:
         out += ["--chdir", os.fspath(cwd)]
     return [*out, "--", *argv]
+
+
+def _hidden_with_its_tree(layout: Layout, path: str) -> bool:
+    """Whether a secret at ``path`` is hidden already, with a tree masked whole (the sandbox's ``/tmp``, a host mask, a
+    runs mask), so its own mask is not emitted: making its path in a read-only mask would fail. It is when it lies in
+    such a tree and in none of the layout's binds inside that tree, which bring their part of the host back (a project
+    under ``/run`` or ``/tmp``, its workspace, the run's own directories): there the secret is the host's file, and its
+    mask is emitted like any other (review of #244, m1)."""
+    binds = (*layout.visible, *layout.writable, *layout.readonly, *(p for p, _ in layout.run_exceptions))
+    return any(_within(path, m) and not any(_within(path, b) and _within(b, m) and b != m for b in binds)
+               for m in (SANDBOX_TMP, *layout.hide_host, *layout.hide_runs))
 
 
 def order(layout: Layout) -> list[tuple[str, str]]:

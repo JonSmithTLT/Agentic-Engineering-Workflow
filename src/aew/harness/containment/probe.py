@@ -87,31 +87,45 @@ def create(p):
         return False
 def unescape(raw):
     return os.fsdecode(re.sub(rb"\\([0-7]{3})", lambda m: bytes([int(m.group(1), 8)]), raw))
-def mountinfo():
+def mountinfo(path="/proc/self/mountinfo"):
     # (major:minor, root within its filesystem, mount point, type, read-only), in mount order: of several mounts at
-    # one path, the last is on top
+    # one path, the last is on top. Split as the kernel writes it (as sockets.mounts does): records at the newline,
+    # fields at single spaces; a line that does not parse raises ValueError
+    with open(path, "rb") as f:
+        lines = f.read().split(b"\n")
+    if lines[-1] != b"":
+        raise ValueError(path + " does not end with a newline")
     out = []
-    with open("/proc/self/mountinfo", "rb") as f:
-        for line in f:
-            left, _, right = line.partition(b" - ")
-            fields, rest = left.split(), right.split()
-            if len(fields) < 6 or not rest:
-                continue
-            out.append((fields[2].decode(), unescape(fields[3]), unescape(fields[4]), os.fsdecode(rest[0]),
-                        b"ro" in fields[5].split(b",")))
+    for line in lines[:-1]:
+        left, sep, right = line.partition(b" - ")
+        fields, rest = left.split(b" "), right.split(b" ")
+        if not sep or len(fields) < 6 or not re.fullmatch(rb"[0-9]+:[0-9]+", fields[2]) or not rest[0]:
+            raise ValueError("a line of %s is not a mount's: %r" % (path, line[:80]))
+        out.append((fields[2].decode(), unescape(fields[3]), unescape(fields[4]), os.fsdecode(rest[0]),
+                    b"ro" in fields[5].split(b",")))
     return out
+def mount_table(path="/proc/self/mountinfo"):
+    # (the table, []) or ([], [what went wrong]): the row fails on the second
+    try:
+        return mountinfo(path), []
+    except (OSError, ValueError) as e:
+        return [], [{"path": path, "error": str(e)}]
 def inside_paths(socket, table):
-    # the socket's own path, and its place under every mount of its filesystem whose root holds it
-    out = [socket["path"]]
-    fs = socket.get("fspath")
-    if fs is None:
-        return out
-    for majmin, root, point, _, _ in table:
-        base = root.rstrip("/")
-        if majmin == socket["majmin"] and (fs == root or fs.startswith(base + "/")):
-            p = point.rstrip("/") + fs[len(base):] or "/"
-            if p not in out:
-                out.append(p)
+    # each spelling of the socket (as listed, and with its directory resolved on the host), and its place under every
+    # mount of its filesystem whose root holds it
+    spellings = [(socket["path"], socket.get("fspath"))]
+    if socket.get("real"):
+        spellings.append((socket["real"]["path"], socket["real"].get("fspath")))
+    out = []
+    for path, fs in spellings:
+        if path not in out:
+            out.append(path)
+        for majmin, root, point, _, _ in table if fs is not None else ():
+            base = root.rstrip("/")
+            if majmin == socket["majmin"] and (fs == root or fs.startswith(base + "/")):
+                p = point.rstrip("/") + fs[len(base):] or "/"
+                if p not in out:
+                    out.append(p)
     return out
 def reachable(candidates, table):
     # each socket found inside, the same file (device and inode), with where; and each check that failed
@@ -172,11 +186,12 @@ def terminal():
         tty = errno.errorcode.get(e.errno, str(e.errno))
     return {"tty_nr": int(fields[4]), "dev_tty": tty, "session_leader": os.getsid(0) == os.getpid()}
 if __name__ == "__main__":
-    spec = json.loads(sys.argv[1])
-    table = mountinfo()
+    spec = json.loads(sys.stdin.read())
+    table, unread = mount_table()
     top = {point: (fstype, ro) for _, _, point, fstype, ro in table}
     t0 = time.monotonic()
     found, errors = reachable(spec["candidates"], table)
+    errors = unread + errors
     print(json.dumps({
         "sentinel_written": append(spec["sentinel"]),
         "sibling_created": create(spec["sibling"]),
@@ -226,7 +241,16 @@ def _inventory(*, own: tuple[str, ...], env: Mapping[str, str]) -> dict[str, Any
             out = sockets.inventory(control=control, own=(*own, directory), env=env)
     except OSError as exc:
         out = {"error": f"the socket table could not be read ({type(exc).__name__}: {exc})"}
+    except ValueError as exc:  # a record that does not parse is never dropped (review of #244)
+        out = {"error": f"the socket inventory could not parse the kernel's tables ({exc})"}
     return {**out, "seconds": round(time.monotonic() - t0, 3)}
+
+
+def _candidates(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """What the probe needs of each path socket the host found: where to look (each spelling, and its place in its
+    filesystem) and what to match (device and inode)."""
+    return [{**{k: c[k] for k in ("path", "dev", "ino", "majmin", "fspath")}, "real": c.get("real")}
+            for c in inventory.get("candidates") or []]
 
 
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
@@ -245,8 +269,7 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     inventory = _inventory(own=own, env=os.environ if env is None else env)
     spec = {"sentinel": str(sentinel), "sibling": str(sibling), "name": name,
             "writable": list(layout.writable), "protected": [*layout.protected, *extra],
-            "candidates": [{k: c[k] for k in ("path", "dev", "ino", "majmin", "fspath")}
-                           for c in inventory.get("candidates") or []],
+            "candidates": _candidates(inventory),
             "host_masks": list(_host_masks(layout)), "inside_host_masks": list(layout.inside_host_masks()),
             "var_run": VAR_RUN, "display_files": list(layout.display_files), "unset_env": list(DISPLAY_ENV),
             "hide_dirs": list(layout.hide_dirs), "hide_files": list(layout.hide_files),
@@ -256,9 +279,9 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
             "markers": [str(m) for m in markers if any(_within(str(m), h) for h in (SANDBOX_TMP, *layout.hide_runs))]}
     result: dict[str, Any] = {"ok": False, "reason": None, "probe": name}
     try:
-        try:
-            done = subprocess.run(bwrap_argv(layout, [sys.executable, "-I", "-c", _PAYLOAD, json.dumps(spec)]),
-                                  capture_output=True, text=True, timeout=TIMEOUT_S, stdin=subprocess.DEVNULL,
+        try:  # the spec on stdin: one argument is capped at 128 KiB (MAX_ARG_STRLEN), and it grows with the sockets
+            done = subprocess.run(bwrap_argv(layout, [sys.executable, "-I", "-c", _PAYLOAD]), input=json.dumps(spec),
+                                  capture_output=True, text=True, timeout=TIMEOUT_S,
                                   env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8",
                                        **dict.fromkeys(DISPLAY_ENV, CANARY)})
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -340,10 +363,15 @@ def _row2(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
     problems += [f"a {s['class']} socket is reachable: {s['path']}"
                  + (f" (inside at {', '.join(s['inside'])})" if s["inside"] != [s["path"]] else "")
                  for s in found if s["class"] in sockets.FAILING]
+    # checked at their own paths only: no mount of their filesystem above them on the host (review of #244)
+    untranslated = [{"path": c["path"], "class": c["class"]} for c in classes.values()
+                    if c.get("fspath") is None and (c.get("real") or {}).get("fspath") is None]
     return _row("run_and_sockets", problems, host_masks=masks, sockets=found, table=inventory.get("table"),
                 checked=len(classes), abstract={"network": "shared", "sockets": inventory.get("abstract") or []},
                 unresolved=inventory.get("unresolved") or [], relative=inventory.get("relative") or [],
-                unchecked=inventory.get("unchecked") or [], not_covered=list(sockets.NOT_COVERED),
+                unchecked=inventory.get("unchecked") or [], untranslated=untranslated,
+                unreadable_processes=inventory.get("unreadable") or [],
+                not_covered=list(sockets.NOT_COVERED),
                 seconds={"host": inventory.get("seconds"), "inside": inside.get("seconds")})
 
 

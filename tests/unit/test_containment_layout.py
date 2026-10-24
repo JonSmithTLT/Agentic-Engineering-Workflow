@@ -522,6 +522,31 @@ def test_a_mask_under_an_already_masked_tree_is_dropped():
     assert not any(p in flags for p in ("/run/user/1000/gdm/Xauthority", "/tmp/xauth-1000", "/run/user/1000/keyring"))
 
 
+def test_a_mask_inside_a_bind_into_a_masked_tree_is_emitted_and_holds():
+    """Review of #244, m1: a secret inside a project under /run or under /tmp, or inside the run's own directory under
+    its runs mask, is the host's file there, so its mask is emitted like any other: after every bind, and before the
+    tree's read-only remount. A secret elsewhere in the same trees stays hidden with them."""
+    proj, tmp_proj, runs = "/run/media/u/d/proj", "/tmp/proj", "/p/.aew/local"
+    own = runs + "/harness/runs/R-1/scratch"
+    files = (proj + "/secrets.env", tmp_proj + "/secrets.env", own + "/token")
+    dirs = (proj + "/keys", tmp_proj + "/keys")
+    hidden = ("/run/user/1000/gdm/Xauthority", "/tmp/xauth-1000", runs + "/harness/runs/R-2/token",
+              "/run/user/1000/keyring")
+    layout = masked_layout(visible=(proj, tmp_proj), writable=(own, "/s"), hide_runs=(runs,),
+                           hide_files=(*files, *hidden[:3]), hide_dirs=(*dirs, hidden[3]))
+    flags = C.bwrap_argv(layout, ["agent"])
+    last_bind = max(i for i, f in enumerate(flags) if f in ("--bind", "--ro-bind") and flags[i + 1] in
+                    (proj, tmp_proj, own, "/s", RESOLV))
+    first_remount = flags.index("--remount-ro")
+    for p in files:
+        assert flags[flags.index(p) - 2:flags.index(p)] == ["--ro-bind", layout.mask_file], p
+        assert last_bind < flags.index(p) < first_remount, p
+    for p in dirs:
+        assert flags[flags.index(p) - 1] == "--tmpfs" and last_bind < flags.index(p) < first_remount, p
+    assert not any(p in flags for p in hidden)
+    assert mask_problems(flags, (*layout.hide_host, *layout.hide_runs)) == []
+
+
 def layout_of(tmp_path: Path, project: Path, ws: Path, run: Path, role: str) -> C.Layout:
     return C.for_run(role=role, scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
                      bridge_dir=None, policy=None, home=str(tmp_path / "home"), project=str(project),

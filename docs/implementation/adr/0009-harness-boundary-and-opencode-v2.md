@@ -916,8 +916,10 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   `for_run` refuses a layout that breaks 1 or 2 (`CONTAINMENT_UNAVAILABLE`, reasons `run_bind_back_protected`,
   `run_bind_back_outside_project`, `run_bind_back_not_real`). The label's `layout.bound_back` lists every path inside a
   mask with why: the exceptions with theirs, a project's binds with the ruling.
-- **A secret mask under a tree that is already masked is not emitted** (`/tmp`, `/run`, a runs mask). It is hidden
-  with its tree, and making its path there would fail on the read-only mask.
+- **A secret mask in a tree that is masked whole** (`/tmp`, `/run`, a runs mask) is not emitted when the secret is
+  hidden with its tree: making its path there would fail on the read-only mask. When it lies in one of the layout's
+  binds into that tree (a project under `/run` or `/tmp`, its workspace, the run's own directories), it is the host's
+  file there, and its mask is emitted after every bind, before the tree's read-only remount (review of #244, m1).
 
 ### The display's credentials and variables (CB-04)
 - **Files:** `~/.Xauthority`, `~/.ICEauthority` and the file `XAUTHORITY` names are masked by type, like every
@@ -946,7 +948,11 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   is not this namespace's.
 - **Reachable** means the same socket file, by device and inode, is at a path inside the sandbox: its own path, or
   any other the sandbox's mount table exposes it at (a bind of it or of a parent, found through
-  `/proc/self/mountinfo`). A same-named socket of the sandbox's own, or a mask in its place, does not count.
+  `/proc/self/mountinfo`). A same-named socket of the sandbox's own, or a mask in its place, does not count. Each
+  socket is looked for at its listed path and at that path with its directory resolved on the host (review of #244).
+- **The kernel's tables are read as the kernel writes them** (review of #244): as bytes, records split at the newline
+  only, mount-table fields at single spaces, octal escapes honoured. A record that does not match the table's fixed
+  format fails row 2 closed, with its reason; none is dropped.
 - **A socket linked into place:** it is bound under a temporary name and linked to its final name in the same
   directory, as OpenSSH's ControlMaster does (mux.c's `muxserver_listen`). The table lists it under the name that is
   gone, so every socket file in that directory is checked, each taking the worse of its own class and the listed
@@ -954,11 +960,18 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
 - **An abstract socket** has no file. It is listed with its class under the network label, `shared`, until CS-3 gives
   runs their own network namespace. `required` claims nothing about it, and `aew doctor` shows a failing-class one
   as WARN, naming its class and that CS-3 closes it (D-CS2-5).
-- **What it cannot see is named on the label** (D-CS2-3):
+- **What it cannot see is named on the label** (D-CS2-3; `sockets.NOT_COVERED`, widened by the review of #244):
   - a socket bound in another network namespace;
-  - one bound in another mount namespace, whose path does not resolve here (`unresolved`);
+  - one bound in another mount namespace, whose path does not resolve here (`unresolved`), or names a different
+    socket here;
   - one bound by a relative path (`relative`: reported and counted, not failed);
-  - one moved or linked into another directory.
+  - one moved or linked into another directory;
+  - one bound after the launch's check: the inventory is as of the launch;
+  - one bound through a file descriptor's path (`/proc/self/fd/<n>/...`), which shows as unresolved or unchecked;
+  - one whose path the launcher could not check (`unchecked`: recorded, not failed).
+
+  The label also lists the sockets checked at their own paths only, as no mount of their filesystem is known
+  (`untranslated`), and the launching user's processes that `/proc` does not let it read (`unreadable_processes`).
 
   These are accepted for two reasons. The primary controls for the failing classes do not depend on the inventory:
   `/run` masked whole, the private `/tmp`, CS-3's network namespace. And under the threat model, a host process, not
@@ -984,8 +997,10 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
 - **Row 2, `/run` and the sockets:** each host mask is a read-only tmpfs inside, holding only what the layout put
   there, and `/var/run` leads into a mask. The masks checked are the host's runtime trees as they are now
   (`layout.host_masks`), not only the layout's, so a layout that lost its `/run` mask fails. No path socket of a
-  failing class is reachable. The row fails closed on a table that cannot be read, a table without the control, and a
-  check inside that errors.
+  failing class is reachable. The row fails closed on a table that cannot be read or parsed, a table without the
+  control, and a check inside that errors. Each mask's listing is the probe's own (`masked_tree`), tested on a
+  synthetic tree (review of #244, m2). The probe takes its spec on stdin, since one argument is capped at 128 KiB
+  (n2).
 - **Row 3, the display:** no display credential reads as anything but absent, empty or unreadable. No `DISPLAY_ENV`
   variable reaches the probe, which is handed each of them set, so a sandbox that does not unset them fails.
 - **Row 4, the terminal:** read on the started process itself, `tty_nr` is 0 in its own `/proc/self/stat` and

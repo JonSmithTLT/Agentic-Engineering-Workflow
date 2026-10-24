@@ -336,6 +336,10 @@ skipped:
       /etc/resolv.conf's link chain is POSIX's, and making a symlink needs a privilege on Windows (STG-05 CS-2, the
       operator's ruling of 2026-10-24). Covered on Linux; the exception's place in the argv is tested on every platform
       (test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described_with_its_reason).
+    tests/unit/test_containment_probe.py::test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_there: >-
+      The probe runs in a Linux sandbox, so its paths are POSIX, and making a symlink needs a privilege on Windows
+      (STG-05 CS-2, review of #244, m2). Covered on Linux; the row's judgement of what it lists is tested on every
+      platform (test_row_2_fails_closed_on_its_masks).
     tests/integration/test_containment.py::test_a_readers_fingerprint_in_its_sandbox_equals_the_writers[uncommitted_edits]: >-
       Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
       Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by

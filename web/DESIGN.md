@@ -47,6 +47,8 @@ Inherit shared buttons/selects/panels. Native selects own their popup geometry; 
 
 ## Components
 
+Settings fixture preview inherits the workbench system. Configuration state and digest precede activity content. Divided label/value rows keep facts together; field-definition disclosures use shared boundaries. Profiles use a semantic table and one explicit read-only selection, while configured/effective data remain separately labeled. Narrow layouts reflow field pairs without hiding values; theme tokens and natural scrolling remain unchanged.
+
 Native disclosures enclose their expanded content with the shared border token and a separated summary row. Table scroll surfaces have an outer border and spacing from neighboring facts. Map fields keep each label/value pair within one divided row; table-valued fields put the label above the complete table. Work detail panels align at their natural top edges, with explanation groups sharing the panel's content inset. Response metadata disclosures identify their owning response even when their values match.
 
 `InvestigationWorkspace` owns selection layout/mobile switching/close. `RelationsExplorer` owns explicit bounded exploration. `SourceStrip` owns source versus browser metadata. `SafeContent` owns hostile Markdown rendering. `Pager` owns cursor navigation. Canonical behavior is in `UX-CONTRACT.md`.

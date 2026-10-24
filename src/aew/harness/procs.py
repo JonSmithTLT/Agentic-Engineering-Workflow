@@ -665,7 +665,12 @@ def recorded(start: Any, started: Any) -> float | str:
 
 
 class Watch:
-    """Observe one process by a handle opened while it was known to exist, immune to pid reuse (tests)."""
+    """Observe one process by a handle opened while it was known to exist (tests). It is immune to pid reuse only
+    where the OS gives such a handle:
+    - Windows: a process handle (a process that cannot be opened reads as gone);
+    - Linux 5.3 and later: a pidfd.
+    Elsewhere (no ``os.pidfd_open``, a kernel without the call, such as RL8's 4.18, or a refused call) it checks the pid
+    alone, which a reused pid fools."""
 
     def __init__(self, pid: int) -> None:
         self.pid = pid

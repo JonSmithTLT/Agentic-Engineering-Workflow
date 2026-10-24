@@ -28,8 +28,14 @@ address class, never the address: under any-public, the address would let the mo
 **Not here:** the AF_UNIX listener and its bind into the sandbox, the shim that forwards to it, the label and the
 self-test row are CS-3b's. The proxy serves whatever listening socket it is given.
 
-**Known limit:** the number of concurrent tunnels is unbounded. F28 gives no number, and the shim, its only client,
-is CS-3b's. Under any-public, the names the model asks for reach the host's resolver, and so the DNS.
+**Known limits:**
+
+- The number of concurrent tunnels is unbounded. F28 gives no number, and the shim, its only client, is CS-3b's. A
+  connection that cannot get a thread is closed unserved (``overloaded``), and the proxy goes on serving.
+- An established tunnel has no idle timeout: it lasts until either side ends it, or :meth:`EgressProxy.close`.
+- Under any-public, the names the model asks for reach the host's resolver, and so the DNS.
+- :meth:`EgressProxy.close` starts no new connect, but a connect already in flight is not interrupted. It ends within
+  ``CONNECT_TIMEOUT`` (the resolver has its own timeout), and is then closed with nothing relayed.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ import re
 import selectors
 import socket
 import threading
+import time
 from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
@@ -48,12 +55,16 @@ from aew.harness.containment import peer
 # Implementation bounds, not policy. A CONNECT from Bun or curl is under 200 bytes; 8 KiB is Apache httpd's default
 # request-line and header-field limit (LimitRequestLine, LimitRequestFieldSize: 8190 bytes), rounded up.
 MAX_HEADER = 8192
-# The shim forwards a CONNECT as soon as the harness sends it, so a silent client only holds a thread.
+# The shim forwards a CONNECT as soon as the harness sends it. The whole request head has one deadline, this long
+# after the connection was accepted, however its bytes are spaced.
 HEADER_TIMEOUT = 10.0
 # A refused or unreachable address fails in milliseconds (F28 §1, P1); this bounds only a SYN nobody answers.
 CONNECT_TIMEOUT = 10.0
 # How long close() waits for each connection's thread after shutting its sockets down.
 JOIN_TIMEOUT = 5.0
+# An accept that fails (out of descriptors, EMFILE) leaves the listener readable: the accept loop waits this long
+# before it tries again, rather than spinning while descriptors free up.
+ACCEPT_BACKOFF = 0.1
 CHUNK = 64 * 1024
 
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
@@ -67,11 +78,16 @@ Connector = Callable[[peer.IP, int, float], socket.socket]
 def authority(text: str) -> tuple[str, int]:
     """``host:port`` as ``(host, port)``, normalized: a lowercase name without its trailing dot, or an address in its
     compressed form (an IPv6 one in brackets). Raises ``ValueError`` saying what is wrong. The allowlist's entries and
-    every request go through it, so they compare equal exactly when they name the same target."""
+    every request go through it, so they compare equal exactly when they name the same target. Text is validated
+    before it is transformed: a name must be ASCII before it is lowercased, and a port at most five digits before it
+    is read as a number. An address with a zone id (``%eth0``) is refused: a zone means something only on a link-local
+    address, which R-6 refuses anyway, and the address connected must be the one judged."""
     if text.startswith("["):
         inside, sep, rest = text[1:].partition("]")
         if not sep or not rest.startswith(":"):
             raise ValueError("an IPv6 address is written [address]:port")
+        if "%" in inside:
+            raise ValueError("an address with a zone id is not a target")
         host, port_text = str(ipaddress.IPv6Address(inside)), rest[1:]
     else:
         host, sep, port_text = text.rpartition(":")
@@ -82,12 +98,14 @@ def authority(text: str) -> tuple[str, int]:
         try:
             host = str(ipaddress.IPv4Address(host))
         except ValueError:
+            if not host.isascii():
+                raise ValueError(f"{host!r} is neither an IP address nor an ASCII host name") from None
             host = host.lower().removesuffix(".")
             labels = host.split(".")
             if len(host) > 253 or not all(_LABEL.fullmatch(label) for label in labels):
                 raise ValueError(f"{host!r} is neither an IP address nor a host name") from None
-    if not (port_text.isascii() and port_text.isdigit() and 0 < int(port_text) < 65536):
-        raise ValueError(f"the port must be a number from 1 to 65535, not {port_text!r}")
+    if not (port_text.isascii() and port_text.isdigit() and len(port_text) <= 5 and 0 < int(port_text) < 65536):
+        raise ValueError("the port must be a number from 1 to 65535")
     return host, int(port_text)
 
 
@@ -219,27 +237,31 @@ class EgressProxy:
 
     def close(self) -> None:
         """Stop accepting, end every tunnel, and wait for their threads. The wake byte is never read, so every
-        selector that watches the wake socket (the accept loop's and each tunnel's) sees it."""
+        selector that watches the wake socket (the accept loop's and each tunnel's) sees it. The proxy's own sockets
+        are closed whatever happens on the way."""
         with self._lock:
             if self._closed.is_set():
                 return
             self._closed.set()
             live, handlers = list(self._open), list(self._handlers)
         try:
-            self._wake_w.send(b"x")
-        except OSError:
-            pass
-        if self._thread.is_alive():
-            self._thread.join(JOIN_TIMEOUT)
-        for sock in live:  # wakes a thread blocked in sendall towards a side that does not read (Linux)
-            _shutdown(sock)
-        for thread in handlers:
-            thread.join(JOIN_TIMEOUT)
-        for sock in live:  # and on Windows, where only closing the socket wakes it
-            sock.close()
-        for sock in (self._wake_r, self._wake_w, self.listener):
-            if sock is not None:
+            try:
+                self._wake_w.send(b"x")
+            except OSError:
+                pass
+            if self._thread.is_alive():
+                self._thread.join(JOIN_TIMEOUT)
+            for sock in live:  # wakes a thread blocked in sendall towards a side that does not read (Linux)
+                _shutdown(sock)
+            for thread in handlers:
+                if thread.ident is not None:  # one recorded but not yet started has nothing to wait for
+                    thread.join(JOIN_TIMEOUT)
+            for sock in live:  # and on Windows, where only closing the socket wakes it
                 sock.close()
+        finally:
+            for sock in (self._wake_r, self._wake_w, self.listener):
+                if sock is not None:
+                    sock.close()
 
     def _count(self, outcome: str) -> None:
         with self._lock:
@@ -270,12 +292,19 @@ class EgressProxy:
                     try:
                         conn, _ = listener.accept()
                     except OSError:
+                        self._closed.wait(ACCEPT_BACKOFF)
                         continue
                     thread = threading.Thread(target=self._handle_then_forget, args=(conn,),
                                               name="aew-egress-conn", daemon=True)
                     with self._lock:
                         self._handlers.add(thread)
-                    thread.start()
+                    try:
+                        thread.start()
+                    except RuntimeError:  # no thread can be started: this connection is closed unserved
+                        with self._lock:
+                            self._handlers.discard(thread)
+                        self._count("overloaded")
+                        conn.close()
 
     def _handle_then_forget(self, conn: socket.socket) -> None:
         try:
@@ -290,13 +319,15 @@ class EgressProxy:
             conn.close()
             return
         upstream: socket.socket | None = None
+        established = False
         try:
-            conn.settimeout(self.header_timeout)
             host, port, early = self._read_request(conn)
+            conn.settimeout(self.header_timeout)  # for the answer
             upstream = self._open_upstream(host, port)
             if not self._track(upstream):
                 return
             conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            established = True
             self._count("allowed")
             conn.settimeout(None)
             upstream.settimeout(None)
@@ -304,19 +335,30 @@ class EgressProxy:
                 upstream.sendall(early)
             self._splice(conn, upstream)
         except _Refused as refused:
-            self._count(refused.reason)
-            try:
-                conn.sendall(refused.response())
-            except OSError:
-                pass
+            self._answer(conn, refused)
         except OSError:
             pass  # the client or the upstream went away mid-tunnel
+        except Exception:  # anything else is counted, and answered with a fixed 502 unless the tunnel is open
+            if established:
+                self._count("proxy_error")
+            else:
+                self._answer(conn, _Refused(502, "proxy_error", "the egress proxy could not serve this request"))
         finally:
             if upstream is not None:
                 self._untrack(upstream)
             self._untrack(conn)
 
+    def _answer(self, conn: socket.socket, refused: _Refused) -> None:
+        self._count(refused.reason)
+        try:
+            conn.settimeout(self.header_timeout)
+            conn.sendall(refused.response())
+        except OSError:
+            pass
+
     def _read_request(self, conn: socket.socket) -> tuple[str, int, bytes]:
+        """The request head, which has one deadline (``header_timeout`` from now) however its bytes are spaced."""
+        deadline = time.monotonic() + self.header_timeout
         buf = b""
         while True:
             end = buf.find(b"\r\n\r\n")
@@ -324,7 +366,11 @@ class EgressProxy:
                 break
             if len(buf) > MAX_HEADER:
                 raise _Refused(431, "header_too_large", f"the request's header exceeds {MAX_HEADER} bytes")
+            left = deadline - time.monotonic()
             try:
+                if left <= 0:
+                    raise TimeoutError
+                conn.settimeout(left)
                 data = conn.recv(4096)
             except TimeoutError:
                 raise _Refused(408, "header_timeout", "no complete request arrived in time") from None
@@ -370,6 +416,8 @@ class EgressProxy:
             if reason:
                 raise _Refused(403, reason, self._why(target, reason))
         for ip in answers:
+            if self._closed.is_set():  # no new connect once close() has begun
+                raise _Refused(502, "closed", f"CONNECT {target}: the egress proxy is closing")
             try:
                 sock = self._connect(ip, port, self.connect_timeout)
             except OSError:
@@ -386,7 +434,10 @@ class EgressProxy:
 
     @staticmethod
     def _why(target: str, reason: str) -> str:
-        if reason in peer.HOST_ROUTE_REASONS or reason == "peer_unknown":
+        if reason == "peer_unknown":
+            return (f"CONNECT {target} refused: the connected peer's address could not be confirmed, so nothing was "
+                    "relayed. Retry the request.")
+        if reason in peer.HOST_ROUTE_REASONS:
             return (f"CONNECT {target} refused: it reaches a {reason} address. The egress proxy runs on the host and "
                     "never connects to the host's own addresses, even allowlisted ones (R-6). Provider traffic goes "
                     "through the provider relay, not this proxy.")
@@ -412,7 +463,8 @@ class EgressProxy:
     def _relay(self, src: socket.socket, dst: socket.socket, done_r: socket.socket, done_w: socket.socket) -> None:
         """One direction, until ``src`` ends, the other direction ends (``done_r``), or ``close()`` (the proxy's
         wake socket). Both wake sockets stay readable once written, and are watched rather than relying on a
-        shutdown: on Windows a shutdown does not wake a blocked ``recv``."""
+        shutdown: on Windows a shutdown does not wake a blocked ``recv``. When this direction ends, both sockets are
+        shut down as well, which ends the other direction even mid-``sendall`` (on Linux)."""
         try:
             with selectors.DefaultSelector() as selector:
                 for sock in (self._wake_r, done_r, src):
@@ -428,6 +480,8 @@ class EgressProxy:
         except OSError:
             pass  # a side broke: the tunnel ends both ways all the same
         finally:
+            _shutdown(src)
+            _shutdown(dst)
             try:
                 done_w.send(b"x")
             except OSError:

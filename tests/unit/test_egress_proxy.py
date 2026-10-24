@@ -1,9 +1,10 @@
 """F28's egress proxy under its two policies, with R-6 (STG-05 CS-3a; F28 §3.4).
 
 The client side is one end of a ``socket.socketpair()``. The resolver is synthetic. The connect is a spy that
-connects nowhere, or hands back one end of another socketpair that reports a chosen peer address. The only real
-connect is aimed at a listener the test owns on loopback, to show that the proxy never reaches it. Nothing contacts
-any other host: the public addresses here are values. Every socket has a timeout and is closed in a ``finally``.
+connects nowhere, or hands back one end of another socketpair that reports a chosen peer address. Every real connect
+goes to a loopback listener its test owns: one shows that the proxy never reaches it, one shows the default
+connector at work, and the others are the proxy's own front door. Nothing contacts any other host: the public
+addresses here are values. Every socket has a timeout and is closed in a ``finally``.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import errno
 import ipaddress
 import socket
 import threading
+import time
 import types
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -43,6 +45,15 @@ class Resolver:
         if host not in self.table:
             raise socket.gaierror(socket.EAI_NONAME, "synthetic: no such name")
         return self.table[host]
+
+
+def ended(sock: socket.socket) -> bool:
+    """The far side of a closed tunnel sees its end: EOF, or a reset when it had sent bytes nobody read. A tunnel
+    that stays open makes this raise TimeoutError instead."""
+    try:
+        return sock.recv(1) == b""
+    except ConnectionResetError:
+        return True
 
 
 class Reported(socket.socket):
@@ -221,9 +232,13 @@ def test_one_refused_answer_refuses_the_whole_name(policy):
     assert spy.calls == []
 
 
-@pytest.mark.parametrize("target", ["other.example:443", "catalog.example:80", "8.8.8.8:443"])
+@pytest.mark.parametrize("target", ["other.example:443", "catalog.example:80", "8.8.8.8:443",
+                                    "sub.catalog.example:443", "xcatalog.example:443"])
 def test_a_target_off_the_allowlist_is_refused_before_any_dns(target):
-    resolve, spy = Resolver({"other.example": ["8.8.8.8"], "catalog.example": ["8.8.8.8"]}), ConnectSpy()
+    """Entries are exact: neither another port, nor a name under the listed one, nor one ending with it."""
+    resolve = Resolver({name: ["8.8.8.8"] for name in
+                        ("other.example", "catalog.example", "sub.catalog.example", "xcatalog.example")})
+    spy = ConnectSpy()
     proxy = EgressProxy(Allowlist(["catalog.example:443"]), resolve=resolve, connect=spy, is_local=never_local)
     status, code, body = refusal(proxy, request(target))
     assert (status, code) == (403, "not_allowlisted") and "allowlist" in body
@@ -364,10 +379,13 @@ def test_the_connected_peer_is_judged_again_before_any_byte_is_relayed(policy, r
     proxy = EgressProxy(policy, resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=spy,
                         is_local=never_local)
     try:
-        assert refusal(proxy, request("public.example:443") + b"early-bytes")[:2] == (403, reason)
+        status, code, body = refusal(proxy, request("public.example:443") + b"early-bytes")
+        assert (status, code) == (403, reason)
         assert spy.far[0].recv(1) == b""  # closed with nothing relayed
     finally:
         spy.close()
+    if reason == "peer_unknown":  # said to be just that, never a host address
+        assert "could not be confirmed" in body and "R-6" not in body
 
 
 def test_when_every_address_binds_everything_counts_as_local_and_is_refused(monkeypatch):
@@ -395,12 +413,20 @@ def test_when_every_address_binds_everything_counts_as_local_and_is_refused(monk
     (b"CONNECT catalog.example:443\r\n\r\n", 400, "bad_request"),
     (b"\xff\xfe\r\n\r\n", 400, "bad_request"),
     (b"CONNECT " + b"a" * egress.MAX_HEADER, 431, "header_too_large"),
-], ids=["get", "no-port", "port-zero", "open-bracket", "bare-ipv6", "http2", "no-version", "not-ascii", "oversize"])
+    (b"CONNECT catalog.example:443 HTTP/1.1\r\nX-Pad: " + b"a" * egress.MAX_HEADER + b"\r\n\r\n", 431,
+     "header_too_large"),
+    (b"CONNECT [2606:4700:4700::1111%eth9]:443 HTTP/1.1\r\n\r\n", 400, "bad_request"),
+    (b"CONNECT [2606:4700:4700::1111%\x00]:443 HTTP/1.1\r\n\r\n", 400, "bad_request"),
+    (b"CONNECT catalog.example:" + b"4" * 5000 + b" HTTP/1.1\r\n\r\n", 400, "bad_request"),
+], ids=["get", "no-port", "port-zero", "open-bracket", "bare-ipv6", "http2", "no-version", "not-ascii", "oversize",
+        "complete-oversize", "zone-id", "zone-id-nul", "long-port"])
 def test_a_request_that_is_not_a_well_formed_connect_is_refused_before_any_dns(raw, status, reason):
     resolve, spy = Resolver({"catalog.example": ["8.8.8.8"]}), ConnectSpy()
-    proxy = EgressProxy(Allowlist(["catalog.example:443"]), resolve=resolve, connect=spy, is_local=never_local)
-    assert refusal(proxy, raw)[:2] == (status, reason)
+    proxy = EgressProxy(AnyPublic(), resolve=resolve, connect=spy, is_local=never_local)
+    status_got, reason_got, body = refusal(proxy, raw)
+    assert (status_got, reason_got) == (status, reason)
     assert resolve.calls == [] and spy.calls == []
+    assert "sys." not in body  # the proxy's own words, never the interpreter's
 
 
 def test_a_silent_client_is_answered_and_closed_after_the_header_timeout():
@@ -436,18 +462,25 @@ def test_allowlist_entries_are_normalized_and_validated():
     assert allow.describe() == {"policy": "allowlist", "allow": ["8.8.8.8:53", "[::1]:8080", "catalog.example:443"]}
     assert allow.admits("catalog.example", 443) is None
     assert allow.admits("catalog.example", 80) == "not_allowlisted"
+    assert allow.admits("sub.catalog.example", 443) == allow.admits("xcatalog.example", 443) == "not_allowlisted"
     assert allow.refuses(ipaddress.ip_address("10.0.0.1")) is None
     assert Allowlist([]).admits("catalog.example", 443) == "not_allowlisted"
     assert AnyPublic().describe() == {"policy": "any_public"}
-    for bad in ["catalog.example", "*.example:443", "catalog.example:0", "[::1]", "", "catalog.example:https"]:
+    for bad in ["catalog.example", "*.example:443", "catalog.example:0", "[::1]", "", "catalog.example:https",
+                "[fe80::1%eth0]:443", "Katalog.example:443", "catalog.example:" + "4" * 5000]:
         with pytest.raises(ValidationFailed) as caught:
             Allowlist([bad])
         assert caught.value.details == {"entry": bad, "reason": "bad_allowlist_entry"}
+        assert "sys." not in caught.value.message
 
 
 def test_the_proxy_serves_its_listener_and_close_ends_every_tunnel():
-    with pytest.raises(ValueError):
-        EgressProxy(AnyPublic()).start()
+    unstarted = EgressProxy(AnyPublic())
+    try:
+        with pytest.raises(ValueError):
+            unstarted.start()
+    finally:
+        unstarted.close()
     front = socket.create_server(("127.0.0.1", 0))  # the proxy's own front door, standing in for CS-3b's AF_UNIX one
     spy = ConnectSpy(peer_address=("8.8.8.8", 443))
     client = None
@@ -467,3 +500,196 @@ def test_the_proxy_serves_its_listener_and_close_ends_every_tunnel():
             client.close()
         front.close()
         spy.close()
+
+
+def test_the_whole_request_head_has_one_deadline():
+    """However its bytes are spaced, the request head must be complete ``header_timeout`` after the connection began:
+    a byte now and then does not extend it."""
+    timeout = 0.4
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver(), connect=ConnectSpy(), header_timeout=timeout)
+    stop = threading.Event()
+
+    def trickle(sock: socket.socket) -> None:
+        for byte in b"CONNECT catalog.example:443 HTTP/1.1\r\n":  # never the blank line that ends the head
+            if stop.wait(timeout / 4):
+                return
+            try:
+                sock.send(bytes([byte]))
+            except OSError:
+                return
+
+    with served(proxy) as client:
+        started = time.monotonic()
+        sender = threading.Thread(target=trickle, args=(client,), daemon=True)
+        sender.start()
+        try:
+            status, headers, _ = response(client)
+        finally:
+            stop.set()
+            sender.join(TIMEOUT)
+        elapsed = time.monotonic() - started
+    assert (status, headers["X-AEW-Refusal"]) == (408, "header_timeout")
+    assert elapsed < 3 * timeout
+
+
+def test_an_unexpected_error_is_answered_with_a_fixed_bad_gateway():
+    def broken(ip: peer.IP, port: int, timeout: float) -> socket.socket:
+        raise TypeError("synthetic detail")
+
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=broken,
+                        is_local=never_local)
+    status, code, body = refusal(proxy, request("public.example:443"))
+    assert (status, code) == (502, "proxy_error") and "synthetic" not in body
+    assert proxy.decisions == {"proxy_error": 1}
+
+
+def send_until_closed(sock: socket.socket, data: bytes) -> None:
+    try:
+        sock.sendall(data)
+    except OSError:
+        pass
+
+
+@pytest.mark.parametrize("ending", ["client_ends", "upstream_ends", "proxy_closes"])
+def test_a_tunnel_ends_both_ways_even_while_a_direction_is_mid_send(ending):
+    """RFC 9110 §9.3.6 while the direction towards one side is blocked in ``sendall``, because that side does not
+    read: the end still reaches the far side. Linux shows it, where the small buffers fill. Windows' loopback absorbs
+    the stream, so there no direction is ever blocked."""
+    spy = ConnectSpy(peer_address=("8.8.8.8", 443), small=True)
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=spy,
+                        is_local=never_local)
+    stream = b"s" * (64 * SMALL_BUFFER)
+    try:
+        with served(proxy, small=True) as client:
+            client.sendall(request("public.example:443"))
+            assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
+            far = spy.far[0]
+            source = client if ending == "upstream_ends" else far  # the other side never reads it
+            writer = threading.Thread(target=send_until_closed, args=(source, stream), daemon=True)
+            writer.start()
+            try:
+                time.sleep(0.3)  # long enough for the stream to fill every buffer on its way
+                if ending == "client_ends":
+                    client.shutdown(socket.SHUT_WR)
+                    assert ended(far)
+                elif ending == "upstream_ends":
+                    far.shutdown(socket.SHUT_WR)
+                    assert ended(client)
+                else:
+                    proxy.close()
+                    assert ended(far)
+            finally:
+                proxy.close()  # closing the tunnel's sockets wakes the writer at once, on Windows too
+                writer.join(TIMEOUT)
+    finally:
+        spy.close()
+
+
+def test_no_connect_starts_once_close_has_begun():
+    """A request still resolving when ``close()`` begins connects nowhere afterwards."""
+    entered, release = threading.Event(), threading.Event()
+
+    def slow(host: str, port: int) -> list[str]:
+        entered.set()
+        release.wait(TIMEOUT)
+        return ["8.8.8.8"]
+
+    spy = ConnectSpy(peer_address=("8.8.8.8", 443))
+    proxy = EgressProxy(AnyPublic(), resolve=slow, connect=spy, is_local=never_local)
+    try:
+        with served(proxy) as client:
+            client.sendall(request("public.example:443"))
+            assert entered.wait(TIMEOUT)
+            proxy.close()
+            release.set()
+            assert ended(client)
+    finally:
+        release.set()
+        spy.close()
+    assert spy.calls == [] and proxy.decisions == {"closed": 1}
+
+
+def test_a_connection_handed_over_after_close_is_closed_unserved():
+    resolve = Resolver({"catalog.example": ["8.8.8.8"]})
+    proxy = EgressProxy(AnyPublic(), resolve=resolve, connect=ConnectSpy())
+    proxy.close()
+    with served(proxy) as client:
+        assert ended(client)
+    assert resolve.calls == [] and proxy.decisions == {}
+
+
+def test_a_name_is_resolved_once():
+    """The address connected is one the single resolution gave, whatever a later lookup would answer."""
+    lookups: list[str] = []
+
+    def changing(host: str, port: int) -> list[str]:
+        lookups.append(host)
+        return ["192.0.2.10"] if len(lookups) == 1 else ["127.0.0.1"]
+
+    spy = ConnectSpy(peer_address=("192.0.2.10", 443))
+    proxy = EgressProxy(Allowlist(["catalog.example:443"]), resolve=changing, connect=spy, is_local=never_local)
+    try:
+        with served(proxy) as client:
+            client.sendall(request("catalog.example:443"))
+            assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
+    finally:
+        spy.close()
+    assert lookups == ["catalog.example"] and spy.calls == [("192.0.2.10", 443)]
+
+
+class FailingThread(threading.Thread):
+    """A thread that cannot be started, as when the process has none left."""
+
+    def start(self) -> None:
+        raise RuntimeError("synthetic: can't start new thread")
+
+
+def test_a_connection_that_cannot_get_a_thread_is_closed_and_serving_goes_on(monkeypatch):
+    front = socket.create_server(("127.0.0.1", 0))
+    proxy = EgressProxy(AnyPublic(), listener=front, resolve=Resolver(), connect=ConnectSpy())
+    clients: list[socket.socket] = []
+    try:
+        proxy.start()
+        monkeypatch.setattr(egress, "threading",
+                            types.SimpleNamespace(Thread=FailingThread, current_thread=threading.current_thread))
+        for _ in range(2):  # the second shows the accept loop still serving
+            clients.append(socket.create_connection(front.getsockname(), timeout=TIMEOUT))
+            assert ended(clients[-1])
+        assert proxy.decisions == {"overloaded": 2}
+    finally:
+        proxy.close()  # never raises, and closes the proxy's own sockets
+        for client in clients:
+            client.close()
+        front.close()
+    assert front.fileno() == -1
+
+
+class RefusingListener(socket.socket):
+    """A listener whose accept always fails, as when the process is out of descriptors."""
+
+    accepts = 0
+
+    def accept(self) -> tuple[socket.socket, Any]:
+        self.accepts += 1
+        raise OSError(errno.EMFILE, "synthetic: too many open files")
+
+
+def test_a_failing_accept_waits_between_tries_and_close_still_returns():
+    front = RefusingListener(socket.AF_INET, socket.SOCK_STREAM)
+    proxy = EgressProxy(AnyPublic(), listener=front, resolve=Resolver(), connect=ConnectSpy())
+    client = None
+    try:
+        front.bind(("127.0.0.1", 0))
+        front.listen()
+        client = socket.create_connection(front.getsockname(), timeout=TIMEOUT)  # keeps the listener readable
+        proxy.start()
+        time.sleep(0.5)
+        started = time.monotonic()
+        proxy.close()
+        assert time.monotonic() - started < 1.0
+        assert 1 <= front.accepts <= 0.5 / egress.ACCEPT_BACKOFF + 2
+    finally:
+        proxy.close()
+        if client is not None:
+            client.close()
+        front.close()

@@ -54,6 +54,17 @@ def test_r6_refuses_an_address_of_the_hosts_own_interface_in_every_form():
     assert peer.host_route("10.9.8.6", is_local=local) is None
 
 
+@pytest.mark.parametrize("form", ["64:ff9b::a09:807", "::a09:807"], ids=["nat64", "compatible"])
+def test_r6_judges_a_carried_ipv4_form_as_itself_too(form):
+    """A NAT64 or IPv4-compatible address in the local table is refused even when the IPv4 address it carries is not
+    there."""
+    def local(ip: peer.IP) -> bool:
+        return ip == ipaddress.ip_address(form)
+
+    assert peer.host_route(form, is_local=local) == "host_interface"
+    assert peer.host_route("10.9.8.7", is_local=local) is None
+
+
 @pytest.mark.parametrize("value", [
     "10.0.0.5", "203.0.113.7", "8.8.8.8", "2001:4860:4860::8888", "64:ff9b::808:808", "fd00::1", "::ffff:8.8.8.8",
 ])
@@ -179,13 +190,14 @@ class _FakeSocketModule:
         return types.SimpleNamespace(bind=bind, close=close)
 
 
-@pytest.mark.parametrize(("fake", "local"), [
-    (_FakeSocketModule(bind_error=errno.EADDRNOTAVAIL), False),   # right: not in the local table
-    (_FakeSocketModule(), True),                                  # every address binds (ip_nonlocal_bind=1)
-    (_FakeSocketModule(bind_error=errno.EACCES), True),           # the oracle cannot tell: local
-    (_FakeSocketModule(create_error=errno.EAFNOSUPPORT), True),   # no such family on this host: local
+@pytest.mark.parametrize(("errors", "local"), [
+    ({"bind_error": errno.EADDRNOTAVAIL}, False),   # right: not in the local table
+    ({}, True),                                     # every address binds (ip_nonlocal_bind=1)
+    ({"bind_error": errno.EACCES}, True),           # the oracle cannot tell: local
+    ({"create_error": errno.EAFNOSUPPORT}, True),   # no such family on this host: local
 ], ids=["not-local", "nonlocal-bind", "cannot-tell", "no-family"])
-def test_an_oracle_that_cannot_say_not_local_counts_the_address_as_local(monkeypatch, fake, local):
+def test_an_oracle_that_cannot_say_not_local_counts_the_address_as_local(monkeypatch, errors, local):
+    fake = _FakeSocketModule(**errors)
     monkeypatch.setattr(peer, "socket", fake)
     assert peer.is_host_address(ipaddress.IPv4Address("8.8.8.8")) is local
     assert peer.host_route("8.8.8.8") == (None if not local else "host_interface")

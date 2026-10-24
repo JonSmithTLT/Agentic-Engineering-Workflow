@@ -10,7 +10,9 @@ address, never on a name: a name raises.
   delivers locally, AnyIP routes included.
 - **IPv6 forms of an IPv4 address** are judged by the IPv4 address too: IPv4-mapped (``::ffff:0:0/96``, which a
   dual-stack socket connects to over IPv4), IPv4-compatible (``::/96``, deprecated) and NAT64's well-known prefix
-  (``64:ff9b::/96``). Zone ids are dropped (``fe80::1%eth0``).
+  (``64:ff9b::/96``). Zone ids are dropped (``fe80::1%eth0``). **Coverage limit:** no other embedding is unwrapped:
+  not the local-use NAT64 prefix (``64:ff9b:1::/48``) or any network-specific one, nor 6to4 or Teredo. Those reach the
+  host only through a translator or tunnel on the host itself, and :func:`not_public` refuses all of them whole.
 - **The credentialing relay is not judged here.** Its upstream is fixed by the execution profile and the model cannot
   redirect it (F28 §3.3), so a host-local upstream such as F18.8's gateway is allowed. The exemption is structural:
   only the egress proxy calls this module, and nothing here takes an exemption.

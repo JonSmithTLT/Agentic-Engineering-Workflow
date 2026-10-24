@@ -14,12 +14,13 @@ name: ci
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
 #   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
-#   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, and web
-#                        and static passed (the merge gate). It recomputes the tier, and refuses a reduced tier on
-#                        any event but a pull request: a push to main and a merge group always run in full. With a
-#                        changed fast-lane test module in a reduced tier it also requires the runtime lane check and
-#                        the coverage premise; in shadow mode it reports both without gating. On a green push to
-#                        main it adds the run's lane reports to the shard-durations history.
+#   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, in each
+#                        shard's latest run attempt, and web and static passed (the merge gate). It recomputes the
+#                        tier, and refuses a reduced tier on any event but a pull request: a push to main and a merge
+#                        group always run in full. With a changed fast-lane test module in a reduced tier it also
+#                        requires the runtime lane check and the coverage premise; in shadow mode it reports both
+#                        without gating. On a green push to main it adds the run's lane reports to the
+#                        shard-durations history.
 
 on:
   pull_request:
@@ -153,14 +154,18 @@ jobs:
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
           --session-deadline 1200
           "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
+      # Named per run attempt: `download-artifact` keeps one artifact of a name, not always the newest, so a re-run's
+      # report must not share its earlier attempt's name (assurance keeps each shard's latest attempt).
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: lane-report-${{ runner.os }}-core
+          name: lane-report-${{ runner.os }}-core-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
+      # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
+      # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps.
       - uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Linux'
+        if: success() && runner.os == 'Linux'
         with:
           name: coverage-core-${{ runner.os }}
           path: ${{ runner.temp }}/coverage/
@@ -214,11 +219,11 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}
+          name: lane-report-${{ runner.os }}-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Linux'
+        if: success() && runner.os == 'Linux'  # only from a passing job, as core's
         with:
           name: coverage-${{ matrix.lane }}-${{ matrix.shard }}-${{ runner.os }}
           path: ${{ runner.temp }}/coverage/

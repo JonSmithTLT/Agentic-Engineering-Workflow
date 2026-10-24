@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { z } from 'zod';
+import { previewJSONSchema } from './preview-json-schema.mjs';
 import { wireSchemas, executionSchemas, executionCases } from '../src/api/preview/execution/schema.ts';
 import { vocabularyInventory } from '../src/api/preview/execution/vocabulary.ts';
 import { executionFixture } from '../src/api/preview/execution/fixtures.ts';
@@ -16,7 +16,7 @@ const rules=[
  'Captured invocation status is not status at an event. No reconstructed state, polling, prefetch or inferred enforcement.',
  'Raw prompts, credentials, executable arguments, tool bodies and storage locations are excluded.',
 ];
-const digest=artifact('docs/design/execution-preview-0.1.0.json',{id:'execution-preview',version:'0.1.0',disposition:'PROVISIONAL',routes:{base:'/api/preview/execution/v0.1',methods:['GET','HEAD'],paths:['/traces','/traces/{source_id}','/traces/{source_id}/events','/traces/{source_id}/events/{event_id}','/traces/{source_id}/executions','/traces/{source_id}/executions/{execution_id}','/traces/{source_id}/executions/{execution_id}/controls','/traces/{source_id}/executions/{execution_id}/receipts'],parameters:['case','work','invocation_id','run_id (requires invocation_id)','lane','execution_id','cursor','limit=1..50']},bounds:{page:50,lanes:32,dimensions:32,budgets:16,relations:80,expansion_levels:3,expansion_nodes:24,expansion_edges:80},rules,vocabulary:vocabularyInventory,schemas:Object.fromEntries(Object.entries(wireSchemas).map(([k,s])=>[k,z.toJSONSchema(s)]))});
+const digest=artifact('docs/design/execution-preview-0.1.0.json',{id:'execution-preview',version:'0.1.0',disposition:'PROVISIONAL',routes:{base:'/api/preview/execution/v0.1',methods:['GET','HEAD'],paths:['/traces','/traces/{source_id}','/traces/{source_id}/events','/traces/{source_id}/events/{event_id}','/traces/{source_id}/executions','/traces/{source_id}/executions/{execution_id}','/traces/{source_id}/executions/{execution_id}/controls','/traces/{source_id}/executions/{execution_id}/receipts'],parameters:['case','work','invocation_id','run_id (requires invocation_id)','lane','execution_id','cursor','limit=1..50']},bounds:{page:50,lanes:32,dimensions:32,budgets:16,relations:80,expansion_levels:3,expansion_nodes:24,expansion_edges:80},rules,vocabulary:vocabularyInventory,schemas:Object.fromEntries(Object.entries(wireSchemas).map(([k,s])=>[k,previewJSONSchema(s)]))});
 const origin=(record_id,item_id=null)=>({contract:digest,case:'story',record_id,item_id,project_id:'aew-demo',source_id:'TRACE-Clangd',snapshot_id:'TRACE-SNAP-1'});
 const mappings=[
  {id:'LOC-Failure',origin:origin('EV-03'),target:{contract:'evidence-preview',case:'story',reference_id:'REF-EXEC-Failure',source_id:'ES-Removal',snapshot_id:'EV-SNAP-Removal',invocation_id:'CLANGD-INV-Removal',run_id:'CLANGD-R-A2-2',record_id:'CLANGD-E871',visibility_scope:'fictional-authorized'}},

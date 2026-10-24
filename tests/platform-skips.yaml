@@ -7,6 +7,16 @@ skipped:
     tests/unit/test_store_read_committed.py::test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic: >-
       POSIX rename is atomic, so a missing file is absent at once there; Windows retries it (F46.1 F1a, re-review R8).
       Covered on Windows by test_an_absent_file_is_absent_only_after_the_retries_on_windows.
+    tests/unit/test_process_identity.py::test_a_wall_clock_step_moves_the_epoch_start_time_but_never_the_start_id_on_linux: >-
+      btime (/proc/stat) is Linux's, and a wall-clock step moves it (ADR-0009 amendment 2026-10-23); Windows' process
+      creation time is absolute, so no step moves it. Covered on Linux; every reader's preference for the start id is
+      tested on every platform in the same file, with the step applied to each epoch start time.
+    tests/unit/test_process_identity.py::test_a_process_whose_comm_is_not_utf8_still_has_its_start_id_on_linux: >-
+      a comm (prctl PR_SET_NAME) and /proc/<pid>/stat are Linux's (review of #250, M1); Windows names a process by
+      its creation time, which holds no name. Covered on Linux.
+    tests/unit/test_process_identity.py::test_a_comm_neither_breaks_nor_forges_a_line_of_proc_status_on_linux: >-
+      /proc/<pid>/status and its Name line are Linux's (review of #250, M1); on Windows procs.host_pid returns its
+      argument and reads no file. Covered on Linux.
     tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
       the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
       session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).
@@ -41,6 +51,10 @@ skipped:
     tests/unit/test_eval_hidden.py::test_on_linux_the_models_programs_are_scored_in_a_sandbox: >-
       the model's programs are contained while scored only under Linux bubblewrap (F19 slice 3); Windows refuses
       held-out scoring instead (tested). Covered on Linux.
+    tests/integration/test_egress_host_local.py::test_an_address_the_kernel_delivers_to_this_host_is_refused_whatever_route_makes_it_local: >-
+      the cases are planted in unprivileged user and network namespaces, which are Linux's; the egress proxy runs
+      only on Linux (STG-05 CS-3). The route dump's parser runs on every platform (tests/unit/test_egress_peer.py).
+      Covered on Linux.
     tests/unit/test_store.py::test_a_holder_whose_lock_file_was_removed_commits_nothing: >-
       the lock file is removed while held, which Windows refuses for an open file (area 5 P2 is POSIX-only).
       Covered on Linux.

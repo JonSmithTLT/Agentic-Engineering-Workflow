@@ -1590,6 +1590,14 @@ sections:
       §2): F28''s relay is not deleted and keeps its containment and fixed-upstream credential-routing requirements, F18.8
       composes it with attestation and broker binding, and generic egress stays separate and credentialless.'
 
+  - '#': F28.1
+    Work: 'R-6, a check that a proxied connection did not end on this host, whatever the host''s own network configuration
+      does with it: after the handshake and before any byte is relayed, the proxy confirms the connection did not end on
+      this host, in both families and every TCP state; a failed or incomplete check refuses'
+    Source (governing): 'STG-05 CS-3a (#246); the design is the designer''s option (a) on #246''s review'
+    Belongs to or gated by: '**Unscheduled.** Deferred (operator, 2026-10-24); resumes on the operator''s decision'
+    Notes: 'The residual is stated meanwhile, in STG-05''s note for CS-3a and in #246''s known limits.'
+
   - '#': F30
     Work: 'Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with
       two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface

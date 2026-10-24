@@ -104,6 +104,20 @@ if sys.platform == "win32":  # pragma: windows-only
         code = ctypes.get_last_error()
         return OSError(code, f"{what} failed (winerror {code})")
 
+    def _created(pid: int) -> int | None:
+        """The process's creation time, in 100 ns since 1601-01-01: absolute, so no clock change moves it."""
+        h = _k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return None
+        try:
+            created = wintypes.FILETIME()
+            others = [wintypes.FILETIME() for _ in range(3)]
+            if not _k32.GetProcessTimes(h, ctypes.byref(created), *(ctypes.byref(o) for o in others)):
+                return None
+            return (created.dwHighDateTime << 32) | created.dwLowDateTime
+        finally:
+            _k32.CloseHandle(h)
+
 
 _SENTINEL = (
     "import os, signal, sys\n"
@@ -426,7 +440,7 @@ def process_chain(limit: int = 6) -> list[str]:
     elif sys.platform.startswith("linux"):  # pragma: posix-only
         def describe(pid: int) -> tuple[int, str] | None:
             try:
-                stat = Path(f"/proc/{pid}/stat").read_text(encoding="latin-1")
+                stat = Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1")
                 cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
             except OSError:
                 return None
@@ -516,36 +530,59 @@ def pid_alive(pid: int | None) -> bool:
         return True
 
 
+def _start_ticks(pid: int) -> int:
+    """Linux: when the process started, in clock ticks since boot (``/proc/<pid>/stat`` field 22). Fixed for the
+    process's life: the boot clock is never stepped. Read as bytes, decoded as latin-1: the comm before it is arbitrary
+    bytes, which a codec that can fail would turn into no start id (review of #250, M1)."""
+    return int(Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[19])
+
+
 def started_at(pid: int | None) -> float | None:
-    """When the process with this pid started (epoch seconds), or None if unknown. A pid is only a process's
-    identity together with its start time: pids are reused."""
+    """When the process with this pid started (epoch seconds), or None if unknown: for display, and for records
+    written before :func:`start_id`. On Linux it moves with every step of the wall clock (``btime`` is the wall clock
+    minus the time since boot), so it names no process: :func:`start_id` does."""
     if not pid:
         return None
     if sys.platform == "win32":  # pragma: windows-only
-        h = _k32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not h:
-            return None
-        try:
-            created = wintypes.FILETIME()
-            others = [wintypes.FILETIME() for _ in range(3)]
-            if not _k32.GetProcessTimes(h, ctypes.byref(created), *(ctypes.byref(o) for o in others)):
-                return None
-            ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime  # 100 ns since 1601-01-01
-            return ticks / 1e7 - 11644473600.0
-        finally:
-            _k32.CloseHandle(h)
+        created = _created(pid)
+        return None if created is None else created / 1e7 - 11644473600.0
     try:
-        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        ticks = _start_ticks(pid)
         boot = next(float(line.split()[1]) for line in Path("/proc/stat").read_text().splitlines()
                     if line.startswith("btime "))
-        return boot + int(fields[19]) / os.sysconf("SC_CLK_TCK")
+        return boot + ticks / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError, StopIteration):
         return None
 
 
+def start_id(pid: int | None) -> str | None:
+    """The process's start identity, or None if unknown: ``linux:<boot id>:<start ticks since boot>``, or
+    ``win:<creation time in 100 ns since 1601>``. A pid is only a process's identity together with it: pids are
+    reused. It never changes while the process lives, whatever the wall clock does, and a reused pid, or a pid after a
+    reboot, has another. Records store it beside the pid; it is only ever compared for equality (:func:`same_process`;
+    ADR-0009 amendment 2026-10-23)."""
+    if not pid:
+        return None
+    if sys.platform == "win32":  # pragma: windows-only
+        created = _created(pid)
+        return None if created is None else f"win:{created}"
+    try:
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        return f"linux:{boot}:{_start_ticks(pid)}" if boot else None
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _status_lines(pid: int | str) -> list[str]:
+    """``/proc/<pid>/status``, line by line. Its ``Name:`` line holds the comm, arbitrary bytes in which the kernel
+    escapes only a newline and a backslash. So it is read as bytes and decoded as latin-1, which never fails, and split
+    on newlines alone: a comm may hold any other line break ``str.splitlines`` knows, and text mode would turn its
+    ``\\r`` into a newline, either way adding a line of its own (review of #250, M1 and M2)."""
+    return Path("/proc", str(pid), "status").read_bytes().decode("latin-1").split("\n")
+
+
 def _nspid(pid: int | str) -> list[int]:
-    status = Path("/proc", str(pid), "status").read_text()
-    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    fields = dict(line.split(":", 1) for line in _status_lines(pid) if ":" in line)
     return [int(x) for x in fields.get("NSpid", "").split()]
 
 
@@ -598,22 +635,43 @@ def _descends(pid: int, ancestor: int) -> bool:
         if pid == ancestor:
             return True
         try:
-            status = Path("/proc", str(pid), "status").read_text()
+            status = _status_lines(pid)
         except OSError:
             return False
-        pid = next((int(line.split()[1]) for line in status.splitlines() if line.startswith("PPid:")), 0)
+        pid = next((int(line.split()[1]) for line in status if line.startswith("PPid:")), 0)
         seen += 1
     return pid == ancestor
 
 
-def same_process(pid: int | None, started_by: float) -> bool:
-    """The live process ``pid`` is the one that existed at ``started_by`` (not a later one reusing the pid)."""
+def same_process(pid: int | None, started_by: float | str) -> bool:
+    """The live process ``pid`` is the one a record names, not a later one reusing the pid.
+
+    ``started_by`` is the :func:`start_id` the record holds, compared exactly: one from another platform, another boot
+    or another process, or a malformed one, never matches. A record from before start ids holds an epoch time the
+    process had started by instead, compared with :func:`started_at` within 2 s; on Linux a wall-clock step of more
+    than that misjudges a live process as gone (the residual of ADR-0009 amendment 2026-10-23)."""
+    if isinstance(started_by, str):
+        return started_by == start_id(pid) and pid_alive(pid)
     start = started_at(pid)
     return start is not None and start <= started_by + 2.0 and pid_alive(pid)
 
 
+def recorded(start: Any, started: Any) -> float | str:
+    """What a record names its process by, for :func:`same_process`: its ``start`` id, or, in a record from before
+    start ids (``start`` absent), its epoch time ``started``. A ``start`` that is not a string names no process (fail
+    closed), and a record with neither names one started at the epoch: none."""
+    if start is not None:
+        return start if isinstance(start, str) else ""
+    return float(started or 0)
+
+
 class Watch:
-    """Observe one process by a handle opened while it was known to exist, immune to pid reuse (tests)."""
+    """Observe one process by a handle opened while it was known to exist (tests). It is immune to pid reuse only
+    where the OS gives such a handle:
+    - Windows: a process handle (a process that cannot be opened reads as gone);
+    - Linux 5.3 and later: a pidfd.
+    Elsewhere (no ``os.pidfd_open``, a kernel without the call, such as RL8's 4.18, or a refused call) it checks the pid
+    alone, which a reused pid fools."""
 
     def __init__(self, pid: int) -> None:
         self.pid = pid

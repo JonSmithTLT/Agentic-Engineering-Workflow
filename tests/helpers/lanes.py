@@ -329,6 +329,8 @@ class LanePlugin:
             "python": ".".join(map(str, sys.version_info[:3])),
             "lane": self.lane,
             "shard": f"{self.shard[0]}/{self.shard[1]}" if self.shard else None,
+            # The run attempt that wrote it (GitHub Actions; 1 elsewhere): assurance judges only each shard's latest.
+            "attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT") or 1),
             "xdist_workers": xdist,
             "exitstatus": exitstatus,
             "wall_s": round(time.perf_counter() - self.started, 2),

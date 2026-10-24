@@ -1,0 +1,4370 @@
+{
+  "counts": {
+    "by_coverage": {
+      "complete-by-construction": 6,
+      "lower-bound": 173
+    },
+    "by_family": {
+      "entry-points": 6,
+      "modules": 173
+    },
+    "by_family_and_coverage": {
+      "entry-points": {
+        "complete-by-construction": 6
+      },
+      "modules": {
+        "lower-bound": 173
+      }
+    },
+    "digest": "sha256:06dfb70eb4a0a58aa85b0c7c2abaed9587aebe05dfe97aa89bc4dbae0f945e2c",
+    "records": 179,
+    "unresolved": 5
+  },
+  "gaps": [
+    {
+      "family": "entry-points",
+      "module": "aew.dashboard.projections",
+      "symbol": "Projector._search_hit",
+      "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+    },
+    {
+      "family": "entry-points",
+      "module": "aew.harness.opencode.projection",
+      "symbol": "LEAD_MCP_COMMAND",
+      "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+    },
+    {
+      "family": "modules",
+      "module": "aew.doctor",
+      "symbol": "_modules",
+      "why": "__import__ with a computed module name"
+    },
+    {
+      "family": "modules",
+      "module": "aew.harness.registry",
+      "symbol": "load",
+      "why": "importlib.import_module with a computed module name"
+    },
+    {
+      "family": "modules",
+      "module": "aew.harness.registry",
+      "symbol": "load",
+      "why": "importlib.util.spec_from_file_location loads code by file path or name"
+    }
+  ],
+  "records": {
+    "entry-points:aew": {
+      "anchor": {
+        "module": "aew.cli.main",
+        "symbol": "_main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.cli.main",
+            "symbol": "_main",
+            "via": "cli_entry_point"
+          }
+        ],
+        "entry_point": "aew",
+        "kind": "store_writer",
+        "reason": "the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock",
+        "starts": [
+          {
+            "attribution": "derived",
+            "form": "console-script-argv",
+            "module": "aew.dashboard.projections",
+            "symbol": "Projector._search_hit"
+          },
+          {
+            "attribution": "derived",
+            "form": "-m",
+            "module": "aew.engine.custody_ops",
+            "symbol": "worker_argv"
+          },
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.agentenv",
+            "symbol": "build"
+          },
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "tui_env"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.dashboard.projections",
+              "symbol": "Projector._search_hit",
+              "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+            }
+          ]
+        }
+      },
+      "family": "entry-points"
+    },
+    "entry-points:aew (worker run)": {
+      "anchor": {
+        "module": "aew.cli.main",
+        "symbol": "_main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.cli.main",
+            "symbol": "_main",
+            "via": "cli_entry_point"
+          }
+        ],
+        "entry_point": "aew (worker run)",
+        "kind": "non_writer",
+        "reason": "the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, `check run` and `submit` go through the run's bridge, whose supervisor holds the credential and the lock; nothing else in that process may take the lock",
+        "starts": [
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.agentenv",
+            "symbol": "build"
+          },
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "tui_env"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
+      },
+      "family": "entry-points"
+    },
+    "entry-points:aew dashboard serve": {
+      "anchor": {
+        "module": "aew.cli.main",
+        "symbol": "_main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.cli.main",
+            "symbol": "_main",
+            "via": "cli_entry_point"
+          }
+        ],
+        "entry_point": "aew dashboard serve",
+        "kind": "non_writer",
+        "reason": "the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock",
+        "starts": [
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.agentenv",
+            "symbol": "build"
+          },
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "tui_env"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
+      },
+      "family": "entry-points"
+    },
+    "entry-points:aew lead mcp": {
+      "anchor": {
+        "module": "aew.cli.main",
+        "symbol": "_main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.cli.main",
+            "symbol": "_main",
+            "via": "cli_entry_point"
+          }
+        ],
+        "entry_point": "aew lead mcp",
+        "kind": "non_writer",
+        "reason": "the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential",
+        "starts": [
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.agentenv",
+            "symbol": "build"
+          },
+          {
+            "attribution": "unattributed",
+            "form": "console-script-on-PATH",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "tui_env"
+          },
+          {
+            "attribution": "derived",
+            "form": "console-script-argv",
+            "module": "aew.harness.opencode.projection",
+            "symbol": "LEAD_MCP_COMMAND"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.opencode.projection",
+              "symbol": "LEAD_MCP_COMMAND",
+              "why": "an argv list that starts with the console script `aew`; whether it is run as a process is not decided here"
+            }
+          ]
+        }
+      },
+      "family": "entry-points"
+    },
+    "entry-points:aew.harness.supervisor": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": "main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.harness.supervisor",
+            "symbol": "main",
+            "via": "literal"
+          }
+        ],
+        "entry_point": "aew.harness.supervisor",
+        "kind": "store_writer",
+        "reason": "a run's supervisor: holds the run's credential and commits through the engine",
+        "starts": [
+          {
+            "attribution": "derived",
+            "form": "-m",
+            "module": "aew.engine.harness_ops",
+            "symbol": "Harness._spawn_run"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
+      },
+      "family": "entry-points"
+    },
+    "entry-points:aew.stg02.server": {
+      "anchor": {
+        "module": "aew.stg02.server",
+        "symbol": "main"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_entry_point_declares_itself_and_every_declaration_is_one",
+          "tests/integration/test_reference_entry_points.py::test_every_python_dash_m_aew_spawn_site_names_a_listed_entry_point"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.process_kind:ENTRY_POINTS"
+      },
+      "fact": {
+        "declared_at": [
+          {
+            "module": "aew.stg02.server",
+            "symbol": "main",
+            "via": "literal"
+          }
+        ],
+        "entry_point": "aew.stg02.server",
+        "kind": "non_writer",
+        "reason": "the STG-02 slice's producer: it reads a project's committed state lock-free (dashboard.reader) and writes only its own state directory, never the store",
+        "starts": []
+      },
+      "fact_coverage": {
+        "declared_at": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "starts": {
+          "label": "lower-bound",
+          "unresolved": []
+        }
+      },
+      "family": "entry-points"
+    },
+    "modules:aew": {
+      "anchor": {
+        "module": "aew",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.__main__": {
+      "anchor": {
+        "module": "aew.__main__",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/__main__.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.main"
+      ]
+    },
+    "modules:aew.cli": {
+      "anchor": {
+        "module": "aew.cli",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/cli/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.cli.commands": {
+      "anchor": {
+        "module": "aew.cli.commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.dashboard_commands",
+        "aew.cli.history_commands",
+        "aew.cli.map_commands",
+        "aew.cli.message_commands",
+        "aew.cli.operator_commands",
+        "aew.cli.settings_commands",
+        "aew.cli.work_commands",
+        "aew.doctor",
+        "aew.engine.api",
+        "aew.errors",
+        "aew.harness.lead_broker",
+        "aew.harness.opencode.lead",
+        "aew.operator",
+        "aew.surface",
+        "aew.surface.client",
+        "aew.surface.context",
+        "aew.surface.contract",
+        "aew.surface.errors",
+        "aew.surface.mcp",
+        "aew.surface.run",
+        "aew.surface.stage",
+        "aew.util"
+      ]
+    },
+    "modules:aew.cli.credentials": {
+      "anchor": {
+        "module": "aew.cli.credentials",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/credentials.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.lead_broker",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.cli.dashboard_commands": {
+      "anchor": {
+        "module": "aew.cli.dashboard_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/dashboard_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.cli.credentials",
+        "aew.dashboard.control",
+        "aew.dashboard.defaults",
+        "aew.dashboard.server",
+        "aew.dashboard.service",
+        "aew.errors",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.cli.fields": {
+      "anchor": {
+        "module": "aew.cli.fields",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/fields.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.cli.history_commands": {
+      "anchor": {
+        "module": "aew.cli.history_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/history_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.errors"
+      ]
+    },
+    "modules:aew.cli.main": {
+      "anchor": {
+        "module": "aew.cli.main",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/main.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.cli.commands",
+        "aew.cli.credentials",
+        "aew.cli.fields",
+        "aew.engine.api",
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.recall",
+        "aew.errors",
+        "aew.harness.lead_broker",
+        "aew.process_kind",
+        "aew.profile"
+      ]
+    },
+    "modules:aew.cli.map_commands": {
+      "anchor": {
+        "module": "aew.cli.map_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/map_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.maps.service",
+        "aew.util"
+      ]
+    },
+    "modules:aew.cli.message_commands": {
+      "anchor": {
+        "module": "aew.cli.message_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/message_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands"
+      ]
+    },
+    "modules:aew.cli.operator_commands": {
+      "anchor": {
+        "module": "aew.cli.operator_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/operator_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.cli.dashboard_commands",
+        "aew.errors",
+        "aew.harness.operator_client",
+        "aew.harness.operator_endpoint",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.cli.settings_commands": {
+      "anchor": {
+        "module": "aew.cli.settings_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/settings_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.engine.configuration",
+        "aew.util"
+      ]
+    },
+    "modules:aew.cli.work_commands": {
+      "anchor": {
+        "module": "aew.cli.work_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/work_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.engine.custody_ops",
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.harness.contract",
+        "aew.harness.delivery",
+        "aew.operator",
+        "aew.surface.context",
+        "aew.surface.errors",
+        "aew.surface.run"
+      ]
+    },
+    "modules:aew.coordination": {
+      "anchor": {
+        "module": "aew.coordination",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/coordination/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.coordination.layout": {
+      "anchor": {
+        "module": "aew.coordination.layout",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/coordination/layout.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.delivery"
+      ]
+    },
+    "modules:aew.dashboard": {
+      "anchor": {
+        "module": "aew.dashboard",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/dashboard/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.contract": {
+      "anchor": {
+        "module": "aew.dashboard.contract",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/contract.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.control": {
+      "anchor": {
+        "module": "aew.dashboard.control",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/control.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.session",
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.harness.procs",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.dashboard.cursors": {
+      "anchor": {
+        "module": "aew.dashboard.cursors",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/cursors.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.defaults": {
+      "anchor": {
+        "module": "aew.dashboard.defaults",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/defaults.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.etag": {
+      "anchor": {
+        "module": "aew.dashboard.etag",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/etag.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.frontend": {
+      "anchor": {
+        "module": "aew.dashboard.frontend",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/frontend.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.mapview": {
+      "anchor": {
+        "module": "aew.dashboard.mapview",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/mapview.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.reasons",
+        "aew.harness.contract",
+        "aew.maps.canonical",
+        "aew.maps.rules",
+        "aew.maps.structural"
+      ]
+    },
+    "modules:aew.dashboard.projections": {
+      "anchor": {
+        "module": "aew.dashboard.projections",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/projections.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.dashboard.cursors",
+        "aew.dashboard.etag",
+        "aew.dashboard.mapview",
+        "aew.dashboard.reader",
+        "aew.dashboard.reasons",
+        "aew.engine.archive_ops",
+        "aew.engine.disposition_ops",
+        "aew.engine.freshness",
+        "aew.engine.history_ops",
+        "aew.engine.outbox",
+        "aew.engine.recall",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.harness.notify",
+        "aew.harness.runlog",
+        "aew.history.manifest",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.maps.freshness",
+        "aew.maps.gitobjects",
+        "aew.maps.rules",
+        "aew.maps.service",
+        "aew.maps.store",
+        "aew.maps.structural",
+        "aew.util"
+      ]
+    },
+    "modules:aew.dashboard.reader": {
+      "anchor": {
+        "module": "aew.dashboard.reader",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/reader.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.api",
+        "aew.engine.base",
+        "aew.engine.recall",
+        "aew.errors",
+        "aew.knowledge.manifest",
+        "aew.maps.store",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.dashboard.reasons": {
+      "anchor": {
+        "module": "aew.dashboard.reasons",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/reasons.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.dashboard.server": {
+      "anchor": {
+        "module": "aew.dashboard.server",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/server.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.contract",
+        "aew.dashboard.cursors",
+        "aew.dashboard.etag",
+        "aew.dashboard.frontend",
+        "aew.dashboard.projections",
+        "aew.dashboard.reader",
+        "aew.dashboard.reasons",
+        "aew.dashboard.session",
+        "aew.engine.api",
+        "aew.errors"
+      ]
+    },
+    "modules:aew.dashboard.service": {
+      "anchor": {
+        "module": "aew.dashboard.service",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/service.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.control",
+        "aew.dashboard.defaults",
+        "aew.dashboard.server",
+        "aew.dashboard.session",
+        "aew.engine.api",
+        "aew.engine.lock",
+        "aew.errors",
+        "aew.harness.procs",
+        "aew.knowledge.manifest",
+        "aew.util"
+      ]
+    },
+    "modules:aew.dashboard.session": {
+      "anchor": {
+        "module": "aew.dashboard.session",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/dashboard/session.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.defaults",
+        "aew.dashboard.server",
+        "aew.engine.authority",
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.doctor": {
+      "anchor": {
+        "module": "aew.doctor",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.doctor",
+            "symbol": "_modules",
+            "why": "__import__ with a computed module name"
+          }
+        ]
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/doctor.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.engine.api",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine": {
+      "anchor": {
+        "module": "aew.engine",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/engine/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.api": {
+      "anchor": {
+        "module": "aew.engine.api",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/api.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.engine.archive_ops",
+        "aew.engine.assurance",
+        "aew.engine.assurance_ops",
+        "aew.engine.base",
+        "aew.engine.configuration",
+        "aew.engine.context_ops",
+        "aew.engine.coordination_ops",
+        "aew.engine.custody_ops",
+        "aew.engine.dispatch",
+        "aew.engine.disposition_ops",
+        "aew.engine.evidence_ops",
+        "aew.engine.guards",
+        "aew.engine.harness_ops",
+        "aew.engine.hierarchy_ops",
+        "aew.engine.history_ops",
+        "aew.engine.integration_ops",
+        "aew.engine.lead_ops",
+        "aew.engine.log_compact",
+        "aew.engine.migrate_ops",
+        "aew.engine.nonmutating_ops",
+        "aew.engine.outbox",
+        "aew.engine.ports",
+        "aew.engine.queue_ops",
+        "aew.engine.resume_ops",
+        "aew.engine.role_ops",
+        "aew.engine.seams",
+        "aew.engine.stage_intents",
+        "aew.engine.status_ops",
+        "aew.engine.steering",
+        "aew.engine.store",
+        "aew.engine.usage_ops",
+        "aew.engine.validation_ops",
+        "aew.engine.work_ops",
+        "aew.engine.workspace_ops",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.containment",
+        "aew.harness.contract",
+        "aew.harness.opencode.lead",
+        "aew.harness.operator_client",
+        "aew.harness.registry",
+        "aew.history.manifest",
+        "aew.knowledge.discovery",
+        "aew.knowledge.manifest",
+        "aew.knowledge.records",
+        "aew.operator",
+        "aew.policy.execution",
+        "aew.schemas",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.archive_ops": {
+      "anchor": {
+        "module": "aew.engine.archive_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/archive_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.coordination.layout",
+        "aew.engine.base",
+        "aew.engine.hierarchy",
+        "aew.errors",
+        "aew.history.index",
+        "aew.history.manifest",
+        "aew.history.store",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.schemas",
+        "aew.util",
+        "aew.workspace.git",
+        "aew.workspace.worktrees"
+      ]
+    },
+    "modules:aew.engine.assurance": {
+      "anchor": {
+        "module": "aew.engine.assurance",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/assurance.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.policy.guardrails",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.assurance_ops": {
+      "anchor": {
+        "module": "aew.engine.assurance_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/assurance_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.assurance",
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.gates",
+        "aew.engine.ports",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.policy.execution",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.authority": {
+      "anchor": {
+        "module": "aew.engine.authority",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/authority.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.base": {
+      "anchor": {
+        "module": "aew.engine.base",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/base.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.seams",
+        "aew.engine.store",
+        "aew.engine.usage_ops",
+        "aew.errors",
+        "aew.knowledge.manifest",
+        "aew.knowledge.records",
+        "aew.knowledge.render",
+        "aew.policy.classes",
+        "aew.policy.execution",
+        "aew.process_kind",
+        "aew.schemas",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.configuration": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/configuration.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.steering",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.contract",
+        "aew.harness.models",
+        "aew.harness.registry",
+        "aew.history.manifest",
+        "aew.knowledge.manifest",
+        "aew.policy.config_paths",
+        "aew.policy.execution",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.context_ops": {
+      "anchor": {
+        "module": "aew.engine.context_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/context_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.archive_ops",
+        "aew.engine.base",
+        "aew.engine.gates",
+        "aew.engine.hierarchy",
+        "aew.engine.ports",
+        "aew.errors",
+        "aew.knowledge.context",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.maps.slices",
+        "aew.process_kind",
+        "aew.roles",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.coordination_ops": {
+      "anchor": {
+        "module": "aew.engine.coordination_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/coordination_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.coordination.layout",
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.outbox",
+        "aew.engine.ports",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.history.manifest",
+        "aew.history.store",
+        "aew.knowledge.manifest",
+        "aew.policy.execution",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.custody_ops": {
+      "anchor": {
+        "module": "aew.engine.custody_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/custody_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.disposition_ops",
+        "aew.engine.outbox",
+        "aew.engine.ports",
+        "aew.engine.queue_ops",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.contract",
+        "aew.harness.procs",
+        "aew.harness.runlog",
+        "aew.knowledge.evidence",
+        "aew.policy.validation",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.dependencies": {
+      "anchor": {
+        "module": "aew.engine.dependencies",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/dependencies.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.hierarchy",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.dispatch": {
+      "anchor": {
+        "module": "aew.engine.dispatch",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/dispatch.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.reasons",
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.disposition_ops": {
+      "anchor": {
+        "module": "aew.engine.disposition_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/disposition_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.store",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.evidence_ops": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/evidence_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.disposition_ops",
+        "aew.engine.gates",
+        "aew.engine.guards",
+        "aew.engine.ports",
+        "aew.engine.seams",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.policy.checks",
+        "aew.policy.guardrails",
+        "aew.schemas",
+        "aew.snapshot.fingerprint",
+        "aew.util",
+        "aew.workspace.integration"
+      ]
+    },
+    "modules:aew.engine.faults": {
+      "anchor": {
+        "module": "aew.engine.faults",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/faults.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.freshness": {
+      "anchor": {
+        "module": "aew.engine.freshness",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/freshness.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.gates": {
+      "anchor": {
+        "module": "aew.engine.gates",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/gates.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.knowledge.manifest",
+        "aew.policy.checks",
+        "aew.policy.validation"
+      ]
+    },
+    "modules:aew.engine.guards": {
+      "anchor": {
+        "module": "aew.engine.guards",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/guards.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.dispatch",
+        "aew.engine.primitives",
+        "aew.errors"
+      ]
+    },
+    "modules:aew.engine.guide": {
+      "anchor": {
+        "module": "aew.engine.guide",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/guide.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.transitions"
+      ]
+    },
+    "modules:aew.engine.harness_ops": {
+      "anchor": {
+        "module": "aew.engine.harness_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/harness_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.faults",
+        "aew.engine.nonmutating_ops",
+        "aew.engine.outbox",
+        "aew.engine.ports",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.harness.containment",
+        "aew.harness.contract",
+        "aew.harness.delivery",
+        "aew.harness.opencode.projection",
+        "aew.harness.procs",
+        "aew.harness.runlog",
+        "aew.knowledge.context",
+        "aew.knowledge.evidence",
+        "aew.policy.execution",
+        "aew.roles",
+        "aew.snapshot.fingerprint",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.hierarchy": {
+      "anchor": {
+        "module": "aew.engine.hierarchy",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/hierarchy.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.hierarchy_ops": {
+      "anchor": {
+        "module": "aew.engine.hierarchy_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/hierarchy_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dependencies",
+        "aew.engine.dispatch",
+        "aew.engine.gates",
+        "aew.engine.hierarchy",
+        "aew.engine.nonmutating_ops",
+        "aew.engine.ports",
+        "aew.engine.seams",
+        "aew.engine.transitions",
+        "aew.engine.work_ops",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.history_ops": {
+      "anchor": {
+        "module": "aew.engine.history_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/history_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.archive_ops",
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.faults",
+        "aew.engine.ports",
+        "aew.engine.recall",
+        "aew.errors",
+        "aew.history.index",
+        "aew.history.manifest",
+        "aew.history.store",
+        "aew.knowledge.records",
+        "aew.process_kind",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.integration_ops": {
+      "anchor": {
+        "module": "aew.engine.integration_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/integration_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.faults",
+        "aew.engine.guards",
+        "aew.engine.ports",
+        "aew.engine.queue_ops",
+        "aew.engine.stage_intents",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.policy.checks",
+        "aew.policy.guardrails",
+        "aew.policy.validation",
+        "aew.util",
+        "aew.workspace.git",
+        "aew.workspace.integration",
+        "aew.workspace.worktrees"
+      ]
+    },
+    "modules:aew.engine.lead_ops": {
+      "anchor": {
+        "module": "aew.engine.lead_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/lead_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.ports",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.knowledge.render",
+        "aew.operator",
+        "aew.roles",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.lock": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/lock.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.profile"
+      ]
+    },
+    "modules:aew.engine.log_compact": {
+      "anchor": {
+        "module": "aew.engine.log_compact",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/log_compact.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.faults",
+        "aew.engine.lock",
+        "aew.engine.outbox",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.process_kind",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.migrate_ops": {
+      "anchor": {
+        "module": "aew.engine.migrate_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/migrate_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.hierarchy",
+        "aew.engine.ports",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.harness.runlog",
+        "aew.history.index",
+        "aew.history.manifest",
+        "aew.history.store"
+      ]
+    },
+    "modules:aew.engine.nonmutating_ops": {
+      "anchor": {
+        "module": "aew.engine.nonmutating_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/nonmutating_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dependencies",
+        "aew.engine.dispatch",
+        "aew.engine.freshness",
+        "aew.engine.gates",
+        "aew.engine.hierarchy",
+        "aew.engine.ports",
+        "aew.engine.seams",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.knowledge.records",
+        "aew.snapshot.fingerprint",
+        "aew.util",
+        "aew.workspace.git",
+        "aew.workspace.worktrees"
+      ]
+    },
+    "modules:aew.engine.outbox": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/outbox.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.history.manifest",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.ports": {
+      "anchor": {
+        "module": "aew.engine.ports",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/ports.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.store",
+        "aew.history.index",
+        "aew.knowledge.context",
+        "aew.roles"
+      ]
+    },
+    "modules:aew.engine.primitives": {
+      "anchor": {
+        "module": "aew.engine.primitives",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/primitives.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.queue_ops": {
+      "anchor": {
+        "module": "aew.engine.queue_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/queue_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.ports",
+        "aew.engine.stage_intents",
+        "aew.errors",
+        "aew.harness.procs",
+        "aew.knowledge.records",
+        "aew.policy.validation",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.reasons": {
+      "anchor": {
+        "module": "aew.engine.reasons",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/reasons.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.recall": {
+      "anchor": {
+        "module": "aew.engine.recall",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/recall.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.archive_ops",
+        "aew.engine.base",
+        "aew.engine.history_ops",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.contract",
+        "aew.history.manifest",
+        "aew.history.store",
+        "aew.knowledge.manifest",
+        "aew.policy.execution",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.resume_ops": {
+      "anchor": {
+        "module": "aew.engine.resume_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/resume_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.engine.base",
+        "aew.engine.dependencies",
+        "aew.engine.gates",
+        "aew.engine.guide",
+        "aew.engine.hierarchy",
+        "aew.engine.nonmutating_ops",
+        "aew.engine.ports",
+        "aew.engine.seams",
+        "aew.engine.validation_ops",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.knowledge.manifest",
+        "aew.knowledge.render",
+        "aew.maps.slices",
+        "aew.policy.execution",
+        "aew.policy.validation",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.role_ops": {
+      "anchor": {
+        "module": "aew.engine.role_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/role_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.gates",
+        "aew.engine.ports",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.operator",
+        "aew.policy.consistency",
+        "aew.roles",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.seams": {
+      "anchor": {
+        "module": "aew.engine.seams",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/seams.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.errors"
+      ]
+    },
+    "modules:aew.engine.stage_intents": {
+      "anchor": {
+        "module": "aew.engine.stage_intents",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/stage_intents.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.primitives",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.harness.runlog",
+        "aew.knowledge.records",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.status_ops": {
+      "anchor": {
+        "module": "aew.engine.status_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/status_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.hierarchy",
+        "aew.harness.notify",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.steering": {
+      "anchor": {
+        "module": "aew.engine.steering",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/steering.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.primitives",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.store": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/store.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.coordination.layout",
+        "aew.engine.faults",
+        "aew.engine.lock",
+        "aew.engine.outbox",
+        "aew.errors",
+        "aew.process_kind",
+        "aew.profile",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.ticket_fields": {
+      "anchor": {
+        "module": "aew.engine.ticket_fields",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/ticket_fields.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.gates",
+        "aew.engine.hierarchy",
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.transitions": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/transitions.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.engine.usage_ops": {
+      "anchor": {
+        "module": "aew.engine.usage_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/usage_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.hierarchy",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.harness.runlog",
+        "aew.harness.usage",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.engine.validation_ops": {
+      "anchor": {
+        "module": "aew.engine.validation_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/validation_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.faults",
+        "aew.engine.outbox",
+        "aew.engine.ports",
+        "aew.engine.queue_ops",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.containment",
+        "aew.harness.procs",
+        "aew.knowledge.evidence",
+        "aew.policy.checks",
+        "aew.policy.guardrails",
+        "aew.policy.validation",
+        "aew.util",
+        "aew.workspace.integration"
+      ]
+    },
+    "modules:aew.engine.work_ops": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/work_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dependencies",
+        "aew.engine.guards",
+        "aew.engine.hierarchy",
+        "aew.engine.ports",
+        "aew.engine.seams",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.profile",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.engine.workspace_ops": {
+      "anchor": {
+        "module": "aew.engine.workspace_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/workspace_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.base",
+        "aew.engine.dependencies",
+        "aew.engine.dispatch",
+        "aew.engine.gates",
+        "aew.engine.ports",
+        "aew.engine.queue_ops",
+        "aew.engine.transitions",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.contract",
+        "aew.harness.registry",
+        "aew.knowledge.records",
+        "aew.policy.execution",
+        "aew.roles",
+        "aew.snapshot.fingerprint",
+        "aew.util",
+        "aew.workspace.worktrees"
+      ]
+    },
+    "modules:aew.errors": {
+      "anchor": {
+        "module": "aew.errors",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/errors.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness": {
+      "anchor": {
+        "module": "aew.harness",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/harness/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.agentenv": {
+      "anchor": {
+        "module": "aew.harness.agentenv",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/agentenv.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.bridge",
+        "aew.harness.contract"
+      ]
+    },
+    "modules:aew.harness.base": {
+      "anchor": {
+        "module": "aew.harness.base",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/base.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.harness.models",
+        "aew.harness.procs"
+      ]
+    },
+    "modules:aew.harness.bridge": {
+      "anchor": {
+        "module": "aew.harness.bridge",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/bridge.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.broker_liveness": {
+      "anchor": {
+        "module": "aew.harness.broker_liveness",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/broker_liveness.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.operator_client",
+        "aew.harness.procs",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.containment": {
+      "anchor": {
+        "module": "aew.harness.containment",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/harness/containment/__init__.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.containment.layout",
+        "aew.harness.containment.probe",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.harness.containment.egress": {
+      "anchor": {
+        "module": "aew.harness.containment.egress",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/egress.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.containment.peer"
+      ]
+    },
+    "modules:aew.harness.containment.layout": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/layout.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.harness.containment.peer": {
+      "anchor": {
+        "module": "aew.harness.containment.peer",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/peer.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.containment.probe": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/probe.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.containment.layout"
+      ]
+    },
+    "modules:aew.harness.contract": {
+      "anchor": {
+        "module": "aew.harness.contract",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/contract.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.delivery": {
+      "anchor": {
+        "module": "aew.harness.delivery",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/delivery.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.event_spool": {
+      "anchor": {
+        "module": "aew.harness.event_spool",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/event_spool.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.lead_broker": {
+      "anchor": {
+        "module": "aew.harness.lead_broker",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/lead_broker.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.fields",
+        "aew.cli.main",
+        "aew.engine.api",
+        "aew.engine.authority",
+        "aew.engine.dispatch",
+        "aew.engine.faults",
+        "aew.engine.harness_ops",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.bridge",
+        "aew.harness.broker_liveness",
+        "aew.harness.procs",
+        "aew.harness.steering_loop",
+        "aew.harness.tool_calls",
+        "aew.surface.context",
+        "aew.surface.run",
+        "aew.surface.validate",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.models": {
+      "anchor": {
+        "module": "aew.harness.models",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/models.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.harness.notify": {
+      "anchor": {
+        "module": "aew.harness.notify",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/notify.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.api",
+        "aew.engine.outbox",
+        "aew.engine.steering",
+        "aew.harness.agentenv",
+        "aew.harness.broker_liveness",
+        "aew.harness.contract",
+        "aew.harness.event_spool",
+        "aew.harness.lead_broker",
+        "aew.harness.procs",
+        "aew.harness.runlog",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.opencode": {
+      "anchor": {
+        "module": "aew.harness.opencode",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/harness/opencode/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.opencode.adapter": {
+      "anchor": {
+        "module": "aew.harness.opencode.adapter",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/opencode/adapter.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.base",
+        "aew.harness.contract",
+        "aew.harness.opencode.capabilities",
+        "aew.harness.opencode.client",
+        "aew.harness.opencode.projection",
+        "aew.harness.runlog",
+        "aew.harness.usage",
+        "aew.harness.usage_live"
+      ]
+    },
+    "modules:aew.harness.opencode.capabilities": {
+      "anchor": {
+        "module": "aew.harness.opencode.capabilities",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/opencode/capabilities.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.opencode.client": {
+      "anchor": {
+        "module": "aew.harness.opencode.client",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/opencode/client.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.harness.opencode.lead": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/opencode/lead.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.lead_broker",
+        "aew.harness.opencode.adapter",
+        "aew.harness.opencode.capabilities",
+        "aew.harness.opencode.projection"
+      ]
+    },
+    "modules:aew.harness.opencode.projection": {
+      "anchor": {
+        "module": "aew.harness.opencode.projection",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/opencode/projection.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.contract",
+        "aew.surface"
+      ]
+    },
+    "modules:aew.harness.operator_client": {
+      "anchor": {
+        "module": "aew.harness.operator_client",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/operator_client.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.harness.procs",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.harness.operator_endpoint": {
+      "anchor": {
+        "module": "aew.harness.operator_endpoint",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/operator_endpoint.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.lock",
+        "aew.engine.steering",
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.harness.notify",
+        "aew.harness.operator_client",
+        "aew.harness.procs",
+        "aew.operator"
+      ]
+    },
+    "modules:aew.harness.procs": {
+      "anchor": {
+        "module": "aew.harness.procs",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/procs.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.errors",
+        "aew.harness.containment"
+      ]
+    },
+    "modules:aew.harness.registry": {
+      "anchor": {
+        "module": "aew.harness.registry",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.registry",
+            "symbol": "load",
+            "why": "importlib.import_module with a computed module name"
+          },
+          {
+            "module": "aew.harness.registry",
+            "symbol": "load",
+            "why": "importlib.util.spec_from_file_location loads code by file path or name"
+          }
+        ]
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/registry.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.base",
+        "aew.harness.models"
+      ]
+    },
+    "modules:aew.harness.runlog": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/runlog.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.outbox",
+        "aew.harness.contract",
+        "aew.harness.procs",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.steering_loop": {
+      "anchor": {
+        "module": "aew.harness.steering_loop",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/steering_loop.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.dispatch",
+        "aew.engine.outbox",
+        "aew.engine.primitives",
+        "aew.engine.steering",
+        "aew.errors",
+        "aew.harness.event_spool",
+        "aew.harness.operator_client",
+        "aew.surface.context",
+        "aew.surface.contract",
+        "aew.surface.projection",
+        "aew.surface.run",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.supervisor": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/supervisor.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.api",
+        "aew.engine.authority",
+        "aew.engine.disposition_ops",
+        "aew.engine.faults",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.base",
+        "aew.harness.bridge",
+        "aew.harness.containment",
+        "aew.harness.containment.probe",
+        "aew.harness.contract",
+        "aew.harness.delivery",
+        "aew.harness.event_spool",
+        "aew.harness.procs",
+        "aew.harness.registry",
+        "aew.harness.runlog",
+        "aew.harness.usage",
+        "aew.knowledge.evidence",
+        "aew.process_kind",
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.tool_calls": {
+      "anchor": {
+        "module": "aew.harness.tool_calls",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/tool_calls.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.util"
+      ]
+    },
+    "modules:aew.harness.usage": {
+      "anchor": {
+        "module": "aew.harness.usage",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/usage.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.harness.usage_live": {
+      "anchor": {
+        "module": "aew.harness.usage_live",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/usage_live.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.opencode.adapter",
+        "aew.harness.opencode.client",
+        "aew.harness.runlog",
+        "aew.harness.usage",
+        "aew.util"
+      ]
+    },
+    "modules:aew.history": {
+      "anchor": {
+        "module": "aew.history",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/history/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.history.index": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/history/index.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.history.manifest",
+        "aew.history.store"
+      ]
+    },
+    "modules:aew.history.manifest": {
+      "anchor": {
+        "module": "aew.history.manifest",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/history/manifest.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.history.store": {
+      "anchor": {
+        "module": "aew.history.store",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/history/store.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.faults",
+        "aew.engine.store",
+        "aew.errors",
+        "aew.history.manifest",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.knowledge": {
+      "anchor": {
+        "module": "aew.knowledge",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/knowledge/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.knowledge.context": {
+      "anchor": {
+        "module": "aew.knowledge.context",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/context.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.roles",
+        "aew.util"
+      ]
+    },
+    "modules:aew.knowledge.discovery": {
+      "anchor": {
+        "module": "aew.knowledge.discovery",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/discovery.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.knowledge.evidence": {
+      "anchor": {
+        "module": "aew.knowledge.evidence",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/evidence.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.profile",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.knowledge.manifest": {
+      "anchor": {
+        "module": "aew.knowledge.manifest",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/manifest.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.knowledge.records": {
+      "anchor": {
+        "module": "aew.knowledge.records",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/records.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.knowledge.render": {
+      "anchor": {
+        "module": "aew.knowledge.render",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/knowledge/render.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.maps": {
+      "anchor": {
+        "module": "aew.maps",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/maps/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.maps.canonical": {
+      "anchor": {
+        "module": "aew.maps.canonical",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/canonical.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.maps.freshness": {
+      "anchor": {
+        "module": "aew.maps.freshness",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/freshness.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.maps.canonical",
+        "aew.maps.gitobjects",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.maps.gitobjects": {
+      "anchor": {
+        "module": "aew.maps.gitobjects",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/gitobjects.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.maps.canonical",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.maps.rules": {
+      "anchor": {
+        "module": "aew.maps.rules",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/rules.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.maps.canonical"
+      ]
+    },
+    "modules:aew.maps.service": {
+      "anchor": {
+        "module": "aew.maps.service",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/service.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.authority",
+        "aew.engine.freshness",
+        "aew.errors",
+        "aew.knowledge.evidence",
+        "aew.maps.canonical",
+        "aew.maps.freshness",
+        "aew.maps.gitobjects",
+        "aew.maps.rules",
+        "aew.maps.store",
+        "aew.maps.structural"
+      ]
+    },
+    "modules:aew.maps.slices": {
+      "anchor": {
+        "module": "aew.maps.slices",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/slices.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.maps.canonical",
+        "aew.maps.freshness",
+        "aew.maps.gitobjects",
+        "aew.maps.rules",
+        "aew.maps.store",
+        "aew.maps.structural",
+        "aew.policy.execution"
+      ]
+    },
+    "modules:aew.maps.store": {
+      "anchor": {
+        "module": "aew.maps.store",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/store.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.lock",
+        "aew.errors",
+        "aew.maps.canonical",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.maps.structural": {
+      "anchor": {
+        "module": "aew.maps.structural",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/maps/structural.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.maps.canonical",
+        "aew.maps.rules"
+      ]
+    },
+    "modules:aew.operator": {
+      "anchor": {
+        "module": "aew.operator",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/operator.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.procs",
+        "aew.util"
+      ]
+    },
+    "modules:aew.policy": {
+      "anchor": {
+        "module": "aew.policy",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/policy/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.policy.checks": {
+      "anchor": {
+        "module": "aew.policy.checks",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/checks.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.faults",
+        "aew.errors",
+        "aew.harness.procs"
+      ]
+    },
+    "modules:aew.policy.classes": {
+      "anchor": {
+        "module": "aew.policy.classes",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/classes.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas"
+      ]
+    },
+    "modules:aew.policy.config_paths": {
+      "anchor": {
+        "module": "aew.policy.config_paths",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/config_paths.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.contract"
+      ]
+    },
+    "modules:aew.policy.consistency": {
+      "anchor": {
+        "module": "aew.policy.consistency",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/consistency.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.policy.validation"
+      ]
+    },
+    "modules:aew.policy.execution": {
+      "anchor": {
+        "module": "aew.policy.execution",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/execution.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.models",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.policy.guardrails": {
+      "anchor": {
+        "module": "aew.policy.guardrails",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/guardrails.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.util"
+      ]
+    },
+    "modules:aew.policy.validation": {
+      "anchor": {
+        "module": "aew.policy.validation",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/policy/validation.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.policy.checks"
+      ]
+    },
+    "modules:aew.process_kind": {
+      "anchor": {
+        "module": "aew.process_kind",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/process_kind.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.profile": {
+      "anchor": {
+        "module": "aew.profile",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/profile.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.roles": {
+      "anchor": {
+        "module": "aew.roles",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/roles/__init__.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.schemas": {
+      "anchor": {
+        "module": "aew.schemas",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/schemas/__init__.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.snapshot": {
+      "anchor": {
+        "module": "aew.snapshot",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/snapshot/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.snapshot.fingerprint": {
+      "anchor": {
+        "module": "aew.snapshot.fingerprint",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/snapshot/fingerprint.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.stg02": {
+      "anchor": {
+        "module": "aew.stg02",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/stg02/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.stg02.adopted": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/adopted.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.stg02.commands": {
+      "anchor": {
+        "module": "aew.stg02.commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.stg02.adopted",
+        "aew.stg02.ledger",
+        "aew.stg02.wire",
+        "aew.stg02.world"
+      ]
+    },
+    "modules:aew.stg02.ledger": {
+      "anchor": {
+        "module": "aew.stg02.ledger",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/ledger.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.stg02.wire"
+      ]
+    },
+    "modules:aew.stg02.reads": {
+      "anchor": {
+        "module": "aew.stg02.reads",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/reads.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.contract",
+        "aew.stg02.ledger",
+        "aew.stg02.wire",
+        "aew.stg02.world"
+      ]
+    },
+    "modules:aew.stg02.server": {
+      "anchor": {
+        "module": "aew.stg02.server",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/server.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.process_kind",
+        "aew.stg02.commands",
+        "aew.stg02.ledger",
+        "aew.stg02.reads",
+        "aew.stg02.wire",
+        "aew.stg02.world"
+      ]
+    },
+    "modules:aew.stg02.wire": {
+      "anchor": {
+        "module": "aew.stg02.wire",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/wire.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.stg02.world": {
+      "anchor": {
+        "module": "aew.stg02.world",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/stg02/world.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.dashboard.reader",
+        "aew.engine.api",
+        "aew.errors",
+        "aew.harness.runlog",
+        "aew.stg02.wire"
+      ]
+    },
+    "modules:aew.surface": {
+      "anchor": {
+        "module": "aew.surface",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/surface/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.surface.availability": {
+      "anchor": {
+        "module": "aew.surface.availability",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/availability.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.guards",
+        "aew.errors",
+        "aew.surface.contract"
+      ]
+    },
+    "modules:aew.surface.classify": {
+      "anchor": {
+        "module": "aew.surface.classify",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/classify.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.guards",
+        "aew.engine.primitives",
+        "aew.surface.contract"
+      ]
+    },
+    "modules:aew.surface.client": {
+      "anchor": {
+        "module": "aew.surface.client",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/client.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.surface.errors"
+      ]
+    },
+    "modules:aew.surface.context": {
+      "anchor": {
+        "module": "aew.surface.context",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/context.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.surface.contract": {
+      "anchor": {
+        "module": "aew.surface.contract",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/contract.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.surface.context"
+      ]
+    },
+    "modules:aew.surface.errors": {
+      "anchor": {
+        "module": "aew.surface.errors",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/errors.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.surface.mcp": {
+      "anchor": {
+        "module": "aew.surface.mcp",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/mcp.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew",
+        "aew.errors",
+        "aew.harness.bridge",
+        "aew.surface",
+        "aew.surface.client",
+        "aew.surface.contract",
+        "aew.surface.errors",
+        "aew.surface.validate"
+      ]
+    },
+    "modules:aew.surface.projection": {
+      "anchor": {
+        "module": "aew.surface.projection",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/projection.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.guards",
+        "aew.engine.primitives",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.knowledge.evidence",
+        "aew.surface.availability",
+        "aew.surface.classify",
+        "aew.surface.context",
+        "aew.surface.contract",
+        "aew.util"
+      ]
+    },
+    "modules:aew.surface.run": {
+      "anchor": {
+        "module": "aew.surface.run",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/run.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.outbox",
+        "aew.engine.primitives",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.schemas",
+        "aew.surface",
+        "aew.surface.availability",
+        "aew.surface.classify",
+        "aew.surface.context",
+        "aew.surface.contract",
+        "aew.surface.projection",
+        "aew.surface.stage",
+        "aew.surface.validate"
+      ]
+    },
+    "modules:aew.surface.stage": {
+      "anchor": {
+        "module": "aew.surface.stage",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/stage.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.guards",
+        "aew.engine.primitives",
+        "aew.engine.stage_intents",
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.surface.availability",
+        "aew.surface.classify",
+        "aew.surface.contract",
+        "aew.surface.run",
+        "aew.util"
+      ]
+    },
+    "modules:aew.surface.validate": {
+      "anchor": {
+        "module": "aew.surface.validate",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/validate.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.surface.contract",
+        "aew.surface.errors"
+      ]
+    },
+    "modules:aew.util": {
+      "anchor": {
+        "module": "aew.util",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/util.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors"
+      ]
+    },
+    "modules:aew.workspace": {
+      "anchor": {
+        "module": "aew.workspace",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/workspace/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.workspace.git": {
+      "anchor": {
+        "module": "aew.workspace.git",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/workspace/git.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.profile"
+      ]
+    },
+    "modules:aew.workspace.integration": {
+      "anchor": {
+        "module": "aew.workspace.integration",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/workspace/integration.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.snapshot.fingerprint",
+        "aew.workspace.git"
+      ]
+    },
+    "modules:aew.workspace.worktrees": {
+      "anchor": {
+        "module": "aew.workspace.worktrees",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/workspace/worktrees.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.errors",
+        "aew.snapshot.fingerprint",
+        "aew.util",
+        "aew.workspace.git"
+      ]
+    }
+  },
+  "schema": "aew/reference-index/v1"
+}

@@ -765,6 +765,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F28/`, oldest first (`python tools/register.py show F28`).*
 
+### F28.1
+
+**Work:** R-6, a check that a proxied connection did not end on this host, whatever the host's own network configuration does with it: after the handshake and before any byte is relayed, the proxy confirms the connection did not end on this host, in both families and every TCP state; a failed or incomplete check refuses
+
+**Source (governing):** STG-05 CS-3a (#246); the design is the designer's option (a) on #246's review
+
+**Belongs to or gated by:** **Unscheduled.** Deferred (operator, 2026-10-24); resumes on the operator's decision
+
+**Notes:** The residual is stated meanwhile, in STG-05's note for CS-3a and in #246's known limits.
+
+*Later notes: `notes.d/F28.1/`, oldest first (`python tools/register.py show F28.1`).*
+
 ### F30
 
 **Work:** Requirement impact analysis and the Project Profile: `aew impact <work-id>`, one deterministic operation with two consumers (an inspectable Lead command, and Plan Assurance calling it at Story creation) that computes a surface from the requirement's seeds through the maps (symbols, files and units at radius 1 by default, radius 2 only when budgeted), the test index and the constraint locators, labelled by how each entry was found and with a coverage statement of what was unavailable; its judgement part fills plan assurance v0.4's first-pass artefact and premise list, never a record kind of its own; Epics run on structural directory roles with declared reduced coverage until `components[]` exist; Tickets inherit and narrow the Story's surface; the Project Profile is KC §8's maps plus WC §16.15 guardrails as evidence-bound records with per-claim freshness, not a new layer or document set

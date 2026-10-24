@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
 from aewflow import assign, create_planned_ticket, sample_project  # noqa: E402
 
+from aew.dashboard import reader as R  # noqa: E402
 from aew.stg02 import adopted as A  # noqa: E402
 from aew.stg02 import ledger as L  # noqa: E402
 from aew.stg02 import server as SV  # noqa: E402
@@ -51,10 +52,20 @@ class Live:
         self.port = self.srv.server_address[1]
         self.thread = threading.Thread(target=self.srv.serve_forever, daemon=True)
         self.thread.start()
+        # The engine's snapshot time, which AEW-owned stamps carry as `observed_at` (stg02/reads.py), follows the
+        # slice's clock, as every other time the slice serves does. Two reads of the same state are then the same
+        # read, and moving the clock moves both. On the wall clock, two reads a second boundary apart differed, and a
+        # test comparing them failed (#231's first CI run). Patched after the last step that can raise, so a failed
+        # start leaves the reader's clock alone; no client has the port before the constructor returns.
+        self._utc_now = R.utc_now
+        R.utc_now = lambda: W.utc(s.clock())
 
     def close(self) -> None:
-        self.srv.shutdown()
-        self.srv.server_close()
+        try:
+            self.srv.shutdown()
+            self.srv.server_close()
+        finally:
+            R.utc_now = self._utc_now
 
     def request(self, method: str, path: str, headers: dict[str, str] | None = None, body: Any = None,
                 ) -> tuple[int, dict[str, str], Any]:
@@ -204,6 +215,23 @@ def test_the_waiting_list_carries_real_aew_work_and_the_fixture_journey_item(liv
     assert [r["id"] for r in real["data"]["basis_refs"]["refs"]] == [project["running"]]
     assert project["running"] not in by_work  # RUNNING is not waiting
     assert b["page"]["membership"] == "unknown" and b["page"]["has_more"] is False
+
+
+def test_real_aew_facts_are_stamped_at_the_slices_clock_so_two_reads_of_one_state_are_one_read(live: Live):
+    """The engine's snapshot time follows the slice's clock (`Live`): every comparison of two reads in this module
+    depends on it, and on the wall clock two reads a second boundary apart differed."""
+    def engine_stamps(body: Any) -> list[str]:
+        return [s["observed_at"] for s in stamps(body) if s["issuer_ref"] == "aew:engine-state"]
+
+    first = live.get("/v1/read/waiting")[2]
+    assert engine_stamps(first) and set(engine_stamps(first)) == {W.utc(live.clock[0])}
+    live.clock[0] = T0 + timedelta(seconds=90)
+    later = live.get("/v1/read/waiting")[2]
+    assert set(engine_stamps(later)) == {W.utc(live.clock[0])}  # it moves with the clock, not with the wall
+    live.clock[0] = T0
+    again = live.get("/v1/read/waiting")[2]
+    assert {k: v for k, v in again.items() if k != "correlation_id"} == {k: v for k, v in first.items()
+                                                                         if k != "correlation_id"}
 
 
 def test_a_hidden_member_changes_nothing_the_recipient_sees(live: Live, cfg: dict[str, Any]):

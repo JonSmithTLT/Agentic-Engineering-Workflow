@@ -1,9 +1,11 @@
 import { z } from 'zod';
+// @ts-expect-error Node's pinned strip-types artifact runner requires the explicit extension.
+import { timestamp } from '../../schema.ts';
 export const journalKinds = ['observation', 'hypothesis', 'failed_approach', 'discovery', 'conditional_lesson', 'decision_reference', 'environment_constraint'];
 export const applicabilityValues = ['CURRENT', 'HISTORICALLY_VALID', 'STALE_FOR_ENVIRONMENT', 'SUPERSEDED', 'CONTRADICTORY', 'UNCHECKED'];
 const identity = z.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/);
 const metadata = z.string().min(1).max(512).nullable();
-const utc = z.iso.datetime({ precision: undefined });
+const utc = timestamp;
 const content = z.strictObject({ format: z.string().min(1).max(40), text: z.string().max(32768) });
 export const journalReference = z.strictObject({ kind: z.string().min(1).max(64), id: identity, title: z.string().max(512).nullable() });
 export const journalEntry = z.strictObject({

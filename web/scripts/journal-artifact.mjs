@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { z } from 'zod';
+import { previewJSONSchema } from './preview-json-schema.mjs';
 import { journalSchemas, journalCases } from '../src/api/preview/journal/schema.ts';
 import { journalFixture } from '../src/api/preview/journal/fixtures.ts';
 const write = process.argv.includes('--write');
@@ -16,7 +16,7 @@ const digest = artifact('docs/design/journal-preview-0.1.0.json', {
   routes: { base: '/api/preview/journal/v0.1', methods: ['GET', 'HEAD'], collection: '/entries?limit=50', detail: '/entries/{id}', filters: ['component', 'component_missing=1', 'kind', 'cursor', 'case'] },
   ordering: ['published_at DESC', 'id ASC', 'null published_at: final Undated group, id ASC'],
   rules: ['Component identity and publication time are supplied; other timestamps never substitute.', 'supporting_evidence and opposing_evidence define source roles only.', 'Prompt metadata only; raw prompts are not supported.', 'No retention explanation supplied when no explanation is supplied.', 'Canonical decisions remain references to their authoritative records. “Included in context” references do not establish delivery, use, or benefit.'],
-  schemas: Object.fromEntries(Object.entries(journalSchemas).map(([key, schema]) => [key, z.toJSONSchema(schema)])),
+  schemas: Object.fromEntries(Object.entries(journalSchemas).map(([key, schema]) => [key, previewJSONSchema(schema)])),
 });
 artifact('docs/design/journal-fixtures.manifest.json', {
   contract: 'journal-preview', version: '0.1.0', sha256: digest,

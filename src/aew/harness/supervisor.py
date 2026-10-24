@@ -104,7 +104,8 @@ class Supervisor:
         self._handled: set[str] = set()  # request files acted on (a replayed one is refused)
         self.record: dict[str, Any] = {"schema": K.RUN_SCHEMA, "run": self.run, "invocation": self.inv_id,
                                        "containment": containment.label(contained=False),
-                                       "status": K.STARTING, "supervisor_pid": os.getpid(), "custody_at": utc_now(),
+                                       "status": K.STARTING, "supervisor_pid": os.getpid(),
+                                       "supervisor_start_id": procs.start_id(os.getpid()), "custody_at": utc_now(),
                                        "timeline": [{"at": utc_now(), "event": "custody"}]}
         self.bridge: bridge.BridgeServer | None = None
         self.adapter: Any = None
@@ -233,6 +234,7 @@ class Supervisor:
         self.record["started_at"] = utc_now()
         self._started_mono = time.monotonic()
         self.record["harness_pids"] = list(self.tree.pids)
+        self.record["harness_start_ids"] = [procs.start_id(pid) for pid in self.tree.pids]
         self._event("started", pids=list(self.tree.pids))
         self._save()
         runlog.beat(self.run_dir)

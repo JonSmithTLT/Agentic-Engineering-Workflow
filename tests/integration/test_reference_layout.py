@@ -181,8 +181,8 @@ def test_an_entry_the_writers_family_has_as_a_constant_is_named_by_it_here_too()
 
 
 def test_the_page_links_the_writers_page_it_takes_its_writers_from():
+    """That the file exists is `test_docs_links`'s: it checks every relative link of `docs/`."""
     assert "(writers.md)" in BUILT.pages["layout.md"]
-    assert (ROOT / "docs" / "reference" / "writers.md").is_file()
 
 
 # ------------------------------------------------------------------------------------------------ a planted reader

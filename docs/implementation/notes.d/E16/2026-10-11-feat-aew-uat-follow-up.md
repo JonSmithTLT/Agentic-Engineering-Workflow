@@ -1,0 +1,9 @@
+# UAT presentation follow-up
+
+The operator's first live dashboard walk-through exposed Overview height growth and poor Work-to-invocation discoverability. This bounded frontend correction adds desktop scroll bodies to Overview panels (natural document scrolling below 1024px), and a Work Invocations section using explicit Work references plus exact same-project work references in the already loaded bounded Overview summary. Role/status are supplied values, with source revision/time and stale marking. The summary is explicitly incomplete; it is not a complete attempt history or a new backend filter. No Runs scanning or additional reads are introduced. Shared inspection buttons wrap long unknown values.
+
+Complete per-work historical invocation discovery remains a backend design input: a supplied backlink projection or bounded exact-work Runs filter, with roles, completeness and identity semantics. No endpoint or contract change is proposed here.
+
+The operator also observed transient HTTP 500s, initially on Runs and subsequently across pages, followed by recovery. A later lock-free Runs projection read passed. That confirms current recovery only: the original server exception was not captured, and no cause or server fix is claimed. The committed-state reader documents a possible fail-closed staged-record window; this is not a diagnosis of that incident. Preserve authenticated request/exception evidence in a future reproduction rather than weakening validation or treating 500 as normal.
+
+Validation and review are recorded against the exact committed runtime before publication. Accepted and provisional contracts, generated accepted types, dependency lock and the packaged frontend baseline remain unchanged. This correction does not resume or claim acceptance of the paused UAT round.

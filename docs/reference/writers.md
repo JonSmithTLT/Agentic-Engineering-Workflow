@@ -185,7 +185,7 @@ Writer functions with a store-transaction or direct write placed under `.aew`: 7
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
 **Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the mechanism: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`
-**Not checked:** a handler that calls its engine method by a name held in a variable, and a `with` statement's implicit calls, are not followed, so the writers behind them are not attributed to the role that runs them; and what the worker role may write is `process_kind.require_writer`'s to refuse (above), not this reading's to prove.
+**Not checked:** a write whose destination is not placed (the unresolved records) carries no role reach and is not checked; a handler that calls its engine method by a name held in a variable, and a `with` statement's implicit calls, are not followed, so the writers behind them are not attributed to the role that runs them; and what the worker role may write is `process_kind.require_writer`'s to refuse (above), not this reading's to prove.
 
 ## Caps of the reading
 

@@ -20,7 +20,7 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:0aa4b74c9fbe879ab939221900be248cacc2c672de761591a2a7f16c56a361e4",
+    "digest": "sha256:e9398857e2949ffadca96bc00ca4c8f1e51ac0b5bee5039d6fed8ce6aa3b32e1",
     "records": 341,
     "unresolved": 69
   },
@@ -6342,6 +6342,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }
@@ -6541,6 +6546,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
             }
           ]
         }

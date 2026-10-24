@@ -95,7 +95,7 @@ def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
         except OSError:
             pass  # another uid's, or a hardened broker's: its command line was checked above
         try:
-            pid = int((proc / "stat").read_text(encoding="latin-1").rsplit(")", 1)[1].split()[1])
+            pid = int((proc / "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
         except (OSError, ValueError, IndexError):
             break
     return None

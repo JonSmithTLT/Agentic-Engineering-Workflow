@@ -16,6 +16,7 @@ the validation executor, the dashboard and the supervisor write their records in
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -107,14 +108,146 @@ def test_a_process_whose_comm_is_not_utf8_still_has_its_start_id_on_linux():
 
 @pytest.mark.skipif(not IS_LINUX, reason="the comm and /proc are Linux's")
 def test_a_comm_neither_breaks_nor_forges_a_line_of_proc_status_on_linux():
-    """``/proc/<pid>/status`` holds the comm raw, but for a newline and a backslash: one that is not UTF-8 must not stop
-    the read, and a line break ``str.splitlines`` knows (here \\x1e) must not add a forged ``PPid:`` line."""
-    child = renamed(b"\xff\x1ePPid:\t1")
-    try:
-        assert procs.host_pid(child.pid) == child.pid  # every process's status read, this one's included
-        assert procs._descends(child.pid, os.getpid())  # noqa: SLF001 (its real parent, not the PPid its comm spells)
-    finally:
-        ended(child)
+    """``/proc/<pid>/status`` holds the comm raw, but for a newline and a backslash. A comm that is not UTF-8 must not
+    stop the read, and neither a line break ``str.splitlines`` knows (\\x1e) nor a carriage return, which a text-mode
+    read turns into a newline (review of #250, M2), may add a forged ``PPid:`` line. One test, so one platform pin."""
+    for comm in (b"\xff\x1ePPid:\t1", b"\xff\rPPid:\t1"):
+        child = renamed(comm)
+        try:
+            assert procs.host_pid(child.pid) == child.pid, comm  # every process's status read, this one's included
+            assert procs._descends(child.pid, os.getpid()), comm  # noqa: SLF001 (the real parent, not the comm's)
+        finally:
+            ended(child)
+
+
+# ---------------------------------------------------------------------------------------------- reads of /proc
+
+ROOT = Path(__file__).resolve().parents[2]
+# The only /proc files src may read as text: kernel ASCII that holds no comm (a process's name, arbitrary bytes).
+PROC_TEXT_ALLOWED = {
+    "/proc/stat": "kernel ASCII: CPU counters and btime, no comm",
+    "/proc/sys/kernel/random/boot_id": "kernel ASCII: one UUID",
+}
+PATH_CALLS = {"Path", "PurePath", "PosixPath", "PurePosixPath"}
+
+
+def _proc_path(node: ast.AST, names: dict[str, str]) -> str | None:
+    """The /proc path an expression names, with ``{}`` for each part only known at run time, or None. It follows a
+    string, an f-string, ``Path(...)`` (and ``os.path.join``), ``/`` on such a path, and a name bound to one."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        text = node.value
+    elif isinstance(node, ast.JoinedStr):
+        text = "".join(v.value if isinstance(v, ast.Constant) else "{}" for v in node.values)
+    elif isinstance(node, ast.Name):
+        return names.get(node.id)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        left = _proc_path(node.left, names)
+        right = node.right.value if isinstance(node.right, ast.Constant) else "{}"
+        return f"{left}/{right}" if left else None
+    elif isinstance(node, ast.Call) and node.args and (
+            (isinstance(node.func, ast.Name) and node.func.id in PATH_CALLS)
+            or (isinstance(node.func, ast.Attribute) and node.func.attr in PATH_CALLS | {"join"})):
+        first = _proc_path(node.args[0], names)
+        if not first:
+            return None
+        rest = [a.value if isinstance(a, ast.Constant) else "{}" for a in node.args[1:]]
+        return "/".join([first, *rest])
+    else:
+        return None
+    return text if text == "/proc" or text.startswith("/proc/") else None
+
+
+def _mode(call: ast.Call, position: int) -> str | None:
+    """An ``open`` call's mode: its literal, ``"r"`` when it has none, or None when it is not a literal."""
+    arg = call.args[position] if len(call.args) > position else next(
+        (k.value for k in call.keywords if k.arg == "mode"), None)
+    if arg is None:
+        return "r"
+    return arg.value if isinstance(arg, ast.Constant) and isinstance(arg.value, str) else None
+
+
+def proc_reads(source: str, *, depth: int = 0) -> list[tuple[int, str, str]]:
+    """Every read of a /proc file in ``source``, as (line, path, ``bytes`` or ``text``): ``read_text``, ``read_bytes``,
+    and ``open`` (builtin, ``io.open`` or ``Path.open``) with its mode. A string that holds a script with such a read
+    (the session reaper's) is read too."""
+    tree = ast.parse(source)
+    names: dict[str, str] = {}
+    for node in ast.walk(tree):  # a name bound to a /proc path, anywhere in the module
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            found = _proc_path(node.value, names)
+            if found:
+                names[node.targets[0].id] = found
+    reads: list[tuple[int, str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and depth < 2 and "/proc" in node.value \
+                and ("open(" in node.value or "read_" in node.value):
+            try:
+                inner = proc_reads(node.value, depth=depth + 1)
+            except SyntaxError:  # prose, not a script
+                continue
+            reads.extend((node.lineno, path, kind) for _, path, kind in inner)
+            continue
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in ("read_text", "read_bytes"):
+            path = _proc_path(func.value, names)
+            if path:
+                reads.append((node.lineno, path, "bytes" if func.attr == "read_bytes" else "text"))
+        elif isinstance(func, ast.Attribute) and func.attr == "open" and (path := _proc_path(func.value, names)):
+            mode = _mode(node, 0)  # Path.open(mode)
+            reads.append((node.lineno, path, "bytes" if mode and "b" in mode else "text"))
+        elif ((isinstance(func, ast.Name) and func.id == "open")
+              or (isinstance(func, ast.Attribute) and func.attr == "open" and isinstance(func.value, ast.Name)
+                  and func.value.id == "io")) and node.args:
+            path = _proc_path(node.args[0], names)
+            if path:
+                mode = _mode(node, 1)
+                reads.append((node.lineno, path, "bytes" if mode and "b" in mode else "text"))
+    return reads
+
+
+def proc_text_reads(source: str) -> list[tuple[int, str]]:
+    """The reads that break the rule: a /proc file read as text, unless it is one of ``PROC_TEXT_ALLOWED``."""
+    return [(line, path) for line, path, kind in proc_reads(source) if kind == "text" and path not in PROC_TEXT_ALLOWED]
+
+
+def test_every_read_of_a_proc_file_in_src_that_can_hold_a_comm_is_a_bytes_read():
+    """A comm is arbitrary bytes: a codec that can fail turns it into an error, and text mode turns its ``\\r`` into a
+    newline (review of #250, M1 and M2). So src reads every /proc file as bytes, but the kernel-ASCII files that hold
+    none (``PROC_TEXT_ALLOWED``, each with why)."""
+    broken, seen = [], set()
+    for path in sorted((ROOT / "src").rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        source = path.read_text(encoding="utf-8")
+        broken += [f"{rel}:{line} reads {proc} as text" for line, proc in proc_text_reads(source)]
+        seen |= {(rel, proc, kind) for _, proc, kind in proc_reads(source)}
+    assert not broken, broken
+    # The scan is not blind: it sees each known read of a comm's file, as bytes, by every form it follows.
+    assert {("src/aew/harness/procs.py", "/proc/{}/stat", "bytes"),  # _start_ticks, describe, the reaper's script
+            ("src/aew/harness/procs.py", "/proc/{}/status", "bytes"),  # _status_lines: Path(...) with parts
+            ("src/aew/harness/operator_endpoint.py", "/proc/{}/stat", "bytes"),  # through a name: proc / "stat"
+            ("src/aew/harness/procs.py", "/proc/stat", "text")} <= seen, sorted(seen)
+
+
+@pytest.mark.parametrize(("source", "flagged"), [
+    pytest.param('Path(f"/proc/{pid}/status").read_text()', True, id="read_text"),
+    pytest.param('Path(f"/proc/{pid}/stat").read_text(encoding="latin-1")', True, id="read_text-latin1"),
+    pytest.param('open(f"/proc/{pid}/stat")', True, id="open-no-mode"),
+    pytest.param('io.open("/proc/self/status", mode="r")', True, id="io-open-text"),
+    pytest.param('proc = Path(f"/proc/{pid}")\n(proc / "stat").read_text()', True, id="through-a-name"),
+    pytest.param('Path("/proc", str(pid), "status").open().read()', True, id="path-parts-open"),
+    pytest.param("SCRIPT = " + repr('open(f"/proc/{d}/stat").read()\n'), True, id="script-in-a-string"),
+    pytest.param('Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1")', False, id="read_bytes"),
+    pytest.param('open(f"/proc/{d}/stat", "rb")', False, id="open-rb"),
+    pytest.param('proc = Path(f"/proc/{pid}")\n(proc / "status").read_bytes()', False, id="bytes-through-a-name"),
+    pytest.param('Path("/proc/stat").read_text()', False, id="allowed-proc-stat"),
+    pytest.param('Path("/proc/sys/kernel/random/boot_id").read_text()', False, id="allowed-boot-id"),
+    pytest.param('Path("notes.txt").read_text()', False, id="not-proc"),
+    pytest.param('"""Reads ``/proc/<pid>/stat`` with open(...)."""', False, id="prose-naming-proc"),
+])
+def test_the_proc_read_guard_flags_text_reads_and_passes_bytes_reads(source, flagged):
+    assert bool(proc_text_reads(source)) is flagged, proc_reads(source)
 
 
 def test_a_start_id_names_one_process_of_one_boot():

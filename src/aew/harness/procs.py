@@ -440,7 +440,7 @@ def process_chain(limit: int = 6) -> list[str]:
     elif sys.platform.startswith("linux"):  # pragma: posix-only
         def describe(pid: int) -> tuple[int, str] | None:
             try:
-                stat = Path(f"/proc/{pid}/stat").read_text(encoding="latin-1")
+                stat = Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1")
                 cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
             except OSError:
                 return None
@@ -532,9 +532,9 @@ def pid_alive(pid: int | None) -> bool:
 
 def _start_ticks(pid: int) -> int:
     """Linux: when the process started, in clock ticks since boot (``/proc/<pid>/stat`` field 22). Fixed for the
-    process's life: the boot clock is never stepped. Read as latin-1: the comm before it is arbitrary bytes, which a
-    codec that can fail would turn into no start id (review of #250, M1)."""
-    return int(Path(f"/proc/{pid}/stat").read_text(encoding="latin-1").rsplit(")", 1)[1].split()[19])
+    process's life: the boot clock is never stepped. Read as bytes, decoded as latin-1: the comm before it is arbitrary
+    bytes, which a codec that can fail would turn into no start id (review of #250, M1)."""
+    return int(Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[19])
 
 
 def started_at(pid: int | None) -> float | None:
@@ -575,9 +575,10 @@ def start_id(pid: int | None) -> str | None:
 
 def _status_lines(pid: int | str) -> list[str]:
     """``/proc/<pid>/status``, line by line. Its ``Name:`` line holds the comm, arbitrary bytes in which the kernel
-    escapes only a newline and a backslash: read as latin-1, which never fails, and split on newlines alone (a comm may
-    hold any other line break ``str.splitlines`` knows, and would add a line of its own; review of #250, M1)."""
-    return Path("/proc", str(pid), "status").read_text(encoding="latin-1").split("\n")
+    escapes only a newline and a backslash. So it is read as bytes and decoded as latin-1, which never fails, and split
+    on newlines alone: a comm may hold any other line break ``str.splitlines`` knows, and text mode would turn its
+    ``\\r`` into a newline, either way adding a line of its own (review of #250, M1 and M2)."""
+    return Path("/proc", str(pid), "status").read_bytes().decode("latin-1").split("\n")
 
 
 def _nspid(pid: int | str) -> list[int]:

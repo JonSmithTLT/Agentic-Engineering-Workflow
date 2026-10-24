@@ -914,11 +914,14 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
   It is compared for equality only, so no tolerance is involved. An id from another platform or another boot, an id of
   another process, and a malformed id never match. `started_at` stays, for display and for records written before.
 - **The comm is arbitrary bytes:** a file name cut to 15 bytes, or whatever `prctl(PR_SET_NAME)` set.
-  `/proc/<pid>/stat` and `/proc/<pid>/status` are therefore read as latin-1, which never fails, and the status file is
-  split on newlines alone. The kernel escapes only a newline and a backslash in its `Name:` line.
+  So every read of `/proc/<pid>/stat` and `/proc/<pid>/status` in `src` is a bytes read, decoded as latin-1, which
+  never fails. None is in text mode, which would turn a `\r` into a newline. The status file is split on `\n` alone.
+  The kernel escapes only a newline and a backslash in its `Name:` line.
   - A comm that is not valid UTF-8 still has a start id, and its host pid and parent can still be read.
-  - A comm that holds another line break that `str.splitlines` knows cannot add a line of its own, such as a forged
-    `PPid:` (review of #250, M1).
+  - A comm that holds a carriage return, or another line break that `str.splitlines` knows, cannot add a line of its
+    own, such as a forged `PPid:` (review of #250, M1 and M2).
+  - A unit test scans `src` and enforces the rule. Only `/proc/stat` and `/proc/sys/kernel/random/boot_id` may be
+    read as text: they are kernel ASCII and hold no comm.
 - **`procs.same_process(pid, started_by)`** keeps its two arguments.
   - `started_by` is the record's start id (a string, compared exactly) or, in a record from before start ids, its epoch
     time (a number, the old check).
@@ -965,7 +968,11 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
     keeps `same_process` true;
   - a reused pid, another boot, another platform's id and malformed ids read as another process;
   - on Linux, a child whose comm is not valid UTF-8 has the start id that a byte-level parse gives. One whose comm
-    also spells a `PPid:` line after a line break still has its host pid read, and still descends from its real parent;
+    also spells a `PPid:` line, after a record separator or a carriage return, still has its host pid read, and still
+    descends from its real parent;
+  - the guard: no read of a `/proc` file in `src` is a text read but the two allowed files. It follows strings,
+    f-strings, `Path(...)` with parts, `/` on a path, a name bound to a path, and a script held in a string. Planted
+    reads check it both ways;
   - a record from before start ids keeps its check;
   - one test per reader (executor, worker, locator, broker and its close, dashboard, teardown), with the clock stepped
     after the record was written. The step is simulated on Linux in `btime`, and elsewhere in each epoch start time.

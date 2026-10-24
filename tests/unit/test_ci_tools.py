@@ -131,6 +131,130 @@ def test_a_failed_reference_shard_fails_the_aggregate():
     assert any(p.startswith("win32: session win32/all shard 2/3 exited 1") for p in problems(runs))
 
 
+# ------------------------------------------------------------------ re-runs: each shard's latest attempt decides
+
+def attempt(r: dict, n: int, outcome: str | None = None) -> dict:
+    """A copy of ``r`` as run attempt ``n`` wrote it; with ``outcome``, every test had it and the session failed."""
+    r = copy.deepcopy(r)
+    r["attempt"] = n
+    if outcome:
+        r["exitstatus"] = 1
+        for res in r["results"].values():
+            res["outcome"] = outcome
+    return r
+
+
+def judged(runs: list[dict]) -> list[str]:
+    return problems(check_assurance.latest_attempts(runs))
+
+
+def test_a_re_runs_newer_passing_report_supersedes_its_earlier_failure(tmp_path):
+    """PR #243's run 40059454181: Re-run failed jobs passed integration 6/12, and the gate still read attempt 1's
+    failed report. Through the command line, as CI calls it: a tree of every attempt's artifacts."""
+    runs = good_run()  # attempt 1, recording no attempt (an older plugin's report counts as the first)
+    failed = attempt(runs[1], 1, "failed")
+    del failed["attempt"]  # the superseded failure records no attempt either: it is the first, not the newest
+    runs[1] = attempt(runs[1], 2)
+    for i, r in enumerate([*runs, failed]):
+        (tmp_path / "reports" / f"lane-report-{i}").mkdir(parents=True)
+        (tmp_path / "reports" / f"lane-report-{i}" / "lane.json").write_text(json.dumps(r), encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text(yaml.safe_dump(EXPECT), encoding="utf-8")
+    assert check_assurance.main([str(tmp_path / "reports"), "--skips", str(tmp_path / "skips.yaml")]) == 0
+
+
+def test_an_older_passing_report_never_masks_a_newer_failure():
+    """Re-run all jobs: attempt 1 passed the shard, attempt 2 failed it. The gate reports attempt 2's failure, and only
+    that (not a test run twice, which would fail it for the wrong reason)."""
+    runs = good_run()
+    passed = attempt(runs[1], 1)
+    runs[1] = attempt(runs[1], 2, "failed")
+    assert judged([*runs, passed]) == [
+        "linux: session linux/regression shard 1/1 exited 1 (failed tests, a usage error, or the isolation guard)",
+        "linux: failed: tests/regression/test_b.py::t3 (linux/regression shard 1/1)"]
+
+
+def test_a_missing_shard_of_the_latest_plan_fails_though_an_earlier_plan_was_complete():
+    """Re-run all jobs re-plans the shards (the tier job runs again on a newer history): the newest plan's dropped
+    shard is a problem, whatever an earlier attempt's complete plan reported."""
+    earlier = [attempt(r, 1) for r in sharded_reference_run(shards=2)]
+    newer = [attempt(r, 2) for r in sharded_reference_run(shards=3)]
+    newer.pop(2)  # linux shard 3/3
+    found = judged(earlier + newer)
+    assert "linux: all: shard 3/3 has no report (its job did not run, failed to start or did not upload)" in found
+    assert "linux: never ran: tests/regression/test_b.py::t3" in found
+
+
+def test_re_running_one_failed_shard_of_several_turns_the_gate_green():
+    """PR #243's shape (review of #251, F3): Re-run failed jobs re-runs one shard of a sharded lane, the others keep
+    their first attempt's reports, and the gate passes."""
+    runs = sharded_reference_run(shards=3)
+    runs[1] = attempt(runs[1], 1, "failed")  # linux 2/3
+    assert any(p.startswith("linux: session linux/all shard 2/3 exited 1") for p in judged(runs))
+    assert judged([*runs, attempt(sharded_reference_run(shards=3)[1], 2)]) == []
+
+
+@pytest.mark.parametrize("newer", ["failed", "lost"])
+def test_a_re_plan_to_fewer_shards_judges_the_smaller_newer_plan(newer):
+    """Review of #251, F2: Re-run all jobs re-planned 3 shards to 2. The latest attempt's failed or missing shard is a
+    problem, whatever the earlier, larger plan reported, complete and passing."""
+    earlier = [attempt(r, 1) for r in sharded_reference_run(shards=3)]
+    newest = [attempt(r, 2) for r in sharded_reference_run(shards=2)]
+    if newer == "failed":
+        newest[0] = attempt(newest[0], 2, "failed")  # linux 1/2
+    else:
+        newest.pop(1)  # linux 2/2
+    expected = ("linux: session linux/all shard 1/2 exited 1" if newer == "failed"
+                else "linux: all: shard 2/2 has no report")
+    found = judged(earlier + newest)
+    assert any(p.startswith(expected) for p in found), found
+
+
+def test_re_running_all_jobs_with_a_new_shard_plan_judges_only_the_new_plan():
+    earlier = [attempt(r, 1, "failed") if r["shard"] == "1/2" else attempt(r, 1) for r in sharded_reference_run(2)]
+    newer = [attempt(r, 2) for r in sharded_reference_run(shards=3)]
+    assert judged(earlier + newer) == []
+
+
+def test_two_reports_of_one_attempt_for_one_shard_still_fail():
+    """Only an earlier attempt is superseded: two reports of the latest attempt both stay, so their tests ran twice."""
+    runs = good_run()
+    runs[1] = attempt(runs[1], 2)
+    runs += [copy.deepcopy(runs[1]), attempt(runs[1], 1, "failed")]
+    assert "linux: ran 2 times: tests/regression/test_b.py::t3" in judged(runs)
+
+
+def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_from_passing_jobs():
+    """`download-artifact` keeps one artifact of a name (the highest id, not the newest: PR #243's run 40059454181
+    kept attempt 1's report and attempt 2's coverage), so a re-run's report has a name of its own and lands in its own
+    directory (no `merge-multiple`). Coverage keeps its name: only a passing job uploads it, and the ratchet runs only
+    after the lane-report check passed, so no failed attempt's data can be the one kept."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    uploads = [s for j in wf["jobs"].values() for s in j.get("steps", [])
+               if str(s.get("uses", "")).startswith("actions/upload-artifact")]
+    reports = [s for s in uploads if s["with"]["name"].startswith("lane-report-")]
+    assert len(reports) == 2 and all(s["if"] == "always()" for s in reports)
+    assert all(s["with"]["name"].endswith("-attempt-${{ github.run_attempt }}") for s in reports)
+    coverage = [s for s in uploads if s["with"]["name"].startswith("coverage-")]
+    assert len(coverage) == 2 and all(s["if"].startswith("success() && ") for s in coverage)
+    gate = wf["jobs"]["assurance"]["steps"]
+    download = next(s for s in gate if s.get("with", {}).get("pattern") == "lane-report-*")
+    assert "merge-multiple" not in download["with"]
+    ratchet = next(s for s in gate if "coverage_gate.py" in str(s.get("run", "")))
+    assert "always()" not in ratchet["if"] and "failure()" not in ratchet["if"]  # after the lane-report check passed
+
+
+def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
+    import subprocess
+
+    report = tmp_path / "fast.json"
+    env = {**os.environ, "GITHUB_RUN_ATTEMPT": "3"}
+    subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "-p",
+                    "no:xdist", "--lane", "fast", f"--lane-report={report}", "tests/unit/test_lanes.py"],
+                   cwd=ROOT, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL, env=env,
+                   creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    assert json.loads(report.read_text(encoding="utf-8"))["attempt"] == 3
+
+
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
     """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under its timeout
     (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance), and the aggregate (which `report` waits for) requires
@@ -515,6 +639,19 @@ def test_a_re_run_of_a_run_already_in_the_history_adds_nothing():
     assert again == history and again["platforms"]["linux"][ALL[0]] == [5.0]
     later = update_durations.merge_history(history, [timed_report("linux", "fast", {ALL[0]: 9.0})], "42/1 def")
     assert later["platforms"]["linux"][ALL[0]] == [5.0, 9.0] and later["runs"] == ["41/1 abc", "42/1 def"]
+
+
+def test_a_re_run_shards_earlier_report_adds_no_timings(tmp_path):
+    """Main's run re-run after a red attempt: the re-run shard's attempt-1 report is in the download too, and must not
+    put a second (failed) duration of its tests into the history."""
+    for n, seconds in ((1, 9.0), (2, 5.0)):
+        r = timed_report("linux", "integration", {ALL[3]: seconds}, shard="1/1")
+        r["attempt"] = n
+        (tmp_path / f"lane-report-Linux-integration-1-attempt-{n}").mkdir()
+        (tmp_path / f"lane-report-Linux-integration-1-attempt-{n}" / "r.json").write_text(json.dumps(r),
+                                                                                           encoding="utf-8")
+    loaded = update_durations.load_reports([tmp_path])
+    assert [r["results"][ALL[3]]["duration"] for r in loaded] == [5.0]
 
 
 def test_the_history_keeps_the_least_job_deadline_any_shard_of_a_lane_started_with():

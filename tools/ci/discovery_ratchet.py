@@ -31,7 +31,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests" / "helpers"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from check_assurance import latest_attempts  # noqa: E402  (tools/ci/check_assurance.py)
 from discovery import allowed, modes  # noqa: E402
 
 FINDINGS_SCHEMA = "aew/discovery-findings/v1"
@@ -52,7 +54,9 @@ def load_findings(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, int]
 
     A lane's findings lost on the way count as capture errors, never as silence (review of #218, G1): every lane
     report must have its findings file beside it (``allowed.findings_path_for``), and a findings file that does not
-    parse or carries another schema is an error, not a file to skip."""
+    parse or carries another schema is an error, not a file to skip. Only each shard's latest run attempt counts, as in
+    the gate's own check (``check_assurance.latest_attempts``): a superseded lane report and its findings file are
+    left out, so an earlier attempt's capture error does not outlive the re-run that passed (review of #251, F1)."""
     findings: dict[str, dict[str, Any]] = {}
     errors: dict[str, int] = {}
     sources = []
@@ -60,9 +64,16 @@ def load_findings(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, int]
     def error(name: str) -> None:
         errors[name] = errors.get(name, 0) + 1
 
-    for path in sorted(root.rglob("*.json")) if root.is_dir() else []:
+    read = {path: _read(path) for path in (sorted(root.rglob("*.json")) if root.is_dir() else [])}
+    reports = [{**data, "_path": path} for path, data in read.items()
+               if isinstance(data, dict) and data.get("schema") == LANE_REPORT_SCHEMA]
+    kept = {r["_path"] for r in latest_attempts(reports)}
+    superseded = {r["_path"] for r in reports if r["_path"] not in kept}
+    superseded |= {allowed.findings_path_for(path) for path in superseded}
+    for path, data in read.items():
+        if path in superseded:
+            continue
         rel = path.relative_to(root).as_posix()
-        data = _read(path)
         if path.name.endswith(allowed.FINDINGS_SUFFIX):
             if not isinstance(data, dict):
                 error(f"findings file unreadable: {rel}")

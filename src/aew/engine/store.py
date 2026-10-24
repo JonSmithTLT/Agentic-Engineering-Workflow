@@ -195,25 +195,29 @@ def operator_gid() -> int | None:
 _HOLDERS: dict[Path, ControlStore] = {}
 
 
-class _ControlLock(FileLock):
+class _ControlLock:
     """The control lock as a store writer holds it: once taken, the store is compared with WIS-01a's current answer,
     and walked to it first where they differ (D-CS1-1 as extended), before anything else runs under it. So the walk
-    always holds the lock throughout, and so does every publication (``write_file``)."""
+    always holds the lock throughout, and so does every publication (``write_file``). It holds its ``FileLock`` rather
+    than extending it: the engine dispatches nothing through ``super()`` (register E5)."""
 
     def __init__(self, store: ControlStore, path: Path, timeout: float) -> None:
-        super().__init__(path, timeout=timeout)
+        self._file = FileLock(path, timeout=timeout)
         self._store = store
         self._outer: ControlStore | None = None
 
+    def intact(self) -> bool:
+        return self._file.intact()
+
     def __enter__(self) -> _ControlLock:
-        super().__enter__()
+        self._file.__enter__()
         self._outer = _HOLDERS.get(self._store.store_dir)
         _HOLDERS[self._store.store_dir] = self._store
         try:
             self._store._compare()
         except BaseException:
             self._release_holder()
-            super().__exit__(None, None, None)
+            self._file.__exit__(None, None, None)
             raise
         return self
 
@@ -222,7 +226,7 @@ class _ControlLock(FileLock):
         try:
             self._release_holder()
         finally:
-            super().__exit__(exc_type, exc, tb)
+            self._file.__exit__(exc_type, exc, tb)
 
     def _release_holder(self) -> None:
         if self._outer is None:
@@ -477,7 +481,7 @@ class ControlStore:
         self.seal = seal  # F9-A plan D-16: the commit check's fallback; the composition root sets it
         self.held = 0  # > 0 while this process holds the control lock through this store
         self._parsed: tuple[str, dict[str, Any]] | None = None  # (sha256 of the bytes, their parse): read-only
-        self._lock: FileLock | None = None  # the control lock this process holds for the open session
+        self._lock: _ControlLock | None = None  # the control lock this process holds for the open session
         self.store_dir = store_of(aew_root)  # resolved, for ``write_file``
         self._target: store_group.Target | None = None  # set under the control lock only (``_compare``)
         self._registered = False
@@ -502,7 +506,7 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
-    def control_lock(self, operation: str) -> FileLock:
+    def control_lock(self, operation: str) -> _ControlLock:
         """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
         here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
         ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1). This is also where a process becomes a

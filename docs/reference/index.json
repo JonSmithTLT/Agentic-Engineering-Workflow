@@ -2,22 +2,22 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 173
+      "lower-bound": 174
     },
     "by_family": {
       "entry-points": 6,
-      "modules": 173
+      "modules": 174
     },
     "by_family_and_coverage": {
       "entry-points": {
         "complete-by-construction": 6
       },
       "modules": {
-        "lower-bound": 173
+        "lower-bound": 174
       }
     },
-    "digest": "sha256:06dfb70eb4a0a58aa85b0c7c2abaed9587aebe05dfe97aa89bc4dbae0f945e2c",
-    "records": 179,
+    "digest": "sha256:05d4f6ebff327bba79589ea5e9fe3ce768ed7d06047039ad4a1c6abb521adcc7",
+    "records": 180,
     "unresolved": 5
   },
   "gaps": [
@@ -2543,6 +2543,7 @@
         "aew.errors",
         "aew.harness.containment.layout",
         "aew.harness.containment.probe",
+        "aew.harness.containment.sockets",
         "aew.workspace.git"
       ]
     },
@@ -2619,8 +2620,26 @@
       },
       "family": "modules",
       "imports": [
-        "aew.harness.containment.layout"
+        "aew.harness.containment.layout",
+        "aew.harness.containment.sockets"
       ]
+    },
+    "modules:aew.harness.containment.sockets": {
+      "anchor": {
+        "module": "aew.harness.containment.sockets",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/sockets.py"
+      },
+      "family": "modules",
+      "imports": []
     },
     "modules:aew.harness.contract": {
       "anchor": {
@@ -3834,6 +3853,7 @@
       "family": "modules",
       "imports": [
         "aew.errors",
+        "aew.process_kind",
         "aew.workspace.git"
       ]
     },

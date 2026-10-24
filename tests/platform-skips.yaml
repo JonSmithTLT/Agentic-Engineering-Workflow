@@ -282,6 +282,90 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
+    tests/integration/test_containment.py::test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the rows' judgement is tested on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the socket classes are tested on every platform in tests/unit/test_containment_sockets.py.
+    tests/integration/test_containment.py::test_a_planted_socket_the_launching_environment_names_as_its_agent_fails_the_launch: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the socket classes, the launching environment's among them, are tested on every platform in
+      tests/unit/test_containment_sockets.py.
+    tests/integration/test_containment.py::test_a_socket_on_a_read_only_bind_can_still_be_connected_to: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); a property of Linux mounts, the reason for the socket inventory; nothing on Windows mounts
+      read-only.
+    tests/integration/test_containment.py::test_a_credential_cache_socket_in_its_default_place_is_masked_and_the_run_starts: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); its mask is in the layout on every platform (tests/unit/test_containment_layout.py, the
+      credential-cache directories).
+    tests/integration/test_containment.py::test_the_sandboxes_resolv_conf_resolves_to_a_readable_file_whenever_the_hosts_does: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the exception's place in the argv is tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_what_a_harness_needs_runs_under_the_run_mask: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the /run mask's place in the argv is tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_display_credentials_and_variables_never_reach_a_contained_process: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the display masks, the unset variables and the environment builders are tested on every
+      platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_no_credential_reaches_git_inside_the_sandbox: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the store helper's files are in the layout's masks on every platform
+      (tests/unit/test_containment_layout.py).
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row2-run]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row3-file]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row3-env]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row5-mask]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[contained]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); row 4's judgement is tested on every platform in tests/unit/test_containment_probe.py, and
+      the new session on every argv in tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[without_new_session]: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); row 4 failing closed is tested on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_a_project_under_run_is_bound_back_and_row_2_allows_exactly_that: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the bind-backs, their reason and their modes are tested on every platform in
+      tests/unit/test_containment_layout.py (the operator's ruling of 2026-10-23 on R-1).
+    tests/integration/test_containment.py::test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory: >-
+      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
+      the Rocky 8 lane); the socket classes are tested on every platform in tests/unit/test_containment_sockets.py.
+    tests/unit/test_containment_layout.py::test_a_project_reached_through_a_symlink_is_bound_back_at_its_real_path_and_a_link_path_is_refused: >-
+      Making a symlink needs a privilege on Windows (STG-05 CS-2, the operator's ruling of 2026-10-23 on R-1,
+      condition 1). Covered on Linux; the bind-backs at their real paths are tested on every platform
+      (test_a_project_under_run_is_bound_back_only_by_its_own_binds_at_their_real_paths_and_modes).
+    tests/unit/test_containment_layout.py::test_the_resolv_conf_exception_is_the_first_path_under_run_on_its_chain_when_the_chain_ends_at_a_file: >-
+      /etc/resolv.conf's link chain is POSIX's, and making a symlink needs a privilege on Windows (STG-05 CS-2, the
+      operator's ruling of 2026-10-24). Covered on Linux; the exception's place in the argv is tested on every platform
+      (test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described_with_its_reason).
+    tests/unit/test_containment_sockets.py::test_the_resolved_spelling_comes_from_the_hosts_own_resolution: >-
+      Making a symlink needs a privilege on Windows, and the inventory's host paths are POSIX (STG-05 CS-2, review of
+      #244). Covered on Linux; the resolved spelling's use is tested on every platform
+      (test_a_socket_listed_through_a_link_is_checked_at_its_resolved_path_too).
+    tests/unit/test_containment_probe.py::test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_there: >-
+      The probe runs in a Linux sandbox, so its paths are POSIX, and making a symlink needs a privilege on Windows
+      (STG-05 CS-2, review of #244, m2). Covered on Linux; the row's judgement of what it lists is tested on every
+      platform (test_row_2_fails_closed_on_its_masks).
+    tests/integration/test_containment.py::test_a_readers_fingerprint_in_its_sandbox_equals_the_writers[uncommitted_edits]: >-
+      Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
+      Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by
+      value and by the object store's digest, in test_fingerprint_reads.py.
+    tests/integration/test_containment.py::test_a_readers_fingerprint_in_its_sandbox_equals_the_writers[fresh_worktree]: >-
+      Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
+      Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by
+      value and by the object store's digest, in test_fingerprint_reads.py.
     tests/integration/test_store_modes.py::test_every_path_the_engine_writes_in_the_store_is_owner_only_whatever_the_umask[umask077]: >-
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,

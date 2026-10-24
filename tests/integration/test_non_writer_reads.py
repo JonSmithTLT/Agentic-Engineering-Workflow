@@ -180,7 +180,13 @@ def test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock(tmp_path
     only the commands in WRITER_ONLY are refused as a non-writer's. The one change a reader makes, the derived history
     index's catch-up, is left out by ``worker_surface.changes``, which says why. The judge is the tree, not what a
     command prints: the commands run together, and only a change is attributed, from the same start, one command at a
-    time. The same commands inside a reviewer's sandbox are tests/integration/test_containment.py's."""
+    time. The same commands inside a reviewer's sandbox are tests/integration/test_containment.py's.
+
+    The real git object store is judged too (STG-05 D-CS2-1, its second face): a fingerprint read (`gate show`, `work
+    roles`, on the hot Ticket's uncommitted edit) used to write loose objects there, unseen by the `.aew` diff. And,
+    since a non-writer now stores no tree it hashes, every fingerprint recorded under `.aew`, by the project's whole
+    flow and after every command here, names a tree in the store, where the engine reads it back
+    (``worker_surface.unstored_fingerprints``; the Lead's condition on CS-2's outcome 7)."""
     from concurrent.futures import ThreadPoolExecutor
 
     w = worker_surface.worked_project(tmp_path)
@@ -198,8 +204,13 @@ def test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock(tmp_path
     prepare()
     pristine = shutil.copytree(aew, tmp_path / "aew-before")  # to attribute a change, should one show
     before = worker_surface.snapshot(aew)
+    objects = worker_surface.objects(w.p.root)
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(run, cmds))
+    added = sorted(set(worker_surface.objects(w.p.root).items()) - set(objects.items()))
+    assert added == [], added[:8]
+    recorded, unstored = worker_surface.unstored_fingerprints(w.p.root)
+    assert recorded and unstored == [], unstored  # the flow recorded fingerprints, each a tree in the store
     changed = worker_surface.changes(before, worker_surface.snapshot(aew))
     writers: dict[str, list[str]] = {}
     if changed:  # from the same start, one command at a time: each change goes to the first command that makes it

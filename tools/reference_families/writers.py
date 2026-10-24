@@ -47,6 +47,10 @@ from reference_families import writers_roles as ROLES
 FAMILY = "writers"
 STORE_TRANSACTION, DIRECT = "store-transaction", "direct"
 LOCAL = "local"  # the top-level directory of rebuildable runtime data, kept out of git (`AEW_GITIGNORE`)
+# The live case of the reach's `with` limit that the page names (a tree test holds it true): the function that takes a
+# lock by `with`, and the records of the lock's files, which the reach attributes to the roles that call `__enter__`.
+WITH_CASE = ("aew.dashboard.service", "Service.start", ("local/dashboard/endpoint.lock",
+                                                       "local/dashboard/endpoint.lock.queue"))
 
 # The entries directly under `.aew` (directories, and the two files `.gitignore` and `project.yaml`). The code has no
 # single owner of this set (the project manifest names some of them), so it is declared here, pinned both ways by the
@@ -655,7 +659,12 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "calls the CLI's function makes itself, which every command shares, by all of them. The role the "
              "environment selects is no command's: the call graph gives it nothing, and a write a non-writer may "
              "not make is refused there by `process_kind.require_writer`, a gate tested at run time and not proved "
-             "here.", ""]
+             "here.", "",
+             "A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a "
+             "context manager writes is attributed only to the roles that call it by name: the dashboard server takes "
+             f"its own lock file by `with self._lock():` (`{WITH_CASE[0]}:{WITH_CASE[1]}`), and "
+             + " and ".join(f"`{key}`" for key in WITH_CASE[2])
+             + " are listed under `aew` alone. The counts below are lower bounds.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles
@@ -685,8 +694,9 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
               "**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable "
               "runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the "
               f"mechanism: {allowed}",
-              "**Not checked:** a handler that calls its engine method by a name held in a variable is not followed, "
-              "so the writers behind it are not attributed to its role; and what the worker role may write is "
+              "**Not checked:** a handler that calls its engine method by a name held in a variable, and a `with` "
+              "statement's implicit calls, are not followed, so the writers behind them are not attributed to the "
+              "role that runs them; and what the worker role may write is "
               "`process_kind.require_writer`'s to refuse (above), not this reading's to prove.", ""]
     return lines
 

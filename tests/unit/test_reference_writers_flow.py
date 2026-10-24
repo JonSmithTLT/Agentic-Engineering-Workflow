@@ -284,6 +284,27 @@ def test_the_page_states_the_rule_for_siblings():
     assert "A sibling of a path" in W.page(a, W.records_of(a), tuple(sorted(TOP)))
 
 
+def test_a_with_statements_implicit_calls_are_not_followed_and_an_explicit_call_is():
+    """Review of #258, F1: the limit the reach states and the page names. `with Lock():` runs `Lock.__enter__`, which
+    no call names; `Lock().__enter__()` is a call."""
+    src = ("def lock_write(aew_root):\n    (aew_root / 'local' / 'l').write_text('x')\n\n"
+           "class Lock:\n    def __enter__(self):\n        lock_write(None)\n        return self\n\n"
+           "    def __exit__(self, *a):\n        pass\n\n"
+           "def by_with():\n    with Lock():\n        pass\n\n"
+           "def by_name():\n    Lock().__enter__()\n\n"
+           "def main():\n    by_with()\n\ndef main2():\n    by_name()\n")
+    a = analysed(src, roots={("aew.m", "main"): {"aew.harness.supervisor"}, ("aew.m", "main2"): {"aew.stg02.server"}})
+    assert a.reach[("aew.m", "lock_write")] == {"aew.stg02.server"}
+    assert ("aew.m", "Lock.__enter__") not in {k for k, v in a.reach.items() if "aew.harness.supervisor" in v}
+
+
+def test_the_page_states_the_with_limit_and_names_its_live_case():
+    a = analysed("def f(aew_root):\n    (aew_root / 'local' / 'x').write_text('x')\n")
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
+    assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
+
+
 def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
     a = analysed("class Lock:\n    def __init__(self, path):\n        self.path = path\n"
                  "    def open_queue(self):\n        open(self.path.with_name(self.path.name + '.queue'), 'a+b')\n\n"

@@ -15,7 +15,10 @@ is a chain of calls, and the list of entry points is a lower bound: a callback o
 it cannot follow is a call on an object whose class is not evident (not ``self``, an annotated parameter, a constructed
 local, or a function whose returns build one class), a function called through a name this reading cannot resolve, and
 a call made by another process (a subprocess runs the entry point it names: the entry-points family lists those
-starts).
+starts). Nor does it follow the implicit calls of a ``with`` statement (``__enter__`` and ``__exit__``): what a context
+manager writes is attributed only to the roles that call it by name. The live case is the dashboard server's own lock
+file, taken by ``with self._lock():`` in ``Service.start`` (``writers.WITH_CASE``, held true by a tree test):
+``FileLock``'s writes there are attributed to ``aew`` alone, and the role's count of writer functions is a lower bound.
 
 The CLI's one declaring function declares four roles, and the command decides which runs. Its own calls (the parser's
 construction, the common path every command shares) are reached by all four. The handler each command registers

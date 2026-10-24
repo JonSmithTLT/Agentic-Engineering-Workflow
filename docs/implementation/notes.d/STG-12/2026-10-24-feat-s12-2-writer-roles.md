@@ -27,7 +27,11 @@ that all four of the CLI's roles reach it. Now each writer's `entry_points` is c
   non-writer reaches are listed too, as permitted (`local/` is rebuildable data kept out of git; the check is keyed on
   the path prefix and the mechanism).
 - **Limits, stated on the page.** A handler that calls its engine method by a name held in a variable
-  (`getattr(engine, name)(...)`: the `integrate` commands) is not followed. A sibling path named by something that is
+  (`getattr(engine, name)(...)`: the `integrate` commands) is not followed. Nor are the implicit `__enter__` and
+  `__exit__` calls of a `with` statement (review of this pull request, F1): what a context manager writes is attributed
+  only to the roles that call it by name. The live case is the dashboard server's own lock file (`with self._lock():`
+  in `Service.start`), listed under `aew` alone; a tree test holds that case true, so following `with` later is a
+  change the test names. A sibling path named by something that is
   neither fixed nor made by the process is an unresolved write (it used to fold into its path).
 - **Carried from the review of the writer map (nits that ride this pull request).** A flags or mode name that the
   function only augments is unreadable, not decided by its augmentations (both readers); the `.suffix +` and f-string

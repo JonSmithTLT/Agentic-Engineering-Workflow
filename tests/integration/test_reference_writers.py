@@ -258,6 +258,20 @@ def test_no_store_write_is_reached_from_a_role_that_may_not_write_the_store():
     assert not store[ANALYSIS.roles.worker] and not local[ANALYSIS.roles.worker], "nothing reaches the worker role"
 
 
+def test_the_with_limit_the_page_names_is_still_the_live_case():
+    """The page says the dashboard server's lock file is attributed to `aew` alone because a `with` is not
+    followed. This holds that true: the function takes the lock by `with`, and the records do not list the dashboard
+    role. When the reach follows `with`, this fails: update the page text and `WITH_CASE` (or drop the limit)."""
+    module, qual, keys = W.WITH_CASE
+    func = PROGRAM.modules[module].funcs[qual]
+    assert any(isinstance(n, ast.With) for n in ast.walk(func.node))
+    records = {r.key: r for r in W.records_of(ANALYSIS)}
+    dashboard = process_kind.cli_entry_point(["dashboard", "serve"], {})
+    for key in keys:
+        reached = {k for w in (records[key].fact or {})["writers"] for k in w["entry_points"]}
+        assert dashboard not in reached and reached == {ANALYSIS.roles.general}, (key, reached)
+
+
 def test_the_gate_the_records_name_exists_is_called_by_the_control_lock_and_is_tested_at_run_time():
     module, symbol = W.GATE_SYMBOL
     assert symbol in PROGRAM.modules[module].funcs

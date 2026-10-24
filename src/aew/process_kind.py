@@ -46,6 +46,10 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
                                "engine"),
     "aew.stg02.server": (NON_WRITER, "the STG-02 slice's producer: it reads a project's committed state lock-free "
                          "(dashboard.reader) and writes only its own state directory, never the store"),
+    "aew_wis.__main__": (NON_WRITER, "the work-item fact issuer (STG-04 WIS-01), run by systemd from root's install as "
+                         "aew-wis-issuer@<store>.service: it reads the store through a read-only bind and its own "
+                         "lock-free reader, never ControlStore, and writes only its StateDirectory and runtime "
+                         "directories"),
 }
 AGENT_ENDPOINT_ENV = "AEW_AGENT_ENDPOINT"  # aew.harness.bridge.ENV_ENDPOINT, named here to keep this module free of AEW
 

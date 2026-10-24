@@ -299,7 +299,7 @@ jobs:
       - name: Install AEW with the lint tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,parallel,coverage,lint,eval]"
+          python -m pip install -e ".[dev,parallel,coverage,lint,eval,wis]"
       - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
         if: success() || failure()
         run: ruff check --output-format github .

@@ -1,0 +1,14 @@
+# The WIS witness socket for one store (STG-04 WIS-09): GET /wis/v1/attestations/{proof_ref}. Root installs this
+# template and, per store, aew-wis-witness@<instance>.socket.d/operator.conf, which sets SocketUser= the operator.
+# Without it the socket is root's, and the issuer refuses to start: only the operator's UID may witness. Every
+# directive here and in every drop-in is under the install manifest (WIS-12).
+[Unit]
+Description=AEW work-item fact witness socket for store %i
+
+[Socket]
+ListenStream=/run/aew-wis/%i/witness.sock
+SocketMode=0600
+Service=aew-wis-issuer@%i.service
+
+[Install]
+WantedBy=sockets.target

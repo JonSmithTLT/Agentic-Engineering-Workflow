@@ -1,0 +1,42 @@
+# The WIS issuer for one store (STG-04 WIS-01): the instance name is the 32 hex characters of the store's store_ref.
+# Root installs this template and, per store, the store-path drop-in aew-wis-issuer@<instance>.service.d/store.conf,
+# which binds the store's .aew/state read-only at /run/aew-wis-view/%i/state and gives the store's group
+# (SupplementaryGroups=, WIS-01a part 5). Without that drop-in the issuer finds no store and refuses to start.
+# Every directive here and in every drop-in is under the install manifest (WIS-12). Measured on systemd 239 (Rocky 8,
+# SELinux enforcing): probe 3 (the view), and WIS-A's unit probes 1 and 2 (TemporaryFileSystem= over /dev/shm and
+# /dev/mqueue; the two runtime directories). There is no RuntimeDirectoryPreserve= (WIS-A finding F-4): with it,
+# every automatic restart failed (status 233/RUNTIME_DIRECTORY; SELinux denied systemd's setattr on a file the
+# service had written in the preserved directory). Without it each restart succeeds and is logged as no failure; the
+# runtime directories are made again at each start, and the issuer republishes every public key from its state
+# before it serves a request.
+[Unit]
+Description=AEW work-item fact issuer (WIS) for store %i
+Requires=aew-wis-witness@%i.socket
+After=aew-wis-witness@%i.socket
+
+[Service]
+Type=simple
+# The tripwires, in seconds (WIS-01, WIS-04, WIS-05): a deployment may only shorten them, in order; the issuer refuses
+# to start otherwise. --runtime-max must equal RuntimeMaxSec= below (a test holds the two together).
+ExecStart=/usr/bin/python3.11 -I -B /opt/aew-wis/bin/aew-wis serve %i --read-interval 60 --renew-before 300 --validity 900 --view-age 900 --runtime-max 960
+Sockets=aew-wis-witness@%i.socket
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+TemporaryFileSystem=/srv /mnt /media /dev/shm /dev/mqueue
+RuntimeDirectory=aew-wis-view/%i aew-wis/%i/keys
+StateDirectory=aew-wis/%i
+UMask=0077
+# The view is renewed from the path: the issuer exits 0 at its view's age, and is restarted; RuntimeMaxSec= is only
+# the backstop, because each expiry of it is logged as a failure on systemd 239 (probes 2 and 3).
+Restart=always
+RestartSec=1s
+TimeoutStopSec=10s
+RuntimeMaxSec=960
+
+[Install]
+WantedBy=multi-user.target

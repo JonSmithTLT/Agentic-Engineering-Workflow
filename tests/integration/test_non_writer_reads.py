@@ -338,7 +338,8 @@ def test_nothing_but_the_store_names_the_control_locks_path():
 
 def test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one():
     """Both ways (a table pinned against the live tree): every `python -m` module (``if __name__ == "__main__"``, or a
-    package's ``__main__.py``) other than the CLI's is a dotted row, and every dotted row is such a module; every
+    package's ``__main__.py``), in ``aew`` and in the work-item fact issuer's ``aew_wis`` (STG-04, which WIS-Q01's
+    inventory classifies with AEW's own), other than the CLI's is a dotted row, and every dotted row is such a module; every
     other row is a role the CLI's own ``cli_entry_point`` gives some command, in a worker's run or not."""
     import ast
     import tomllib
@@ -350,7 +351,8 @@ def test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_eve
         return any(isinstance(n, ast.If) and isinstance(n.test, ast.Compare)
                    and ast.unparse(n.test).replace("'", '"') == '__name__ == "__main__"' for n in ast.walk(tree))
 
-    modules = {".".join(f.relative_to(src).with_suffix("").parts) for f in (src / "aew").rglob("*.py")
+    modules = {".".join(f.relative_to(src).with_suffix("").parts) for package in ("aew", "aew_wis")
+               for f in (src / package).rglob("*.py")
                if f.name == "__main__.py" or runs_as_main(ast.parse(f.read_text(encoding="utf-8")))}
     scripts = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
     cli = {"aew.__main__"} | {target.split(":")[0] for target in scripts.values()}

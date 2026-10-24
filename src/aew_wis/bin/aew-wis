@@ -1,0 +1,16 @@
+#!/usr/bin/python3.11 -IB
+"""Root's launcher for the WIS issuer: ``/opt/aew-wis/bin/aew-wis``, which ``aew-wis-issuer@.service`` runs.
+
+The package is installed beside it, at ``../lib/aew_wis``, root-owned and under the
+install manifest (WIS-12); ``-I`` keeps the environment and the user's site out, and this puts the install's own
+``lib`` first, so what runs is what root installed and nothing of the operator's.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from aew_wis.__main__ import main  # noqa: E402
+
+raise SystemExit(main())

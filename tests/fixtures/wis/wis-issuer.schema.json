@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aew:stg04:wis-issuer:0.5-candidate",
+  "title": "WIS issuer wire (PROPOSED, wis-issuer-0.5-candidate). The witness socket and the qualification record only; the issuer reads the store and nothing pushes to it (WIS-01). The adopted D-01 wire is unchanged.",
+  "$defs": {
+    "Ref": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9._:/@+-]{1,200}$"},
+    "Hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "Time": {"type": "string", "format": "date-time", "pattern": "Z$"},
+    "Wire": {"const": "wis-issuer-0.5-candidate"},
+    "StoreRef": {"type": "string", "pattern": "^store:[0-9a-f]{32}$", "description": "WIS-01: root names it at install, from the store's real path; one issuer instance per store."},
+    "ProofRef": {"type": "string", "pattern": "^proof:wis:[0-9a-f]{32}$"},
+    "Anchor": {
+      "type": "object", "additionalProperties": false,
+      "description": "WIS-11: written by root at the console. The store's .aew/state directory as root sees it at its path: its file system (store_fs_id: uuid:<UUID>, else dev:<major>:<minor>, by one rule root and the issuer both run, review R4-1), inode number, birth time (statx btime, to the kernel's timestamp granularity, null where the file system reports none), and path within its file system (store_fs_path, what mountinfo's root field shows for a bind of it, decoded). WIS-02 refuses any other directory, and a bound directory that was renamed or deleted (STORE_REPLACED). wis_epoch is derived from the whole record (WIS-04).",
+      "required": ["store_ref", "store_fs_id", "store_ino", "store_btime", "store_fs_path", "revision", "h", "anchored_at"],
+      "properties": {"store_ref": {"$ref": "#/$defs/StoreRef"},
+                     "store_fs_id": {"type": "string", "pattern": "^(uuid:[0-9A-Za-z-]{1,64}|dev:[0-9]{1,4}:[0-9]{1,7})$"},
+                     "store_ino": {"type": "integer", "minimum": 1}, "store_btime": {"type": ["integer", "null"], "minimum": 0},
+                     "store_fs_path": {"type": "string", "pattern": "^/", "minLength": 1, "maxLength": 4096},
+                     "revision": {"type": "integer", "minimum": 0},
+                     "h": {"$ref": "#/$defs/Hex64"}, "anchored_at": {"$ref": "#/$defs/Time"}}
+    },
+    "ReadOutcome": {
+      "enum": ["OK", "STORE_REPLACED", "STORE_UNREADABLE", "CHECKSUM_INVALID", "REVISION_GAP", "CHAIN_BROKEN", "STATE_MISMATCH", "CHAIN_FORK"],
+      "description": "WIS-02: the outcome of one read of the store. STORE_REPLACED, CHAIN_BROKEN, STATE_MISMATCH and CHAIN_FORK latch the head to CHAIN_FORK; the others change nothing."
+    },
+    "WisFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["work_id", "kind", "revision", "state", "blocked_by", "cause", "axis_state"],
+      "properties": {
+        "work_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "kind": {"type": "string", "minLength": 1, "maxLength": 32},
+        "revision": {"type": ["string", "null"], "maxLength": 128},
+        "state": {"type": "string", "pattern": "^[A-Z][A-Z_]{0,40}$"},
+        "blocked_by": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+        "cause": {"enum": ["dependency", "operator_need", "mandatory_result", "unknown"]},
+        "axis_state": {"enum": ["ok", "blocked", "unknown"]}
+      }
+    },
+    "Attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "WIS-04: one per new head and per renewal. proof_ref is over the canonical JSON of every field but proof_ref and signature; signature is over every field but itself.",
+      "required": ["wire_version", "issuer_ref", "key_id", "store_ref", "wis_epoch", "revision", "h", "control_sha256", "issued_at", "valid_until", "facts", "proof_ref", "signature"],
+      "properties": {
+        "wire_version": {"$ref": "#/$defs/Wire"},
+        "issuer_ref": {"$ref": "#/$defs/Ref"},
+        "key_id": {"$ref": "#/$defs/Hex64", "description": "WIS-09: the SHA-256 of the public key, as G3-09."},
+        "store_ref": {"$ref": "#/$defs/StoreRef"},
+        "wis_epoch": {"type": "string", "pattern": "^wis-epoch:[0-9a-f]{32}$"},
+        "revision": {"type": "integer", "minimum": 0},
+        "h": {"$ref": "#/$defs/Hex64"},
+        "control_sha256": {"$ref": "#/$defs/Hex64", "description": "SHA-256 of the exact control bytes the facts were derived from (WIS-02, WIS-04)."},
+        "issued_at": {"$ref": "#/$defs/Time"},
+        "valid_until": {"$ref": "#/$defs/Time", "description": "At most issued_at + 15 minutes: a designer tripwire a deployment may only shorten (WIS-04)."},
+        "facts": {"type": "object", "propertyNames": {"minLength": 1, "maxLength": 128}, "additionalProperties": {"$ref": "#/$defs/WisFact"}},
+        "proof_ref": {"$ref": "#/$defs/ProofRef"},
+        "signature": {"type": "string", "pattern": "^[0-9a-f]{64,256}$"}
+      }
+    },
+    "WitnessResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "WIS-09: GET /wis/v1/attestations/{proof_ref} on /run/aew-wis/<store>/witness.sock.",
+      "required": ["wire_version", "attestation", "head", "current"],
+      "properties": {
+        "wire_version": {"$ref": "#/$defs/Wire"},
+        "attestation": {"$ref": "#/$defs/Attestation"},
+        "head": {"type": "object", "additionalProperties": false, "required": ["store_ref", "revision", "h", "proof_ref", "state", "last_read_at", "last_read"],
+                 "properties": {"store_ref": {"$ref": "#/$defs/StoreRef"}, "revision": {"type": "integer", "minimum": 0}, "h": {"$ref": "#/$defs/Hex64"},
+                                "proof_ref": {"$ref": "#/$defs/ProofRef"}, "state": {"enum": ["ANCHORED", "CHAIN_FORK"]},
+                                "last_read_at": {"$ref": "#/$defs/Time"}, "last_read": {"$ref": "#/$defs/ReadOutcome"}}},
+        "current": {"type": "boolean", "description": "WIS-06: true only for the latest attestation, before its valid_until, while the head is ANCHORED."}
+      }
+    },
+    "QualificationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "WIS-12: G3's record shape with WIS's own checks, environment and anchors. Written by root to /etc/aew-wis/<store>/qualification.json after an independent qualifier ran QUALIFICATION-GATE.md. qualifier_ref must differ from builder_ref, a rule JSON Schema cannot state (verify_wis.py, N15).",
+      "required": ["service_build_sha256", "host_ref", "environment", "processes", "qualifier_ref", "builder_ref", "qualified_at", "valid_until", "anchors", "checks"],
+      "properties": {
+        "service_build_sha256": {"$ref": "#/$defs/Hex64"},
+        "host_ref": {"type": "string", "pattern": "^host:[0-9a-f]{32}$"},
+        "qualifier_ref": {"$ref": "#/$defs/Ref"},
+        "builder_ref": {"$ref": "#/$defs/Ref"},
+        "qualified_at": {"$ref": "#/$defs/Time"},
+        "valid_until": {"$ref": "#/$defs/Time", "description": "At most 90 days after qualified_at (G3's tripwire)."},
+        "environment": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kernel_release", "bubblewrap_version", "sandbox_profile_sha256", "lead_containment_sha256"],
+          "properties": {
+            "kernel_release": {"type": "string", "minLength": 1, "maxLength": 128},
+            "bubblewrap_version": {"type": "string", "minLength": 1, "maxLength": 32},
+            "sandbox_profile_sha256": {"$ref": "#/$defs/Hex64"},
+            "lead_containment_sha256": {"$ref": "#/$defs/Hex64", "description": "The Lead's containment profile WIS-Q01 tested (WIS-00)."}
+          }
+        },
+        "processes": {"type": "array", "minItems": 1,
+          "description": "WIS-Q01 (review R3-1, R3-2, R4-2): every AEW host process the gate's inventory found, classified store_writer (with the reason) or non_writer. A non_writer is started by a unit AEW installs, and carries that unit's install manifest (FragmentPath, DropInPaths and entry point, by WIS-12's rule); carriers recompute it, and a change means the gate is run again. A store_writer carries none.",
+          "items": {"type": "object", "additionalProperties": false, "required": ["process_ref", "class", "reason"],
+                    "if": {"properties": {"class": {"const": "non_writer"}}}, "then": {"required": ["unit_manifest_sha256"]},
+                    "properties": {"process_ref": {"$ref": "#/$defs/Ref"}, "class": {"enum": ["store_writer", "non_writer"]},
+                                   "reason": {"type": "string", "minLength": 1, "maxLength": 300}, "unit_manifest_sha256": {"$ref": "#/$defs/Hex64"}}}},
+        "anchors": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/Anchor"},
+                    "description": "WIS-11: every anchor of this store, oldest first; the last is current, and carriers derive the epoch from it (WIS-12)."},
+        "checks": {"type": "array", "minItems": 9, "maxItems": 9, "uniqueItems": true,
+          "items": {"type": "object", "additionalProperties": false, "required": ["id", "result", "evidence_ref"],
+                    "properties": {"id": {"type": "string", "pattern": "^WIS-Q0[1-9]$"}, "result": {"enum": ["PASS", "FAIL"]}, "evidence_ref": {"$ref": "#/$defs/Ref"}}},
+          "allOf": [
+            {"contains": {"properties": {"id": {"const": "WIS-Q01"}}}}, {"contains": {"properties": {"id": {"const": "WIS-Q02"}}}},
+            {"contains": {"properties": {"id": {"const": "WIS-Q03"}}}}, {"contains": {"properties": {"id": {"const": "WIS-Q04"}}}},
+            {"contains": {"properties": {"id": {"const": "WIS-Q05"}}}}, {"contains": {"properties": {"id": {"const": "WIS-Q06"}}}},
+            {"contains": {"properties": {"id": {"const": "WIS-Q07"}}}}, {"contains": {"properties": {"id": {"const": "WIS-Q08"}}}},
+            {"contains": {"properties": {"id": {"const": "WIS-Q09"}}}}
+          ],
+          "description": "Each of WIS-Q01 to WIS-Q09 exactly once (review N-6)."}
+      }
+    },
+    "Problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire_version", "code", "status"],
+      "properties": {
+        "wire_version": {"$ref": "#/$defs/Wire"},
+        "code": {"enum": ["PEER_NOT_PERMITTED", "NOT_FOUND", "ISSUER_UNAVAILABLE"]},
+        "status": {"enum": [403, 404, 503]}
+      },
+      "allOf": [
+        {"if": {"properties": {"code": {"const": "PEER_NOT_PERMITTED"}}}, "then": {"properties": {"status": {"const": 403}}}},
+        {"if": {"properties": {"code": {"const": "NOT_FOUND"}}}, "then": {"properties": {"status": {"const": 404}}}},
+        {"if": {"properties": {"code": {"const": "ISSUER_UNAVAILABLE"}}}, "then": {"properties": {"status": {"const": 503}}}}
+      ]
+    }
+  }
+}

@@ -1,0 +1,142 @@
+{
+ "P1": {
+  "anchor": {
+   "anchored_at": "2026-10-17T13:00:00Z",
+   "h": "c40457f8a41e4eb42aa06aa3618680cc86e275dd2b9014f7d6b6e3ab5e720de5",
+   "revision": 0,
+   "store_btime": 1700000000000000001,
+   "store_fs_id": "uuid:6a1f9c3e-0b2d-4e57-9a88-1c2d3e4f5a6b",
+   "store_fs_path": "/operator/project-one/.aew/state",
+   "store_ino": 7001,
+   "store_ref": "store:c064c8d125249e463bc611015366fa16"
+  },
+  "attestation": {
+   "control_sha256": "327fe4cb71000a378078bdcb05f9398741d3295227f98dd60fce43cb4a1c38b4",
+   "facts": {
+    "ticket:one": {
+     "axis_state": "ok",
+     "blocked_by": [],
+     "cause": "unknown",
+     "kind": "ticket",
+     "revision": "revision:one",
+     "state": "READY",
+     "work_id": "ticket:one"
+    },
+    "ticket:two": {
+     "axis_state": "blocked",
+     "blocked_by": [
+      "ticket:one"
+     ],
+     "cause": "dependency",
+     "kind": "ticket",
+     "revision": "revision:two",
+     "state": "BLOCKED",
+     "work_id": "ticket:two"
+    }
+   },
+   "h": "ab9b87f0a85d515cbd2cc4ac723dc4d0531ffaf7a9af42d14a25e5b36b6ca2b1",
+   "issued_at": "2026-10-18T13:00:00Z",
+   "issuer_ref": "issuer:wis-reference",
+   "key_id": "bcd9885f897a52f5e33abc3931d2bcc838a31afd0c90b2ff5bb349a15729b274",
+   "proof_ref": "proof:wis:6e2506f4e8eb063bd86e3d062befc29e",
+   "revision": 1,
+   "signature": "6056a7c61fda6139b8a07b56384a4ee5ed9c55ec74614e2837c96d55fb485031",
+   "store_ref": "store:c064c8d125249e463bc611015366fa16",
+   "valid_until": "2026-10-18T13:15:00Z",
+   "wire_version": "wis-issuer-0.5-candidate",
+   "wis_epoch": "wis-epoch:61c18f2b5dbe2575169aa60b4151b932"
+  },
+  "continuation_wis_axis": {
+   "basis_ref": "wis:work:ticket:one",
+   "observed_at": "2026-10-18T13:00:00Z",
+   "owner_epoch": "wis-epoch:61c18f2b5dbe2575169aa60b4151b932",
+   "qualification": "qualified",
+   "reason_code": null,
+   "source_version": "rev:1",
+   "state": "ok",
+   "valid_until": "2026-10-18T13:15:00Z"
+  },
+  "store_files_b64": {
+   "control.yaml": "eyJsYXN0X3RyYW5zaXRpb24iOnsiYXQiOiIyMDI2LTEwLTE4VDEzOjAwOjAxWiIsImV2ZW50cyI6W3siaWQiOiJ0aWNrZXQ6b25lIiwia2luZCI6Indvcmsuc3RhdGUiLCJzdGF0ZSI6IlJFQURZIn0seyJpZCI6InRpY2tldDp0d28iLCJraW5kIjoid29yay5zdGF0ZSIsInN0YXRlIjoiQkxPQ0tFRCJ9XSwiaCI6ImFiOWI4N2YwYTg1ZDUxNWNiZDJjYzRhYzcyM2RjNGQwNTMxZmZhZjdhOWFmNDJkMTRhMjVlNWIzNmI2Y2EyYjEiLCJvcCI6InRyYW5zaXRpb24iLCJyZXZpc2lvbiI6MSwic2NoZW1hIjoiYWV3L3RyYW5zaXRpb24vdjEifSwicmV2aXNpb24iOjEsIndvcmsiOnsidGlja2V0Om9uZSI6eyJhY2NlcHRlZF9yZXZpc2lvbiI6InJldmlzaW9uOm9uZSIsImtpbmQiOiJ0aWNrZXQiLCJzdGF0ZSI6IlJFQURZIn0sInRpY2tldDp0d28iOnsiYWNjZXB0ZWRfcmV2aXNpb24iOiJyZXZpc2lvbjp0d28iLCJibG9ja2VkX2J5IjpbInRpY2tldDpvbmUiXSwia2luZCI6InRpY2tldCIsInN0YXRlIjoiQkxPQ0tFRCJ9fX0KIyBhZXctY2hlY2tzdW0gc2hhMjU2OjNhNTJiYmE4YzdhYWM0NDVjOGQyYjJlOTE2YWNjYjhkYmE3YmUyZDE1OTJkOTMwOTcyZjhlMzgwMGRkYmFmYTIK",
+   "log/000000.yaml": "eyJhdCI6IjIwMjYtMTAtMTZUMTM6MDA6MDBaIiwiZXZlbnRzIjpbXSwiaCI6ImM0MDQ1N2Y4YTQxZTRlYjQyYWEwNmFhMzYxODY4MGNjODZlMjc1ZGQyYjkwMTRmN2Q2YjZlM2FiNWU3MjBkZTUiLCJvcCI6ImNyZWF0ZSIsInJldmlzaW9uIjowLCJzY2hlbWEiOiJhZXcvdHJhbnNpdGlvbi92MSJ9",
+   "log/000001.yaml": "eyJhdCI6IjIwMjYtMTAtMThUMTM6MDA6MDFaIiwiZXZlbnRzIjpbeyJpZCI6InRpY2tldDpvbmUiLCJraW5kIjoid29yay5zdGF0ZSIsInN0YXRlIjoiUkVBRFkifSx7ImlkIjoidGlja2V0OnR3byIsImtpbmQiOiJ3b3JrLnN0YXRlIiwic3RhdGUiOiJCTE9DS0VEIn1dLCJoIjoiYWI5Yjg3ZjBhODVkNTE1Y2JkMmNjNGFjNzIzZGM0ZDA1MzFmZmFmN2E5YWY0MmQxNGEyNWU1YjM2YjZjYTJiMSIsIm9wIjoidHJhbnNpdGlvbiIsInJldmlzaW9uIjoxLCJzY2hlbWEiOiJhZXcvdHJhbnNpdGlvbi92MSJ9"
+  },
+  "wis_stamp": {
+   "authority_class": "qualified_observation",
+   "closures": [],
+   "coverage_ref": "wis-coverage:327fe4cb71000a378078bdcb05f9398741d3295227f98dd60fce43cb4a1c38b4",
+   "fact_ref": "wis:work:ticket:one",
+   "governing_owner": "WIS",
+   "issuer_ref": "issuer:wis-reference",
+   "observation_state": "present_current",
+   "observed_at": "2026-10-18T13:00:00Z",
+   "owner": "WIS",
+   "owner_coverage_class": "qualified_source_basis",
+   "qualification": "qualified",
+   "renewal": {
+    "checked_at": "2026-10-18T13:00:00Z",
+    "coverage_ref": "wis-coverage:327fe4cb71000a378078bdcb05f9398741d3295227f98dd60fce43cb4a1c38b4",
+    "invalidation": "expiry_or_revalidation_failure",
+    "kind": "source_valid_until",
+    "qualified_owner": "WIS",
+    "source_epoch": "wis-epoch:61c18f2b5dbe2575169aa60b4151b932",
+    "source_proof_ref": "proof:wis:6e2506f4e8eb063bd86e3d062befc29e",
+    "valid_until": "2026-10-18T13:15:00Z",
+    "verification_method": "source_attested_interval"
+   },
+   "source_epoch": "wis-epoch:61c18f2b5dbe2575169aa60b4151b932",
+   "source_version": "rev:1"
+  }
+ },
+ "P2": {
+  "renewal_attestation": {
+   "control_sha256": "327fe4cb71000a378078bdcb05f9398741d3295227f98dd60fce43cb4a1c38b4",
+   "facts": {
+    "ticket:one": {
+     "axis_state": "ok",
+     "blocked_by": [],
+     "cause": "unknown",
+     "kind": "ticket",
+     "revision": "revision:one",
+     "state": "READY",
+     "work_id": "ticket:one"
+    },
+    "ticket:two": {
+     "axis_state": "blocked",
+     "blocked_by": [
+      "ticket:one"
+     ],
+     "cause": "dependency",
+     "kind": "ticket",
+     "revision": "revision:two",
+     "state": "BLOCKED",
+     "work_id": "ticket:two"
+    }
+   },
+   "h": "ab9b87f0a85d515cbd2cc4ac723dc4d0531ffaf7a9af42d14a25e5b36b6ca2b1",
+   "issued_at": "2026-10-18T13:11:00Z",
+   "issuer_ref": "issuer:wis-reference",
+   "key_id": "bcd9885f897a52f5e33abc3931d2bcc838a31afd0c90b2ff5bb349a15729b274",
+   "proof_ref": "proof:wis:2db87321bdd1a0e7a1e1ed19a1593f7f",
+   "revision": 1,
+   "signature": "5ee6b477268b254b7f271698fa360baca7b74f4a9dbc34d88efc2d99216f873e",
+   "store_ref": "store:c064c8d125249e463bc611015366fa16",
+   "valid_until": "2026-10-18T13:26:00Z",
+   "wire_version": "wis-issuer-0.5-candidate",
+   "wis_epoch": "wis-epoch:61c18f2b5dbe2575169aa60b4151b932"
+  }
+ },
+ "outcomes": {
+  "N03": "CHECKSUM_INVALID",
+  "N04": "REVISION_GAP",
+  "N05": "CHAIN_BROKEN",
+  "N06": "STATE_MISMATCH",
+  "N07": "CHAIN_FORK",
+  "N08": "CHAIN_FORK",
+  "N18": "STORE_UNREADABLE",
+  "N20": "STORE_REPLACED",
+  "N21": "CHAIN_FORK",
+  "N21d": "CHAIN_BROKEN",
+  "N23": "STORE_REPLACED"
+ }
+}

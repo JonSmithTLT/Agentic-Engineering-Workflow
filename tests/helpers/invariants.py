@@ -26,7 +26,7 @@ from aew.engine import hierarchy as H
 from aew.engine import outbox
 from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
-from aew.engine.store import deserialize_control
+from aew.engine.store import deserialize_control, retry_lock_free
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -37,8 +37,13 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def load_control(root: Path) -> dict[str, Any]:
+    """The committed control state, read lock-free as an operator would. On Windows a read of ``control.yaml`` can
+    collide with a commit's atomic replace for a moment (a sharing violation, ``PermissionError``), and a custody
+    worker or the engine commits while a test reads (and polls) it; the read is retried briefly, by the engine's own
+    retry for a lock-free read (``store.retry_lock_free``: ``READ_RETRIES`` attempts, the last error raised), so a
+    racing read waits instead of failing the test at random (PR #242 review, F1)."""
     path = root / ".aew/state/control.yaml"
-    return deserialize_control(path.read_bytes(), source=str(path))
+    return deserialize_control(retry_lock_free(path.read_bytes), source=str(path))
 
 
 def with_cold(root: Path, hot: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

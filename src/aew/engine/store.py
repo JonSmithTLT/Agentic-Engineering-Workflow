@@ -79,9 +79,18 @@ from aew import process_kind, profile
 from aew.coordination import layout as coordination
 from aew.engine import faults, outbox, store_group, store_writers
 from aew.engine.lock import FileLock
-from aew.errors import AEWError, DispatchUndecided, IntegrityError, ProjectNotFound, StaleRevision, ThreadUnsealed
+from aew.errors import (
+    AEWError,
+    DispatchUndecided,
+    IntegrityError,
+    ProjectNotFound,
+    StaleRevision,
+    ThreadUnsealed,
+    ValidationFailed,
+)
 from aew.schemas import validate
 from aew.util import (
+    YAML_TOO_DEEP,
     GroupRefused,
     atomic_write,
     create_exclusive,
@@ -347,7 +356,7 @@ class Transition:
 
 
 def serialize_control(state: dict[str, Any]) -> bytes:
-    body = dump_yaml(state)
+    body = dump_yaml(state, source="control state")
     return (body + f"{CHECKSUM_PREFIX}{sha256_bytes(body.encode('utf-8'))}\n").encode("utf-8")
 
 
@@ -360,7 +369,10 @@ def deserialize_control(raw: bytes, *, source: str) -> dict[str, Any]:
     expected = trailer[len(CHECKSUM_PREFIX):].strip()
     if sha256_bytes(body.encode("utf-8")) != expected:
         raise IntegrityError(f"{source}: checksum mismatch (damaged or edited outside AEW)")
-    state = load_yaml(body, source=source)
+    # Bounded too: the checksum keeps out damage, not a writer. AEW never writes control state past the bound, so a deep
+    # one was written outside AEW, and flattening it by hand would break its checksum (review of #236, R2-F3).
+    state = load_yaml(body, source=source, remedy="AEW never writes control state that deep, so this file was written "
+                      "outside AEW: restore it from git or a backup")
     validate("control", state, source=source)
     return state
 
@@ -880,7 +892,7 @@ class ControlStore:
             listing = [{"path": rel, "sha256": digest} for rel, digest in sorted(prewritten.items())]
             if listing:
                 record["prewritten"] = listing
-            txn_bytes = dump_yaml(record).encode("utf-8")
+            txn_bytes = dump_yaml(record, source="the transaction's redo record").encode("utf-8")
             txn_ref = {
                 "path": f"{TXN_DIR}/{revision:06d}.yaml",
                 "sha256": sha256_bytes(txn_bytes),
@@ -1041,7 +1053,14 @@ class ControlStore:
             ) from None
         if sha256_bytes(raw) != txn_ref["sha256"]:
             raise IntegrityError(f"redo record {txn_ref['path']} is damaged")
-        return load_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]
+        try:
+            return load_yaml(raw.decode("utf-8"), source=txn_ref["path"])["writes"]  # its pinned sha256 matched
+        except ValidationFailed as exc:
+            # AEW never writes a redo record that deep, and git cannot restore one (state/txn/ is ignored): it is the
+            # damaged record its checksum refusal names (review of #236, R2-F3)
+            if exc.details.get("reason") != YAML_TOO_DEEP:
+                raise
+            raise IntegrityError(f"redo record {txn_ref['path']} is damaged", **exc.details) from None
 
     def _apply(self, staged: list[dict[str, Any]], *, inject: bool = False,
                fault_after: list[str | None] | None = None) -> None:

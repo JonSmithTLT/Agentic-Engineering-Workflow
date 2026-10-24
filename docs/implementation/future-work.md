@@ -1365,6 +1365,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F51/`, oldest first (`python tools/register.py show F51`).*
 
+### F52
+
+**Work:** The store's record after an interrupted permission walk: after any interrupted walk, the store's record vouches again only once a walk completes, however a refusal on the host ends
+
+**Source (governing):** STG-05 CS-1, the CB-08 store-group follow-up (#243): a host-only residual, sorted by the designer under the operator's decision of 2026-10-24 on proportionate review dispositions
+
+**Belongs to or gated by:** **Unscheduled.** Deferred (operator, 2026-10-24: a host-only finding's default is a stated residual and this row); resumes on the operator's decision
+
+**Notes:** The residual is stated meanwhile, in STG-05's note for the CB-08 store-group follow-up and in #243's known limits.
+
+*Later notes: `notes.d/F52/`, oldest first (`python tools/register.py show F52`).*
+
 ### STG-05
 
 **Work:** Agent containment, built in slices (CS-1 to CS-5): the store's path and the control lock kept out of agents' reach, the store's modes and group, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed

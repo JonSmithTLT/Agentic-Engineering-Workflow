@@ -6,7 +6,8 @@ directories where WIS-01a's group is private to the operator and every running s
 builds; the model is vendored in `tests/fixtures/stg11-wis-r9/` with its synthetic operator name renamed. The host is
 read through one seam, `store_group.HOST`; nothing in `store_group` or `store_writers` reads an environment variable,
 and a test checks it.
-- **The record and the walk (D-CS1-1 as extended, with its erratum and the erratum's second amendment, 2026-10-24).**
+- **The record and the walk (D-CS1-1 as extended, with its erratum and the erratum's second and third amendments,
+  2026-10-24).**
   The record is the group and mode of the store directory, of every directory under it and of the control file. Under
   the control lock, at every open and again before every commit, it is compared with the target, and where they differ
   the whole store is walked first: the control file to a mode no target has (`0400`), then the store directory, the
@@ -17,7 +18,9 @@ and a test checks it.
   file it listed, and only a directory or a file the store holds alone. Every write into the store goes through the
   holder of the control lock (`store.write_file` refuses one without it), new files get their group on the descriptor
   before they are published, and new directories are made `0700` before they get their group and mode, so nothing is
-  ever above the bound, even for a moment.
+  ever above the bound, even for a moment. A path the walk cannot change (another account's, or a file with another
+  name) is left as it is: a walk that leaves one off the target keeps the control file at `0400`, so the record is at
+  no target until a walk changes every path it lists, and `aew doctor` names each such path with its remedy.
 - **Running store writers.** Each process that opens the control lock registers in `.aew/local/writers/` (`0700`, entries
   `0600`) and holds an `flock` on its entry; an entry whose lock is free belongs to an exited process and is removed. A
   writer's own answer comes from its own credentials. A file system that refuses the group (`EPERM`) makes the process
@@ -42,3 +45,11 @@ and a test checks it.
   WIS issuer build) must call `aew.engine.store_group.record_path`, `parse_record` and `store_ref` (and
   `instance_id`), never restate them.** The module imports only the standard library (a test keeps it so), so a
   root-owned install can take it as it is.
+- **Known limit.** Not detected: store files left wider than the store's target after an interrupted permission walk,
+  where the operator's or root's own host configuration refused that walk and later stopped refusing it. Host-only.
+  Worst case: store files readable by an account root added to the store's group, until the target next changes.
+  - **Adopted text:** this narrows A-36's guarantee that the record holds at every moment (D-CS1-11, and the third
+    amendment's rule over the class), for this host-only case only.
+  - **The authority** is the operator's decision of 2026-10-24 on proportionate review dispositions, point 6 (design
+    workspace bd637e7), as the designer's sort of #243's fourth review applied it (design workspace cf0d67e).
+  - **The deferred outcome** is register row F52.

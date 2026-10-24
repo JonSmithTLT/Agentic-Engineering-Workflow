@@ -19,8 +19,12 @@ credential).
   abstract socket or loopback port inside, only the shim's ports listening) and the paths through the shim, the relay
   and the egress proxy; it fails closed under `required`. Row 2 fails on a host abstract socket listed inside a
   private network.
-- **Not yet:** the Lead's harness on `proxy_only` with the any-public egress policy is CS-4's. The live lane's real
-  streamed turn through the relay (F28's NET-19 and decision 6) is still to be observed: on 2026-10-24 the free
-  provider's daily quota was spent, so a real OpenCode 2.0.18 server's requests reached the upstream through the relay
-  and came back refused for quota, not answered. Nothing may call Linux runs network-contained before that live lane
-  passes, and F28's row stays open.
+- **The live lane** (F28's NET-19 and decision 6) passed on the Rocky VM on 2026-10-24: OpenCode 2.0.18 on
+  `openai/gpt-5.6-luna#medium` with a real key the supervisor held. Implementer, reviewer and verifier ran
+  `proxy_only` and ended with evidence, and 14 streamed model requests crossed the relay. Against the real upstream, a
+  slow client got its stream whole, and an interrupted turn closed the upstream at once. No file the lane left held the
+  key. ADR-0009's amendment has the numbers, and two limits it showed: the relay's `cancelled` count also counts
+  complete answers, and OpenCode's glob and grep tools need ripgrep on the host, since a contained run cannot
+  download it.
+- **Not yet:** the Lead's harness on `proxy_only` with the any-public egress policy is CS-4's, and F28's row stays
+  open until then.

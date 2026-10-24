@@ -1320,13 +1320,28 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
 - `required` refuses a launch whose row 1 fails, and `allow_weaker` starts it labelled `workdir_separation_only`, with
   the rows. On the shared network, row 1 records the mode and claims nothing.
 
+### The live lane (F28 decision 6, NET-19; the Rocky 8 VM, 2026-10-24)
+- **The production path:** `tests/live/test_opencode_model_live.py`'s lifecycle on OpenCode 2.0.18 with
+  `openai/gpt-5.6-luna#medium` and a real OpenAI key, which the supervisor held. Its implementer, reviewer and verifier
+  runs, each `proxy_only` with the relay's upstream `https://api.openai.com/v1`, ended with evidence, with the pinned
+  model effective, rows 1 to 5 passing and a clean credential scan. The relay carried 14 streamed model requests (7, 4,
+  3). The live test's own checks found the key in no file the runs left, and no file the lane left held its value.
+- **The relay against the real upstream** (a real 2.0.18 server on the same model, the relay in front of it, a script
+  standing in for the supervisor): a 136 KB streamed answer arrived whole, its first bytes after 0.40 s and the rest
+  after 1.76 s; with its client slowed to about 20 KB/s, the same answer arrived whole over 7.8 s, with no timeout and
+  nothing lost. An answer interrupted mid-stream (`POST /api/session/<id>/interrupt`, after 59 KB) closed the upstream
+  connection and was counted `cancelled` 0.12 s later, with no socket left open. The slow client shows a stream
+  delivered intact to a slow reader; the answer fits in the sockets' buffers, so it does not show the upstream held
+  back, which the relay does by construction (it reads the upstream only once the client has taken the last chunk).
+- **The upstream's IPv6 address** could not be tried: the VM has no IPv6 route.
+
 ### What this does not claim
-- **The live lane** (F28 decision 6, NET-19): a real streamed turn through the relay, its backpressure and its
-  cancellation against the real upstream are not yet observed; the tests above prove them on socket pairs and a fake
-  provider. On the Rocky VM a real 2.0.18 server's requests crossed the relay to the free provider's TLS upstream
-  with the server's own headers intact (a bare request is refused as not from OpenCode; through the relay it was
-  answered as OpenCode's), and came back refused for the day's spent quota. The upstream has an IPv6 address, which
-  that host has no route to. Nothing calls Linux runs network-contained until the live lane passes.
+- **`cancelled` also counts a complete answer whose client closed first.** OpenCode closes its connection as soon as
+  it has a whole answer, before the upstream's end arrives, so in the live lane most finished steps were counted
+  `cancelled` too. The count is not a count of cancelled turns.
+- **OpenCode's glob and grep tools need ripgrep on the host's `PATH`.** Without it 2.0.18 downloads ripgrep from
+  github.com, which a `proxy_only` run's egress proxy refuses (github.com is on no allowlist), so in the live lane
+  those tools failed in two of the three runs, which still ended with evidence. The Rocky VM has no ripgrep.
 - **The Lead's harness** on `proxy_only` (F28 decision 2, with the any-public egress policy) is CS-4's. Until then
   only worker runs have a network of their own.
 - **A check's route out** through the run's egress proxy (`proxy_only` for a check) is not built.

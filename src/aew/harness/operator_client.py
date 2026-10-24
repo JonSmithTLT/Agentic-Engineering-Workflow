@@ -42,17 +42,18 @@ def locator_path(aew_root: Path) -> Path:
 
 def _same_process(locator: dict[str, Any]) -> bool:
     pid = locator.get("pid")
-    started = locator.get("process_started")
+    start, started = locator.get("start_id"), locator.get("process_started")
     if not isinstance(pid, int) or not procs.pid_alive(pid):
         return False
-    if isinstance(started, int | float):
-        return procs.same_process(pid, float(started))
+    if start is not None or isinstance(started, int | float):
+        return procs.same_process(pid, procs.recorded(start, started))
     return True  # alive and unprovable: never replaced
 
 
 def same_process(record: dict[str, Any]) -> bool:
-    """Whether the process a record names by ``pid`` and ``process_started`` is alive and is that process: the
-    locator's own check, which the endpoint's watcher also applies to the broker's liveness record (M4-E E7a)."""
+    """Whether the process a record names by ``pid`` and ``start_id`` (or, in a record from before start ids,
+    ``process_started``) is alive and is that process: the locator's own check, which the endpoint's watcher also
+    applies to the broker's liveness record (M4-E E7a)."""
     return _same_process(record)
 
 

@@ -139,8 +139,9 @@ class Service:
         pid = os.getpid()
         atomic_write(root / SERVER_JSON_REL, json.dumps({
             "schema": "aew/dashboard-endpoint/v1", "instance": self.instance, "pid": pid,
-            "started_by": procs.started_at(pid), "started_at": self.started_at, "port": self.port, "url": self.url,
-            "project": self.project_id, "control": {"endpoint": self.control.address, "key_file": KEY_REL},
+            "started_by": procs.started_at(pid), "start_id": procs.start_id(pid), "started_at": self.started_at,
+            "port": self.port, "url": self.url, "project": self.project_id,
+            "control": {"endpoint": self.control.address, "key_file": KEY_REL},
         }, indent=2) + "\n")
 
     def _lock(self) -> FileLock:
@@ -183,9 +184,9 @@ def locate(aew_root: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(info, dict) or not isinstance(info.get("pid"), int):
         return None
-    started_by = info.get("started_by")
-    alive = (procs.same_process(info["pid"], float(started_by)) if isinstance(started_by, (int, float))
-             else procs.pid_alive(info["pid"]))
+    start, started_by = info.get("start_id"), info.get("started_by")
+    alive = (procs.same_process(info["pid"], procs.recorded(start, started_by))
+             if start is not None or isinstance(started_by, (int, float)) else procs.pid_alive(info["pid"]))
     if not alive:
         return None
     endpoint = (info.get("control") or {}).get("endpoint")

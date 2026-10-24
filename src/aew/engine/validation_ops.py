@@ -129,12 +129,13 @@ def slot_of(run: dict[str, Any]) -> str:
 
 
 def executor_alive(run: dict[str, Any]) -> bool:
-    """Whether the run's executor process still exists (its pid together with its start time). A run executing on
-    another host is unobservable from here, so it counts as alive until its deadline."""
+    """Whether the run's executor process still exists (its pid together with its start id, or a start time in a run
+    recorded before start ids). A run executing on another host is unobservable from here, so it counts as alive
+    until its deadline."""
     ex = run.get("executor") or {}
     if ex.get("host") != socket.gethostname():
         return not _past(run.get("deadline_at"))
-    return procs.same_process(ex.get("host_pid"), float(ex.get("start_time") or 0))
+    return procs.same_process(ex.get("host_pid"), procs.recorded(ex.get("start_id"), ex.get("start_time")))
 
 
 def stuck_run(run: dict[str, Any] | None) -> str | None:
@@ -395,10 +396,13 @@ class Validation:
             check_set = self._check_set()
             definitions = self._resolve_definitions(check_set)
             now = _now()
+            executor = {"host_pid": os.getpid(), "start_time": procs.started_at(os.getpid()) or time.time(),
+                        "host": socket.gethostname()}
+            if (start := procs.start_id(os.getpid())) is not None:  # unknown: judged by its start time (legacy)
+                executor["start_id"] = start
             run = {"id": run_id, "custodian": lease["custodian"], "entry": lease["entry"],
                    "identity": self._identity(unit, ob, check_set), "checks": check_set["checks"],
-                   "executor": {"host_pid": os.getpid(), "start_time": procs.started_at(os.getpid()) or time.time(),
-                                "host": socket.gethostname()},
+                   "executor": executor,
                    "started_at": _iso(now),
                    "deadline_at": _iso(now + timedelta(seconds=V.deadline_s(self._post(), self.k.policy("checks")))),
                    "state": "running", "infra_attempt": attempt}

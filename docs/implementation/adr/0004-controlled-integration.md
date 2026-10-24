@@ -321,3 +321,15 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
   holds no lease and keeps its Ticket's open candidate; a custody credential stands only for the live lease's active
   custodian of the current generation.
 - **Tests:** `tests/integration/test_integration_stages.py`.
+
+## Amendment 2026-10-23 — the custody worker and the validation executor name their process by start id
+
+- **What changes:** the custody worker registers `{host_pid, started_at, start_id}`, and a validation run's executor
+  records `start_id` beside `start_time`. `start_id` is the process's start in the boot clock's domain, compared
+  exactly. An epoch start time moves with every wall-clock step on Linux, so it judged a live worker or executor gone
+  after a step of more than 2 s.
+- **A record without one** (written before this change, or whose start id could not be read) is judged by its start
+  time, as before.
+- **The schema stays `aew/control/v2`.** The worker's `start_id` is optional; an engine from before it refuses a state
+  that carries one.
+- The decision, the other records and the residuals are in ADR-0009's amendment of 2026-10-23.

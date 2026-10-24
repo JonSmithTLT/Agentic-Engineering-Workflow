@@ -335,17 +335,26 @@ def launch_ticket(lab: HarnessLab, driver: Driver, tmp_path: Path, steps: list[d
 def kill_harness(lab: HarnessLab, run: str) -> None:
     """The harness dies from outside (killed, out of memory, the machine slept): each of the run's harness
     processes is killed by pid, only while that pid still names the process the supervisor started."""
-    record = lab.record(run)
-    started = calendar.timegm(time.strptime(record["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
-    for pid in record["harness_pids"]:
-        if procs.same_process(pid, started):
+    for pid, named in harness_processes(lab.record(run)):
+        if procs.same_process(pid, named):
             procs.kill_pid(pid)
 
 
+def harness_processes(record: dict[str, Any]) -> list[tuple[int, float | str]]:
+    """Each harness process a run record names: its pid, and its start id (or, in a record without one, the run's
+    start time, which a wall-clock step can misjudge on Linux; ADR-0009 amendment 2026-10-23)."""
+    started = calendar.timegm(time.strptime(record["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
+    pids = record["harness_pids"]
+    return [(pid, procs.recorded(start, started))
+            for pid, start in zip(pids, record.get("harness_start_ids") or [None] * len(pids), strict=True)]
+
+
 def supervisor_gone(record: dict[str, Any]) -> bool:
-    """The run's supervisor has exited (checked by start time: pids are reused)."""
+    """The run's supervisor has exited (checked by its start id, or its custody time in a record without one: pids
+    are reused)."""
     custody = calendar.timegm(time.strptime(record["custody_at"], "%Y-%m-%dT%H:%M:%SZ"))
-    return not procs.same_process(record.get("supervisor_pid"), custody)
+    return not procs.same_process(record.get("supervisor_pid"),
+                                  procs.recorded(record.get("supervisor_start_id"), custody))
 
 
 def evidence_of(lab: HarnessLab, wid: str, run: str | None = None) -> list[dict[str, Any]]:
@@ -497,9 +506,8 @@ def repeated_runs_start_and_end_cleanly_with_private_state(lab, driver, tmp_path
         assert Path(driver.state_dir(lab, r)).resolve().is_relative_to(runlog.run_dir(lab.aew_root, r).resolve())
     for rec in records:
         lab.until(lambda rec=rec: supervisor_gone(rec), 30, "every supervisor to exit")
-        started = calendar.timegm(time.strptime(rec["started_at"], "%Y-%m-%dT%H:%M:%SZ"))
-        for pid in rec["harness_pids"]:  # no harness process (a server, an agent) outlives its run
-            lab.until(lambda pid=pid, started=started: not procs.same_process(pid, started), 30,
+        for pid, named in harness_processes(rec):  # no harness process (a server, an agent) outlives its run
+            lab.until(lambda pid=pid, named=named: not procs.same_process(pid, named), 30,
                       f"harness process {pid} to exit")
 
 

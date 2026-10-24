@@ -170,7 +170,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 A chain of resolved calls from the function where an entry point declares itself (see [entry-points.md](entry-points.md)), so a writer's `entry_points` is a lower bound: a callback, or a call on an object whose class is not evident, is not followed. The CLI declares its roles in one function and the command decides which runs, so the parser cuts them: the handler a command registers is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the calls the CLI's function makes itself, which every command shares, by all of them. The role the environment selects is no command's: the call graph gives it nothing, and a write a non-writer may not make is refused there by `process_kind.require_writer`, a gate tested at run time and not proved here.
 
-The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none.
+The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
 Writer functions with a store-transaction or direct write placed under `.aew`: 70; reached from at least one entry point: 51.
 

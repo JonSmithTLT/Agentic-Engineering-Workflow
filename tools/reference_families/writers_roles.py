@@ -30,7 +30,7 @@ from reference_families import writers_flow as F
 Key = tuple[str, str]
 Path = tuple[str, ...]  # the words of a command: ("lead", "mcp")
 DEPTH = 40  # names and parameters followed: a parser passes about eight steps from `build_parser` to a command
-CONDITIONAL = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.Match)
+CONDITIONAL = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
 BRANCHING = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 

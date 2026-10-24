@@ -661,11 +661,17 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
         roles = analysis.roles
         named = ", ".join(f"`{role}`: {len(cut.handlers.get(role, ()))}" for role in sorted(roles.all - {roles.worker}))
         undecided = sorted(cut.undecided)
+        nameless = sorted({r.registrar for r in cut.registrations if not r.handlers})
+
+        def where(found: list[tuple[str, str]]) -> str:
+            return ", ".join(_anchor(m, s or None) for m, s in found) if found else "none"
+
         lines += [f"The parser cut: {len(cut.registrations)} registrations of a command handler; handlers by role "
                   f"({named}; `{roles.worker}`: none, by the environment). Registrations of a command this reading "
-                  "cannot read: " + (", ".join(_anchor(m, s or None) for m, s in undecided) if undecided else "none")
-                  + (" (their handlers count as run by every role, and the writers behind them say so)."
-                     if undecided else "."), ""]
+                  f"cannot read: {where(undecided)}"
+                  + (" (their handlers count as run by every role, and the writers behind them say so)"
+                     if undecided else "")
+                  + f". Registrations whose handler is no function this reading can name: {where(nameless)}.", ""]
     lines += [f"Writer functions with a store-transaction or direct write placed under `.aew`: "
               f"{len(writer_functions)}; reached from at least one entry point: {len(reached)}.", ""]
     for key in sorted(analysis.kinds):

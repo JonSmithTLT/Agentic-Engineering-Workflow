@@ -77,10 +77,26 @@ def test_a_name_assigned_again_is_read_as_the_assignment_before_the_use_and_not_
     assert found == [((("a",),), (H,), False), ((("b",),), (H2,), False)]
 
 
-def test_an_assignment_in_a_branch_the_use_is_outside_of_does_not_hide_the_one_before_it():
-    found = only(top("    p = sub.add_parser('a')\n    if parser:\n        p = sub.add_parser('b')\n"
-                     "    p.set_defaults(handler=h)\n"))
+BRANCHES = {
+    "if": "    if parser:\n        p = sub.add_parser('b')\n",
+    "for": "    for _ in parser:\n        p = sub.add_parser('b')\n",
+    "while": "    while parser:\n        p = sub.add_parser('b')\n",
+    "try": "    try:\n        p = sub.add_parser('b')\n    finally:\n        pass\n",
+    "try-star": "    try:\n        p = sub.add_parser('b')\n    except* ValueError:\n        pass\n",
+    "match": "    match parser:\n        case _:\n            p = sub.add_parser('b')\n",
+}
+
+
+@pytest.mark.parametrize("kind", sorted(BRANCHES))
+def test_an_assignment_in_a_branch_the_use_is_outside_of_does_not_hide_the_one_before_it(kind):
+    found = only(top("    p = sub.add_parser('a')\n" + BRANCHES[kind] + "    p.set_defaults(handler=h)\n"))
     assert found == ((("a",), ("b",)), (H,), False)
+
+
+def test_an_assignment_in_a_with_block_is_not_in_a_branch():
+    found = only(top("    p = sub.add_parser('a')\n    with parser:\n        p = sub.add_parser('b')\n"
+                     "    p.set_defaults(handler=h)\n"))
+    assert found == ((("b",),), (H,), False)
 
 
 def test_an_assignment_in_a_branch_the_use_is_inside_of_is_the_one_read():

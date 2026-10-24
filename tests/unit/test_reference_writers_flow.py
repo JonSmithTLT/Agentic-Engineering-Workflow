@@ -816,8 +816,13 @@ def test_a_command_line_value_no_start_of_the_process_passes_is_named_by_its_sta
 
 
 def test_an_attribute_of_something_that_is_not_parsed_arguments_is_not_a_command_line_value():
-    a = analysed("def f(aew_root, args):\n    (aew_root / args.name).write_text('x')\n")
-    assert a.writers == {} and all("no AEW start" not in r for r in reasons(a))
+    """`args` is a name like any other unless it is bound to what `parse_args` returns."""
+    for src in ("def f(args):\n    (Path(args.name) / 'x').write_text('x')\n",
+                "def f():\n    args = make()\n    (Path(args.name) / 'x').write_text('x')\n"):
+        a = analysed(src)
+        assert a.writers == {} and all("no AEW start" not in r for r in reasons(a)), src
+    b = analysed("def f():\n    args, rest = make().parse_known_args()\n    (Path(args.name) / 'x').write_text('x')\n")
+    assert any("which no AEW start of it passes" in r for r in reasons(b)), "parse_known_args returns parsed arguments"
 
 
 # ------------------------------------------------------------------------------------------------ the declared set

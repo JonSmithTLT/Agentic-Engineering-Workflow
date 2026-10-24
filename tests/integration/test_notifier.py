@@ -22,6 +22,7 @@ import pytest
 from aewflow import create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
 from notifier import Console, adopt, dead_pid, hidden, raise_to, received, recorder, request, script, takeover, until
+from racing_read import read_json_or_none
 
 from aew.dashboard.projections import Projector
 from aew.dashboard.reader import StateReader
@@ -218,10 +219,14 @@ def test_notifier_child_inherits_no_endpoint_handle(project, tmp_path, serve, mo
     ep, _ = serve()
     monkeypatch.setattr(subprocess, "Popen", spy)
     request(project, "raise")
-    until(report.exists, what="the notifier's report")
+
+    def whole_report() -> list[Any] | None:  # the child's json.dump opens the file empty before it writes
+        found = read_json_or_none(report)
+        return None if found is None else [found]
+
+    [found] = until(whole_report, what="the notifier's whole report")
     [call] = [c for c in spawned if c["argv"] == command]
     assert call.get("close_fds") is True
-    found = json.loads(report.read_text())
     inherited = [(fd, target) for fd, target in found if fd > 2 and not str(target).startswith("/proc/")]
     if sys.platform.startswith("linux"):
         assert not [t for _, t in inherited if "endpoint" in t or t.startswith("socket:")], inherited
@@ -279,10 +284,13 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkey
                     record = broker_liveness.read(root)
                     assert broker_liveness.judge(record, generation=generation, poll_s=poll) is None, record
                     time.sleep(poll / 4)
-                record = broker_liveness.read(root)
-                assert record is not None and time.time() - record["watchdog_tick_at"] > 3 * poll  # it really waited
+                # The beat goes on under the control lock, so any read here can race its rewrite: wait for a whole one
+                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
+                assert time.time() - record["watchdog_tick_at"] > 3 * poll  # it really waited
             tick = record["watchdog_tick_at"]
-            until(lambda: broker_liveness.read(root)["watchdog_tick_at"] > tick, 10, "the watchdog to go on")
+            # A read racing the broker's rewrite is None for a moment on Windows: that moment is "not yet"
+            until(lambda: (broker_liveness.read(root) or record)["watchdog_tick_at"] > tick, 10,
+                  "the watchdog to go on")
         else:
             hold = tmp_path / "wedge"
             hold.write_text("hold", encoding="utf-8")
@@ -292,7 +300,7 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkey
                 verdict = until(lambda: broker_liveness.judge(broker_liveness.read(root), generation=generation,
                                                               poll_s=poll), 10, "the wedge to be judged")
                 assert verdict.reason == "stale" and ":tick:" in verdict.occurrence
-                record = broker_liveness.read(root)
+                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
                 assert time.time() - record["beat_at"] < 2 * poll + 1  # the beat went on: only the watchdog stopped
             finally:
                 hold.unlink()

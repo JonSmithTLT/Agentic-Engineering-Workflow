@@ -26,6 +26,7 @@ from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
 from notifier import Console, raise_to, recorder, seed, until
+from racing_read import read_json_or_none
 from test_stage_resolve import drift
 from test_stage_runner import PROBES, intervene
 
@@ -835,9 +836,9 @@ def test_the_loops_own_commits_never_restart_the_envelope(p, endpoint):
     lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": wid})]))
     lp.start()
     try:
-        until(lambda: (p.root / ".aew/local/steering/loop.json").exists() and json.loads(
-            (p.root / ".aew/local/steering/loop.json").read_text())["stop"]["code"] == L.REPETITION, 30,
-            "the repetition stop")
+        path = p.root / ".aew/local/steering/loop.json"  # the loop replaces it; a racing read is "not yet"
+        until(lambda: ((read_json_or_none(path) or {}).get("stop") or {}).get("code") == L.REPETITION, 30,
+              "the repetition stop")
         time.sleep(3 * lp.poll_s)  # nothing moves now: no further activation
     finally:
         lp.close()

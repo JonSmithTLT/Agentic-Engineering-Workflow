@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from legality_modules import LEGALITY_MODULES, legality_modules
 from notifier import adopt, dead_pid, raise_to, received, recorder, request, script, seed, takeover, until
+from racing_read import read_text_or_none
 
 from aew import errors, schemas
 from aew.engine.api import Engine
@@ -50,7 +51,8 @@ time.sleep(120)
                          max_output_bytes=1024)
     assert out["outcome"] == "failed" and out["reason"] == "timeout" and out["timed_out"]
     assert time.monotonic() - started < 30
-    parent, child = (int(p) for p in until(lambda: pids.exists() and pids.read_text().split(), what="the pids"))
+    # `deliver` returns after the timeout kill of the whole tree, so no writer is live while the record is read
+    parent, child = (int(p) for p in until(lambda: (read_text_or_none(pids) or "").split(), what="the pids"))
     until(lambda: not procs.pid_alive(parent) and not procs.pid_alive(child), 15, "the notifier's tree to be killed")
 
 

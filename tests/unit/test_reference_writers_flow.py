@@ -726,6 +726,36 @@ def test_a_list_argument_this_reading_cannot_read_leaves_the_loop_variable_unkno
     assert a.writers == {} and a.unresolved
 
 
+STORE = ("class Store:\n    def __init__(self, root, renderer=None):\n        self.root = root\n"
+         "        self.renderer = renderer\n"
+         "    def commit(self):\n        for rel, text in self.renderer().items():\n"
+         "            (self.root / rel).write_text(text)\n\n"
+         "def views():\n    out = {'state/A.md': 'a'}\n    out['state/B.md'] = 'b'\n    return out\n\n")
+
+
+def test_the_keys_of_the_mapping_a_callback_returns_are_the_paths_it_names():
+    """Placement PR: the store's renderer is a callback a constructor stores; a path written for each key of what it
+    returns is each key (a dict literal and the keys added to it)."""
+    a = analysed(STORE + "def f(aew_root):\n    Store(aew_root, renderer=views).commit()\n")
+    assert sorted(a.writers) == ["state/A.md", "state/B.md"] and a.unresolved == {}
+
+
+def test_a_callback_that_is_a_bound_method_is_followed_too():
+    a = analysed(STORE + "class Kernel:\n    def render(self):\n        return views()\n\n"
+                 "    def start(self, aew_root):\n        Store(aew_root, renderer=self.render).commit()\n")
+    assert sorted(a.writers) == ["state/A.md", "state/B.md"] and a.unresolved == {}
+
+
+@pytest.mark.parametrize("start", [
+    "def f(aew_root):\n    Store(aew_root).commit()\n",                                   # no callback is ever passed
+    "def f(aew_root, cb):\n    Store(aew_root, renderer=cb).commit()\n",                  # a callback nothing names
+    "def f(aew_root):\n    Store(aew_root, renderer=lambda: {'state/L.md': 'l'}).commit()\n",  # a lambda
+])
+def test_a_callback_this_reading_cannot_name_leaves_the_keys_unknown(start):
+    a = analysed(STORE + start)
+    assert a.writers == {} and a.unresolved
+
+
 # A value on the command line: the supervisor reads `--run-dir`, and the start of it spells the value.
 SUPERVISOR = ("import argparse\nfrom pathlib import Path\n\n"
               "def write_it(run_dir):\n    (run_dir / 'heartbeat').write_text('x')\n\n"

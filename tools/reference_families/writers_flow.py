@@ -1094,6 +1094,8 @@ class Evaluator:
             for key in mapping.keys:
                 out |= self._ev(key, env, depth, seen) if key is not None else unk("a `**` unpacking in a mapping")
             return capped(out)
+        if isinstance(mapping, ast.Call):  # the keys of the mapping a function returns, a callback included
+            return self._keys_of_call(mapping, env, depth, seen)
         if not isinstance(mapping, ast.Name):
             return unk(f"the keys of `{_src(mapping)}`, a mapping this reading cannot read")
         func = self._func(env)
@@ -1120,6 +1122,53 @@ class Evaluator:
         if not out:
             out.add(Val(UNK, f"the keys of `{mapping.id}`, a mapping this reading cannot read"))
         return capped(out)
+
+    def _keys_of_call(self, call: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The keys of the mapping a call returns: those of each ``return`` of each function the call can name (see
+        :meth:`_callables`)."""
+        token = ("keys-call", env.module, str(env.func), str(id(call)))
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else unk("resolution depth limit")
+        targets = self._callables(call.func, env, depth - 1, seen | {token})
+        out: set[Val] = set()
+        for target in targets:
+            for ret in target.returns:
+                out |= self._keys(ret, Env(target.module, target.key), depth - 1, seen | {token})
+        if not out:
+            out.add(Val(UNK, f"the keys of `{_src(call)}`, a mapping this reading cannot read"))
+        return capped(out)
+
+    def _callables(self, callee: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> list[Func]:
+        """The functions an expression can be when it is called: one a name, attribute or method statically resolves
+        to; or a callback, a parameter or a ``self`` attribute that a constructor stored, followed to the functions
+        its callers pass. (A value read, not an edge: the reach does not follow callbacks.)"""
+        if depth <= 0:
+            return []
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        static = self.p.target(mod, func, callee)
+        if static is not None:
+            return [static]
+        found: list[Func] = []
+        if isinstance(callee, ast.Name) and func is not None and callee.id in func.params:
+            token = ("callable", func.module, func.qual, callee.id)
+            if token in seen:
+                return []
+            for caller, caller_mod, call in self.p.callers.get(func.key, [])[:CALLERS]:
+                arg = _argument(func, callee.id, call)
+                if arg is not None:
+                    found += self._callables(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
+                                             seen | {token})
+        elif (isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name) and callee.value.id == "self"
+              and func is not None and func.cls):
+            token = ("callable-attr", env.module, func.cls, callee.attr)
+            if token in seen:
+                return []
+            for m, k in self.p.mro(mod, func.cls):
+                for owner, rhs in m.attrs.get((k, callee.attr), []):
+                    found += self._callables(rhs, Env(owner.module if owner else m.name, owner.key if owner else None),
+                                             depth - 1, seen | {token})
+        return found
 
     def _element(self, iterable: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         """What a ``for`` target takes from its iterable: a path under the receiver for ``glob``, ``rglob``,

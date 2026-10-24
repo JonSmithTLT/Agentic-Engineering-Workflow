@@ -2,12 +2,12 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 344
+      "lower-bound": 345
     },
     "by_family": {
       "entry-points": 6,
       "modules": 174,
-      "writers": 170
+      "writers": 171
     },
     "by_family_and_coverage": {
       "entry-points": {
@@ -17,12 +17,12 @@
         "lower-bound": 174
       },
       "writers": {
-        "lower-bound": 170
+        "lower-bound": 171
       }
     },
-    "digest": "sha256:91eb79c3a970d6c5cd4a556383dd642a762c6255ddbb03bc96d01bc1a8ca84cd",
-    "records": 350,
-    "unresolved": 53
+    "digest": "sha256:7c5fec5795c3c093e04ed18b78e515e57e0e96434041ef22aa11fe65c30e5104",
+    "records": 351,
+    "unresolved": 52
   },
   "gaps": [
     {
@@ -138,12 +138,6 @@
       "module": "aew.engine.store",
       "symbol": "ControlStore._commit_unprofiled",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
-    },
-    {
-      "family": "writers",
-      "module": "aew.engine.store",
-      "symbol": "ControlStore._post_commit",
-      "why": "write_file of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
     },
     {
       "family": "writers",
@@ -12248,6 +12242,126 @@
       },
       "family": "writers"
     },
+    "writers:state/CURRENT.md": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": "ControlStore._post_commit"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "state",
+        "named_by": [],
+        "prefix": "state/CURRENT.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.store",
+            "symbol": "ControlStore._post_commit",
+            "via": [
+              "write_file"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:state/HANDOFF.md": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": "ControlStore._post_commit"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "state",
+        "named_by": [],
+        "prefix": "state/HANDOFF.md",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.store",
+            "symbol": "ControlStore._post_commit",
+            "via": [
+              "write_file"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:state/control.yaml": {
       "anchor": {
         "module": "aew.engine.store",
@@ -13099,29 +13213,6 @@
           {
             "module": "aew.engine.store",
             "symbol": "ControlStore._apply",
-            "why": "write_file of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "write_file",
-        "reason": "under `.aew`, but its first directory or file name is computed"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.engine.store:ControlStore._post_commit:write_file": {
-      "anchor": {
-        "module": "aew.engine.store",
-        "symbol": "ControlStore._post_commit"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.store",
-            "symbol": "ControlStore._post_commit",
             "why": "write_file of a path this reading cannot place: under `.aew`, but its first directory or file name is computed"
           }
         ]

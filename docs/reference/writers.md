@@ -162,6 +162,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 ## `state`
 
 - `state`, named by `aew.engine.store:STORE_REL`: written or removed by `aew.engine.store:ControlStore._commit_unprofiled` (direct: write_temp); `aew.engine.store:store_dirs` (direct: Path.mkdir)
+- `state/CURRENT.md`: written or removed by `aew.engine.store:ControlStore._post_commit` (direct: write_file)
+- `state/HANDOFF.md`: written or removed by `aew.engine.store:ControlStore._post_commit` (direct: write_file)
 - `state/control.yaml`, named by `aew.engine.store:CONTROL_REL`: written or removed by `aew.engine.store:ControlStore._commit_unprofiled` (direct: replace_with_retry); `aew.engine.store:ControlStore.create` (direct: write_file)
 - `state/handoffs/H-{}.md`: written or removed by `aew.engine.lead_ops:Lead.write_handoff` (store-transaction: session.write)
 - `state/log`, named by `aew.engine.outbox:LOG_DIR`, `aew.engine.store:LOG_DIR`: written or removed by `aew.engine.store:store_dirs` (direct: Path.mkdir)
@@ -221,7 +223,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 - `writers_flow.DEPTH` = 6: the calls and parameters one value is followed through; source: chosen; past it: the value is unknown, with the reason `resolution depth limit`.
 - `writers_flow.CALLERS` = 24: the call sites of one function whose parameter, mapping keys or callback is read; source: chosen; past it: the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the registration as run by every role).
-- `writers_flow.VALUES` = 40: the distinct values one expression may take; source: measured, held to twice the largest; past it: the expression is unknown, with the reason `more than N possible values`. The largest in this tree: 15.
+- `writers_flow.VALUES` = 40: the distinct values one expression may take; source: measured, held to twice the largest; past it: the expression is unknown, with the reason `more than N possible values`. The largest in this tree: 17.
 - `writers_flow.TYPING_DEPTH` = 3: the receivers typed through receivers (`self.a.b.run()`); source: chosen; past it: the call is not followed, as for any receiver whose class is not known, and a writer reached only through it carries the no-chain item.
 - `writers_roles.DEPTH` = 40: the names and parameters followed from `build_parser` to a command; source: chosen; past it: the registration's command is unread: it counts as run by every role, and the function that registers it is named.
 
@@ -230,7 +232,6 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.engine.faults:pause` (direct: open): element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.migrate_ops:Migration.discard_unreachable` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.store:ControlStore._apply` (direct: write_file): under `.aew`, but its first directory or file name is computed
-- `aew.engine.store:ControlStore._post_commit` (direct: write_file): under `.aew`, but its first directory or file name is computed
 - `aew.engine.store:ControlStore._remove_temp_files` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.harness.containment.probe:_markers` (direct: Path.mkdir): a loop variable over `layout.hide_runs`
 - `aew.harness.containment.probe:_markers` (direct: Path.write_bytes): a loop variable over `layout.hide_runs`

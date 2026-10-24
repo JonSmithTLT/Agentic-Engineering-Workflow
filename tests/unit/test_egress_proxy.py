@@ -56,12 +56,24 @@ class Reported(socket.socket):
         return self.reported
 
 
+def small_buffers(*socks: socket.socket) -> None:
+    """Pin the kernel's buffers small, so that a side that does not read soon stalls its writer. Linux honours it;
+    Windows' loopback still absorbs tens of megabytes, so there the stall below cannot be provoked at all."""
+    for sock in socks:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, SMALL_BUFFER)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, SMALL_BUFFER)
+
+
+SMALL_BUFFER = 64 * 1024
+
+
 class ConnectSpy:
     """Records every connect. With no ``peer`` it connects nowhere; with one it returns a socketpair end reporting
     that peer, and keeps the far end in ``far`` for the test to play the upstream."""
 
-    def __init__(self, peer_address: Any = None) -> None:
+    def __init__(self, peer_address: Any = None, *, small: bool = False) -> None:
         self.peer_address = peer_address
+        self.small = small
         self.calls: list[tuple[str, int]] = []
         self.far: list[socket.socket] = []
 
@@ -70,6 +82,8 @@ class ConnectSpy:
         if self.peer_address is None:
             raise OSError(errno.ECONNREFUSED, "synthetic: the spy connects nowhere")
         near, far = socket.socketpair()
+        if self.small:
+            small_buffers(near, far)
         far.settimeout(TIMEOUT)
         self.far.append(far)
         up = Reported(fileno=near.detach())
@@ -82,9 +96,11 @@ class ConnectSpy:
 
 
 @contextmanager
-def served(proxy: EgressProxy) -> Iterator[socket.socket]:
+def served(proxy: EgressProxy, *, small: bool = False) -> Iterator[socket.socket]:
     """A client connection that ``proxy.handle`` serves on its own thread."""
     client, server = socket.socketpair()
+    if small:
+        small_buffers(client, server)
     client.settimeout(TIMEOUT)
     thread = threading.Thread(target=proxy.handle, args=(server,), daemon=True)
     thread.start()
@@ -103,13 +119,13 @@ def request(target: str, *headers: str) -> bytes:
 
 
 def read_exactly(sock: socket.socket, size: int) -> bytes:
-    buf = b""
+    buf = bytearray()
     while len(buf) < size:
-        data = sock.recv(size - len(buf))
+        data = sock.recv(min(size - len(buf), 1 << 20))
         if not data:
             break
         buf += data
-    return buf
+    return bytes(buf)
 
 
 def response(client: socket.socket) -> tuple[int, dict[str, str], bytes]:
@@ -282,9 +298,59 @@ def test_when_the_upstream_closes_the_client_gets_what_it_sent_then_the_end():
             assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
             spy.far[0].sendall(b"last words")
             spy.far[0].close()
-            assert read_exactly(client, 11) == b"last words"
+            assert read_exactly(client, 10) == b"last words"
+            assert client.recv(1) == b""
     finally:
         spy.close()
+
+
+def test_a_side_busy_writing_never_stalls_the_other_direction():
+    """Over a direct connection, an upstream may write its whole answer before it reads the client's upload, while the
+    client reads and writes at once; through the proxy too. A single relay for both directions would block in
+    ``sendall`` towards the upstream, stop reading the answer, and leave both sides waiting: this test shows that on
+    Linux (the ablation turns it red there), while Windows' loopback buffers absorb the stall."""
+    size = 64 * SMALL_BUFFER  # far past every buffer on the way
+    up, down = b"u" * size, b"d" * size
+    spy = ConnectSpy(peer_address=("8.8.8.8", 443), small=True)
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=spy,
+                        is_local=never_local)
+    got: dict[str, bytes] = {}
+    try:
+        with served(proxy, small=True) as client:
+            client.sendall(request("public.example:443"))
+            assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
+            far = spy.far[0]
+            reader = threading.Thread(target=lambda: got.__setitem__("down", read_exactly(client, size)), daemon=True)
+            writer = threading.Thread(target=client.sendall, args=(up,), daemon=True)
+            reader.start()
+            writer.start()
+            try:
+                far.sendall(down)  # the whole answer before reading anything
+                got["up"] = read_exactly(far, size)
+            finally:
+                writer.join(TIMEOUT)
+                reader.join(TIMEOUT)
+    finally:
+        spy.close()
+    assert got.get("down") == down and got.get("up") == up
+
+
+def test_the_default_connect_goes_to_the_literal_address_it_is_given():
+    """The connector the proxy uses outside tests: no name, no resolution, and an error where nothing listens."""
+    listener = socket.create_server(("127.0.0.1", 0))
+    sock = None
+    try:
+        listener.settimeout(TIMEOUT)
+        port = listener.getsockname()[1]
+        sock = egress._connect(ipaddress.ip_address("127.0.0.1"), port, TIMEOUT)
+        assert sock.getpeername()[:2] == ("127.0.0.1", port)
+        listener.accept()[0].close()
+    finally:
+        if sock is not None:
+            sock.close()
+        listener.close()
+    with pytest.raises(OSError):  # port 0, where nothing can listen: refused at once (Linux 111, Windows 10049)
+        egress._connect(ipaddress.ip_address("127.0.0.1"), 0, TIMEOUT).close()
 
 
 @pytest.mark.parametrize(("policy", "reported", "reason"), [
@@ -384,21 +450,20 @@ def test_the_proxy_serves_its_listener_and_close_ends_every_tunnel():
         EgressProxy(AnyPublic()).start()
     front = socket.create_server(("127.0.0.1", 0))  # the proxy's own front door, standing in for CS-3b's AF_UNIX one
     spy = ConnectSpy(peer_address=("8.8.8.8", 443))
-    proxy = EgressProxy(AnyPublic(), listener=front, resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=spy,
-                        is_local=never_local)
     client = None
     try:
-        proxy.start()
-        client = socket.create_connection(front.getsockname(), timeout=TIMEOUT)
-        client.sendall(request("public.example:443"))
-        assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
-        proxy.close()
-        assert client.recv(1) == b""
-        assert spy.far[0].recv(1) == b""
-        assert front.fileno() == -1
-        assert not [t for t in threading.enumerate() if t.name.startswith("aew-egress")]
+        with EgressProxy(AnyPublic(), listener=front, resolve=Resolver({"public.example": ["8.8.8.8"]}),
+                         connect=spy, is_local=never_local) as proxy:
+            client = socket.create_connection(front.getsockname(), timeout=TIMEOUT)
+            client.sendall(request("public.example:443"))
+            assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
+            proxy.close()
+            assert client.recv(1) == b""
+            assert spy.far[0].recv(1) == b""
+            assert front.fileno() == -1
+            assert not [t for t in threading.enumerate() if t.name.startswith("aew-egress")]
     finally:
         if client is not None:
             client.close()
-        proxy.close()
+        front.close()
         spy.close()

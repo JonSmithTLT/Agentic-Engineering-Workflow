@@ -231,10 +231,12 @@ class EgressProxy:
             pass
         if self._thread.is_alive():
             self._thread.join(JOIN_TIMEOUT)
-        for sock in live:
+        for sock in live:  # wakes a thread blocked in sendall towards a side that does not read (Linux)
             _shutdown(sock)
         for thread in handlers:
             thread.join(JOIN_TIMEOUT)
+        for sock in live:  # and on Windows, where only closing the socket wakes it
+            sock.close()
         for sock in (self._wake_r, self._wake_w, self.listener):
             if sock is not None:
                 sock.close()
@@ -392,21 +394,41 @@ class EgressProxy:
                 "admits public addresses only.")
 
     def _splice(self, conn: socket.socket, upstream: socket.socket) -> None:
-        """Relay both ways until either side closes, then return; ``handle`` closes both (RFC 9110 §9.3.6: a tunnel
-        closes when either side does, after passing on what that side sent). ``close()`` ends it through the wake
-        socket, which stays readable once written: on Windows a shutdown does not wake a blocked ``recv``.
-        ``sendall`` blocks while the other side does not read, which is the backpressure."""
-        other = {conn: upstream, upstream: conn}
-        with selectors.DefaultSelector() as selector:
-            selector.register(self._wake_r, selectors.EVENT_READ)
-            for sock in other:
-                selector.register(sock, selectors.EVENT_READ)
-            while True:
-                for key, _ in selector.select():
-                    if key.fileobj is self._wake_r:
+        """Relay both ways, one thread per direction: a side that does not read stalls only the direction towards it
+        (``sendall`` blocking is the backpressure), never the other one, so the proxy adds no deadlock a direct
+        connection would not have. Either side's end closes the tunnel both ways (RFC 9110 §9.3.6), after passing on
+        what that side sent; ``handle`` then closes both sockets."""
+        done_r, done_w = socket.socketpair()
+        try:
+            back = threading.Thread(target=self._relay, args=(upstream, conn, done_r, done_w),
+                                    name="aew-egress-tunnel", daemon=True)
+            back.start()
+            self._relay(conn, upstream, done_r, done_w)
+            back.join()
+        finally:
+            done_r.close()
+            done_w.close()
+
+    def _relay(self, src: socket.socket, dst: socket.socket, done_r: socket.socket, done_w: socket.socket) -> None:
+        """One direction, until ``src`` ends, the other direction ends (``done_r``), or ``close()`` (the proxy's
+        wake socket). Both wake sockets stay readable once written, and are watched rather than relying on a
+        shutdown: on Windows a shutdown does not wake a blocked ``recv``."""
+        try:
+            with selectors.DefaultSelector() as selector:
+                for sock in (self._wake_r, done_r, src):
+                    selector.register(sock, selectors.EVENT_READ)
+                while True:
+                    ready = {key.fileobj for key, _ in selector.select()}
+                    if self._wake_r in ready or done_r in ready:
                         return
-                    src = conn if key.fileobj is conn else upstream
                     data = src.recv(CHUNK)
                     if not data:
                         return
-                    other[src].sendall(data)
+                    dst.sendall(data)
+        except OSError:
+            pass  # a side broke: the tunnel ends both ways all the same
+        finally:
+            try:
+                done_w.send(b"x")
+            except OSError:
+                pass

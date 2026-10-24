@@ -13,14 +13,21 @@ two tests of this family, which read the source by two independent detectors (``
 * every ``python -m aew...`` spawn site in the product names a listed entry point (D-CS1-12);
 * every row declares itself at a site, and every site declares a row.
 
-``spawn_sites`` are the ``-m`` forms only, and each record says so (``fact.spawn_forms``). The console script ``aew``
-run from a ``PATH`` the product builds, and an argv that starts with ``aew``, are not ``-m`` forms: each is listed in
-``gaps.md`` by anchor and, unattributed to a role, as ``fact.other_starts`` of the CLI's rows, so a reader that reads
-``records`` only still sees that the ``-m`` list is partial. A ``-m`` whose module name is not a plain string is a site
-with an unreadable name, reported and never passed over (in a list or tuple always; in a call's arguments when the call
-also passes ``sys.executable``, since git's own ``-m`` is passed as a call argument). What no reading here sees (a shell
-string, an argv built by ``append``, ``-c`` payloads, an interpreter named without ``sys.executable``) is pinned by
-probes, one each, in ``tests/integration/test_reference_entry_points.py``.
+The two list facts of a record, ``declared_at`` and ``starts``, are what detectors found, so each carries its own
+coverage in ``fact.fact_coverage`` (lower-bound, with what it could not resolve; the designer's addendum 3). ``starts``
+is one list of every place the product starts the entry point, each item with its ``form`` and ``attribution``:
+
+* ``-m``: a ``python -m aew...`` spawn, attributed by the module it names;
+* ``console-script-argv``: an argv list that starts with ``aew``, attributed by the owner's own ``cli_entry_point``
+  applied to its words; whether it is run is not decided here, so it is also an unresolved item of the list;
+* ``console-script-on-PATH``: the interpreter's directory put on a child's ``PATH``, which makes the CLI startable and
+  starts none, so it is listed on every role of the CLI, unattributed.
+
+A ``-m`` whose module name is not a plain string is a site with an unreadable name, reported and never passed over (in a
+list or tuple always; in a call's arguments when the call also passes ``sys.executable``, since git's own ``-m`` is
+passed as a call argument). What no reading here sees (a shell string, an argv built by ``append``, ``-c`` payloads, an
+interpreter named without ``sys.executable``) is pinned by probes, one each, in
+``tests/integration/test_reference_entry_points.py``.
 """
 
 from __future__ import annotations

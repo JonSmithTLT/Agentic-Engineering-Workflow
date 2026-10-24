@@ -169,7 +169,16 @@ def _mode(call: ast.Call, position: int) -> str | None:
 def proc_reads(source: str, *, depth: int = 0) -> list[tuple[int, str, str]]:
     """Every read of a /proc file in ``source``, as (line, path, ``bytes`` or ``text``): ``read_text``, ``read_bytes``,
     and ``open`` (builtin, ``io.open`` or ``Path.open``) with its mode. A string that holds a script with such a read
-    (the session reaper's) is read too."""
+    (the session reaper's) is read too.
+
+    **Its limits** (review of #250, second targeted check, N1):
+    - It checks the read's mode only. The decode (latin-1) and the split (on ``"\\n"``) are held by the two Linux comm
+      tests above.
+    - It does not follow a path built with ``%``, ``.format`` or ``+``, or by ``.joinpath``.
+    - It does not follow a path that passes through a helper function, a binding that is annotated or an attribute,
+      ``Path`` imported under another name, or ``Path("/") / "proc"``.
+    - It does not see ``codecs.open``, ``os.fdopen`` or ``open(file=...)``.
+    - No read in ``src`` takes any of these forms; a new one would be found only by review."""
     tree = ast.parse(source)
     names: dict[str, str] = {}
     for node in ast.walk(tree):  # a name bound to a /proc path, anywhere in the module

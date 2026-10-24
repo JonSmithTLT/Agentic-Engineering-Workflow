@@ -185,7 +185,7 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         pid = os.getppid() if s["pid"] in ("ppid", "gppid") else s["pid"]
         try:
             if s["pid"] == "gppid":  # a Lead session's harness runs under its reaper; the broker is one level up
-                pid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+                pid = int(Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
             data = Path(f"/proc/{pid}/environ").read_bytes().decode("latin-1")
             present = {item.split("=", 1)[0] for item in data.split("\x00") if "=" in item}
             return {"readable": True, "has_credential": bool(__import__("re").search(CRED, data)),

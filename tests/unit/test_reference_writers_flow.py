@@ -293,6 +293,19 @@ def test_the_keys_of_a_mapping_passed_to_a_method_of_a_constructed_class_are_the
     assert sorted(a.writers) == ["knowledge/P.md", "policy/g.yaml"]
 
 
+def test_a_value_cut_short_by_the_depth_limit_is_not_reused_where_there_was_depth_to_spare():
+    """The memo keys the depth left: an answer given with none (unknown, at the depth limit) must not be the answer of
+    the same expression asked later with plenty, or a result would depend on the order the sites are read in."""
+    prog = program({"aew.m": HEAD + "def helper(aew_root):\n    return aew_root / 'local' / 'h'\n\n"
+                                    "def f(aew_root):\n    p = helper(aew_root)\n    p.write_text('x')\n"})
+    evaluator = F.Evaluator(prog)
+    func = prog.modules["aew.m"].funcs["f"]
+    expr, env = func.assigns["p"][0], F.Env("aew.m", func.key)
+    shallow = evaluator._ev(expr, env, 0, frozenset())
+    deep = evaluator._ev(expr, env, F.DEPTH, frozenset())
+    assert any(v.kind == F.UNK for v in shallow) and {(v.kind, v.text) for v in deep} == {(F.TPL, "local/h")}
+
+
 def test_a_temporary_directory_bound_by_with_is_outside():
     a = analysed("def f():\n    with tempfile.TemporaryDirectory() as d:\n        (Path(d) / 'x').write_text('x')\n")
     assert "a temporary directory" in a.outside and a.writers == {} and a.unresolved == {}

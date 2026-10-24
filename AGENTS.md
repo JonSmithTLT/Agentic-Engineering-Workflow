@@ -4,80 +4,29 @@ These rules bind every coding agent and contributor working in this repository, 
 same of the work it orchestrates (Workflow Contract v0.7, "Independent review"): implementation is separated from
 review, findings return to implementation, and nothing is commit-ready while a mandatory finding is open.
 
-The operator owns this file; a change to it is merged by the operator (rule 5).
+The operator owns this file and the review guide; a change to either is merged by the operator (rule 5).
 
 ## 1. Every pull request gets an independent review
 
 - **Independent means a fresh context.** The reviewer is not the author's session, and never saw the author's reasoning.
   It gets the diff, the plan or design the work implements, and the repository. The same model is allowed (the
   Contract's review level R1).
-- **The finding format:** severity (blocker, major, minor or nit); `file:line`; the guarantee broken; a concrete
-  scenario; the fix; reproduced or not (with the command); confidence. No findings about taste in code style, and no
-  redesign unless a guarantee cannot be met otherwise. Add a "what looks sound" list.
-- **A repeatable defect class** (designer ruling, 2026-10-12, M1): its finding also states the governing invariant,
-  the affected scope, a reproducible way to enumerate the class where that is feasible, and the known limits of its
-  coverage. A claim that the class is fully fixed needs evidence from a reproducible check at the relevant revision. A
-  semantic class that no mechanism enumerates reliably gets documented reasoning for its coverage instead, and is
-  never claimed to be mechanically complete.
-- **Proportion in a test-only pull request** (operator, 2026-10-24; M1 stands). A pull request that changes only tests,
-  test helpers and CI test tooling, and no product code:
-  - **The fix is proven, not assumed.** The review undoes the fix on a copy, and the test the pull request names must
-    fail. For an intermittent failure, the pull request names how it is reproduced (a loop count, an injected delay or
-    a pinned seed), and the undone fix fails under it. The changed tests also run with their neighbours (the modules
-    that share the changed helper, fixture or file), not only alone.
-  - **A gap in the pull request's enumeration of its defect class is a finding only when the reviewer shows a live
-    instance at that commit:** a site the stated invariant covers that is still broken. A gap with no live instance (a
-    spelling, binding or helper the detectors cannot see) is a nit. Its fix names the gap among the stated limits, as
-    M1 requires, and changes no behaviour. When the review's other points are nits too, the verdict is CLEAR, and the
-    fix takes the short delta review of "Nits after a CLEAR".
-  - **Not covered:** a pull request that deletes, skips, marks as expected to fail or loosens a test, adds a platform
-    skip, or changes which tests CI runs or requires. It keeps the full review, because it can hide a failure.
-- **A nit** is a point whose fix changes no behaviour and breaks no guarantee: wording in docs, a comment, a docstring,
-  a test name, a stale reference. Changing text that tests or operators rely on, such as an error message or a reason
-  code, is behaviour and never a nit. The review's own label decides. The author cannot relabel a point, and an
-  unlabelled point is not a nit.
-- **One pass raises everything.** A review lists every finding and nit it would raise at that commit. Nothing is held
-  back as "optional" for a later round. A later review still raises a real defect an earlier pass missed.
-- **The stop rule** (operator, 2026-10-21; for pull requests, 2026-10-24). A review round with no blocker or major,
-  where every minor fails closed, is the last full round.
-  - **Closed or open.** A minor fails closed when its worst case refuses, stops or raises a false alarm. It fails open
-    when its worst case lets through, or reports as passing, something a guarantee forbids. The review labels each
-    minor with its worst case, and its label decides.
-  - **The answer is the smallest that meets the finding:** narrowing a claim or stating a limit where that suffices
-    (M1's known limits), otherwise the smallest code change, never new mechanism.
-  - **One short targeted review** then checks the whole diff since the last full round, in the shape of "Nits after a
-    CLEAR". A point it raises is fixed and checked the same way. Only a blocker, a major or a minor that fails open
-    reopens a full round.
+- **How a review is done is in the [review guide](docs/implementation/review-guide.md),** which every review brief
+  loads: the finding format, the labels (nit, fails closed or open, precondition class), defect classes (M1), one pass
+  raises everything, nits after a CLEAR, the stop rule, and proportion in a test-only pull request.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
-  verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`.
-- **CI at the exact head** (designer ruling, 2026-10-12, C1; a CLEAR was recorded at heads whose CI was red, and nobody
-  read it). Every review (the comment that carries its verdict line), every pull-request description, and every author
-  comment that asks for review or lists fixes gives the CI observation for its exact head commit in its body: which
-  checks and runs, their completion state, and how and when it was observed. An author who hands back fixes posts such
-  a comment; a push alone is not a hand-back. The verdict line stays as above. A review CLEAR is not CI qualification.
-  A failing required check is named. A failure also seen on the base may inform its attribution but does not
-  automatically waive the requirement. Unknown attribution remains UNKNOWN.
-- A review of an earlier commit does not cover later commits. After fixes, the reviewer (or a new independent one)
-  checks the fixes and posts a new verdict at the new head.
-- **Nits after a CLEAR get one short delta review** (operator, 2026-10-10; the product rule of the Cross-Feature
-  Integration Design v0.5, §15). When the verdict is `Review: CLEAR` and its only open points are nits:
-  - The author fixes them in ordinary commits on top of the reviewed commit, changing only what the nits name, and
-    posts a comment that cites the CLEAR and lists each nit with how it was fixed.
-  - The reviewer, or a new independent one, does one short delta review. It covers the whole diff since the CLEAR,
-    runs only the tests that touch it (CI is the matrix), and ends with a verdict at the new head as usual.
-  - If the delta review finds a blocker, major or minor finding, or any change in behaviour beyond the named fixes,
-    its verdict is `Review: FINDINGS`, or it first widens into a normal review (full scope, its own choice of tests)
-    and gives that review's verdict. Otherwise its CLEAR closes the nits.
-  - The short path is used once per CLEAR: nits raised by the delta review itself are fixed and reviewed normally.
-  - A merge of `main` or a rebase takes the work off this path: the next review is a normal one.
-  - A nit the author disputes goes through §2 before this path applies. A blocker, major or minor finding is never a
-    nit.
+  verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`. A review of an earlier commit does not cover
+  later commits: after fixes, the reviewer (or a new independent one) posts a new verdict at the new head.
+- **CI at the exact head.** Every review, every pull-request description, and every author comment that asks for
+  review or lists fixes gives the CI observation for its exact head commit (review guide §6). A push alone is not a
+  hand-back, and a review CLEAR is not CI qualification.
 
 ## 2. Findings are fixed in the same pull request
 
 Every finding is fixed in the pull request it was raised on, nits included, before merge. "Merge now, fix in a
-follow-up" is not allowed; a follow-up pull request is only for genuinely new scope. An author who disagrees with a
-finding answers it on the pull request, and the reviewer either withdraws it or the operator decides.
+follow-up" is not allowed; a follow-up pull request is only for genuinely new scope. The only exceptions are those the
+review guide's §10 lists. An author who disagrees with a finding answers it on the pull request, and the reviewer
+either withdraws it or the operator decides.
 
 ## 3. Work while waiting, but never on top of unmerged work
 
@@ -93,8 +42,8 @@ finding answers it on the pull request, and the reviewer either withdraws it or 
 
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
-- the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the verdict of the review §1
-  requires);
+- the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the verdict of the review the
+  review guide requires);
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a
   draft.
@@ -107,7 +56,7 @@ comes before any other merge.
 ## 5. Reserved for the operator
 
 - a pull request labelled `operator-merge`, which the operator or a reviewer may add to any pull request;
-- a change to this file or to the repository's rulesets.
+- a change to this file, to the [review guide](docs/implementation/review-guide.md), or to the repository's rulesets.
 
 ## 6. Repository hygiene
 

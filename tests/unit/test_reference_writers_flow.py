@@ -268,6 +268,17 @@ def test_a_sibling_named_from_the_paths_own_name_suffix_or_stem_with_a_fixed_end
                                  "local/operator/endpoint.json.queue", "local/operator/endpoint2.json"]
 
 
+def test_many_own_name_siblings_are_each_a_record_whatever_the_allocator_does():
+    """The fixed end of an own-name sibling is a node the evaluator makes; its memo is keyed by node id, so a node freed
+    early lets a later one be answered with the earlier one's value (found by a flaky ablation: 15 of 200 records were
+    lost). The nodes are kept."""
+    n = 200
+    src = "def f(aew_root):\n    p = aew_root / 'local' / 'endpoint.json'\n" + "".join(
+        f"    p.with_name(f'{{p.name}}.s{i}').write_text('x')\n" for i in range(n))
+    a = analysed(src)
+    assert sorted(a.writers) == sorted(f"local/endpoint.json.s{i}" for i in range(n))
+
+
 def test_a_sibling_named_by_a_value_that_is_neither_fixed_nor_made_by_the_process_cannot_be_placed():
     """Quick check of #254, P2: a name held in a parameter used to fold into the path it came from, which hid a file of
     its own. One built from the process (through a local name too) is still the write protocol of its path."""

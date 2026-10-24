@@ -635,6 +635,10 @@ class Evaluator:
     def __init__(self, program: Program) -> None:
         self.p = program
         self._memo: dict[tuple[int, Env, int], Values] = {}
+        # The fixed end of an own-name sibling is a node made here, not read from the source. The memo is keyed by a
+        # node's id, so such a node must outlive every lookup (a freed node's id is reused, and a stale answer is a
+        # lost record): it is made once per argument and kept here.
+        self._tails: dict[int, ast.expr | None] = {}
 
     # -- entry
     def value(self, mod: Module, func: Func | None, expr: ast.expr) -> Values:
@@ -1061,7 +1065,9 @@ class Evaluator:
         if not e.args:
             return base
         arg = e.args[0]
-        tail = _own_part_tail(arg, SIBLING_PART[method], receiver)
+        if id(arg) not in self._tails:
+            self._tails[id(arg)] = _own_part_tail(arg, SIBLING_PART[method], receiver)
+        tail = self._tails[id(arg)]
         fixed = self._ev(arg if tail is None else tail, env, depth, seen)
         if not fixed or any(v.kind != STR or PLACEHOLDER in v.text for v in fixed):
             if self._process_computed(arg, env):

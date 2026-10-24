@@ -916,9 +916,12 @@ class _Owned:
         return getattr(self._st, name)
 
 
-def _ident(path: Path) -> tuple[int, int]:
+def _ident(path: Path) -> tuple[int, int, int]:
+    """The file at ``path``, as a simulated owner is kept for it: its inode, and the time its inode last changed, which
+    the walk never changes on a file it refuses. An inode number freed by a commit's rename and given to a new file
+    is then another file, as it is to the kernel."""
     st = os.lstat(path)
-    return st.st_dev, st.st_ino
+    return st.st_dev, st.st_ino, st.st_ctime_ns
 
 
 class Refusal:
@@ -943,7 +946,7 @@ class Refusal:
     def __init__(self, monkeypatch, spec: tuple[str, str, str] | None) -> None:
         self.kind, where, self.how = spec or (None, "control", "persistent")
         self.rel = CONTROL if where == "control" else "state/log/000001.yaml"
-        self.foreign: set[tuple[int, int]] = set()
+        self.foreign: set[tuple[int, int, int]] = set()
         self.ended = False
         if self.kind == "other_account":
             self._as_another_account(monkeypatch)
@@ -973,11 +976,11 @@ class Refusal:
         real_lstat, real_fstat, real_fchmod, real_fchown = os.lstat, os.fstat, os.fchmod, os.fchown
 
         def shown(st: os.stat_result) -> object:
-            return _Owned(st, os.geteuid() + 1) if (st.st_dev, st.st_ino) in self.foreign else st
+            return _Owned(st, os.geteuid() + 1) if (st.st_dev, st.st_ino, st.st_ctime_ns) in self.foreign else st
 
         def refuse(fd: int) -> None:
             st = real_fstat(fd)
-            if (st.st_dev, st.st_ino) in self.foreign:
+            if (st.st_dev, st.st_ino, st.st_ctime_ns) in self.foreign:
                 raise PermissionError(errno.EPERM, "Operation not permitted")
 
         def fchmod(fd: int, mode: int) -> None:

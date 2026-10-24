@@ -97,8 +97,8 @@ A review round with no blocker or major, where every minor fails closed, is the 
   when its worst case lets through, or reports as passing, something a guarantee forbids. The review labels each minor
   with its worst case, and its label decides. A minor with no label, or whose worst case fits neither description, is
   open. "Stops" means stops the guarded action, not the guard.
-- **The last full round's verdict is `Review: FINDINGS`**: its closed minors are open points. The targeted review gives
-  the next verdict.
+- **A last full round that has a minor gives `Review: FINDINGS`**: its closed minors are open points, and the targeted
+  review gives the next verdict. One whose only open points are nits is CLEAR, and takes §7's delta review.
 - **The answer is the smallest that meets the finding,** for the findings of the last full round: narrowing a claim (a
   claim in the pull request or its code, never an adopted text except as §10 allows) or stating a limit where that
   suffices (M1's known limits), otherwise the smallest code change, adding no check, option, module, dependency or

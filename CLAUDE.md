@@ -40,6 +40,7 @@ How each of these is done is in [`docs/README.md`](docs/README.md), "Keeping thi
 - **The register is data.** Edit `future-work.yaml` and run `python tools/register.py render`; never edit the rendered
   pages by hand. A note on an existing row is a file (`python tools/register.py note <id>`), never an edit of its
   Notes cell. A merge that stops on the register is settled with `python tools/register.py resolve`, not by hand.
+  `python tools/register.py show <id>` prints a row with its notes.
 - **`docs/reference/` is generated from the code.** A pull request that changes what it enumerates runs
   `python tools/reference.py render` and commits the result ([its README](docs/reference/README.md)).
 
@@ -47,12 +48,16 @@ How each of these is done is in [`docs/README.md`](docs/README.md), "Keeping thi
 
 The lanes, the CI tiers, the static checks and the local commands are in
 [`testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md).
-- **CI is the matrix.** Locally, run the tests you touched and their neighbours, then push.
+- **CI is the matrix.** Locally, run the tests you touched and their neighbours, then push. Do not edit a checkout
+  while its test run is in progress.
 - **Never mark a test xfail or skip it to get green.** A test that fails and then passes on re-run is a defect to
   investigate. A slower test is a regression to find, not a timeout to raise.
+- **Fix what the static checks report;** do not silence a rule without a reason in the line's comment.
 - **New behaviour comes with the test that proves it**, named for the guarantee (`test_a_diagnostic_run_never_...`).
-- **A worktree's tests need an absolute `PYTHONPATH`** to that worktree's `src` when the venv's `aew` is an editable
-  install of another checkout. A relative `PYTHONPATH=src` silently runs the other checkout's code.
+  Engine invariants live in `tests/helpers/invariants.py`; extend them when a new state appears.
+- **A worktree's tests, and `tools/reference.py`, need an absolute `PYTHONPATH`** to that worktree's `src` when the
+  venv's `aew` is an editable install of another checkout. A relative `PYTHONPATH=src` silently runs the other
+  checkout's code.
 - **On Windows, never open console windows** (`subprocess.CREATE_NO_WINDOW`).
 
 ## Code

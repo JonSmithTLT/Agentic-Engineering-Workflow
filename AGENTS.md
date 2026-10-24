@@ -13,13 +13,14 @@ The operator owns this file and the review guide; a change to either is merged b
   Contract's review level R1).
 - **How a review is done is in the [review guide](docs/implementation/review-guide.md),** which every review brief
   loads: the finding format, the labels (nit, fails closed or open, precondition class), defect classes (M1), one pass
-  raises everything, nits after a CLEAR, the stop rule, and proportion in a test-only pull request.
+  raises everything, nits after a CLEAR, the stop rule, and proportion in a test-only pull request. Its author steps
+  (§6, §7, §9 and §10) bind authors too.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`. A review of an earlier commit does not cover
   later commits: after fixes, the reviewer (or a new independent one) posts a new verdict at the new head.
 - **CI at the exact head.** Every review, every pull-request description, and every author comment that asks for
-  review or lists fixes gives the CI observation for its exact head commit (review guide §6). A push alone is not a
-  hand-back, and a review CLEAR is not CI qualification.
+  review or lists fixes gives the CI observation for its exact head commit in its body (review guide §6). The verdict
+  line stays as above.
 
 ## 2. Findings are fixed in the same pull request
 

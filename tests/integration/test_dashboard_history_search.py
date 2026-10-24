@@ -600,10 +600,12 @@ def test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_r
     p = copy_of(built, tmp_path)
     shutil.rmtree(substrate(p).parent)
     monkeypatch.setattr(P, "SEARCH_BUILD_DOCS", 2)
+    monkeypatch.setattr(P, "SEARCH_DEADLINE_S", 30.0)  # only the build budget stops it
     with served(p.root) as s:
         through: list[int] = []
         for _ in range(40):
-            body = found(s, q("sharedmarker", limit=50))
+            # Not `found`: every answer here is asserted, and a repeat past a SEARCH_TIME_BUDGET would hide one.
+            body = s.ok(q("sharedmarker", limit=50))
             through.append(body["data"]["coverage"]["indexed_through"] or 0)
             if body["data"]["coverage"]["complete"]:
                 break
@@ -672,8 +674,8 @@ def timed(s: Served, path: str) -> tuple[Clock, dict[str, Any]]:
     """The search at ``path``, timed from where its deadline starts. The projection starts it, so the request
     before that (the connection, the snapshot) and after the projection returns (the response, and the contract
     check ``Served.ok`` makes) are not the search's time, however long a loaded runner makes them (#243's CI: 5.9 s,
-    against the 1.5 s the catch-up's entries took). The clock still records them, so a failure says where the time
-    went."""
+    against the 1.5 s the catch-up's entries took). The clock records them, so a failure says where the time went,
+    but no test bounds them: only the client's 60 s timeout does."""
     seen: dict[str, float] = {}
     search, project = Engine.history_search_committed, P.Projector.history_search
 

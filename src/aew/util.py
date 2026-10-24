@@ -157,15 +157,29 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def write_temp(directory: Path, data: bytes, prefix: str, *, mode: int = 0o600) -> Path:
-    """A new temporary file in ``directory`` holding ``data``, fsynced, with permission bits ``mode``. ``mkstemp``
-    creates it ``0600`` whatever the umask, and ``fchmod`` on its descriptor is not filtered by the umask either, so
-    the mode is exactly ``mode`` (the store's files, STG-05 CB-08). Windows has no such bits: ``mode`` is ignored."""
+class GroupRefused(PermissionError):
+    """``fchown`` to a group was refused (``EPERM``): this process may not give a file that group."""
+
+
+def write_temp(directory: Path, data: bytes, prefix: str, *, mode: int = 0o600, group: int | None = None,
+               require_group: bool = True) -> Path:
+    """A new temporary file in ``directory`` holding ``data``, fsynced, with permission bits ``mode`` and, where
+    ``group`` is given, that group. ``mkstemp`` creates it ``0600`` whatever the umask; the group is set on the
+    descriptor first, while the file grants its group nothing, then ``fchmod``, which the umask does not filter, so the
+    file has exactly ``group`` and ``mode`` before anyone can open it by its final name (the store's files, STG-05
+    CB-08, D-CS1-10). A refused group raises :class:`GroupRefused` when ``require_group``, and is otherwise left (an
+    owner-only file grants its group nothing). Windows has no such bits or groups: both are ignored."""
     directory.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
     try:
         # sys.platform, not IS_WINDOWS: Pyright narrows a platform branch only on sys.platform, and os.fchmod is
         # POSIX-only (review of #230, m8)
+        if sys.platform != "win32" and group is not None:  # pragma: posix-only
+            try:
+                os.fchown(fd, -1, group)
+            except PermissionError as exc:
+                if require_group:
+                    raise GroupRefused(exc.errno, f"group {group} refused for a new file in {directory}") from exc
         if sys.platform != "win32" and mode != 0o600:  # pragma: posix-only
             os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as fh:
@@ -192,11 +206,12 @@ def replace_with_retry(src: Path, dst: Path) -> None:
             time.sleep(0.05)
 
 
-def atomic_write(path: Path, data: bytes | str, *, mode: int = 0o600) -> None:
+def atomic_write(path: Path, data: bytes | str, *, mode: int = 0o600, group: int | None = None,
+                 require_group: bool = True) -> None:
     """Replace ``path`` so readers see either the old or the complete new content. The new file has mode ``mode``
-    (``write_temp``): the replace publishes that very inode."""
+    and group ``group`` (``write_temp``): the replace publishes that very inode."""
     raw = data.encode("utf-8") if isinstance(data, str) else data
-    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.", mode=mode)
+    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.", mode=mode, group=group, require_group=require_group)
     try:
         replace_with_retry(tmp, path)
     except BaseException:
@@ -205,10 +220,12 @@ def atomic_write(path: Path, data: bytes | str, *, mode: int = 0o600) -> None:
     fsync_dir(path.parent)
 
 
-def create_exclusive(path: Path, data: bytes | str, *, mode: int = 0o600) -> None:
-    """Atomically publish a new immutable file with mode ``mode``; fail if ``path`` already exists."""
+def create_exclusive(path: Path, data: bytes | str, *, mode: int = 0o600, group: int | None = None,
+                     require_group: bool = True) -> None:
+    """Atomically publish a new immutable file with mode ``mode`` (and group ``group``); fail if ``path`` already
+    exists."""
     raw = data.encode("utf-8") if isinstance(data, str) else data
-    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.", mode=mode)
+    tmp = write_temp(path.parent, raw, prefix=f".{path.name}.", mode=mode, group=group, require_group=require_group)
     try:
         if IS_WINDOWS:  # pragma: windows-only
             os.rename(tmp, path)  # never overwrites on Windows

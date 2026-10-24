@@ -104,8 +104,10 @@ SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
 COLUMNS_RE = re.compile(r"^<!-- columns: (.+) -->$")
 ROW_RE = re.compile(r"^### (.+)$")
 BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
-ID_RE = re.compile(r"^[A-Z][0-9]+(?:\.[0-9]+)?$")
-ID_KEY_RE = re.compile(r"^([A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
+# A row id: a letter and a number (`F2`, `F20.1`), or an STG build stage's own name, `STG-` and two digits (designer
+# ruling D-CS1-12: one row per STG stage, named as the stage is), and nothing wider.
+ID_RE = re.compile(r"^(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})$")
+ID_KEY_RE = re.compile(r"^(STG-|[A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
 CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
 NOTES = ROOT / "docs" / "implementation" / "notes.d"
 NOTES_README = "README.md"

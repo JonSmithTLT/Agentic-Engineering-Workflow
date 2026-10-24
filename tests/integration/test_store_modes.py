@@ -1,11 +1,14 @@
-"""STG-05 CB-08: the store (``.aew/state``) is group-readable whatever the umask, and nothing else AEW writes changes.
+"""STG-05 CB-08: the store (``.aew/state``) has exactly its target group and modes whatever the umask, and nothing else
+AEW writes changes (D-CS1-10 and D-CS1-11 as A-36 amends them; WIS-00's bound).
 
-Output-side: the engine runs for real under each umask, then every path in the store is walked. Nothing between the
-engine's writes and the walk changes a mode: the one-time migration never runs in these tests (the control file keeps
-the store's mode throughout, which is its record), so a writer that forgets the store's mode fails here without being
-listed. The workload names what it must have produced (handoffs, an overflow sidecar the engine staged, a sealed
-segment), so the walk cannot pass by finding nothing. The migration has tests of its own below.
-Windows has no permission bits: those tests are POSIX only (pinned in tests/platform-skips.yaml).
+Output-side: the engine runs for real under each umask and each kind of group, then every path in the store is walked.
+Nothing between the engine's writes and the walk changes a group or mode: the migration never runs in the walk test
+(the control file keeps the target throughout, which is its record), so a writer that forgets the target fails here
+without being listed. The workload names what it must have produced (handoffs, an overflow sidecar the engine staged,
+a sealed segment), so the walk cannot pass by finding nothing. The host is synthetic (``tests/helpers/group_host.py``),
+with groups this process really holds. The migration has tests of its own below, and the rest of the rule is in
+``test_store_group.py``. Windows has no permission bits or groups: those tests are POSIX only (pinned in
+tests/platform-skips.yaml).
 """
 
 from __future__ import annotations
@@ -20,41 +23,34 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
+import group_host as gh  # noqa: E402
 from aewflow import create_unit, integrate, sample_project, to_commit_ready  # noqa: E402
 from log_fixture import extend_log  # noqa: E402
 from store_model import init, make_store, one_transaction  # noqa: E402
 
 from aew.engine import outbox  # noqa: E402
 from aew.engine import store as store_mod  # noqa: E402
-from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE  # noqa: E402
+from aew.engine import store_group as sg  # noqa: E402
 
 posix = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits; Windows has none")
 
 # Enough revisions for `aew history compact` to seal one segment.
 LONG = outbox.LOG_WINDOW + outbox.SEGMENT_SIZE + 8
+KINDS = ["user_private", "local_aew", "owner_only"]
 
 
 def mode(path: Path) -> int:
     return stat.S_IMODE(os.lstat(path).st_mode)
 
 
-def store_modes(aew: Path) -> dict[str, int]:
-    """Every path in the store, the store directory itself included (a trailing ``/`` marks a directory)."""
-    out = {"state/": mode(aew / "state")}
-    for d, dirs, files in os.walk(aew / "state"):
-        for name in dirs:
-            out[(Path(d) / name).relative_to(aew).as_posix() + "/"] = mode(Path(d) / name)
-        for name in files:
-            out[(Path(d) / name).relative_to(aew).as_posix()] = mode(Path(d) / name)
-    return out
-
-
-def want(rel: str) -> int:
-    return STORE_DIR_MODE if rel.endswith("/") else STORE_FILE_MODE
-
-
-def not_exact(found: dict[str, int]) -> dict[str, str]:
-    return {rel: oct(m) for rel, m in found.items() if m != want(rel)}
+def kind_host(kind: str) -> tuple[sg.HostGroups, int, tuple[int, int]]:
+    """A host of each kind, and the group and modes its store must have."""
+    egid, s = gh.held()
+    if kind == "user_private":
+        return gh.make_host(primary=egid), egid, sg.GROUP_READ
+    if kind == "local_aew":
+        return gh.make_host(primary=egid, user_private=False, aew=s), s, sg.GROUP_READ
+    return gh.make_host(primary=egid, user_private=False), egid, sg.OWNER_ONLY
 
 
 @pytest.fixture
@@ -71,31 +67,35 @@ def umask():
 
 @posix
 @pytest.mark.parametrize("mask", [0o077, 0o002], ids=["umask077", "umask002"])
-def test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_whatever_the_umask(tmp_path, umask,
-                                                                                                   mask):
+@pytest.mark.parametrize("kind", KINDS)
+def test_every_store_path_has_exactly_the_target_group_and_modes_under_each_kind_of_group_whatever_the_umask(
+        tmp_path, umask, monkeypatch, kind, mask):
+    host, gid, modes = kind_host(kind)
+    gh.install_children(monkeypatch, tmp_path, host)  # every `aew` process the workload starts reads this host
     umask(mask)  # the CLI processes below inherit it
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     integrate(p, wid)
     aew = p.root / ".aew"
-    found = store_modes(aew)
+    found = gh.store_state(aew)
     assert {"state/CURRENT.md", "state/control.yaml", "state/txn/", "state/log/"} <= set(found)
-    assert not_exact(found) == {}  # the engine's writes alone: nothing has changed a mode since
-    # A long log for the compactor, from a fixture that writes files directly. Its own new files are given the store's
-    # modes here; the control file it rewrites in place keeps the engine's, so the migration stays out of the test.
+    assert gh.off_target(found, gid, modes) == {}  # the engine's writes alone: nothing has changed a mode since
+    # A long log for the compactor, from a fixture that writes files directly. Its own new files are given the target
+    # here; the control file it rewrites in place keeps the engine's, so the migration stays out of the test.
     before = set(found)
     extend_log(aew, LONG, overflow_every=97)
-    for rel in set(store_modes(aew)) - before:
-        os.chmod(aew / rel, want(rel))
-    assert mode(aew / "state" / "control.yaml") == STORE_FILE_MODE
+    for rel in set(gh.store_state(aew)) - before:
+        os.chown(aew / rel, -1, gid)
+        os.chmod(aew / rel, modes[1] if rel.endswith("/") else modes[0])
+    assert gh.store_state(aew)["state/control.yaml"] == (gid, modes[0])
     assert p.ok("history", "compact", "--json")["sealed"], "the compaction sealed nothing: the test proves nothing"
     create_unit(p, "ticket", "After the compaction")  # a real commit on top
     offer = p.lead("lead", "handoff", "offer")["offer"]  # last: the handoff supersedes this Lead's credential
     p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))
-    found = store_modes(aew)
+    found = gh.store_state(aew)
     assert any(rel.startswith("state/log/seg-") for rel in found)
     assert any(r.startswith("state/handoffs/") and not r.endswith("/") for r in found), sorted(found)
-    assert not_exact(found) == {}
+    assert gh.off_target(found, gid, modes) == {}
     # Everything else keeps AEW's 0600, even where the umask would allow more.
     others = [path for top in ("work", "evidence", "decisions") for path in (aew / top).rglob("*") if path.is_file()]
     assert others and {path.relative_to(aew).as_posix(): oct(mode(path)) for path in others
@@ -104,84 +104,94 @@ def test_every_file_the_engine_writes_in_the_store_has_exactly_the_stores_mode_w
 
 @posix
 @pytest.mark.parametrize("mask", [0o077, 0o002], ids=["umask077", "umask002"])
-def test_an_overflow_sidecar_the_engine_stages_has_the_stores_mode_and_a_staged_write_outside_it_keeps_0600(
-        tmp_path, umask, mask):
+@pytest.mark.parametrize("kind", KINDS)
+def test_an_overflow_sidecar_the_engine_stages_has_the_target_and_a_staged_write_outside_it_keeps_0600(
+        tmp_path, umask, monkeypatch, kind, mask):
+    host, gid, modes = kind_host(kind)
+    gh.install(monkeypatch, host)
     umask(mask)
     root = tmp_path / ".aew"
     store = init(root)
     one_transaction(store)
     one_transaction(store)  # 70 events: the complete set is staged and applied as a sidecar
-    found = store_modes(root)
+    found = gh.store_state(root)
     assert "state/log/000002.events.yaml" in found, sorted(found)
-    assert not_exact(found) == {}
+    assert gh.off_target(found, gid, modes) == {}
     records = list((root / "records").glob("*.md"))
     assert records and {r.name: oct(mode(r)) for r in records if mode(r) != 0o600} == {}
 
 
 def pre_modes(aew: Path) -> None:
     """The store as AEW wrote it before CB-08."""
-    for rel in store_modes(aew):
+    for rel in gh.store_state(aew):
         os.chmod(aew / rel, 0o700 if rel.endswith("/") else 0o600)
 
 
 @posix
-def test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_changed_later(tmp_path, umask):
+def test_a_store_from_before_the_modes_gets_them_once_and_doctor_reports_one_changed_later(tmp_path, umask,
+                                                                                          monkeypatch):
     umask(0o022)
+    egid, _s = gh.held()
+    gh.install_children(monkeypatch, tmp_path, gh.make_host(primary=egid))
     p = sample_project(tmp_path)
     aew = p.root / ".aew"
     pre_modes(aew)
-    assert all(m in (0o600, 0o700) for m in store_modes(aew).values())
-    checks = {c["check"]: c for c in p.aew("doctor", "--json").json["checks"]}  # doctor's locked read recovers first
+    assert all(m in (0o600, 0o700) for _g, m in gh.store_state(aew).values())
+    checks = {c["check"]: c for c in p.aew("doctor", "--json").json["checks"]}  # doctor's locked read walks first
     assert checks["store-modes"]["status"] == "PASS", checks["store-modes"]
-    assert not_exact(store_modes(aew)) == {}
-    # The migration ran once: the control file's mode records it, so a mode changed later is reported, not repaired.
+    assert gh.off_target(gh.store_state(aew), egid, sg.GROUP_READ) == {}
+    # The migration ran: the control file's group and mode record it, so a mode changed later is reported, not
+    # repaired.
     later = aew / "state" / "log" / "000000.yaml"
     os.chmod(later, 0o600)
     p.ok("status", "--json")
     assert mode(later) == 0o600
     check = {c["check"]: c for c in p.aew("doctor", "--json").json["checks"]}["store-modes"]
     assert check["status"] == "WARN" and "state/log/000000.yaml" in check["detail"], check
-    assert "chmod -R u+rwX,g+rX .aew/state" in check["detail"]
+    assert f"`chgrp {egid} <path>`" in check["detail"] and "`chmod 0640 <file>`" in check["detail"], check
 
 
 @posix
-def test_an_interrupted_migration_runs_again_until_the_control_file_has_the_mode(tmp_path, umask):
+def test_an_interrupted_migration_runs_again_until_the_control_file_has_the_target(tmp_path, umask, monkeypatch):
     umask(0o022)
+    egid, _s = gh.held()
+    gh.install_children(monkeypatch, tmp_path, gh.make_host(primary=egid))
     p = sample_project(tmp_path)
     aew = p.root / ".aew"
     pre_modes(aew)
     os.chmod(aew / "state" / "CURRENT.md", 0o640)  # part-way: some paths re-moded, the control file (last) not yet
     p.ok("status", "--json")
-    assert mode(aew / "state" / "log" / "000000.yaml") == STORE_FILE_MODE
-    assert mode(aew / "state" / "control.yaml") == STORE_FILE_MODE
+    assert mode(aew / "state" / "log" / "000000.yaml") == sg.GROUP_READ[0]
+    assert mode(aew / "state" / "control.yaml") == sg.GROUP_READ[0]
 
 
 @posix
-def test_the_migration_changes_only_what_lacks_the_bits_and_finishes_past_a_path_it_may_not_change(tmp_path, umask,
-                                                                                                  monkeypatch):
+def test_the_migration_sets_exact_modes_and_finishes_past_a_path_it_may_not_change(tmp_path, umask, monkeypatch):
     """A path owned by another account (``chmod`` is EPERM for a non-owner, even to the mode it has) never stops a
-    command: the migration leaves it, finishes, and `aew doctor` names it."""
+    command: the migration leaves it, finishes, and `aew doctor` names it. A path wider than the target is narrowed
+    (WIS-00's bound), not kept as CS-1 kept it."""
     umask(0o022)
+    egid, _s = gh.held()
+    gh.install(monkeypatch, gh.make_host(primary=egid))
     root = tmp_path / ".aew"
     one_transaction(init(root))
     pre_modes(root)
-    already = root / "state" / "CURRENT.md"
-    os.chmod(already, 0o644)  # has the bits: the migration must not touch it
-    foreign = root / "state" / "log" / "000001.yaml"  # lacks them, and this process may not change it
-    real_chmod, touched = os.chmod, []
+    wide = root / "state" / "CURRENT.md"
+    os.chmod(wide, 0o644)  # above the bound: the migration narrows it
+    foreign = root / "state" / "log" / "000001.yaml"  # this process may not change it
+    real_chmod = os.chmod
 
     def chmod(path, m, *a, **kw):
-        touched.append(Path(path))
-        if Path(path) in (already, foreign):
+        if Path(path) == foreign:
             raise PermissionError(errno.EPERM, "Operation not permitted", str(path))
         return real_chmod(path, m, *a, **kw)
 
     monkeypatch.setattr(store_mod.os, "chmod", chmod)
     store = make_store(root)
-    store.read()  # recovery migrates, and does not fail
-    assert already.resolve() not in [t.resolve() for t in touched]
-    assert mode(root / "state" / "control.yaml") == STORE_FILE_MODE  # the migration finished
-    assert store.mode_problems() == ["state/log/000001.yaml"]  # what is left, for doctor to name
+    store.read()  # the open walks, and does not fail
+    assert mode(wide) == sg.GROUP_READ[0]
+    assert mode(root / "state" / "control.yaml") == sg.GROUP_READ[0]  # the migration finished
+    assert store.path_problems(store.group_view().target) == [("state/log/000001.yaml", egid, 0o600)]
 
 
 @posix
@@ -190,6 +200,8 @@ def test_a_path_the_compactor_prunes_during_a_walk_fails_neither_the_migration_n
     """The compactor removes log records without the control lock: a name a walk listed may be gone when it is
     looked at."""
     umask(0o022)
+    egid, _s = gh.held()
+    gh.install(monkeypatch, gh.make_host(primary=egid))
     root = tmp_path / ".aew"
     one_transaction(init(root))
     pre_modes(root)
@@ -203,14 +215,16 @@ def test_a_path_the_compactor_prunes_during_a_walk_fails_neither_the_migration_n
 
     monkeypatch.setattr(store_mod.os, "walk", walk)
     store = make_store(root)
-    assert store.mode_problems() is not None
+    assert store.path_problems(sg.Target(egid, *sg.GROUP_READ)) is not None
     store.read()
-    assert mode(root / "state" / "control.yaml") == STORE_FILE_MODE
+    assert mode(root / "state" / "control.yaml") == sg.GROUP_READ[0]
 
 
 @posix
-def test_a_store_directory_that_is_a_link_still_gets_the_stores_modes(tmp_path, umask):
+def test_a_store_directory_that_is_a_link_still_gets_the_target(tmp_path, umask, monkeypatch):
     umask(0o077)
+    egid, _s = gh.held()
+    gh.install(monkeypatch, gh.make_host(primary=egid))
     root = tmp_path / ".aew"
     one_transaction(init(root))
     (root / "state").rename(root / "state.real")
@@ -218,67 +232,8 @@ def test_a_store_directory_that_is_a_link_still_gets_the_stores_modes(tmp_path, 
     store = make_store(root)
     one_transaction(store)
     for rel in ("control.yaml", "log/000002.yaml", "log/000002.events.yaml", "CURRENT.md"):
-        assert mode(root / "state.real" / rel) == STORE_FILE_MODE, rel
-    assert store.mode_problems() == []
-
-
-def test_the_primary_group_check_names_what_makes_a_group_not_user_private():
-    from aew.doctor import private_group_check
-
-    ok = private_group_check("op", "op", [], [], listed=12, remote=[])
-    assert ok["status"] == "PASS" and "among the 12 accounts this host lists" in ok["detail"]
-    assert private_group_check("op", "op", ["op"], [], listed=1, remote=[])["status"] == "PASS"  # oneself is no other
-    shared = private_group_check("op", "staff", ["op", "ana"], ["bo"], listed=3, remote=[])
-    assert shared["status"] == "WARN"
-    for part in ("named 'staff'", "other members (ana)", "primary group of bo"):
-        assert part in shared["detail"], shared["detail"]
-    # Accounts from a directory service need not all be listed: a group that looks private is not confirmed.
-    unseen = private_group_check("op", "op", [], [], listed=12, remote=["sss"])
-    assert unseen["status"] == "WARN" and "sss" in unseen["detail"] and "cannot confirm" in unseen["detail"]
-    # Configured but not serving (review of #230, m7): named, and no bar to a PASS.
-    idle = private_group_check("op", "op", [], [], listed=12, remote=[], idle=["sss"])
-    assert idle["status"] == "PASS" and "sss is configured for accounts but not serving" in idle["detail"]
-    # The PASS claims only what was checked: the group, with the store's files' group left to `store-group` (m6).
-    assert "`store-group` checks their group" in ok["detail"] and "to you alone" not in ok["detail"]
-
-
-def test_the_name_service_sources_beyond_this_hosts_files_are_found(tmp_path):
-    from aew.doctor import directory_sources
-
-    conf, pipe, etc = tmp_path / "nsswitch.conf", tmp_path / "nss", tmp_path / "etc"
-    etc.mkdir()
-    (etc / "passwd").write_text("root:x:0:0::/root:/bin/sh\n", encoding="utf-8")
-    pipe.write_text("", encoding="utf-8")  # sssd's responder is there: `sss` serves
-    conf.write_text("# a comment: passwd: ldap\npasswd:     files sss systemd\nshadow: files\n"
-                    "group:  files [SUCCESS=merge] sss winbind # trailing\nhosts: files dns\n", encoding="utf-8")
-    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["sss", "winbind"], [])
-    pipe.unlink()  # RL8's default profile lists `sss` whether or not sssd runs (review of #230, m7)
-    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["winbind"], ["sss"])
-    conf.write_text("passwd: files systemd\ngroup: files compat\n", encoding="utf-8")
-    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == ([], [])
-    (etc / "group").write_text("wheel:x:10:\n+@netgroup\n", encoding="utf-8")  # NIS lines: `compat` goes remote (N5)
-    assert directory_sources(conf, sss_pipe=pipe, etc=etc) == (["compat (NIS lines in /etc/passwd or /etc/group)"], [])
-    assert directory_sources(tmp_path / "absent") == ([], [])
-
-
-def test_doctor_reports_a_uid_with_no_account_entry_instead_of_crashing(monkeypatch):
-    """Review of #230, m5: a container's or a user namespace's uid has no passwd entry, and `getpwuid` raised out of
-    doctor with a traceback. It is a WARN now."""
-    if sys.platform == "win32":
-        from aew.doctor import primary_group
-
-        assert primary_group() is None  # no POSIX accounts to look up
-        return
-    import pwd
-
-    from aew.doctor import environment_checks
-
-    def missing(uid):
-        raise KeyError(f"getpwuid(): uid not found: {uid}")
-
-    monkeypatch.setattr(pwd, "getpwuid", missing)
-    found = {c["check"]: c for c in environment_checks()}
-    assert found["primary-group"]["status"] == "WARN" and "has no account entry" in found["primary-group"]["detail"]
+        assert mode(root / "state.real" / rel) == sg.GROUP_READ[0], rel
+    assert store.path_problems(store.group_view().target) == []
 
 
 def test_an_environment_check_that_raises_is_reported_and_the_others_still_run(monkeypatch):
@@ -294,34 +249,40 @@ def test_an_environment_check_that_raises_is_reported_and_the_others_still_run(m
     assert {"python", "module:yaml", "yaml"} <= set(found)
 
 
-def test_doctor_names_store_paths_whose_group_is_not_the_operators(tmp_path):
-    """Review of #230, m6: the store's modes make it group-readable, so a path whose group is another (written under
-    `sg`, or below a set-group-ID directory) is readable by that group. `store-group` names them, and AEW changes
-    nothing."""
+@posix
+@pytest.mark.parametrize("kind", ["user_private", "local_aew", "unlistable", "lacking"])
+def test_doctor_reports_the_group_its_kind_roots_record_its_writers_and_whether_wis_can_be_qualified(
+        tmp_path, monkeypatch, kind):
+    """D-CS1-11's doctor lines: the store's group and its kind, root's record and what it says, whether the group is
+    private and if not which part fails (with the record root writes to get group mode back), each running writer
+    that lacks the group, and whether WIS can be qualified here as far as the store goes."""
     from conftest import make_git_repo
 
     from aew.engine.api import Engine
-    from aew.engine.store import ControlStore, operator_gid
 
+    egid, s = gh.held()
+    host = {"user_private": gh.make_host(primary=egid),
+            "local_aew": gh.make_host(primary=egid, user_private=False, aew=s),
+            "unlistable": gh.make_host(primary=egid, unlistable=("sss",)),
+            "lacking": gh.make_host(primary=egid, user_private=False, aew=gh.unheld())}[kind]
+    gh.install(monkeypatch, host)
     e = Engine.initialize(make_git_repo(tmp_path / "repo", {"README.md": "# g\n"}), project_id="g")
-    store = ControlStore(e.aew_root)
-    gid = operator_gid()
-    if gid is None:  # Windows: no groups
-        assert store.group_problems(0) is None
-        return
-    mine = os.stat(store.store_dir).st_gid
-    assert store.group_problems(mine) == []
-    other = store.group_problems(mine + 1)  # a synthetic gid: every path is "another group" against it
-    assert other and ("state/", mine) in other and all(g == mine for _, g in other)
-    check = {c["check"]: c for c in e.doctor_checks()}["store-group"]
-    assert check["status"] == ("PASS" if mine == gid else "WARN"), check
-
-
-def test_doctor_reports_the_operators_primary_group_where_there_are_posix_groups(tmp_path):
-    from aew.doctor import environment_checks
-
-    found = [c for c in environment_checks() if c["check"] == "primary-group"]
-    if sys.platform == "win32":
-        assert found == []  # no POSIX groups, so nothing to state
+    checks = {c["check"]: c for c in e.doctor_checks()}
+    group, writers, wis = checks["store-group"], checks["store-writers"], checks["wis-store"]
+    assert checks["store-modes"]["status"] == "PASS", checks["store-modes"]
+    if kind == "user_private":
+        assert group["status"] == "PASS" and "your user-private primary group" in group["detail"]
+        assert "Root's group record" in group["detail"] and "absent" in group["detail"]
+        assert wis["status"] == "PASS" and "the qualification gate's" in wis["detail"]
+    elif kind == "local_aew":
+        assert group["status"] == "PASS" and "'aew-op'" in group["detail"] and "local AEW group" in group["detail"]
+        assert "names aew-op (gid" in group["detail"] and writers["status"] == "PASS" and wis["status"] == "PASS"
+    elif kind == "unlistable":
+        assert group["status"] == "WARN" and "WIS-01a part 3 (for your primary group)" in group["detail"], group
+        assert "sss" in group["detail"] and "configured counts, running or not" in group["detail"]
+        assert f"Group=op {egid}" in group["detail"] and "Signal=sss" in group["detail"], group
+        assert wis["status"] == "WARN" and "WIS cannot be qualified on this host" in wis["detail"]
     else:
-        assert [c["status"] for c in found] in (["PASS"], ["WARN"])
+        assert group["status"] == "PASS"  # the group is private; this process just does not hold it
+        assert writers["status"] == "WARN" and f"this process (pid {os.getpid()})" in writers["detail"], writers
+        assert "Restart each" in writers["detail"] and wis["status"] == "WARN"

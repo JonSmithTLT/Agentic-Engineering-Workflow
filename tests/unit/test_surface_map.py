@@ -1285,9 +1285,13 @@ def check_planned_coverage(reg: dict[str, Any]) -> list[str]:
 # pinned, shrink-only PROBE_LIMITED list (PR 215 second review, finding 1).
 
 # Rewritten by reads, never a mutation: the derived history index and recall's full-text index (both rebuilt from the
-# manifest), git's object store (unreferenced objects are not state; refs are) and git's index stat caches.
+# manifest), git's object store (unreferenced objects are not state; refs are) and git's index stat caches. Also the
+# running store writers' entries (STG-05 CB-08, `aew.engine.store_writers`): every process that opens the control
+# lock, a read included, says it is running there until its stores are gone, and a probe runs in this process, so an
+# entry can outlive it until garbage collection. That is the process's liveness, not the project's state.
 UNHASHED = re.compile(r"sample/\.aew/local/history\.sqlite(-wal|-shm|-journal)?"
                       r"|sample/\.aew/local/recall/history-fts\.sqlite(-wal|-shm|-journal)?"
+                      r"|sample/\.aew/local/writers/[^/]+"
                       r"|sample/\.git/objects/.*|sample/\.git/index|sample/\.git/worktrees/[^/]+/index")
 CREDENTIAL_ENV = ("AEW_LEAD_TOKEN", "AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY", "AEW_INVOCATION_TOKEN",
                   "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY")

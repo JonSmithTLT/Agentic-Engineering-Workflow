@@ -1,0 +1,1007 @@
+{
+ "cases": {
+  "A1 a listing that contradicts root's record": {
+   "doctor": {
+    "kind": null,
+    "reason": "NOT_LOCAL",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NOT_LOCAL",
+   "store_group": null,
+   "why": "NOT_LOCAL"
+  },
+  "A1 an AEW group root never named": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "A1 an AEW group with a directory group, not local": {
+   "doctor": {
+    "kind": null,
+    "reason": "NOT_LOCAL",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NOT_LOCAL",
+   "store_group": null,
+   "why": "NOT_LOCAL"
+  },
+  "A1 an AEW group with a second member": {
+   "doctor": {
+    "kind": null,
+    "reason": "MEMBERS",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "MEMBERS",
+   "store_group": null,
+   "why": "MEMBERS"
+  },
+  "A1 an AEW group with an unlistable directory and no signal": {
+   "doctor": {
+    "kind": null,
+    "reason": "UNLISTABLE_NO_SIGNAL",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "UNLISTABLE_NO_SIGNAL",
+   "store_group": null,
+   "why": "UNLISTABLE_NO_SIGNAL"
+  },
+  "A1 an AEW group with another account's primary group": {
+   "doctor": {
+    "kind": null,
+    "reason": "PRIMARY_ELSEWHERE",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "PRIMARY_ELSEWHERE",
+   "store_group": null,
+   "why": "PRIMARY_ELSEWHERE"
+  },
+  "A1 an AEW group with no member": {
+   "doctor": {
+    "kind": null,
+    "reason": "MEMBERS",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "MEMBERS",
+   "store_group": null,
+   "why": "MEMBERS"
+  },
+  "A2 the work host: an unlistable directory, with root's recorded signal": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "A3 a user-private primary group in an unlistable directory, no signal": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "C1-1 a signal that covers the user-private ID": {
+   "doctor": {
+    "kind": "USER_PRIVATE",
+    "reason": null,
+    "store_group": 1000,
+    "writers_lacking": []
+   },
+   "kind": "USER_PRIVATE",
+   "publish": [
+    1000,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 1000,
+   "why": null
+  },
+  "C1-1 probe B5: a user-private ID held in a directory that cannot be listed, a true signal for 900-999": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "C1-1 probe B6: the same, no AEW group, only the signal": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "C1-2 the sideways move from the user-private group to the AEW group, at equal modes": {
+   "from": {
+    "state/": [
+     1000,
+     488
+    ],
+    "state/control.yaml": [
+     1000,
+     416
+    ],
+    "state/log/000001.yaml": [
+     1000,
+     416
+    ]
+   },
+   "steps": 6,
+   "to": {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   }
+  },
+  "C2-1 M1 the directory gives 1000 to carol, and root names the AEW group": {
+   "after": {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ],
+    "state/log/000002.yaml": [
+     990,
+     416
+    ],
+    "state/log/000003.yaml": [
+     990,
+     416
+    ]
+   },
+   "before": {
+    "state/": [
+     1000,
+     488
+    ],
+    "state/control.yaml": [
+     1000,
+     416
+    ],
+    "state/log/000001.yaml": [
+     1000,
+     416
+    ],
+    "state/log/000002.yaml": [
+     1000,
+     416
+    ]
+   },
+   "steps": 8
+  },
+  "C2-1 M2 the same move before root re-names: the rule says owner-only, the group unchanged": {
+   "after": {
+    "state/": [
+     1000,
+     448
+    ],
+    "state/control.yaml": [
+     1000,
+     384
+    ],
+    "state/log/000001.yaml": [
+     1000,
+     384
+    ],
+    "state/log/000002.yaml": [
+     1000,
+     384
+    ],
+    "state/log/000003.yaml": [
+     1000,
+     384
+    ]
+   },
+   "before": {
+    "state/": [
+     1000,
+     488
+    ],
+    "state/control.yaml": [
+     1000,
+     416
+    ],
+    "state/log/000001.yaml": [
+     1000,
+     416
+    ],
+    "state/log/000002.yaml": [
+     1000,
+     416
+    ]
+   },
+   "steps": 8
+  },
+  "C2-1 M3 root adds alice to the AEW group while a writer is open": {
+   "after": {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ],
+    "state/log/000002.yaml": [
+     100,
+     384
+    ],
+    "state/log/000003.yaml": [
+     100,
+     384
+    ]
+   },
+   "before": {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ],
+    "state/log/000002.yaml": [
+     990,
+     416
+    ]
+   },
+   "steps": 8
+  },
+  "C2-2 two unlistable sources, a signal for one only": {
+   "doctor": {
+    "kind": null,
+    "reason": "UNLISTABLE_NO_SIGNAL",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "UNLISTABLE_NO_SIGNAL",
+   "store_group": null,
+   "why": "UNLISTABLE_NO_SIGNAL"
+  },
+  "P1 a user-private primary group": {
+   "doctor": {
+    "kind": "USER_PRIVATE",
+    "reason": null,
+    "store_group": 1000,
+    "writers_lacking": []
+   },
+   "kind": "USER_PRIVATE",
+   "publish": [
+    1000,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 1000,
+   "why": null
+  },
+  "P2 a shared primary group, no AEW group": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "P3 a shared primary group with a local AEW group": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "P4 a user-private primary group, with an AEW group too": {
+   "doctor": {
+    "kind": "USER_PRIVATE",
+    "reason": null,
+    "store_group": 1000,
+    "writers_lacking": []
+   },
+   "kind": "USER_PRIVATE",
+   "publish": [
+    1000,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 1000,
+   "why": null
+  },
+  "P4b a user-private primary group, with root's record naming the AEW group": {
+   "doctor": {
+    "kind": null,
+    "reason": "RECORD_NAMES_OTHER",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "RECORD_NAMES_OTHER",
+   "store_group": null,
+   "why": "RECORD_NAMES_OTHER"
+  },
+  "P5 a user-private-looking primary group with a listed member": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "P5b the same, with a local AEW group": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "P6 a primary group not named for the operator": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "SG1-1 probe A: a directory group with the AEW group's ID, listable": {
+   "doctor": {
+    "kind": null,
+    "reason": "ID_HELD_ELSEWHERE",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "ID_HELD_ELSEWHERE",
+   "store_group": null,
+   "why": "ID_HELD_ELSEWHERE"
+  },
+  "SG1-1 probe A: the same, unlistable, no signal": {
+   "doctor": {
+    "kind": null,
+    "reason": "UNLISTABLE_NO_SIGNAL",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "UNLISTABLE_NO_SIGNAL",
+   "store_group": null,
+   "why": "UNLISTABLE_NO_SIGNAL"
+  },
+  "SG1-1 probe B with a local AEW group": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "SG1-1 probe B: a directory group with the user-private ID, listable": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "SG1-1 residual: root's signal is false": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "SG1-2 the migration down after root adds a member": [
+   {
+    "state/": [
+     990,
+     448
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   },
+   {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   },
+   {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     384
+    ]
+   },
+   {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ]
+   },
+   {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     990,
+     384
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ]
+   },
+   {
+    "state/": [
+     100,
+     448
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ]
+   }
+  ],
+  "SG1-2 the migration up, step by step": [
+   {
+    "state/": [
+     990,
+     448
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ]
+   },
+   {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     100,
+     384
+    ]
+   },
+   {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     990,
+     384
+    ]
+   },
+   {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     100,
+     384
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   },
+   {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     990,
+     384
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   },
+   {
+    "state/": [
+     990,
+     488
+    ],
+    "state/control.yaml": [
+     990,
+     416
+    ],
+    "state/log/000001.yaml": [
+     990,
+     416
+    ]
+   }
+  ],
+  "SG1-3 a writer's own signal is not a determination": {
+   "doctor": {
+    "kind": null,
+    "reason": "NO_PRIVATE_GROUP",
+    "store_group": null,
+    "writers_lacking": []
+   },
+   "kind": null,
+   "publish": [
+    1000,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": "NO_PRIVATE_GROUP",
+   "store_group": null,
+   "why": "NO_PRIVATE_GROUP"
+  },
+  "SG1-5 after the broker restarts": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": []
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    990,
+    [
+     416,
+     488
+    ]
+   ],
+   "qualifiable": true,
+   "reason": null,
+   "store_group": 990,
+   "why": null
+  },
+  "SG1-5 probe E: a login session and an older broker": {
+   "doctor": {
+    "kind": "LOCAL_AEW",
+    "reason": null,
+    "store_group": 990,
+    "writers_lacking": [
+     "broker"
+    ]
+   },
+   "kind": "LOCAL_AEW",
+   "publish": [
+    100,
+    [
+     384,
+     448
+    ]
+   ],
+   "qualifiable": false,
+   "reason": null,
+   "store_group": 990,
+   "why": "WRITER_LACKS_GROUP"
+  },
+  "SG1-5 residual: a short-lived command from an old session": [
+   [
+    false,
+    [
+     [
+      990,
+      416
+     ],
+     [
+      990,
+      488
+     ]
+    ],
+    []
+   ],
+   [
+    true,
+    [
+     [
+      100,
+      384
+     ],
+     [
+      100,
+      448
+     ]
+    ],
+    [
+     "old-pane-cli"
+    ]
+   ],
+   [
+    false,
+    [
+     [
+      990,
+      416
+     ],
+     [
+      990,
+      488
+     ]
+    ],
+    []
+   ]
+  ],
+  "SG1-5 the store after alternating write sessions": [
+   [
+    [
+     100,
+     384
+    ],
+    [
+     100,
+     448
+    ]
+   ],
+   [
+    [
+     100,
+     384
+    ],
+    [
+     100,
+     448
+    ]
+   ],
+   [
+    [
+     100,
+     384
+    ],
+    [
+     100,
+     448
+    ]
+   ],
+   [
+    [
+     100,
+     384
+    ],
+    [
+     100,
+     448
+    ]
+   ]
+  ]
+ },
+ "status": "generated by verify_store_group.py (STG-11 revision 4, A-27 revision 9); a labelled reference model, not an oracle"
+}

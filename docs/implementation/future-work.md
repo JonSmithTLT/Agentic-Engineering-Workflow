@@ -1352,6 +1352,18 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 *Later notes: `notes.d/F51/`, oldest first (`python tools/register.py show F51`).*
 
+### STG-05
+
+**Work:** Agent containment, STG-05 of the architecture recovery: the AEW side of the containment both qualification gates need (G3 and the work-item fact issuer, WIS). Its build brief's trace CB-01 to CB-12, built in slices CS-1 to CS-5, CS-4 last: CS-1 (the store's path, the control lock, non-writers, the store's modes) and its CB-08 store-group follow-up, then CS-2, CS-3, CS-5 and CS-4. One row for the stage, as for every STG build stage; each slice notes on it
+
+**Source (governing):** The STG-05 build brief (adopted 2026-10-23, A-33) and the lead designer's rulings on the CS-1 report (D-CS1-1 to D-CS1-13, 2026-10-22), with D-CS1-10 and D-CS1-11 as STG-11 amends them and D-CS1-1 as it extends it (WIS issuer profile revision 9, adopted 2026-10-23, A-36)
+
+**Belongs to or gated by:** **Unscheduled** in milestone terms: the architecture recovery orders STG work, not a milestone. It serves the G3 and WIS qualification gates
+
+**Notes:** Opened 2026-10-23 by the CB-08 store-group follow-up (designer ruling D-CS1-12, DOC-06). The CS-1 notes moved here from the closed F2 row
+
+*Later notes: `notes.d/STG-05/`, oldest first (`python tools/register.py show STG-05`).*
+
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
 <!-- columns: # | Work | Source | Target and notes -->

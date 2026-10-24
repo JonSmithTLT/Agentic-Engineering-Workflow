@@ -36,6 +36,7 @@ async function start() {
   let DemoComparison: ComponentType | undefined;
   let DemoEvidence: ComponentType | undefined;
   let DemoExecution: ComponentType | undefined;
+  let DemoSettings: ComponentType | undefined;
   if (import.meta.env.MODE === 'demo') {
     const { httpDemo, initializeDemo } = await import('./api/mock/runtime');
     await initializeDemo();
@@ -51,7 +52,7 @@ async function start() {
     }
     DemoTools = (await import('./api/mock/DemoTools')).default;
     const { initialScreens } = await import('./api/mock/screens');
-    ({ DemoLab, DemoKnowledge, DemoComparison, DemoEvidence, DemoExecution } =
+    ({ DemoLab, DemoKnowledge, DemoComparison, DemoEvidence, DemoExecution, DemoSettings } =
       await initialScreens(window.location.pathname));
   }
   let detachVisibility = installVisibility(queryClient);
@@ -100,6 +101,7 @@ async function start() {
               <Route path="history" element={<HistoryPage />} />
               <Route path="history/search" element={<HistorySearchPage />} />
               <Route path="maps" element={<MapsPage />} />
+              {DemoSettings && <Route path="settings" element={<DemoSettings />} />}
               <Route path="history/:id" element={<HistoryDetailPage />} />
               <Route path="attention" element={<AttentionPage />} />
               <Route path="queue" element={<QueuePage />} />

@@ -1977,8 +1977,10 @@ def test_an_unreadable_label_in_the_recompute_says_so_and_is_retried_once(tmp_pa
         calls.append(cmd)
         raise subprocess.CalledProcessError(1, cmd)
 
+    from sleep_patch import patch_sleep
+
     monkeypatch.setattr(tier, "_run", failing)
-    monkeypatch.setattr(tier.time, "sleep", lambda s: None)
+    patch_sleep(monkeypatch, tier)
     assert tier.live_labels("o/r", "7") is None
     assert len(calls) == 2 and calls[0][2] == "repos/o/r/issues/7/labels?per_page=100"
 

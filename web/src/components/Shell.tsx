@@ -29,7 +29,12 @@ export function Shell({
   const demo = import.meta.env.MODE === 'demo';
   const [developer, setDeveloper] = useState(false);
   const developerTrigger = useRef<HTMLButtonElement>(null);
+  const navigationTrigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  function closeNavigation() {
+    setOpen(false);
+    navigationTrigger.current?.focus({ preventScroll: true });
+  }
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem('aew-theme') ?? 'system';
@@ -60,7 +65,8 @@ export function Shell({
       <a className="skip-link" href="#content">
         Skip to content
       </a>
-      <aside className={open ? 'sidebar open' : 'sidebar'}>
+      <aside id="main-sidebar" className={open ? 'sidebar open' : 'sidebar'}>
+        {open && <button className="nav-close" onClick={closeNavigation}>Close navigation</button>}
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
             a
@@ -71,7 +77,7 @@ export function Shell({
           </div>
         </div>
         <nav aria-label="Main navigation">
-          {[...navigation.slice(0, 7), ...(caps?.maps ? [['/maps', 'Maps']] : []), ...(caps?.history_search ? [['/history/search', 'Raw history search']] : []), ...navigation.slice(7)].map(([path, label]) => (
+          {[...navigation.slice(0, 7), ...(caps?.maps ? [['/maps', 'Maps']] : []), ...(caps?.history_search ? [['/history/search', 'Raw history search']] : []), ...navigation.slice(7), ...(demo ? [['/settings', 'Settings preview']] : [])].map(([path, label]) => (
             <NavLink
               key={path}
               end={path === '/' || (path === '/history' && location.pathname === '/history/search')}
@@ -102,9 +108,11 @@ export function Shell({
       <div className="workspace">
         <header className="project-header">
           <button
+            ref={navigationTrigger}
             className="nav-toggle"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
+            aria-controls="main-sidebar"
             aria-label="Toggle navigation"
           >
             ☰

@@ -13,6 +13,7 @@ import {
 } from '../src/pages/Records';
 import { HistoryPage, HistoryDetailPage } from '../src/pages/History';
 import { AttentionPage, QueuePage } from '../src/pages/Attention';
+import { WorkDetailPage } from '../src/pages/Work';
 import { listRoute } from '../src/components/ProjectionViews';
 import { DemoProjector } from '../src/api/mock/projector';
 import type { World } from '../src/api/mock/types';
@@ -83,6 +84,13 @@ it('Runs includes invocations without harness runs and links to nested harness i
       .getByRole('link', { name: 'Contract verification' })
       .getAttribute('href'),
   ).toBe('/evidence/INV-0001-verification-1');
+  client.clear();
+});
+it('Work exposes an explicitly bound overview invocation without reading the Runs collection', async () => {
+  const { request, client } = mount(<WorkDetailPage recordId="T-0001" />, '/work/T-0001');
+  const section = await screen.findByRole('region', { name: 'Invocations for this work' });
+  await waitFor(() => expect(section.querySelector('a[href="/runs/INV-0001"]')).toBeTruthy());
+  expect(request.mock.calls.some(([url]) => new URL(String(url), 'http://localhost').pathname.startsWith('/api/v1/runs'))).toBe(false);
   client.clear();
 });
 it('Evidence filter is sent to backend and an invalid ID suppresses the request', async () => {

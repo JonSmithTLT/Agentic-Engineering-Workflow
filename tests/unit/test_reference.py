@@ -20,6 +20,7 @@ import importlib.util
 import json
 import os
 import pkgutil
+import re
 import subprocess
 import sys
 from functools import cache
@@ -169,6 +170,52 @@ def test_the_privacy_check_sees_this_machines_home_directory_in_every_spelling()
     home = Path("C:\\Users\\Example Person") if os.name == "nt" else Path("/opt/example-person")
     for spelling in (str(home), home.as_posix(), str(home).replace("\\", "\\\\")):
         assert any("home directory" in p for p in C.text_problems("f", f"x {spelling} y", home)), spelling
+
+
+@cache
+def requirement_id_pattern() -> re.Pattern[str]:
+    """The IDs the repository itself owns, built from their owners (derive, don't restate): the requirements ledger's
+    source prefixes (``<PREFIX>-<n>``, the shape ``test_requirements_ledger`` gives them), the register's row-id shape
+    (``tools/register.py``'s ``ID_RE``) and the register's own row ids, ``STG-NN`` included. The design workspace's
+    own IDs (``CRD-``, ``MOD-``, ``WIS-``, ``D-CS1-``...) are not in this repository: that part is a stated limit."""
+    import yaml
+
+    ledger = yaml.safe_load((ROOT / "docs" / "design" / "requirements-ledger.yaml").read_text(encoding="utf-8"))
+    prefixes = sorted({s["prefix"] for s in ledger["sources"]}, key=len, reverse=True)
+    spec = importlib.util.spec_from_file_location("register_for_reference", ROOT / "tools" / "register.py")
+    assert spec is not None and spec.loader is not None
+    register = importlib.util.module_from_spec(spec)
+    sys.modules["register_for_reference"] = register
+    spec.loader.exec_module(register)
+    rows = yaml.safe_load(register.YAML.read_text(encoding="utf-8"))["sections"]
+    row_ids = {str(r["#"]) for s in rows for r in s.get("rows", []) if isinstance(r, dict) and r.get("#")}
+    shaped = {i for i in row_ids if re.fullmatch(r"[A-Z][A-Z0-9]*(?:-[0-9]+[a-z]?)?(?:\.[0-9]+)?", i)
+              and any(c.isdigit() for c in i)}
+    parts = [r"(?:" + "|".join(re.escape(p) for p in prefixes) + r")-\d+[a-z]?",
+             register.ID_RE.pattern.removeprefix("^").removesuffix("$"),
+             *(re.escape(i) for i in sorted(shaped, key=len, reverse=True))]
+    return re.compile(r"(?<![\w.-])(?:" + "|".join(parts) + r")(?![\w-])")
+
+
+def test_no_requirement_id_is_in_the_reference():
+    """The trace is the design side's: the repository states what the code is, never what it should be. Limit: only the
+    IDs this repository owns are caught (see ``requirement_id_pattern``)."""
+    pattern = requirement_id_pattern()
+    found = {name: sorted(set(pattern.findall(data.decode("utf-8")))) for name, data in committed().items()}
+    assert {name: hits for name, hits in found.items() if hits} == {}
+
+
+@pytest.mark.parametrize("text", ["see CRD-13", "register F44", "row F15.2 says", "AIR-75.", "(WCA-3)", "CRD-13a",
+                                  "E71"])
+def test_the_id_check_sees_each_wrong_case(text):
+    assert requirement_id_pattern().search(text), text
+
+
+@pytest.mark.parametrize("text", ["UTF-8", "SHA-256", "aew.process_kind:ENTRY_POINTS", "python3.11",
+                                  "http-problem-matrix", "src/aew/engine/store.py", "version 0.5.4",
+                                  "entry-points:aew.stg02.server", "an ordinary sentence."])
+def test_the_id_check_leaves_what_is_not_an_id_alone(text):
+    assert requirement_id_pattern().search(text) is None, text
 
 
 def test_the_committed_index_is_in_the_shape_the_trace_reads():

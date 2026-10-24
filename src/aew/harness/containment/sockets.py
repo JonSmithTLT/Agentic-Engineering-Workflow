@@ -103,8 +103,11 @@ def _named(env: Mapping[str, str]) -> dict[str, str]:
 
 # Filesystem types the walk does not enter (by their type in /proc/self/mountinfo). Kernel interfaces hold no socket
 # file a process could bind; an autofs mount point mounts what it serves when it is walked, so only the mounts it has
-# already made (listed in mountinfo of their own) are walked. Every mount not walked is listed on the label.
+# already made (listed in mountinfo of their own) are walked; read-only image filesystems (snaps, discs, images) are
+# made before they are mounted, with no socket in them (the Lead, 2026-10-23, on CS-2's plan, Q3). Every mount not
+# walked is listed on the label.
 UNWALKED_FS = frozenset({
     "proc", "sysfs", "devpts", "cgroup", "cgroup2", "mqueue", "debugfs", "tracefs", "securityfs", "pstore", "bpf",
     "configfs", "fusectl", "hugetlbfs", "binfmt_misc", "efivarfs", "selinuxfs", "nsfs", "rpc_pipefs", "autofs",
+    "squashfs", "iso9660", "erofs",
 })

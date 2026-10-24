@@ -479,9 +479,10 @@ def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> N
        ancestor, such as ``/run/media/<user>``;
     2. none is a host mask itself or lies under :data:`RUN_PROTECTED`.
 
-    Condition 3 is the operator-root guard (:func:`_guarded`); 4 and 5 are the self-test's row 2, which walks the
-    sandbox after every bind-back and allows exactly :meth:`Layout.bind_backs`. The name-resolution exception
-    (:func:`run_exceptions`) is the operator's ruling of its own, and is not one of these."""
+    Condition 3 is the operator-root guard (:func:`_guarded`); 4 and 5 are the self-test's row 2, which checks the
+    socket inventory in the finished sandbox, after every bind-back, and allows exactly :meth:`Layout.bind_backs`.
+    The name-resolution exception (:func:`run_exceptions`) is the operator's ruling of its own, and is not one of
+    these."""
     exceptions = {p for p, _ in layout.run_exceptions}
     for p in (*layout.visible, *layout.writable, *layout.readonly, *layout.hide_runs):
         mask = next((h for h in layout.hide_host if _within(p, h)), None)

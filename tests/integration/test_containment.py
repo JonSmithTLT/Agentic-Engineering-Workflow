@@ -761,7 +761,7 @@ def test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts(
 
 def test_a_planted_socket_the_launching_environment_names_as_its_agent_fails_the_launch(lab, monkeypatch):
     """A socket that reaches a credential fails the launch wherever it lives: here a synthetic socket that the launching
-    environment's SSH_AUTH_SOCK names (so no other test's sandbox, walking the same host, counts it as one).
+    environment's SSH_AUTH_SOCK names (so no other test's sandbox, reading the same socket table, counts it as one).
     `required` refuses the launch; `allow_weaker` starts it uncontained, labelled, with the rows."""
     path = lab.outside / "agent" / "synthetic.sock"
     env = {"SSH_AUTH_SOCK": str(path)}
@@ -796,10 +796,10 @@ def test_a_socket_on_a_read_only_bind_can_still_be_connected_to(lab):
     assert done.returncode == 0 and done.stdout.strip() == "answered", done.stderr
 
 
-@pytest.mark.serial  # its socket has a credential class's name: a concurrent sandbox's walk of this host would count it
+@pytest.mark.serial  # its socket has a credential class's name, and every concurrent sandbox's socket table lists it
 def test_a_credential_cache_socket_in_its_default_place_is_masked_and_the_run_starts(lab, monkeypatch):
     """git's credential-cache daemon keeps its socket under ~/.cache/git/credential, which is masked (the Lead,
-    2026-10-23): a host that uses the cache still launches, and the inventory never sees the socket."""
+    2026-10-23): a host that uses the cache still launches, and row 2 never finds the socket inside."""
     path = lab.home / ".cache" / "git" / "credential" / "socket"
     with listening(path):
         layout, label = establish(lab, monkeypatch)
@@ -878,9 +878,9 @@ FAIL_CLOSED = ("row2-run", "row3-file", "row3-env", "row5-mask")
 def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, case):
     """Each row checks the sandbox, not the layout's word for it: with one protection taken out of the self-test's
     sandbox, the row that covers it fails, `required` refuses the launch, and `allow_weaker` starts the run labelled
-    workdir_separation_only, with the rows. Row 2's failing socket and incomplete walk have tests of their own; row 4
-    is judged on synthetic probe output (tests/unit/test_containment_probe.py), since a launcher with no controlling
-    terminal, as every test's, cannot show a missing session."""
+    workdir_separation_only, with the rows. Row 2's failing socket has tests of its own, and row 4 has the
+    pseudo-terminal launcher's (test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one), since a
+    launcher with no controlling terminal, as every other test's, cannot show a missing session."""
     xauth = lab.home / ".Xauthority"
     xauth.write_text("SYNTHETIC-COOKIE\n")
     real = os.path.realpath
@@ -988,9 +988,9 @@ def test_a_project_under_run_is_bound_back_and_row_2_allows_exactly_that(media_l
 
 
 def test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory(media_lab, monkeypatch):
-    """Condition 4: the walk runs in the finished sandbox, after the bind-back, so a socket inside the project tree
-    that reaches a credential (here a synthetic one the launching environment names as its agent) still fails the
-    launch."""
+    """Condition 4: the inventory is checked in the finished sandbox, after the bind-back, so a socket inside the
+    project tree that reaches a credential (here a synthetic one the launching environment names as its agent) still
+    fails the launch."""
     lab, _ = media_lab
     path = lab.repo / "tools" / "synthetic.sock"
     with listening(path):

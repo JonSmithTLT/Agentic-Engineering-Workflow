@@ -5,6 +5,7 @@ const loadKnowledge = () => import('../preview/journal/Journal');
 const loadComparison = () => import('../preview/investigation/Comparison');
 const loadEvidence = () => import('../preview/evidence/Reader');
 const loadExecution = () => import('../preview/execution/Recorder');
+const loadSettings = () => import('./settings/Settings');
 
 const screens = {
   DemoLab: deferredScreen('Contract Playground', loadLab),
@@ -12,6 +13,7 @@ const screens = {
   DemoComparison: deferredScreen('Invocation comparison', loadComparison),
   DemoEvidence: deferredScreen('Evidence inspection', loadEvidence),
   DemoExecution: deferredScreen('Recorded execution', loadExecution),
+  DemoSettings: deferredScreen('Settings fixture preview', loadSettings),
 };
 
 // Preserve initial deep-link readiness: do not add a Suspense reveal waterfall
@@ -25,6 +27,7 @@ export async function initialScreens(pathname: string) {
       case '/compare': initial.DemoComparison = (await loadComparison()).default; break;
       case '/evidence/inspect': initial.DemoEvidence = (await loadEvidence()).default; break;
       case '/execution': initial.DemoExecution = (await loadExecution()).default; break;
+      case '/settings': initial.DemoSettings = (await loadSettings()).default; break;
     }
   } catch {
     // Keep the deferred boundary so a failed initial import has an explicit

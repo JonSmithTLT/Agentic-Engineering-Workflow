@@ -966,8 +966,10 @@ def test_an_anchor_that_cannot_be_written_never_fails_a_durable_append_and_reads
     def refused(src, dst):
         raise PermissionError(5, "Access is denied")  # a Windows reader holding the anchor open
 
+    from sleep_patch import patch_sleep
+
     monkeypatch.setattr(release_module.os, "replace", refused)
-    monkeypatch.setattr(release_module.time, "sleep", lambda s: None)
+    patch_sleep(monkeypatch, release_module)
     head = ledger.append("demo/r1", "registered")  # durable, so it returns
     monkeypatch.undo()
     assert ledger.head() == head and len(ledger.lines()) == 2

@@ -109,6 +109,7 @@ jobs:
           node scripts/browser-w07.mjs
           node scripts/browser-history-search.mjs
           node scripts/browser-maps.mjs
+          node scripts/browser-settings.mjs
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -124,6 +125,7 @@ jobs:
             web/output/playwright-w07/
             web/output/playwright-history-search/
             web/output/playwright-maps/
+            web/output/playwright-settings/
           if-no-files-found: ignore
           retention-days: 14
 

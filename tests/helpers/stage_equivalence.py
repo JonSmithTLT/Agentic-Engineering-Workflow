@@ -69,7 +69,11 @@ DECISION_DIGEST = frozenset({("invocations", "*", "dispatch", "decision"),
                              ("invocations", "*", "runs", "dispatch", "decision"),
                              ("work", "*", "integration", "admission", "decision"),
                              ("queue", "entries", "*", "attempts", "rebuild_admission", "decision")})
-TIME_KEY = re.compile(r"^(at|.+_at)$")
+# A validation run's executor records its process's `start_time` (a custody worker's is its `started_at`): Linux
+# derives it from the wall clock's boot time, so it moves whenever that clock is stepped, though the process is the
+# same (WSL2 was measured stepping it by 3 s about every 35 s). By name, as the record is copied whole into the
+# integration history and the archived unit; no other key is named `start_time`.
+TIME_KEY = re.compile(r"^(at|.+_at|start_time)$")
 # Times kept under another name: a custody credential binds its lease's grant time (M4-E E6a).
 TIME_PATHS = frozenset({("tokens", "*", "scope", "lease"), ("cold", "unverified_since")})
 # History records compared as data (module docstring), and the journal's own annotation among them.

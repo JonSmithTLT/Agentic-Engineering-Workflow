@@ -29,8 +29,8 @@ detectors written separately enumerate the invariant over every test file, and m
   names of the functions in src/aew whose return annotation, as written, ends in ``| None``.
 
 What both miss (pinned below), each a defect the reviewer reads for, and neither detector claims it:
-- a poller not in ``POLLERS``, which nothing finds: ``Chat.receive(timeout, gone=...)`` (tests/helpers/vertical/chat.py)
-  calls ``gone`` in a sleeping loop and is not listed; no caller of it reads a file;
+- a poller not in ``POLLERS``, which nothing finds: ``Mailbox.receive(timeout, gone=...)``
+  (tests/helpers/vertical/chat.py) calls ``gone`` in a sleeping loop and is not listed; no caller of it reads a file;
 - a predicate that is a named function (``until(ready)``) or a lambda bound to a name (``pred = lambda: ...``): a raw
   read inside it is not seen;
 - a predicate given by a keyword its poller's definition does not call (``until(cond=lambda: ...)``: ``cond`` is
@@ -44,11 +44,12 @@ What both miss (pinned below), each a defect the reviewer reads for, and neither
   polled predicates that call a function that reads raw. Most read a file that is only appended to, which no replace
   races; ``load_control``, which reads a replaced file, retries the engine's own way (tests/helpers/invariants.py).
 A lambda spread over several lines, a lambda in parentheses (given by position or by keyword), an argument before the
-predicate that holds a call or a comma (``bounded_wait(f"t.{name()}", lambda: ...)``), and a read whose argument is
-itself a call (``read(path(x))["k"]``) are seen by the AST detector only: the scan still fails on them, and so does
-the agreement test. The text detector also reads the whole line of the poll, so a raw read named in a string or a
-comment on that line is its alone (pinned too, and the agreement test fails on it). This module is exempt from the text
-detector alone, because it plants the banned forms below as strings; the AST detector scans it like any other file.
+predicate that holds a parenthesis or a comma (``bounded_wait(f"t.{name()}", lambda: ...)``), and a read whose
+argument is itself a call (``read(path(x))["k"]``) are seen by the AST detector only: the scan still fails on them, and
+so does the agreement test. The text detector also reads the whole line of the poll, so a raw read named in a string or
+a comment on that line is its alone (pinned too, and the agreement test fails on it). This module is exempt from the
+text detector alone, because it plants the banned forms below as strings; the AST detector scans it like any other
+file.
 
 A read that is not polled is outside this mechanism: whether a writer is live while it runs is semantic. Such a read of
 a record a live writer rewrites waits for a whole record, ``until(lambda: read(root))``, as test_notifier.py does.

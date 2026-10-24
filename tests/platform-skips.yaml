@@ -314,10 +314,6 @@ skipped:
     tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row5-mask]: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
-    tests/integration/test_containment.py::test_an_incomplete_socket_walk_fails_row_2: >-
-      Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
-      the Rocky 8 lane); row 2's judgement of an incomplete walk is tested on every platform in
-      tests/unit/test_containment_probe.py.
     tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[contained]: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); row 4's judgement is tested on every platform in tests/unit/test_containment_probe.py, and

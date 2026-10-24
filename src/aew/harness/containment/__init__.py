@@ -131,7 +131,7 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
     """``(status, detail)`` for ``aew doctor``: a live sandbox, built and self-tested in a throwaway directory."""
     import tempfile
 
-    from aew.harness.containment import probe
+    from aew.harness.containment import probe, sockets
 
     wanted = mode(policy)
     if not supported():
@@ -153,10 +153,16 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
             test = probe.self_test(layout, sentinel_dir=root, sibling_dir=root)
             problem = None if test["ok"] else test["reason"]
         except AEWError as exc:  # ContainmentUnavailable, or the throwaway repository could not be made
-            layout, problem = None, exc.message
+            layout, problem, test = None, exc.message, {}
     if problem is None and layout is not None:
-        return "PASS", (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
-                        "(filesystem integrity; the host stays readable and the network is shared)")
+        detail = (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
+                  "(filesystem integrity; the host stays readable and the network is shared)")
+        # The designer's D-CS2-5: until CS-3, an abstract socket of a failing class is a fact, shown here as a WARN
+        shared = sorted({s["class"] for s in test["rows"]["2"]["abstract"]["sockets"] if s["class"] in sockets.FAILING})
+        if shared:
+            return "WARN", detail + "; " + "; ".join(f"abstract {c} socket on the shared network; CS-3's network "
+                                                     "namespace closes it" for c in shared)
+        return "PASS", detail
     if wanted == REQUIRED:
         return "FAIL", f"containment unavailable, so harness launches are refused: {problem}"
     return "WARN", f"containment unavailable; policy allows weaker runs ({WORKDIR_ONLY}): {problem}"

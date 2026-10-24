@@ -729,20 +729,24 @@ def without(monkeypatch, *steps: tuple[str, ...]) -> None:
 
 def test_the_self_test_records_rows_2_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
     """CB-12's rows 2 to 5 pass on the real layout and are on the label with their facts: /run a read-only tmpfs
-    holding nothing the layout did not put there, a complete socket inventory with no failing socket, no display
-    credential or variable, no controlling terminal, and every bind and mask holding. The walk's size and time are
-    printed: its cost, measured on CI and on the Rocky VM (`-s`)."""
+    holding nothing the layout did not put there, the kernel's socket table read with the probe's own listener in it
+    and no reachable socket of a failing class (D-CS2-2), what the table cannot show named (D-CS2-3), no display
+    credential or variable, no controlling terminal, and every bind and mask holding. The table's size and the
+    check's time are printed: its cost, on CI and on the Rocky VM (`-s`)."""
     layout, label = establish(lab, monkeypatch)
     assert layout is not None and label["filesystem"] == "os_readonly_roots"
     rows = label["self_test"]["rows"]
     assert sorted(rows) == ["2", "3", "4", "5"]
     assert {n: r["reason"] for n, r in rows.items() if not r["ok"]} == {}
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
-    assert rows["2"]["complete"] and rows["2"]["walked"] > 0
+    assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)
+    assert rows["2"]["abstract"]["network"] == "shared"
     assert [s for s in rows["2"]["sockets"] if s["class"] in sockets.FAILING] == []
     assert (rows["4"]["tty_nr"], rows["4"]["dev_tty"]) == (0, "ENXIO")
-    print(f"socket walk: {rows['2']['walked']} entries in {rows['2']['seconds']}s, {len(rows['2']['sockets'])} "
-          f"sockets, {rows['2']['unlistable']} unlistable, not walked: {rows['2']['unwalked_mounts']}")
+    print(f"socket table: {rows['2']['table']} entries, {rows['2']['checked']} path sockets checked, "
+          f"{len(rows['2']['sockets'])} reachable, {len(rows['2']['abstract']['sockets'])} abstract, "
+          f"{len(rows['2']['unresolved'])} unresolved, {len(rows['2']['relative'])} relative; seconds "
+          f"{rows['2']['seconds']}")
 
 
 def test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts(lab, monkeypatch):
@@ -751,7 +755,8 @@ def test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts(
     with listening(path):
         layout, label = establish(lab, monkeypatch)
     assert layout is not None
-    assert {"path": str(path), "class": sockets.REPORTED} in label["self_test"]["rows"]["2"]["sockets"]
+    found = [(s["path"], s["class"]) for s in label["self_test"]["rows"]["2"]["sockets"]]
+    assert (str(path), sockets.REPORTED) in found
 
 
 def test_a_planted_socket_the_launching_environment_names_as_its_agent_fails_the_launch(lab, monkeypatch):
@@ -765,7 +770,7 @@ def test_a_planted_socket_the_launching_environment_names_as_its_agent_fails_the
             establish(lab, monkeypatch, env=env)
         layout, label = establish(lab, monkeypatch, env=env, mode="allow_weaker")
     row = refused.value.details["self_test"]["rows"]["2"]
-    assert row["ok"] is False and {"path": str(path), "class": sockets.CREDENTIAL} in row["sockets"]
+    assert row["ok"] is False and (str(path), sockets.CREDENTIAL) in [(s["path"], s["class"]) for s in row["sockets"]]
     assert layout is None and label["filesystem"] == "workdir_separation_only"
     assert label["self_test"]["rows"]["2"]["ok"] is False
 
@@ -893,14 +898,6 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     assert layout is None and label["self_test"]["rows"][row]["ok"] is False
 
 
-def test_an_incomplete_socket_walk_fails_row_2(lab):
-    """An inventory that did not finish cannot show that no socket reaches the display, G3, an AEW service or a
-    credential, so row 2 fails (the Lead's ruling on CS-2's plan, Q3)."""
-    result = probe.self_test(lab.layout("reviewer"), sentinel_dir=lab.outside, sibling_dir=lab.root, walk_budget_s=0)
-    row = result["rows"]["2"]
-    assert result["ok"] is False and row["complete"] is False and "did not finish" in row["reason"]
-
-
 # A launcher with a controlling terminal: it leads a new session (start_new_session) and opens a pseudo-terminal the
 # test made, so that terminal becomes its own. It then runs the launch self-test in the run's layout, rebuilt from JSON
 # as eval's scoring child rebuilds one, and prints row 4. ``drop`` takes one word out of the sandbox's argv.
@@ -1000,4 +997,4 @@ def test_a_socket_inside_a_bound_back_project_is_still_in_the_inventory(media_la
         with pytest.raises(C.ContainmentUnavailable, match="credential socket is reachable") as refused:
             establish(lab, monkeypatch, env={"SSH_AUTH_SOCK": str(path)})
     row = refused.value.details["self_test"]["rows"]["2"]
-    assert {"path": str(path), "class": sockets.CREDENTIAL} in row["sockets"]
+    assert (str(path), sockets.CREDENTIAL) in [(s["path"], s["class"]) for s in row["sockets"]]

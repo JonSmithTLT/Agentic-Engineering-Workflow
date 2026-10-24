@@ -17,8 +17,10 @@ writable root laid over the read-only host.
 The probe also reads what the gates' rows need (STG-05 CB-12, rows 2 to 5; row 1 is CS-3's network), each judged by
 the host and recorded on the run's label, pass or fail:
 
-* **row 2:** ``/run`` is a read-only tmpfs holding only what the layout put there, and the socket inventory
-  (:mod:`.sockets`) is complete and has no failing socket;
+* **row 2:** ``/run`` is a read-only tmpfs holding only what the layout put there, and no socket of a failing class
+  (:mod:`.sockets`) is reachable inside. The host reads the kernel's socket table, with a listener of its own bound
+  first as the control, and the probe checks each path socket in it, by device and inode, at every path the
+  sandbox's mount table exposes it at (D-CS2-2);
 * **row 3:** no display credential is readable, and no :data:`~.layout.DISPLAY_ENV` variable reaches the process
   (the probe is handed each of them, set, so a sandbox that does not unset them fails);
 * **row 4:** the process has no controlling terminal. The kernel refuses ``TIOCSTI`` on a terminal that is not the
@@ -30,13 +32,18 @@ the host and recorded on the run's label, pass or fail:
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import json
 import os
 import secrets
+import shutil
+import socket
 import subprocess
 import sys
-from collections.abc import Mapping
+import tempfile
+import time
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -54,14 +61,12 @@ from aew.harness.containment.layout import (
 TIMEOUT_S = 30.0
 VERSION_TIMEOUT_S = 10.0
 BOUND_S = TIMEOUT_S + VERSION_TIMEOUT_S  # the self-test and the mechanism check, at a run's start
-# The socket walk's share of the self-test's bound: an incomplete inventory cannot certify row 2, so it fails (the Lead,
-# 2026-10-23, on CS-2's plan, Q3).
-WALK_BUDGET_S = TIMEOUT_S / 2
 CANARY = "aew-self-test"  # the value of each DISPLAY_ENV variable the probe is handed
 
+# Standard library only, and isolated (-I): it runs in the sandbox. Its definitions come first, so a test can read them
+# without running it (``exec`` with another ``__name__``).
 _PAYLOAD = r"""
 import errno, json, os, re, stat, sys, time
-spec = json.loads(sys.argv[1])
 def append(p):
     try:
         fd = os.open(p, os.O_WRONLY | os.O_APPEND)
@@ -80,8 +85,11 @@ def create(p):
         return True
     except OSError:
         return False
-def mounts():
-    # (mount point, type, read-only), in mount order: of several mounts at one path, the last is on top
+def unescape(raw):
+    return os.fsdecode(re.sub(rb"\\([0-7]{3})", lambda m: bytes([int(m.group(1), 8)]), raw))
+def mountinfo():
+    # (major:minor, root within its filesystem, mount point, type, read-only), in mount order: of several mounts at
+    # one path, the last is on top
     out = []
     with open("/proc/self/mountinfo", "rb") as f:
         for line in f:
@@ -89,39 +97,40 @@ def mounts():
             fields, rest = left.split(), right.split()
             if len(fields) < 6 or not rest:
                 continue
-            point = os.fsdecode(re.sub(rb"\\([0-7]{3})", lambda m: bytes([int(m.group(1), 8)]), fields[4]))
-            out.append((point, os.fsdecode(rest[0]), b"ro" in fields[5].split(b",")))
+            out.append((fields[2].decode(), unescape(fields[3]), unescape(fields[4]), os.fsdecode(rest[0]),
+                        b"ro" in fields[5].split(b",")))
     return out
-def walk(top, budget, unwalked, t0):
-    # Every filesystem socket reachable by path: each mount point walked once from its path, never into another
-    # mount point, no link followed, no stat but for an entry that is none of file, directory or link.
-    found, walked, unlistable, skipped = [], 0, 0, []
-    for point in sorted(top):
-        if top[point] in unwalked:
-            skipped.append({"path": point, "type": top[point]})
-            continue
-        if os.path.islink(point) or not os.path.isdir(point):
-            continue  # over-mounted, or gone: not reachable by this path
-        stack = [point]
-        while stack:
-            if time.monotonic() - t0 > budget:
-                return found, walked, unlistable, skipped, False
+def inside_paths(socket, table):
+    # the socket's own path, and its place under every mount of its filesystem whose root holds it
+    out = [socket["path"]]
+    fs = socket.get("fspath")
+    if fs is None:
+        return out
+    for majmin, root, point, _, _ in table:
+        base = root.rstrip("/")
+        if majmin == socket["majmin"] and (fs == root or fs.startswith(base + "/")):
+            p = point.rstrip("/") + fs[len(base):] or "/"
+            if p not in out:
+                out.append(p)
+    return out
+def reachable(candidates, table):
+    # each socket found inside, the same file (device and inode), with where; and each check that failed
+    found, errors = [], []
+    for c in candidates:
+        at = []
+        for p in inside_paths(c, table):
             try:
-                with os.scandir(stack.pop()) as it:
-                    for e in it:
-                        walked += 1
-                        try:
-                            if e.is_dir(follow_symlinks=False):
-                                if e.path not in top:
-                                    stack.append(e.path)
-                            elif not (e.is_file(follow_symlinks=False) or e.is_symlink()):
-                                if stat.S_ISSOCK(e.stat(follow_symlinks=False).st_mode):
-                                    found.append(e.path)
-                        except OSError:
-                            pass
-            except OSError:
-                unlistable += 1
-    return found, walked, unlistable, skipped, True
+                st = os.lstat(p)
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+            except OSError as e:
+                errors.append({"path": p, "error": errno.errorcode.get(e.errno, str(e.errno))})
+                continue
+            if stat.S_ISSOCK(st.st_mode) and (st.st_dev, st.st_ino) == (c["dev"], c["ino"]):
+                at.append(p)
+        if at:
+            found.append({"path": c["path"], "inside": at})
+    return found, errors
 def masked_tree(root, allowed):
     # what is in a host mask: anything that is neither what the layout put there nor on the way to it
     extra = []
@@ -162,37 +171,66 @@ def terminal():
     except OSError as e:
         tty = errno.errorcode.get(e.errno, str(e.errno))
     return {"tty_nr": int(fields[4]), "dev_tty": tty, "session_leader": os.getsid(0) == os.getpid()}
-t0 = time.monotonic()
-table = mounts()
-top = {}
-for point, fstype, ro in table:
-    top[point] = (fstype, ro)
-found, walked, unlistable, skipped, complete = walk({p: t for p, (t, _) in top.items()}, spec["walk_budget_s"],
-                                                    set(spec["unwalked_fs"]), t0)
-print(json.dumps({
-    "sentinel_written": append(spec["sentinel"]),
-    "sibling_created": create(spec["sibling"]),
-    "writable": {p: create(os.path.join(p, spec["name"])) for p in spec["writable"]},
-    "protected_writable": [p for p in spec["protected"] if os.access(p, os.W_OK)],
-    "pid": os.getpid(),
-    "host_masks": {h: {"type": (top.get(h) or [None])[0], "readonly": (top.get(h) or [None, False])[1],
-                       "extra": masked_tree(h, set(spec["inside_host_masks"]))} for h in spec["host_masks"]},
-    "var_run": os.path.realpath(spec["var_run"]) if os.path.lexists(spec["var_run"]) else None,
-    "inventory": {"sockets": sorted(set(found)), "walked": walked, "unlistable": unlistable,
-                  "unwalked_mounts": skipped, "seconds": round(time.monotonic() - t0, 3), "complete": complete},
-    "display_files": {p: reads(p) for p in spec["display_files"]},
-    "env_set": [n for n in spec["unset_env"] if n in os.environ],
-    "terminal": terminal(),
-    "hide_dirs": {p: listing(p) for p in spec["hide_dirs"]},
-    "hide_files": {p: reads(p) for p in spec["hide_files"]},
-    "hide_runs": {p: listing(p) for p in spec["hide_runs"]},
-    "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
-}))
+if __name__ == "__main__":
+    spec = json.loads(sys.argv[1])
+    table = mountinfo()
+    top = {point: (fstype, ro) for _, _, point, fstype, ro in table}
+    t0 = time.monotonic()
+    found, errors = reachable(spec["candidates"], table)
+    print(json.dumps({
+        "sentinel_written": append(spec["sentinel"]),
+        "sibling_created": create(spec["sibling"]),
+        "writable": {p: create(os.path.join(p, spec["name"])) for p in spec["writable"]},
+        "protected_writable": [p for p in spec["protected"] if os.access(p, os.W_OK)],
+        "pid": os.getpid(),
+        "host_masks": {h: {"type": (top.get(h) or [None])[0], "readonly": (top.get(h) or [None, False])[1],
+                           "extra": masked_tree(h, set(spec["inside_host_masks"]))} for h in spec["host_masks"]},
+        "var_run": os.path.realpath(spec["var_run"]) if os.path.lexists(spec["var_run"]) else None,
+        "inside": {"reachable": found, "errors": errors, "seconds": round(time.monotonic() - t0, 3)},
+        "display_files": {p: reads(p) for p in spec["display_files"]},
+        "env_set": [n for n in spec["unset_env"] if n in os.environ],
+        "terminal": terminal(),
+        "hide_dirs": {p: listing(p) for p in spec["hide_dirs"]},
+        "hide_files": {p: reads(p) for p in spec["hide_files"]},
+        "hide_runs": {p: listing(p) for p in spec["hide_runs"]},
+        "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
+    }))
 """
 
 
+@contextlib.contextmanager
+def _control() -> Iterator[tuple[str, str]]:
+    """``(its path, its directory)``: a listener of the probe's own, bound before the socket table is read. A table
+    that does not list it is not this network namespace's (D-CS2-2). In a fresh private directory of the host's
+    temporary directory, which no sandbox sees (its /tmp is its own)."""
+    if sys.platform == "win32":
+        raise OSError("no Unix socket table on Windows")
+    directory = tempfile.mkdtemp(prefix="aew-probe-")
+    path = os.path.join(directory, "control")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        listener.bind(path)
+        listener.listen(1)
+        yield path, directory
+    finally:
+        listener.close()
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def _inventory(*, own: tuple[str, ...], env: Mapping[str, str]) -> dict[str, Any]:
+    """The host's side of row 2's socket check: :func:`.sockets.inventory`, with the control bound around the read,
+    and how long it took; a table that cannot be read is an ``error``."""
+    t0 = time.monotonic()
+    try:
+        with _control() as (control, directory):
+            out = sockets.inventory(control=control, own=(*own, directory), env=env)
+    except OSError as exc:
+        out = {"error": f"the socket table could not be read ({type(exc).__name__}: {exc})"}
+    return {**out, "seconds": round(time.monotonic() - t0, 3)}
+
+
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
-              walk_budget_s: float = WALK_BUDGET_S, env: Mapping[str, str] | None = None) -> dict[str, Any]:
+              env: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, ...}``; never raises
     for a containment failure (the caller decides by policy). ``own`` holds the run's own socket directories (its
     bridge); ``env`` is the launching environment the socket classes read (default: this process's)."""
@@ -204,9 +242,11 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     markers = _markers(layout, name)
     extra = [str(m) for m in markers] + [str(Path(v) / ".aew") for v in layout.visible
                                          if (Path(v) / ".aew").is_dir()]
+    inventory = _inventory(own=own, env=os.environ if env is None else env)
     spec = {"sentinel": str(sentinel), "sibling": str(sibling), "name": name,
             "writable": list(layout.writable), "protected": [*layout.protected, *extra],
-            "walk_budget_s": walk_budget_s, "unwalked_fs": sorted(sockets.UNWALKED_FS),
+            "candidates": [{k: c[k] for k in ("path", "dev", "ino", "majmin", "fspath")}
+                           for c in inventory.get("candidates") or []],
             "host_masks": list(_host_masks(layout)), "inside_host_masks": list(layout.inside_host_masks()),
             "var_run": VAR_RUN, "display_files": list(layout.display_files), "unset_env": list(DISPLAY_ENV),
             "hide_dirs": list(layout.hide_dirs), "hide_files": list(layout.hide_files),
@@ -234,8 +274,8 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
         except (ValueError, IndexError):
             result["reason"] = "the probe reported nothing readable"
             return result
-        rows = _rows(layout, seen, own=own, env=os.environ if env is None else env, written=(sentinel, content),
-                     sibling=sibling, name=name)
+        rows = _rows(layout, {**seen, "inventory": inventory}, written=(sentinel, content), sibling=sibling,
+                     name=name)
         problems = [f"row {n} ({row['name']}): {row['reason']}" for n, row in rows.items() if not row["ok"]]
         result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"), rows=rows)
         return result
@@ -251,10 +291,10 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
             (Path(root) / name).unlink(missing_ok=True)
 
 
-def _rows(layout: Layout, seen: dict[str, Any], *, own: tuple[str, ...], env: Mapping[str, str],
-          written: tuple[Path, bytes], sibling: Path, name: str) -> dict[str, dict[str, Any]]:
+def _rows(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], sibling: Path,
+          name: str) -> dict[str, dict[str, Any]]:
     """CB-12's rows 2 to 5, judged on the host from what the probe saw. Each row says what it checked."""
-    return {"2": _row2(layout, seen, own=own, env=env), "3": _row3(seen), "4": _row4(seen),
+    return {"2": _row2(layout, seen), "3": _row3(seen), "4": _row4(seen),
             "5": _row5(layout, seen, written=written, sibling=sibling, name=name)}
 
 
@@ -268,7 +308,11 @@ def _host_masks(layout: Layout) -> tuple[str, ...]:
     return tuple(dict.fromkeys((*host_masks(), *layout.hide_host)))
 
 
-def _row2(layout: Layout, seen: dict[str, Any], *, own: tuple[str, ...], env: Mapping[str, str]) -> dict[str, Any]:
+def _row2(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
+    """``/run`` masked, and the socket inventory (D-CS2-2): fails closed on a table that cannot be read or does not
+    list the control, and on a check inside that errors; a reachable path socket of a failing class fails it. An
+    abstract socket is a fact of the shared network, with its class, until CS-3 (D-CS2-5); what the inventory cannot
+    see is named (D-CS2-3)."""
     problems = []
     masks = seen.get("host_masks") or {}
     for h in _host_masks(layout):
@@ -281,16 +325,26 @@ def _row2(layout: Layout, seen: dict[str, Any], *, own: tuple[str, ...], env: Ma
     var_run = seen.get("var_run")
     if var_run is not None and not any(_within(var_run, h) for h in _host_masks(layout)):
         problems.append(f"{VAR_RUN} leads to {var_run}, outside the masked {', '.join(_host_masks(layout))}")
-    inventory = seen.get("inventory") or {}
-    found = [{"path": p, "class": sockets.classify(p, own=own, env=env)} for p in inventory.get("sockets") or []]
-    failing = [s for s in found if s["class"] in sockets.FAILING]
-    if not inventory.get("complete"):
-        problems.append(f"the socket inventory did not finish within {WALK_BUDGET_S:g}s of walking "
-                        f"({inventory.get('walked')} entries), so it cannot show that no socket reaches the display, "
-                        "G3, an AEW service or a credential")
-    problems += [f"a {s['class']} socket is reachable: {s['path']}" for s in failing]
-    return _row("run_and_sockets", problems, host_masks=masks, sockets=found,
-                **{k: inventory.get(k) for k in ("walked", "unlistable", "unwalked_mounts", "seconds", "complete")})
+    inventory, inside = seen.get("inventory") or {}, seen.get("inside") or {}
+    if inventory.get("error"):
+        problems.append(inventory["error"])
+    elif not inventory.get("control"):
+        problems.append("the socket table does not list the probe's own listener, so it is not this network "
+                        "namespace's")
+    problems += [f"the socket inventory could not check {e['path']} inside ({e['error']})"
+                 for e in inside.get("errors") or []]
+    classes = {c["path"]: c for c in inventory.get("candidates") or []}
+    found = [{"path": r["path"], "class": classes[r["path"]]["class"], "inside": r["inside"],
+              **({"listed": classes[r["path"]]["listed"]} if classes[r["path"]]["listed"] != r["path"] else {})}
+             for r in inside.get("reachable") or [] if r["path"] in classes]
+    problems += [f"a {s['class']} socket is reachable: {s['path']}"
+                 + (f" (inside at {', '.join(s['inside'])})" if s["inside"] != [s["path"]] else "")
+                 for s in found if s["class"] in sockets.FAILING]
+    return _row("run_and_sockets", problems, host_masks=masks, sockets=found, table=inventory.get("table"),
+                checked=len(classes), abstract={"network": "shared", "sockets": inventory.get("abstract") or []},
+                unresolved=inventory.get("unresolved") or [], relative=inventory.get("relative") or [],
+                unchecked=inventory.get("unchecked") or [], not_covered=list(sockets.NOT_COVERED),
+                seconds={"host": inventory.get("seconds"), "inside": inside.get("seconds")})
 
 
 def _row3(seen: dict[str, Any]) -> dict[str, Any]:

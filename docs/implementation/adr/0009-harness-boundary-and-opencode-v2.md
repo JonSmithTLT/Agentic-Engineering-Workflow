@@ -898,14 +898,24 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   `/etc/resolv.conf` links into `/run`. Its first path under `/run` is bound back read-only by that name, with the
   reason "name resolution until CS-3", when the link chain ends at a regular file. The chain is followed as the kernel
   follows it, at most 40 links. Without that file, a contained harness could not resolve its provider's name until
-  CS-3 gives it a network namespace of its own. `Layout.run_exceptions` holds each exception with its reason, and the
-  label records them.
-- **Nothing else is bound back** but what the layout itself puts under a mask (`Layout.inside_host_masks`). A project
-  on a path under `/run` (removable media) stays usable: its binds land inside the mask by depth. That reading of R-1
-  waits on the operator's and the designer's ruling (CS-2's plan, Q10). Refusing such a layout instead would be one
-  refusal in `for_run`, of whatever `inside_host_masks` lists beyond the exceptions.
-- **An operator's writable root under `/run`, or containing it, is refused** (the Lead's ruling Q6), like any other
-  protected location (`CONTAINMENT_UNAVAILABLE`, naming "the host's runtime directory, masked whole").
+  CS-3 gives it a network namespace of its own. `Layout.run_exceptions` holds each exception with its reason.
+- **A project under `/run` is bound back** (operator ruling 2026-10-23: a project under /run is bound back, on five
+  conditions, R-1). A project on removable media (`/run/media/<user>/...`) stays usable with its workspace: their binds
+  land inside the mask by depth. The conditions, each with its test:
+  1. only the layout's own binds of the project and the run's workspace come back, at their resolved real paths, with
+     the modes the same layout gives them anywhere else; never an ancestor such as `/run/media/<user>`;
+  2. nothing comes back that is a mask itself or lies under `aew-*` (G3's `aew-g3`, the fact issuer's `aew-wis`, any
+     later AEW service's), `user`, `dbus` or `systemd` below it (`layout.RUN_PROTECTED`, one tuple: adding to it only
+     tightens);
+  3. an operator's writable root under `/run`, or containing it, stays refused (the Lead's ruling Q6), like any other
+     protected location (`CONTAINMENT_UNAVAILABLE`, naming "the host's runtime directory, masked whole");
+  4. the socket inventory runs in the finished sandbox, after every bind-back, so a failing socket inside the project
+     tree still fails the launch;
+  5. row 2 allows exactly what the layout put there (`Layout.bind_backs`).
+
+  `for_run` refuses a layout that breaks 1 or 2 (`CONTAINMENT_UNAVAILABLE`, reasons `run_bind_back_protected`,
+  `run_bind_back_outside_project`, `run_bind_back_not_real`). The label's `layout.bound_back` lists every path inside a
+  mask with why: the exceptions with theirs, a project's binds with the ruling.
 - **A secret mask under a tree that is already masked is not emitted** (`/tmp`, `/run`, a runs mask). It is hidden
   with its tree, and making its path there would fail on the read-only mask.
 
@@ -931,13 +941,16 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   directories). The probe walks every mount the sandbox sees, the read-only root included. Each mount point is
   walked once from its path, never into another mount point, following no link.
 - **What it does not walk:** kernel interfaces, which hold no socket a process could bind (`proc`, `sysfs`, `cgroup`
-  and the rest of `sockets.UNWALKED_FS`). Nor does it walk `autofs` mount points, which would mount what they serve
-  when walked; the mounts they have already made are walked. The label lists every mount not walked.
+  and the rest of `sockets.UNWALKED_FS`), or read-only image filesystems (`squashfs`, `iso9660`, `erofs`), which are
+  made before they are mounted. Nor does it walk `autofs` mount points, which would mount what they serve when walked;
+  the mounts they have already made are walked. The label lists every mount not walked.
 - **Its budget:** half the self-test's bound (15 s; the Lead's ruling Q3). An inventory that did not finish cannot
   certify row 2, so row 2 fails.
 - **The classes,** one owner (`sockets.classify`), first match wins:
   - **own:** under the run's own bridge directory;
-  - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`), a credential (ssh-agent, gpg-agent,
+  - **failing:** the display, G3 (`aew-g3*`), any other AEW service (`aew-*`; AEW's runtime directories count only
+    directly in a runtime root: `/run`, `/var/run`, `/tmp` or the launching `XDG_RUNTIME_DIR`, so a checkout or a
+    reviewer's tree named `aew-*` is no service's), a credential (ssh-agent, gpg-agent,
     git's credential cache, the keyring, the session bus) or an escape route. An escape route is something that runs
     commands as the operator, or as root, outside the sandbox: the system bus, tmux, screen, an editor server, a
     container engine, the user service manager (the Lead's rulings on CS-2's plan);
@@ -953,7 +966,9 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   with no failing socket.
 - **Row 3, the display:** no display credential reads as anything but absent, empty or unreadable. No `DISPLAY_ENV`
   variable reaches the probe, which is handed each of them set, so a sandbox that does not unset them fails.
-- **Row 4, the terminal:** `tty_nr` is 0, `/dev/tty` gives `ENXIO`, and the probe leads its own session.
+- **Row 4, the terminal:** read on the started process itself, `tty_nr` is 0 in its own `/proc/self/stat` and
+  `/dev/tty` gives `ENXIO`. Whether it leads its session is recorded, not required: under `--new-session` the
+  session's leader is bubblewrap's own process in the sandbox (seen on CI's runners and the Rocky 8 VM).
 - **Row 5, the binds and masks:** the M4-B checks. A runs mask that is missing inside now fails too.
 - **Recorded pass or fail:** each row has its name, `ok`, its reason and its facts. Row 2's facts include the
   sockets, how many entries were walked and how long it took. `required` refuses a failing self-test, with the rows in
@@ -979,6 +994,10 @@ digest on both faces. That paragraph stays as the record of CS-1.
   - each exception bound back read-only after the mask, and described with its reason;
   - the `resolv.conf` exception as the first path under `/run` on its chain (POSIX);
   - a project under a masked prefix stays visible, and a writable one writable;
+  - the project bind-back's conditions 1 and 2: for an implementer and a reviewer, only the project's and the
+    workspace's own binds come back, at real paths, in the order the same layout has without the mask; a bind of
+    something else on the media refused; a project under each protected name refused, and one at the mask itself; a
+    project named through a symlink bound back at its real path, and a link path refused (POSIX);
   - a mask under a masked tree dropped;
   - an operator root under or containing `/run` refused;
   - a layout's JSON round trip giving the same argv;
@@ -1003,3 +1022,9 @@ digest on both faces. That paragraph stays as the record of CS-1.
   - Each row fails closed when its protection is taken out of the self-test's argv: `/run`'s mask, a display file's
     mask, the variables' unsetting, a runs mask.
   - An incomplete walk fails row 2.
+  - A launcher that has a controlling terminal (a pseudo-terminal of the test's own) starts the probe, which has none;
+    without `--new-session` it inherits the launcher's, and row 4 fails.
+  - A project under a stand-in for `/run`, masked as `/run` is: bound back with its workspace, recorded with the
+    ruling, row 2 holding exactly them, the media's other directories absent inside (condition 5), and row 2 failing
+    with the mask taken out; a socket inside the project tree that the launching environment names as its agent fails
+    the launch (condition 4).

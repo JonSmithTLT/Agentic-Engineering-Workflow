@@ -104,17 +104,24 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
                          bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
-        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.)
-        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent)
+        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) The bridge's
+        # directory holds the run's own socket, which the inventory lists as its own.
+        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
+                               own=(bridge_dir,) if bridge_dir else ())
         if not test["ok"]:
-            raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=test)
+            raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:
         retire_private_git(run_dir)
         if wanted == REQUIRED:
             raise
-        return None, label(contained=False, reason=exc.message)
-    return layout, label(contained=True, mechanism=probe.mechanism(layout),
-                         self_test={"ok": True, "probe_pid": test.get("probe_pid")}, layout=layout)
+        return None, label(contained=False, reason=exc.message, self_test=exc.details.get("self_test"))
+    return layout, label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
+
+
+def recorded(test: dict[str, Any]) -> dict[str, Any]:
+    """What a run's label keeps of its launch self-test, pass or fail: the verdict, the probe's pid and each of
+    CB-12's rows with its facts (a self-test that could not run has no rows)."""
+    return {k: test[k] for k in ("ok", "reason", "probe_pid", "rows") if k in test}
 
 
 def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str]:

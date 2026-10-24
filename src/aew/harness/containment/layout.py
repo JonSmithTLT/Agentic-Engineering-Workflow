@@ -3,7 +3,13 @@
 A :class:`Layout` says what a contained process may write. Everything else is the host as read-only:
 
 * the host root is bound read-only; ``/dev``, ``/proc`` and ``/tmp`` are private to the sandbox; the project is bound
-  read-only too, so it stays visible wherever it lives (even under ``/tmp``);
+  read-only too, at its depth in the one bind order, so it stays visible wherever it lives (even under ``/tmp``);
+* ``/run`` is masked whole (STG-05 CB-03, ruling R-1): an empty tmpfs at its depth, remounted read-only once what
+  the layout binds back into it is there. ``/var/run`` is the usual link to it (or masked too, where it is a
+  directory of its own). Every service socket there (G3's, the work-item fact issuer's, the session and system buses,
+  the operator's runtime directory) is gone; the one host-derived exception is :func:`run_exceptions`';
+* every contained process starts in a new session, so it has no controlling terminal (CB-05, ruling R-7), and
+  without the display's and the operator's session variables (:data:`DISPLAY_ENV`, CB-04);
 * the project's ``.aew/local`` (and the runs directory, wherever it lives) is hidden behind an empty tmpfs, and only
   this run's own directories are bound back: one run never reads another's harness state (its bridge key, its
   transcript), and the engine's control lock is not in the sandbox at all, so no contained process can hold it
@@ -20,8 +26,10 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   the workspace's ``.git`` pointer, the bridge directory), and a writable bind under a read-only re-bind stays
   writable. A reader's workspace stays read-only whole: an operator root inside it is not bound;
 * no writable bind may change the store's path (STG-05 CB-07, ruling R-3; :func:`_refuse_store_binds`);
-* secret masks come last and depend on the path's type: a directory is replaced by an empty tmpfs, a file by an
-  empty read-only file (``/dev/null`` would do, but SELinux refuses a device node bound over a home file).
+* secret masks, the display's credentials among them, come last and depend on the path's type: a directory is
+  replaced by an empty tmpfs, a file by an empty read-only file (``/dev/null`` would do, but SELinux refuses a device
+  node bound over a home file). One under a tree that is masked already (``/tmp``, ``/run``, a runs mask) is not
+  emitted: it is hidden with its tree, and making its path there would fail on a read-only mask.
 
 The claim is filesystem integrity, not confidentiality: apart from the masks, a contained process can read what
 the operator's account can read.
@@ -32,6 +40,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,9 +63,27 @@ SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".passwor
                ".config/gcloud",
                # agent tools' own sign-ins and session stores (AEW gives a run's harness private XDG directories)
                ".local/share/opencode", ".config/opencode", ".codex", ".claude",
-               ".config/anthropic")  # provider credential/config location
+               ".config/anthropic",  # provider credential/config location
+               # git's credential-cache daemon and its socket (STG-05 CB-03; the Lead, 2026-10-23): masked, so a host
+               # that uses the cache still launches, where the socket inventory would refuse a visible one
+               ".cache/git/credential", ".git-credential-cache")
 SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
-                ".claude.json")  # provider credential/config location
+                ".claude.json",  # provider credential/config location
+                ".config/git/credentials")  # git's store helper reads it beside ~/.git-credentials (the Lead, 2026-10-23)
+# The display's credential files (STG-05 CB-04): masked like the secret files, plus the file the launching XAUTHORITY
+# names (:func:`_env_masks`). The launch self-test's row 3 finds each unreadable from inside.
+DISPLAY_FILES = (".Xauthority", ".ICEauthority")
+# What no contained process gets (CB-04): the display, and the operator's session bus and ssh agent. bubblewrap unsets
+# them on every sandbox's argv, whichever allow-list built its environment; agentenv.POSIX_KEEP keeps none of them.
+DISPLAY_ENV = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK")
+
+RUN = "/run"
+VAR_RUN = "/var/run"
+# Exceptions to the /run mask a harness needs (CB-03, ruling R-1: measured, never guessed; each a path bound back
+# read-only by name, with why). None is measured: the host-derived one is :func:`_resolv_exception`'s.
+RUN_EXCEPTIONS: tuple[tuple[str, str], ...] = ()
+RESOLV_CONF = "/etc/resolv.conf"
+MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Linux include/linux/namei.h)
 # Copies kept beside a secret file under a suffixed name (backups and the like): every regular file directly in the
 # home directory whose name starts with one of these is masked too. Only the home directory itself is listed.
 SECRET_FILE_PREFIXES = (".claude.json.",)  # provider credential/config location
@@ -68,6 +95,37 @@ MASK_FILE = ".aew-mask"
 SANDBOX_TMP = "/tmp"  # noqa: S108  # <run dir>/.aew-mask: the empty file bound over file secrets
 
 
+def host_masks() -> tuple[str, ...]:
+    """The host's runtime trees masked whole (CB-03): ``/run``, and ``/var/run`` where it is a directory of its own
+    rather than the usual link to ``/run`` (a host fact, read when the layout is made)."""
+    return (RUN, VAR_RUN) if os.path.isdir(VAR_RUN) and not os.path.islink(VAR_RUN) else (RUN,)
+
+
+def run_exceptions() -> tuple[tuple[str, str], ...]:
+    """What is bound back into the ``/run`` mask, read-only, each with why: :data:`RUN_EXCEPTIONS` and the host's
+    name-resolution file (:func:`_resolv_exception`)."""
+    return RUN_EXCEPTIONS + _resolv_exception()
+
+
+def _resolv_exception(resolv: str = RESOLV_CONF, run: str = RUN) -> tuple[tuple[str, str], ...]:
+    """The operator's ruling (2026-10-24, on CS-2's plan): on a systemd-resolved host ``/etc/resolv.conf`` links into
+    ``/run`` (``/run/systemd/resolve/stub-resolv.conf``), and with ``/run`` masked a contained harness could not
+    resolve its provider's name until CS-3 gives it a network namespace. So the first path on the link chain that
+    lies under ``/run`` is bound back read-only, by that name, when the chain ends at a regular file; otherwise there
+    is no exception (a missing source would fail the launch). Followed as the kernel follows it, at most
+    :data:`MAXSYMLINKS` links."""
+    path = resolv
+    for _ in range(MAXSYMLINKS + 1):
+        if _within(path, run):
+            break
+        if not os.path.islink(path):
+            return ()
+        path = os.path.normpath(os.path.join(os.path.realpath(os.path.dirname(path)), os.readlink(path)))
+    else:
+        return ()
+    return ((path, "name resolution until CS-3 (the operator, 2026-10-24)"),) if os.path.isfile(path) else ()
+
+
 @dataclass(frozen=True)
 class Layout:
     """The sandbox of one run (and of the checks it runs). Pure data: :func:`bwrap_argv` turns it into argv."""
@@ -77,7 +135,7 @@ class Layout:
     bwrap: str                               # absolute path of the bubblewrap binary
     writable: tuple[str, ...]                # read-write binds, applied by depth with `readonly` (bind_order)
     readonly: tuple[str, ...]                # read-only re-binds; a writable bind under one comes after it
-    visible: tuple[str, ...] = ()            # read-only binds first: the project, wherever it lives
+    visible: tuple[str, ...] = ()            # read-only binds at their depth, first there: the project, anywhere
     hide_runs: tuple[str, ...] = ()          # empty tmpfs at its depth, then read-only: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``
@@ -85,46 +143,86 @@ class Layout:
     operator_writable: tuple[str, ...] = ()  # the policy's extra writable roots (also in ``writable``)
     protected: tuple[str, ...] = ()          # paths the launch self-test must find unwritable
     env: dict[str, str] = field(default_factory=dict)  # what contained processes need set (private git, caches)
+    # empty tmpfs at its depth, then read-only, like ``hide_runs``: /run (CB-03), in every layout, eval's included
+    hide_host: tuple[str, ...] = field(default_factory=host_masks)
+    # (path, why): bound back read-only into ``hide_host`` after its mask
+    run_exceptions: tuple[tuple[str, str], ...] = field(default_factory=run_exceptions)
+    display_files: tuple[str, ...] = ()      # the display's credential files found (in ``hide_files``), for row 3
 
     def describe(self) -> dict[str, Any]:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
-                "readonly": list(self.readonly), "hidden": [*self.hide_runs, *self.hide_dirs, *self.hide_files],
-                "operator_writable": list(self.operator_writable)}
+                "readonly": list(self.readonly),
+                "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files],
+                "run_exceptions": [{"path": p, "why": why} for p, why in self.run_exceptions],
+                "inside_host_masks": list(self.inside_host_masks()), "display_files": list(self.display_files),
+                "unset_env": list(DISPLAY_ENV), "session": "new", "operator_writable": list(self.operator_writable)}
+
+    def inside_host_masks(self) -> tuple[str, ...]:
+        """Every path this layout itself puts inside a ``hide_host`` mask: the exceptions, and any bind or runs mask
+        that lies under one. Nothing else may be there (the self-test's row 2).
+
+        Ruling R-1 binds nothing back but measured exceptions. A project on a path under ``/run`` (removable media,
+        ``/run/media/<user>/...``) stays usable, its workspaces and git metadata with it: its binds land inside the
+        mask by depth (the Lead, 2026-10-23, on CS-2's plan). That reading of R-1 waits on the operator's and the
+        designer's ruling (CS-2 plan, Q10); refusing such a layout instead is a refusal in :func:`for_run` of
+        whatever this lists beyond the exceptions."""
+        exceptions = tuple(p for p, _ in self.run_exceptions)
+        inside = [p for p in (*self.visible, *self.writable, *self.readonly, *self.hide_runs)
+                  if any(_within(p, h) and p != h for h in self.hide_host)]
+        return tuple(dict.fromkeys((*exceptions, *inside)))
 
 
 def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None) -> list[str]:
     """The bubblewrap command that runs ``argv`` inside ``layout``. Only flags bubblewrap 0.4.0 (EL8) has."""
-    out = [layout.bwrap, "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+    # --new-session: no controlling terminal, so TIOCSTI has no terminal it would accept (CB-05; bubblewrap's answer to
+    # CVE-2017-5226). bubblewrap's own processes stay in the caller's process group, so killing it still ends the run.
+    out = [layout.bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
            "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", SANDBOX_TMP]
-    for path in layout.visible:
-        out += ["--ro-bind", path, path]
-    for flag, path in bind_order(layout.writable, layout.readonly, layout.hide_runs):
+    for name in DISPLAY_ENV:
+        out += ["--unsetenv", name]
+    for flag, path in order(layout):
         out += [flag, path] if flag == "--tmpfs" else [flag, path, path]
-    for path in layout.hide_runs:  # after the run's own bind-backs into it, which keep their own flags
+    for path in (*layout.hide_host, *layout.hide_runs):  # after the bind-backs into them, which keep their own flags
         out += ["--remount-ro", path]
+    masked = (SANDBOX_TMP, *layout.hide_host, *layout.hide_runs)
     for path in layout.hide_dirs:
-        out += ["--tmpfs", path]
+        if not any(_within(path, m) for m in masked):
+            out += ["--tmpfs", path]
     for path in layout.hide_files:
-        out += ["--ro-bind", layout.mask_file, path]
+        if not any(_within(path, m) for m in masked):
+            out += ["--ro-bind", layout.mask_file, path]
     if cwd is not None:
         out += ["--chdir", os.fspath(cwd)]
     return [*out, "--", *argv]
 
 
-_RANK = {"--bind": 0, "--ro-bind": 1, "--tmpfs": 2}
+def order(layout: Layout) -> list[tuple[str, str]]:
+    """:func:`bind_order` of everything ``layout`` binds and masks at a depth: the project, the writable binds, the
+    read-only re-binds with the ``/run`` exceptions, and the ``/run`` and runs masks."""
+    return bind_order(layout.writable, (*layout.readonly, *(p for p, _ in layout.run_exceptions)),
+                      (*layout.hide_host, *layout.hide_runs), visible=layout.visible)
+
+
+# Within one depth: the project's visible bind first, so a role's writable bind of the same path wins (the Lead's R-2
+# shape, CS-4); then writable binds; then read-only re-binds; then masks.
+_RANK = {"visible": -1, "--bind": 0, "--ro-bind": 1, "--tmpfs": 2}
 
 
 def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] | list[str],
-               hidden: tuple[str, ...] | list[str] = ()) -> list[tuple[str, str]]:
-    """The writable binds (``--bind``), read-only re-binds (``--ro-bind``) and the masks of ``hide_runs``
-    (``--tmpfs``) in the order bubblewrap applies them: by depth, ancestors first, so each holds for its subtree except
-    where a deeper one says otherwise. On one path the mask comes last, after a re-bind, after a writable bind. So no
-    bind ever lands on a masked path after its mask (review of #231, m2): only the run's own bind-backs, deeper, come
-    after it. Otherwise the order within a depth is the layout's. The one owner of the order: ``bwrap_argv`` emits it
-    and the store check (:func:`_refuse_store_binds`) reasons about it."""
-    tagged = ([("--bind", p) for p in writable] + [("--ro-bind", p) for p in readonly]
-              + [("--tmpfs", p) for p in hidden])
-    return sorted(tagged, key=lambda t: (len(Path(t[1]).parts), _RANK[t[0]]))
+               hidden: tuple[str, ...] | list[str] = (), *,
+               visible: tuple[str, ...] | list[str] = ()) -> list[tuple[str, str]]:
+    """The project's visible binds and read-only re-binds (``--ro-bind``), the writable binds (``--bind``) and the masks
+    of ``hide_host`` and ``hide_runs`` (``--tmpfs``) in the order bubblewrap applies them: by depth, ancestors first, so
+    each holds for its subtree except where a deeper one says otherwise. On one path the mask comes last, after a
+    re-bind, after a writable bind, after the visible bind. So no bind ever lands on a masked path after its mask
+    (review of #231, m2): only deeper bind-backs come after it. A project under a masked tree (``/run/media/...``)
+    stays visible for the same reason (CS-2; the Lead's approval, 2026-10-23). Otherwise the order within a depth is
+    the layout's. The one owner of the order: ``bwrap_argv`` emits it and the store check
+    (:func:`_refuse_store_binds`) reasons about it."""
+    tagged = ([("visible", p) for p in visible] + [("--bind", p) for p in writable]
+              + [("--ro-bind", p) for p in readonly] + [("--tmpfs", p) for p in hidden])
+    ranked = sorted(tagged, key=lambda t: (len(Path(t[1]).parts), _RANK[t[0]]))
+    return [("--ro-bind" if f == "visible" else f, p) for f, p in ranked]
 
 
 def find_bwrap() -> str | None:
@@ -136,9 +234,13 @@ def _real(path: str | os.PathLike[str]) -> str:
     return os.path.realpath(os.fspath(path))
 
 
-def _masks(home: str | None, extra: list[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Existing secret paths, split by type (a file cannot be masked by a tmpfs, nor a directory by /dev/null)."""
-    candidates = [os.path.join(home, p) for p in (*SECRET_DIRS, *SECRET_FILES)] if home else []
+def _masks(home: str | None, extra: list[str],
+           env: Mapping[str, str] | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Existing secret paths, split by type (a file cannot be masked by a tmpfs, nor a directory by /dev/null): the
+    secrets and the display's credentials in ``home``, those the launching environment ``env`` names
+    (:func:`_env_masks`; default: this process's), and the policy's ``extra``."""
+    candidates = [os.path.join(home, p) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] if home else []
+    candidates += _env_masks(os.environ if env is None else env)
     candidates += [os.path.expanduser(p) for p in extra]
     dirs: list[str] = []
     files: list[str] = []
@@ -153,6 +255,28 @@ def _masks(home: str | None, extra: list[str]) -> tuple[tuple[str, ...], tuple[s
         if target is not None and path not in target:
             target.append(path)
     return tuple(dirs), tuple(files)
+
+
+def _env_masks(env: Mapping[str, str]) -> list[str]:
+    """Credential paths the launching environment names rather than the home directory: the file ``XAUTHORITY`` names
+    (CB-04), and git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or
+    ``XDG_CONFIG_HOME``. Read in the process that makes the layout: a run's supervisor, whose environment is the
+    launching CLI's without AEW's own credentials (``harness_ops.supervisor_env``), or the CLI itself."""
+    out = [env["XAUTHORITY"]] if env.get("XAUTHORITY") else []
+    if env.get("XDG_CACHE_HOME"):
+        out.append(os.path.join(env["XDG_CACHE_HOME"], "git", "credential"))
+    if env.get("XDG_CONFIG_HOME"):
+        out.append(os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"))
+    return [os.path.expanduser(p) for p in out]
+
+
+def display_files(home: str | None, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """The display's credential files present on this host (CB-04), resolved: the ones row 3 of the launch self-test
+    must find unreadable from inside. Masked by :func:`_masks` with the other secrets."""
+    env = os.environ if env is None else env
+    candidates = [os.path.join(home, p) for p in DISPLAY_FILES] if home else []
+    candidates += [env["XAUTHORITY"]] if env.get("XAUTHORITY") else []
+    return tuple(dict.fromkeys(_real(p) for p in candidates if os.path.isfile(p)))
 
 
 def _prefixed_files(home: str | None) -> list[str]:
@@ -221,7 +345,8 @@ def _git_metadata(workspace: Path) -> tuple[list[str], list[str]]:
 
 
 def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os.PathLike[str] | None,
-             bridge_dir: str | None, masks: tuple[str, ...]) -> list[tuple[str, str]]:
+             bridge_dir: str | None, masks: tuple[str, ...],
+             host: tuple[str, ...] = (RUN,)) -> list[tuple[str, str]]:
     """(what, path) for every location an operator's writable root must neither equal, contain nor lie under. The
     shared temporary directory is listed separately (``_SHARED_TMP``): only containing it, or reaching one of AEW's
     own directories in it, exposes other runs."""
@@ -243,6 +368,9 @@ def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os
         if prefix:
             out.append(("the Python environment AEW runs from", _real(prefix)))
     out += [("a masked secret", m) for m in masks]
+    # R-1 binds nothing back into /run but measured exceptions: an operator root there would be one (the Lead,
+    # 2026-10-23, on CS-2's plan, Q6), and one containing it would show it all again.
+    out += [("the host's runtime directory, masked whole (STG-05 CB-03, ruling R-1)", _real(h)) for h in host]
     return out
 
 
@@ -250,7 +378,10 @@ _SHARED_TMP = "the shared temporary directory, where every run's bridge socket l
 
 
 def _within(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+    """``path`` is ``root`` or under it. A sandbox's paths are POSIX (``/run``) on every platform its layout is built
+    on, so ``/`` separates as well as this platform's own separator."""
+    base = root.rstrip("/" + os.sep)
+    return path == root or path.startswith((base + os.sep, base + "/"))
 
 
 def _refuse_unsafe_root(raw: str, root: str, guarded: list[tuple[str, str]], *, workspaces: str) -> None:
@@ -330,12 +461,13 @@ def _refuse_store_bind(role: str, store: str, w: str, after: list[tuple[str, str
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
-            runs: str | os.PathLike[str] | None = None) -> Layout:
+            runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
     so it stays visible; its ``.aew/local`` is hidden, and its store checked against every writable bind); ``runs``
-    is the directory holding every run's directory (hidden too, with only this run's own directories bound back)."""
+    is the directory holding every run's directory (hidden too, with only this run's own directories bound back).
+    ``env`` is the launching environment, for the credential paths it names (default: this process's)."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
@@ -356,19 +488,21 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     if not mask.exists():
         mask.write_bytes(b"")
     mask.chmod(0o444)
-    env = {"TMPDIR": SANDBOX_TMP, "XDG_CACHE_HOME": str(cache)}
+    contained = {"TMPDIR": SANDBOX_TMP, "XDG_CACHE_HOME": str(cache)}
     writable = [_real(scratch), _real(harness)]
     if access == "write":
         git_root, git_env = private_git(run, ws)
         writable.insert(0, str(ws))
         writable.append(_real(git_root))
-        env.update(git_env)
+        contained.update(git_env)
     else:
-        env.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(cache / "pycache")})
+        contained.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(cache / "pycache")})
     readonly, protected = _git_metadata(ws)
-    hide_dirs, hide_files = _masks(home if home is not None else os.path.expanduser("~"),
-                                   list(cfg.get("hide") or []))
-    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files))
+    home = home if home is not None else os.path.expanduser("~")
+    hide_dirs, hide_files = _masks(home, list(cfg.get("hide") or []), env)
+    hide_host = host_masks()
+    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files),
+                       host=hide_host)
     operator = []
     for raw in cfg.get("writable") or []:
         path = _real(os.path.expanduser(raw))
@@ -394,7 +528,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     hide_runs = [_real(local)] if local.is_dir() else []  # no .aew: not an AEW root, so no lock to hide
     if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
         hide_runs.append(_real(runs))
-    _refuse_store_binds(role, project, bind_order(writable, readonly, hide_runs))
-    return Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
-                  visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
-                  mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected), env=env)
+    layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
+                    visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
+                    mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected),
+                    env=contained, hide_host=hide_host, display_files=display_files(home, env))
+    _refuse_store_binds(role, project, order(layout))
+    return layout

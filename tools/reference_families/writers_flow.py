@@ -441,11 +441,12 @@ class Program:
             return None
         if isinstance(expr.func, ast.Name) and expr.func.id == "cls" and func is not None and func.cls:
             return mod, func.cls  # `cls(...)` in a classmethod builds the class
+        built = self.constructed(mod, expr.func)  # the class itself, whether or not it defines `__init__`
+        if built is not None:
+            return built
         target = self.target(mod, func, expr.func)
         if target is None:
             return None
-        if target.cls and target.qual.endswith(".__init__"):
-            return self.modules[target.module], target.cls
         if target.returns_annotation is not None:
             return self.class_of(self.modules[target.module], target.returns_annotation)
         return self._returned_class(target, depth)
@@ -466,6 +467,18 @@ class Program:
         if result is not None:  # only an answer is kept: an unknown may be the depth's, not the function's
             self._returned[target.key] = result
         return result
+
+    def constructed(self, mod: Module, callee: ast.expr) -> tuple[Module, str] | None:
+        """The program class a call's callee names (``Class(...)``), however its ``__init__`` is inherited or absent."""
+        dotted = mod.aliases.resolve(callee) if isinstance(callee, (ast.Name, ast.Attribute)) else None
+        if dotted is None:
+            return None
+        if dotted in mod.classes:
+            return mod, dotted
+        located = self.split(dotted)
+        if located and located[1] in self.modules[located[0]].classes:
+            return self.modules[located[0]], located[1]
+        return None
 
     def class_of(self, mod: Module, annotation: ast.expr) -> tuple[Module, str] | None:
         """The program class a parameter's annotation names (``Thread``, ``mod.Thread``, ``Thread | None``)."""
@@ -578,7 +591,7 @@ def _parent(v: Val) -> Val:
 class Evaluator:
     def __init__(self, program: Program) -> None:
         self.p = program
-        self._memo: dict[tuple[int, Env], Values] = {}
+        self._memo: dict[tuple[int, Env, int], Values] = {}
 
     # -- entry
     def value(self, mod: Module, func: Func | None, expr: ast.expr) -> Values:
@@ -589,7 +602,7 @@ class Evaluator:
         return self.p.modules[env.module].funcs.get(env.func[1]) if env.func else None
 
     def _ev(self, e: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
-        memo_key = (id(e), env)
+        memo_key = (id(e), env, depth)  # the depth left is part of the question: a deeper chain asked less
         if not seen and memo_key in self._memo:
             return self._memo[memo_key]
         out = capped(self._eval(e, env, depth, seen))

@@ -257,6 +257,47 @@ def test_a_method_of_a_receiver_whose_class_is_evident_is_followed_and_one_of_an
     assert W.records_of(a)[0].fact["writers"][0]["entry_points"] == ["aew"]  # type: ignore[index]
 
 
+def test_a_super_constructor_and_a_facade_attribute_built_from_a_local_are_followed():
+    a = analysed("class Base:\n    def __init__(self, d):\n        self.d = d\n\n"
+                 "class Sub(Base):\n    def __init__(self, d):\n        super().__init__(d)\n"
+                 "    def go(self):\n        (self.d / 'x').write_text('x')\n\n"
+                 "class Hier:\n    def close(self, aew_root):\n        (aew_root / 'work' / 'c').write_text('x')\n\n"
+                 "class Facade:\n    def __init__(self):\n        h = Hier()\n        self._h = h\n"
+                 "    def close(self, aew_root):\n        return self._h.close(aew_root)\n\n"
+                 "def main(aew_root):\n    Sub(aew_root / 'local' / 'sub').go()\n    Facade().close(aew_root)\n",
+                 roots={("aew.m", "main"): {"aew"}})
+    assert sorted(a.writers) == ["local/sub/x", "work/c"]
+    assert a.reach[("aew.m", "Hier.close")] == {"aew"} and a.reach[("aew.m", "Sub.go")] == {"aew"}
+
+
+def test_a_function_whose_returns_build_one_class_types_its_result_without_an_annotation():
+    a = analysed("class E:\n    @classmethod\n    def find(cls):\n        return cls()\n"
+                 "    def put(self, aew_root):\n        (aew_root / 'local' / 'e').write_text('x')\n\n"
+                 "def _e():\n    return E.find()\n\n"
+                 "def main(aew_root):\n    _e().put(aew_root)\n", roots={("aew.m", "main"): {"aew"}})
+    assert a.reach[("aew.m", "E.put")] == {"aew"}
+
+
+def test_an_attribute_of_a_local_built_from_a_class_takes_the_constructors_arguments():
+    a = analysed("class Index:\n    def __init__(self, aew_root):\n        self.path = aew_root / 'local' / 'idx'\n\n"
+                 "def f(aew_root):\n    index = Index(aew_root)\n    index.path.unlink()\n")
+    assert writers_of(a, "local/idx") == [("aew.m", "f", W.DIRECT, ("Path.unlink",))]
+
+
+def test_the_keys_of_a_mapping_passed_to_a_method_of_a_constructed_class_are_the_paths_it_writes():
+    a = analysed("class Store:\n    def __init__(self, root):\n        self.root = root\n"
+                 "    def create(self, files):\n        for rel, text in files.items():\n"
+                 "            (self.root / rel).write_text(text)\n\n"
+                 "def init(aew_root):\n    files = {'knowledge/P.md': 'a', 'policy/g.yaml': 'b'}\n"
+                 "    Store(aew_root).create(files)\n", top=TOP | {"knowledge", "policy"})
+    assert sorted(a.writers) == ["knowledge/P.md", "policy/g.yaml"]
+
+
+def test_a_temporary_directory_bound_by_with_is_outside():
+    a = analysed("def f():\n    with tempfile.TemporaryDirectory() as d:\n        (Path(d) / 'x').write_text('x')\n")
+    assert "a temporary directory" in a.outside and a.writers == {} and a.unresolved == {}
+
+
 # ----------------------------------------------------------------------------------------- destinations, unresolved
 
 @pytest.mark.parametrize(("source", "fragment"), [
@@ -333,6 +374,9 @@ def test_a_registered_cli_handler_is_reached_from_the_function_that_declares_the
     assert a.reach[("aew.m", "command")] == {"aew", "aew lead mcp"}
     plain = analysed(REACH, roots={("aew.m", "cli_main"): {"aew", "aew lead mcp"}})
     assert ("aew.m", "command") not in plain.reach, "without the dispatch edge the handler is not reached"
+    wrapped = analysed(REACH.replace("handler=command", "handler=lambda a: command(a)"),
+                       roots={("aew.m", "cli_main"): {"aew"}}, dispatchers={("aew.m", "cli_main")})
+    assert wrapped.reach[("aew.m", "command")] == {"aew"}, "a lambda handler registers the function it names"
 
 
 def test_a_writer_no_chain_reaches_is_unresolved_on_its_records_and_a_reached_one_is_not():

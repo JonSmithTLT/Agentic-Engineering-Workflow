@@ -8,6 +8,8 @@
   of one is a form pinned here), and the write mechanism it excludes (``aew.util``, the store's ``write_file``) is
   still the mechanism;
 * the entry points' roots are the owner's table, and every writer names entry points and kinds that are the table's;
+* the CLI's roles are cut by the parser, and the cut equals the real parser's own command-to-handler map, command for
+  command; no store write is reached from a role that may not write the store; the gate the records name exists;
 * a spot check that the reading agrees with a hand reading of the code for writers whose paths matter;
 * a writer planted in a copy of the tree is a record, and one under an unknown directory is an unresolved write.
 
@@ -17,6 +19,7 @@ The planted cases of each rule, with their right, wrong and missing cases, are i
 
 from __future__ import annotations
 
+import argparse
 import ast
 import shutil
 import sys
@@ -31,13 +34,13 @@ def _tools():
     here = str(ROOT / "tools")
     sys.path.insert(0, here)
     try:
-        from reference_families import common, writers, writers_flow, writers_reach, writers_text
+        from reference_families import common, writers, writers_flow, writers_reach, writers_roles, writers_text
     finally:
         sys.path.remove(here)
-    return common, writers, writers_flow, writers_reach, writers_text
+    return common, writers, writers_flow, writers_reach, writers_roles, writers_text
 
 
-C, W, F, R, T = _tools()
+C, W, F, R, K, T = _tools()
 TABLE = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
 CTX = C.Context(ROOT)
 
@@ -47,7 +50,7 @@ def program(ctx=CTX):
 
 
 PROGRAM = program()
-ANALYSIS = W.analyse(PROGRAM, frozenset(W.TOP_LEVEL), R.roots_of(CTX, set(TABLE)), TABLE, R.dispatchers_of(CTX))
+ANALYSIS = W.analyse(PROGRAM, frozenset(W.TOP_LEVEL), R.roots_of(CTX, set(TABLE)), TABLE, R.cli_of(CTX, PROGRAM))
 
 
 # ----------------------------------------------------------------------------------------- the two readers agree
@@ -171,21 +174,111 @@ def test_the_roots_the_reach_starts_from_are_the_owners_table_and_nothing_else()
 
 def test_every_writer_of_this_tree_names_entry_points_that_are_rows_of_the_table_and_their_kinds():
     records = W.records_of(ANALYSIS)
-    assert W.record_problems({r.id: r.as_json() for r in records}, TABLE, W.shared_roots(ANALYSIS.roots)) == []
+    assert W.record_problems({r.id: r.as_json() for r in records}, TABLE, ANALYSIS.roles, ANALYSIS.undecided) == []
     named = {k for r in records for w in (r.fact or {}).get("writers", []) for k in w["entry_points"]}
     assert named and named <= set(TABLE)
 
 
-def test_the_cli_is_the_one_declaring_function_that_declares_several_entry_points_and_its_writers_say_so():
-    """Review of #254, F1: the CLI's four roles share `aew.cli.main:_main`. Every path record with a writer it reaches
-    carries the unresolved item that says which of them is not decided; no other declaring function is shared."""
-    shared = W.shared_roots(ANALYSIS.roots)
-    cli = {k for k, kind in TABLE.items() if "." not in k}
-    assert shared == {("aew.cli.main", "_main"): tuple(sorted(cli))}
-    item = W.C.unresolved_item("aew.cli.main", "_main", W.role_why(cli))
-    reached = [r for r in W.records_of(ANALYSIS) if r.fact and any(set(w["entry_points"]) & cli
-                                                                    for w in r.fact.get("writers", []))]
-    assert reached and all(item in r.fact_coverage["writers"]["unresolved"] for r in reached)  # type: ignore[index]
+# ------------------------------------------------------------------------------------------------- the CLI cut per role
+
+def runtime_commands() -> dict[tuple[str, ...], tuple[str, str]]:
+    """The real parser's own map: each command path that has a handler, with the function it names (a lambda by the
+    function that builds it), walked from ``build_parser`` with every optional command on."""
+    from aew.cli import main
+
+    found: dict[tuple[str, ...], tuple[str, str]] = {}
+
+    def walk(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
+        handler = parser.get_default("handler")
+        if handler is not None:
+            qual = handler.__qualname__.replace(".<locals>.<lambda>", "").replace(".<locals>", "")
+            found[path] = (handler.__module__, qual)
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                for name, sub in action.choices.items():
+                    walk(sub, (*path, name))
+
+    walk(main.build_parser(recall_search=True, coordination_reads=True), ())
+    return found
+
+
+def function_of(handler: tuple[str, str]) -> tuple[str, str]:
+    """A static handler key as the runtime names it: a lambda handler by the function that builds it."""
+    return handler[0], handler[1].split(".<handler")[0]
+
+
+def static_commands() -> dict[tuple[str, ...], set[tuple[str, str]]]:
+    out: dict[tuple[str, ...], set[tuple[str, str]]] = {}
+    for r in ANALYSIS.cut.registrations:
+        for path in r.paths:
+            out.setdefault(path, set()).update(function_of(h) for h in r.handlers)
+    return out
+
+
+def test_the_cut_is_the_real_parsers_own_map_command_for_command():
+    """The static reading of `set_defaults(handler=...)` and the parser the CLI builds give the same handler for every
+    command path (two derivations: one reads the source, the other runs `build_parser`)."""
+    runtime = runtime_commands()
+    static = static_commands()
+    assert set(runtime) == set(static), (sorted(set(runtime) - set(static)), sorted(set(static) - set(runtime)))
+    assert {path: handler for path, handler in runtime.items() if handler not in static[path]} == {}
+    assert len(runtime) > 100, "the parser walk found almost nothing"
+
+
+def test_every_registration_of_this_tree_names_a_handler():
+    assert all(r.handlers for r in ANALYSIS.cut.registrations) and len(ANALYSIS.cut.registrations) > 100
+
+
+def test_each_named_role_gets_the_handlers_of_the_commands_the_owner_gives_it_and_the_worker_role_none():
+    """The roles' keys come from `process_kind.cli_entry_point` (asked, not listed): the handlers of the commands whose
+    role it names are that role's, and the role the environment selects is no command's."""
+    roles = ANALYSIS.roles
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for path, handler in runtime_commands().items():
+        expected.setdefault(process_kind.cli_entry_point(list(path), {}), set()).add(handler)
+    got = {role: {function_of(h) for h in handlers} for role, handlers in ANALYSIS.cut.handlers.items()}
+    assert got == expected
+    assert roles.worker not in got and roles.general in got
+    assert roles.named and roles.all == {k for k in TABLE if "." not in k}
+    assert process_kind.cli_entry_point(["status"], {process_kind.AGENT_ENDPOINT_ENV: "x"}) == roles.worker
+
+
+def test_the_cli_is_the_one_function_that_declares_the_roles_and_their_reach_starts_there():
+    roots = R.roots_of(CTX, set(TABLE))
+    assert R.cli_roots_of(CTX) == {("aew.cli.main", "_main")}
+    assert roots[("aew.cli.main", "_main")] == set(ANALYSIS.roles.all)
+
+
+def test_no_store_write_is_reached_from_a_role_that_may_not_write_the_store():
+    """DOC-01's finding, as a check: a store-transaction writer, or a direct writer outside `local/`, that a
+    `non_writer` entry point reaches. The page lists what is found; this is the guarantee it reports."""
+    store, local = W.role_reach(ANALYSIS, W.records_of(ANALYSIS))
+    non_writers = [k for k, kind in TABLE.items() if kind == W.NON_WRITER]
+    assert non_writers and {k: sorted(store[k]) for k in non_writers} == {k: [] for k in non_writers}
+    assert not store[ANALYSIS.roles.worker] and not local[ANALYSIS.roles.worker], "nothing reaches the worker role"
+
+
+def test_the_with_limit_the_page_names_is_still_the_live_case():
+    """The page says the dashboard server's lock file is attributed to `aew` alone because a `with` is not
+    followed. This holds that true: the function takes the lock by `with`, and the records do not list the dashboard
+    role. When the reach follows `with`, this fails: update the page text and `WITH_CASE` (or drop the limit)."""
+    module, qual, keys = W.WITH_CASE
+    func = PROGRAM.modules[module].funcs[qual]
+    assert any(isinstance(n, ast.With) for n in ast.walk(func.node))
+    records = {r.key: r for r in W.records_of(ANALYSIS)}
+    dashboard = process_kind.cli_entry_point(["dashboard", "serve"], {})
+    for key in keys:
+        reached = {k for w in (records[key].fact or {})["writers"] for k in w["entry_points"]}
+        assert dashboard not in reached and reached == {ANALYSIS.roles.general}, (key, reached)
+
+
+def test_the_gate_the_records_name_exists_is_called_by_the_control_lock_and_is_tested_at_run_time():
+    module, symbol = W.GATE_SYMBOL
+    assert symbol in PROGRAM.modules[module].funcs
+    lock = PROGRAM.modules["aew.engine.store"].funcs["ControlStore.control_lock"]
+    assert any(PROGRAM.modules["aew.engine.store"].aliases.resolve(c.func) == f"{module}.{symbol}" for c in lock.calls)
+    tests = ast.parse((ROOT / "tests" / "integration" / "test_non_writer_reads.py").read_text(encoding="utf-8"))
+    assert W.GATE_TEST in {n.name for n in ast.walk(tests) if isinstance(n, ast.FunctionDef)}
 
 
 # -------------------------------------------------------------- the reading against a hand reading of the code
@@ -228,7 +321,7 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
     shutil.copytree(ROOT / "src" / "aew", tmp_path / "src" / "aew", ignore=shutil.ignore_patterns("__pycache__"))
     (tmp_path / "src" / "aew" / "planted.py").write_text(PLANT, encoding="utf-8")
     ctx = C.Context(tmp_path)
-    analysis = W.analyse(program(ctx), frozenset(W.TOP_LEVEL), {}, TABLE, set())
+    analysis = W.analyse(program(ctx), frozenset(W.TOP_LEVEL), {}, TABLE)
     assert [(w.module, w.symbol) for w in analysis.writers["state/planted.yaml"]] == [("aew.planted", "planted")]
     assert any("`brand-new-dir`" in why and "not in the declared set" in why
                for (m, s, _p), (_mech, why) in analysis.unresolved.items() if (m, s) == ("aew.planted", "planted"))

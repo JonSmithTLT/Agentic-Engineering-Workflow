@@ -316,6 +316,23 @@ def tree_reads(ws: Path, base: str | None, staged: str | None, changed: list[str
         assert sorted(F.changed_paths(ws, base)) == sorted(changed)
 
 
+def test_a_recorded_fingerprint_a_non_writer_computed_is_found_with_no_tree_in_the_store(tmp_path):
+    """Planted cases for ``worker_surface.unstored_fingerprints``, the check that every fingerprint the engine records
+    names a stored tree (the worker-surface test runs it over a project's whole flow): a value a non-writer computed,
+    recorded, is found; a writer's is not."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import worker_surface
+
+    ws, _, _ = edits(tmp_path)
+    with as_kind("reader"):
+        reader = F.relevant_inputs_fingerprint(ws)
+    write(ws, ".aew/work/T-1.yaml", f"snapshot: {reader}\n")
+    recorded, unstored = worker_surface.unstored_fingerprints(ws)
+    assert recorded == {reader.removeprefix("git-tree:")} and unstored == [reader.removeprefix("git-tree:")]
+    writer = F.relevant_inputs_fingerprint(ws)  # the same tree, now stored by a writer
+    assert writer == reader and worker_surface.unstored_fingerprints(ws)[1] == []
+
+
 def test_working_diff_stores_what_it_reads_in_any_process_and_still_gives_the_diff(tmp_path):
     """Flagged (no caller in src): it reads blob content, so it stores the blobs it adds, even in a reader."""
     ws, base, _ = edits(tmp_path)

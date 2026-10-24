@@ -13,6 +13,8 @@ import functools
 import json
 import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -175,6 +177,25 @@ def objects(repo: Path) -> dict[str, tuple[int, int]]:
             st = os.stat(Path(d) / name)
             out[(Path(d) / name).relative_to(repo).as_posix()] = (st.st_size, st.st_mtime_ns)
     return out
+
+
+FINGERPRINT = re.compile(r"git-tree:([0-9a-f]{64}|[0-9a-f]{40})")
+
+
+def unstored_fingerprints(repo: Path) -> tuple[set[str], list[str]]:
+    """(every fingerprint recorded anywhere under the project's `.aew`, those whose tree is not in its object store).
+    The engine reads a recorded fingerprint back as a tree: the reviewer's and verifier's packs diff the base against
+    it (``engine.context_ops``), and a mutated workspace's refusal names the paths between two
+    (``evidence_ops._paths_between``). A non-writer stores no tree it hashes (D-CS2-1), so none of its values may be
+    recorded; every fingerprint is computed by the store writer that records it, inside its transaction."""
+    recorded: set[str] = set()
+    for d, _, files in os.walk(repo / ".aew"):
+        for name in files:
+            recorded.update(FINGERPRINT.findall((Path(d) / name).read_bytes().decode("utf-8", "replace")))
+    unstored = sorted(t for t in recorded if subprocess.run(
+        ["git", "cat-file", "-e", f"{t}^{{tree}}"], cwd=repo, capture_output=True, timeout=60,
+        creationflags=0x08000000 if sys.platform == "win32" else 0).returncode != 0)
+    return recorded, unstored
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:

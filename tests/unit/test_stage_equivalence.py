@@ -20,9 +20,9 @@ def _state(start: float | None, pid: int = 7) -> dict[str, Any]:
 def test_a_validation_executors_start_time_compares_as_a_time_wherever_its_record_is_kept():
     """A validation run's executor records its process's start time, which Linux derives from the wall clock's boot
     time: a clock step between the twins' runs in one process moves it (WSL2 was measured stepping it by 3 s about
-    every 35 s: the flake of `test_stage_matches_primitives[integration_publish-done]`). It compares as a time on the hot record, in
-    the integration history and on the archived unit; a null still differs from a time, and the executor's other
-    fields still compare."""
+    every 35 s: the flake of `test_stage_matches_primitives[integration_publish-done]`). It compares as a time on the
+    hot record, in the integration history and on the archived unit; a null still differs from a time, and the
+    executor's other fields still compare."""
     a, b = _clean(_state(1792806723.99), "/p"), _clean(_state(1792806726.99), "/p")
     assert differences(a, b) == []
     assert a["work"]["T-0001"]["integration"]["current_validation_run"]["executor"]["start_time"] == "<time>"

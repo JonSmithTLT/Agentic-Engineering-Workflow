@@ -29,11 +29,10 @@ Model (ADR-0001):
   performs recovery. Revision checks happen inside the lock (compare-and-swap).
   A process declared a non-writer (``aew.process_kind``, STG-05 CB-09) is refused
   all three before the lock is opened: it reads lock-free (``read_committed``).
-* The store (``state/`` and everything under it) is group-readable whatever the umask (STG-05 CB-08): its files are
-  :data:`STORE_FILE_MODE`, its directories :data:`STORE_DIR_MODE`, so a reader running as the operator's group (the
-  work-item fact issuer) can read it. Every other file AEW writes keeps ``0600``. :func:`write_file` picks the mode
-  from the path for every write the store makes, and the control file's temp is written at the store's mode; a store
-  written before this gets the modes once, in recovery (``_migrate_modes``).
+* The store (``state/`` and everything under it) is owner-only whatever the umask (operator, 2026-10-24: the work-item
+  fact issuer that was to read it as the operator's group is cut): its files are :data:`STORE_FILE_MODE`, its
+  directories :data:`STORE_DIR_MODE`. Every write the store makes goes through :func:`write_file`; a store written
+  group-readable (STG-05 CS-1's CB-08 modes) is narrowed once, in recovery (``_migrate_modes``).
 * The transition log ``state/log/<rev>.yaml`` is derived from committed state and
   never authoritative, but it is complete and consumable (ADR-0012, amending
   ADR-0001): every revision has exactly one record, carrying the typed events the
@@ -60,7 +59,6 @@ from __future__ import annotations
 import copy
 import os
 import stat
-import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -99,12 +97,12 @@ from aew.util import (
 
 CHECKSUM_PREFIX = "# aew-checksum sha256:"
 STORE_REL = "state"
-# The store's modes (STG-05 CB-08; WIS-00 WISD-2): group-readable files, group-searchable directories. The one owner of
-# both: every write into the store goes through ``write_file`` (and ``store_dirs``), except the control file's temp,
-# which ``_commit_unprofiled`` writes with ``write_temp(..., mode=STORE_FILE_MODE)`` before it replaces the control
-# file.
-STORE_FILE_MODE = 0o640
-STORE_DIR_MODE = 0o750
+# The store's modes: owner-only. Files come from ``write_temp`` (``mkstemp``, 0600 whatever the umask), directories from
+# ``store_dirs``; every write into the store goes through ``write_file``, except the control file's temp, which
+# ``_commit_unprofiled`` writes with ``write_temp`` before it replaces the control file.
+STORE_FILE_MODE = 0o600
+STORE_DIR_MODE = 0o700
+_GROUP_OTHER = 0o077  # the permission bits of anyone but the owner, which no store path has
 CONTROL_REL = "state/control.yaml"
 TXN_DIR = "state/txn"
 LOG_DIR = "state/log"
@@ -149,7 +147,7 @@ def read_lock_free(path: Path) -> bytes | None:
 def store_dirs(store: Path, directory: Path) -> None:
     """Create ``directory`` (the store directory or one under it) and every missing directory between, each
     :data:`STORE_DIR_MODE`: ``mkdir`` is filtered by the umask, ``chmod`` is not. An existing directory keeps its mode
-    (``_migrate_modes`` re-modes a store from before the modes)."""
+    (``_migrate_modes`` narrows a store written group-readable)."""
     missing = []
     d = directory
     while not d.is_dir():
@@ -172,21 +170,6 @@ def _chmod_if_allowed(path: Path, mode: int) -> None:  # pragma: posix-only
         pass
 
 
-def operator_gid() -> int | None:
-    """The group the store's paths should have (:meth:`ControlStore.group_problems`): the operator's primary group, or
-    this process's own group when the uid has no account entry. None where there are no POSIX groups (Windows)."""
-    if sys.platform == "win32":  # pragma: windows-only
-        return None
-    try:  # pragma: posix-only
-        import pwd
-    except ImportError:  # a test that claims a POSIX platform on Windows: there are still no groups
-        return None
-    try:
-        return pwd.getpwuid(os.getuid()).pw_gid
-    except KeyError:  # a container's or a user namespace's uid
-        return os.getgid()
-
-
 def store_of(aew_root: Path) -> Path:
     """The store directory of ``aew_root``, resolved itself (a ``state`` that is a link resolves to its target): what
     :func:`write_file` compares its resolved paths with, and what the migration and `aew doctor` walk."""
@@ -194,14 +177,13 @@ def store_of(aew_root: Path) -> Path:
 
 
 def write_file(store: Path, path: Path, data: bytes | str, *, exclusive: bool = False) -> None:
-    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``): with the store's modes when it is in
-    ``store`` (from :func:`store_of`), and AEW's ``0600`` otherwise. Both are resolved paths, so a path that reaches
-    the store through ``..`` or a link is in the store."""
-    mode = 0o600
+    """Write ``path`` atomically (``create_exclusive`` when ``exclusive``), owner-only like every file AEW writes.
+    When it is in ``store`` (from :func:`store_of`), its missing directories are made with the store's mode
+    (:func:`store_dirs`). Both are resolved paths, so a path that reaches the store through ``..`` or a link is in the
+    store."""
     if store in path.parents:
         store_dirs(store, path.parent)
-        mode = STORE_FILE_MODE
-    (create_exclusive if exclusive else atomic_write)(path, data, mode=mode)
+    (create_exclusive if exclusive else atomic_write)(path, data)
 
 
 Renderer = Callable[[dict[str, Any]], dict[str, str]]
@@ -608,7 +590,7 @@ class ControlStore:
         faults.hit("txn.after_stage")
 
         # The commit point: temp + fsync, then atomic replace of control.yaml.
-        tmp = write_temp(self.store_dir, control_bytes, prefix=".control.yaml.", mode=STORE_FILE_MODE)
+        tmp = write_temp(self.store_dir, control_bytes, prefix=".control.yaml.")
         try:
             faults.hit("txn.before_replace")
             replace_with_retry(tmp, self.control_path)
@@ -680,45 +662,47 @@ class ControlStore:
                     f.unlink()
         return state
 
-    def _store_modes(self) -> Iterator[tuple[Path, int, int, int]]:  # pragma: posix-only
-        """(path, its mode, the mode it should have at least, its group) for the store directory and every directory
-        and regular file under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so
-        is a path that vanished after it was listed: the compactor prunes log records without the control lock
-        (``log_compact``)."""
+    def _store_modes(self) -> Iterator[tuple[Path, int, bool]]:  # pragma: posix-only
+        """(path, its mode, whether it is a directory) for the store directory and every directory and regular file
+        under it. Symbolic links are skipped (``chmod`` would follow them out of the store), and so is a path that
+        vanished after it was listed: the compactor prunes log records without the control lock (``log_compact``)."""
         for d, dirs, files in os.walk(self.store_dir):
-            names = [("", STORE_DIR_MODE)] if Path(d) == self.store_dir else []
-            names += [*((n, STORE_DIR_MODE) for n in dirs), *((n, STORE_FILE_MODE) for n in files)]
-            for name, want in names:
+            names = [("", True)] if Path(d) == self.store_dir else []
+            names += [*((n, True) for n in dirs), *((n, False) for n in files)]
+            for name, is_dir in names:
                 path = Path(d) / name if name else Path(d)
                 try:
                     st = os.lstat(path)
                 except FileNotFoundError:
                     continue
                 if not stat.S_ISLNK(st.st_mode):
-                    yield path, stat.S_IMODE(st.st_mode), want, st.st_gid
+                    yield path, stat.S_IMODE(st.st_mode), is_dir
 
     def _migrate_modes(self) -> None:
-        """Give a store written before the store's modes (STG-05 CB-08) those modes, once, under the control lock. The
-        control file's own mode is the record that it ran: every commit publishes the control file at
-        :data:`STORE_FILE_MODE`, and this re-modes it last, so a store whose control file has the mode was migrated
-        (or written with the modes from the start), and a migration interrupted part-way runs again. Wider modes are
-        kept, and only a path that lacks the bits is changed. A path this process may not change (another account's
-        file) is left as it is and the migration still finishes, so it never stops a command; `aew doctor`
-        (``store-modes``) names what is left below the modes. The cost of that: if the control file itself is such a
-        path, the record is never written and every recovery walks the store again (review of #230, N4)."""
+        """Narrow a store written group-readable (STG-05 CS-1's CB-08 modes, ``0640``/``0750``), or one from before
+        CS-1 whose directories the umask left wider, to owner-only, once, under the control lock: every path loses its
+        group and other permission bits. The store directory's and the control file's own modes are the record that it
+        ran: both are owner-only from the start (``store_dirs``, ``write_temp``), and this narrows them last, so a store
+        whose two are owner-only was narrowed (or written owner-only), and a narrowing interrupted part-way runs again.
+        A path this process may not change (another account's file) is left as it is and the narrowing still finishes,
+        so it never stops a command; `aew doctor` (``store-modes``) names it. If the store directory or the control
+        file is such a path, the record is never written and every recovery walks the store again (review of #230,
+        N4)."""
         if IS_WINDOWS:  # pragma: windows-only
             return
         control = self.store_dir / Path(CONTROL_REL).name  # pragma: posix-only
         try:
-            current = stat.S_IMODE(os.stat(control).st_mode)
+            record = [(path, stat.S_IMODE(os.stat(path).st_mode)) for path in (self.store_dir, control)]
         except FileNotFoundError:
             return
-        if current & STORE_FILE_MODE == STORE_FILE_MODE:
+        if not any(mode & _GROUP_OTHER for _path, mode in record):
             return
-        for path, mode, want, _gid in self._store_modes():
-            if path != control and mode & want != want:
-                _chmod_if_allowed(path, mode | want)
-        _chmod_if_allowed(control, current | STORE_FILE_MODE)
+        for path, mode, _is_dir in self._store_modes():
+            if path not in (self.store_dir, control) and mode & _GROUP_OTHER:
+                _chmod_if_allowed(path, mode & ~_GROUP_OTHER)
+        for path, mode in record:
+            if mode & _GROUP_OTHER:
+                _chmod_if_allowed(path, mode & ~_GROUP_OTHER)
 
     def applied(self, revision: int) -> bool:
         """Whether committed ``revision``'s staged writes are all in place (its marker exists): one stat, no lock. While
@@ -810,29 +794,20 @@ class ControlStore:
     # ------------------------------------------------------------------ helpers for tests/doctor
 
     def mode_problems(self) -> list[str] | None:
-        """The store's paths (``state/...``; a directory ends in ``/``) whose mode lacks :data:`STORE_FILE_MODE` or
-        :data:`STORE_DIR_MODE`, without modifying anything. None on Windows, which has no such modes: there is nothing
-        to report either way."""
+        """The store's paths (``state/...``; a directory ends in ``/``) with a group or other permission bit, without
+        modifying anything: the store is owner-only. None on Windows, which has no such modes: there is nothing to
+        report either way."""
         if IS_WINDOWS:  # pragma: windows-only
             return None
         out = []  # pragma: posix-only
-        for path, mode, want, _gid in self._store_modes():
-            if mode & want != want:
-                out.append(self._rel(path, want))
+        for path, mode, is_dir in self._store_modes():
+            if mode & _GROUP_OTHER:
+                out.append(self._rel(path, is_dir))
         return sorted(out)
 
-    def group_problems(self, gid: int) -> list[tuple[str, int]] | None:
-        """The store's paths whose group is not ``gid`` (the operator's primary group), with the group they have. The
-        store's modes make it group-readable, so a path whose group is another (a process run under ``sg``, a
-        set-group-ID directory above the store) is readable by that group's members (review of #230, m6). Nothing is
-        changed: AEW never changes groups. None on Windows."""
-        if IS_WINDOWS:  # pragma: windows-only
-            return None
-        return sorted((self._rel(path, want), g) for path, _mode, want, g in self._store_modes() if g != gid)
-
-    def _rel(self, path: Path, want: int) -> str:  # pragma: posix-only
+    def _rel(self, path: Path, is_dir: bool) -> str:  # pragma: posix-only
         rel = (Path(STORE_REL) / path.relative_to(self.store_dir)).as_posix()
-        return rel + "/" if want == STORE_DIR_MODE else rel
+        return rel + "/" if is_dir else rel
 
     def verify(self) -> list[str]:
         """Return integrity problems without modifying anything."""

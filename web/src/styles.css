@@ -1497,6 +1497,41 @@ summary {
 .inspection-actions button {
   font-size: 12px;
   text-align: left;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.overview-scroll {
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .overview-scroll {
+    max-height: 28rem;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+.work-invocation-list {
+  list-style: none;
+  padding: 0;
+}
+.work-invocations {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.work-invocations > p,
+.work-invocation-list {
+  margin-inline: 16px;
+}
+.work-invocation-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
 }
 .provenance-viewport {
   height: 340px;

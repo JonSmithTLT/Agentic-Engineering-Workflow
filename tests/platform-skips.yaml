@@ -298,6 +298,16 @@ skipped:
       writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
       test_doctor.py, and the group rule through
       test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_new_store_is_at_its_target_from_its_first_file: >-
+      POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
+      store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's
+      writers, recovery and doctor run through test_store.py, test_store_processes.py, test_log_sealing.py and
+      test_doctor.py, and the group rule through
+      test_the_predicate_agrees_with_the_reference_model_on_every_host_it_builds.
+    tests/integration/test_store_group.py::test_a_non_writer_registers_nothing_and_is_not_counted_among_the_store_writers: >-
+      the running store writers' registry is POSIX's (an flock held on each entry, STG-05 CB-08), and on Windows no
+      process registers and the store has no group target, so there is nothing to count. Covered on Linux; on Windows
+      a non-writer's refusals run through test_non_writer_reads.py.
     tests/integration/test_store_group.py::test_a_short_lived_command_from_an_old_session_returns_the_store_to_owner_only_and_the_next_holder_restores_it: >-
       POSIX groups and permission bits (STG-05 CB-08, the store's group and modes); Windows has neither, so the
       store's target is None there and write_temp ignores mode and group. Covered on Linux; on Windows the store's

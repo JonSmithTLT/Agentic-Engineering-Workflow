@@ -37,8 +37,11 @@ or an outcome "is recorded in the register row" (the M4-E and F4 plans say so, f
 record; the row's cells change only when what they state changes (its work, its source, its target, its closing).
 
 **Rows without an id** (the §1 gates and three closed rows: `E33 (part)`, `Q9 (decisions)`, `Q9 (reconciliation)`)
-take no notes. Progress toward a gate goes in a note on the row that carries the gate's work (filesystem containment,
-F2; network containment, F28); a gate's Condition changes only when the gate itself does.
+take no notes. Progress toward a gate goes in a note on the row that carries the gate's work (agent containment,
+STG-05; network containment, F28); a gate's Condition changes only when the gate itself does.
+
+**Build stages.** A build stage of the architecture map has one row (`STG-05`, `STG-12`), and each of its slices
+notes on that row (designer ruling D-CS1-12, 2026-10-23).
 
 **Capabilities built in slices.** A slice's progress on a capability of
 [`implementation-status.md`](../implementation-status.md) that has no paragraph of its own there goes here, on the

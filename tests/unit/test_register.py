@@ -96,6 +96,15 @@ def test_ids_sort_naturally():
     assert key("E39") < key("F1") < key("O1") < key("Q1") < key("U1")  # letters first, as the register numbers them
     assert key("Q9") < key("Q9 (decisions)") < key("Q9 (reconciliation)") < key("Q10")
     assert key("Gate") > key("U99")  # anything that is not an id sorts after every id
+    assert key("Q14") < key("STG-05") < key("STG-12") < key("U1")  # a build stage sorts by its letters, then its number
+
+
+def test_a_build_stage_is_an_id_in_exactly_one_form():
+    """One row per build stage of the architecture map, named as the map names it (designer, D-CS1-12)."""
+    assert all(register.ID_RE.match(i) for i in ("F2", "F15.5", "STG-05", "STG-12"))
+    assert not any(register.ID_RE.match(i) for i in ("STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2"))
+    assert {"STG-05", "STG-12"} <= {r["id"] for r in register.rows(DATA)}
+    assert all(r["target"] == "Stage" for r in register.rows(DATA) if (r["id"] or "").startswith("STG-"))
 
 
 def test_closed_rows_are_gates_first_then_id_order_and_an_appended_row_is_reported():

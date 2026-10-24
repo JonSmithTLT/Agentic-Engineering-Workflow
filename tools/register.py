@@ -97,15 +97,17 @@ NEEDS = ("decision", "design", "adoption")
 OWNERS = ("operator", "designer", "operator and designer")
 SCHEMA = "aew/register/v1"
 TARGETS = ("Gate", "M4", "M5", "M6", "Hierarchy revision", "M4 candidate", "Designer", "Evaluation",
-           "On measured need", "Unscheduled")
+           "On measured need", "Unscheduled", "Stage")
 TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|M4|M5|M6|Hierarchy revision|M4 candidate|Designer|Evaluation|"
-                       r"On measured need|Unscheduled)")
+                       r"On measured need|Unscheduled|Stage)")
 SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
 COLUMNS_RE = re.compile(r"^<!-- columns: (.+) -->$")
 ROW_RE = re.compile(r"^### (.+)$")
 BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
-ID_RE = re.compile(r"^[A-Z][0-9]+(?:\.[0-9]+)?$")
-ID_KEY_RE = re.compile(r"^([A-Z]+)([0-9]+)((?:\.[0-9]+)*)")
+# A row id is a letter and a number (``F2``, ``F15.5``), or a build stage of the architecture map (``STG-05``: one row
+# per stage, each slice noting on it; designer ruling D-CS1-12, 2026-10-23).
+ID_RE = re.compile(r"^(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})$")
+ID_KEY_RE = re.compile(r"^([A-Z]+)-?([0-9]+)((?:\.[0-9]+)*)")
 CHANGELOG_RE = re.compile(r"\*?Last updated:", re.IGNORECASE)
 NOTES = ROOT / "docs" / "implementation" / "notes.d"
 NOTES_README = "README.md"

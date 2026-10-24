@@ -7,13 +7,13 @@ owns this guide: a change to it is merged by the operator (`AGENTS.md` rule 5). 
 ## 1. The kinds of review
 
 - **A full review** (a "full round") covers the whole diff against `main`, with the reviewer's own choice of tests. It
-  is the default. Rounds are counted in full reviews only.
+  is the default, and a pull request gets one (§8).
 - **A delta review** follows a CLEAR whose only open points are nits (§7).
-- **A targeted review** follows the last full round of the stop rule (§8).
+- **A quick check** follows a full review whose verdict is FINDINGS (§8). It covers the whole diff since that review.
 - **A re-render check** (§7) is mechanical, not a review: it carries the last verdict to a head that only merges
   `main` and re-renders.
-- Delta and targeted reviews have the same shape (§7). Everything in this guide applies to every kind unless a section
-  says otherwise.
+- Delta reviews and quick checks have the same shape (§7). Everything in this guide applies to every kind unless a
+  section says otherwise.
 
 ## 2. The finding format
 
@@ -23,8 +23,8 @@ met otherwise. Add a "what looks sound" list.
 
 ## 3. Labels: what the review's own label decides
 
-Each finding carries a severity, and a minor carries its fails label (§8). Every finding also names its precondition
-class (§10). The review labels each, and its label decides. The author cannot relabel a point.
+Each finding carries a severity. What counts as a security finding is in §10. The review labels each point, and its
+label decides. The author cannot relabel a point.
 
 - **A nit** is a point whose fix changes no behaviour and breaks no guarantee: wording in docs, a comment, a docstring,
   a test name, a stale reference. Changing text that tests or operators rely on, such as an error message or a reason
@@ -61,15 +61,14 @@ The operator, 2026-10-10; the product rule of the Cross-Feature Integration Desi
 - The reviewer, or a new independent one, does one short delta review. It covers the whole diff since the CLEAR, runs
   only the tests that touch it (CI is the matrix), and ends with a verdict at the new head as usual.
 - If the delta review finds a blocker, major or minor finding, or any change in behaviour beyond the named fixes, its
-  verdict is `Review: FINDINGS`, or it first widens into a full review and gives that review's verdict. Otherwise its
-  CLEAR closes the nits.
+  verdict is `Review: FINDINGS`, and the fixes take a quick check (§8). Otherwise its CLEAR closes the nits.
 - **A point the delta review raises.** A nit whose fix changes only the wording of a document, a comment or a
   docstring, and nothing that runs or that tests or operators read (a doctest, help text, an error message or a reason
   code), is fixed and checked by one more short delta check of that fix alone. Any other point it raises, or a nit
-  whose fix changes anything else, is fixed and reviewed in a full review. If that second check raises anything, the
-  next review is a full one.
-- **A merge of `main` or a rebase** takes the work off this path: the next review is a full one, unless the merge is
-  a re-render.
+  whose fix changes anything else, is fixed and takes a quick check (§8). What that check raises is handled as §8
+  says.
+- **A merge of `main` or a rebase** takes the work off this path: the next review is a quick check of the whole diff
+  against `main` at the new head, unless the merge is a re-render.
 - **A re-render keeps the verdict** (operator, 2026-10-24). With R the reviewed head, H the new head, M the newest
   commit of `main` that H contains, and B the newest commit of `main` that R contains, H is a re-render of R when all of
   these hold:
@@ -83,31 +82,30 @@ The operator, 2026-10-10; the product rule of the Cross-Feature Integration Desi
     or a YAML both sides changed, is not a re-render. The list is closed; another generator joins it only by a change
     to this guide.
 
-  R's verdict and its open points then hold at H, and a delta or targeted review in progress continues. The check
+  R's verdict and its open points then hold at H, and a delta review or quick check in progress continues. The check
   needs no judgement, so the reviewer or the Lead runs it, never the pull request's author. Its comment names R, H and
   M, gives the commands and their output and the CI observation at H (§6), and ends with R's verdict line at H. CI at
   H is still required (`AGENTS.md` §4): it is the only check of how `main`'s changes and the pull request's combine.
 - A nit the author disputes goes through `AGENTS.md` §2 before this path applies. A blocker, major or minor finding is
   never a nit.
 
-## 8. The stop rule (operator, 2026-10-21; for pull requests, 2026-10-24)
+## 8. One full round, then a quick check (operator decision, 2026-10-24, the security depth reset)
 
-A review round with no blocker or major, where every minor fails closed, is the last full round.
-- **Closed or open.** A minor fails closed when its worst case refuses, stops or raises a false alarm. It fails open
-  when its worst case lets through, or reports as passing, something a guarantee forbids. The review labels each minor
-  with its worst case, and its label decides. A minor with no label, or whose worst case fits neither description, is
-  open. "Stops" means stops the guarded action, not the guard.
-- **A last full round that has a minor gives `Review: FINDINGS`**: its closed minors are open points, and the targeted
-  review gives the next verdict. One whose only open points are nits is CLEAR, and takes §7's delta review.
-- **The answer is the smallest that meets the finding,** for the findings of the last full round: narrowing a claim (a
-  claim in the pull request or its code, never an adopted text except as §10 allows) or stating a limit where that
-  suffices (M1's known limits), otherwise the smallest code change, adding no check, option, module, dependency or
-  call to a host tool that the finding does not name.
-- **One short targeted review** then checks the whole diff since the last full round, in the shape of §7's delta
-  review. If it raises a blocker, a major or a minor that fails open, a full round reopens. A minor that fails closed,
-  or a nit, is fixed and checked by one more short check of that fix alone; if that check raises anything, the next
-  review is a full one. A merge of `main` that is not a re-render (§7), or a rebase, ends it: the next review is a full
-  one.
+It replaces the repeated rounds of the stop rule of 2026-10-21. A pull request gets one full review.
+- **Its findings are all fixed** in the pull request (`AGENTS.md` §2). A full review that has a finding other than a
+  nit gives `Review: FINDINGS`. One whose only open points are nits is CLEAR, and takes §7's delta review.
+- **The answer is the smallest that meets the finding:** narrowing a claim (a claim in the pull request or its code,
+  never an adopted text) or stating a limit where that suffices (M1's known limits), otherwise the smallest code
+  change, adding no check, option, module, dependency or call to a host tool that the finding does not name.
+- **One quick check** then covers the whole diff since the full review, in the shape of §7's delta review, and ends
+  with a verdict at the new head. The pull request then merges on green CI (`AGENTS.md` §4).
+- **There is no further full round,** and no sort of minors into those that fail open or closed. If the quick check
+  finds an agent-reachable blocker or major in a fix (§10), that fix is mended and checked again quickly. Any other
+  point it raises (a minor, a nit or an ordinary bug) is fixed in the pull request, which then merges on green CI with
+  no further check. So the path ends.
+- **A merge of `main` that is not a re-render (§7), or a rebase,** is covered by the next quick check, which then
+  covers the whole diff against `main` at the new head.
+- **Work already past one full round** on 2026-10-24 gets only its quick check.
 
 ## 9. Proportion in a test-only pull request (operator, 2026-10-24; M1 stands)
 
@@ -131,37 +129,39 @@ guide applies unchanged.
   `tools/ci/coverage_gate.py`), adds a platform skip, or changes which tests CI runs or requires. It keeps the full
   review, because it can hide a failure.
 
-## 10. Precondition classes, and what is fixed after the PR (operator, 2026-10-24)
+## 10. What counts as a security finding (operator decision, 2026-10-24, the security depth reset)
 
-The designer's ruling on the operator's decision of 2026-10-24 (proportionate review dispositions). These are the
-cases where a finding is not fixed in its pull request (`AGENTS.md` §2). The precondition classes and the sort after
-the third full round apply from each pull request's next full round after 2026-10-24.
-- **Every finding names its precondition class.**
-  - **Agent-reachable:** a contained agent can use it on its own, or can create its precondition through anything AEW
-    gives it.
-  - **AEW-created:** AEW's own code, setup or install writes the precondition, or an AEW crash or interruption leaves
-    it. Cuts, crash leftovers and AEW's own routes are this class, so they stay in scope.
-  - **Host-only:** the precondition is host configuration that AEW neither creates nor can be driven to create: root's
-    or the operator's own route, NAT rule, group, service or link. Or it is code other than AEW's running as the
-    operator or as root, which the threat model excludes, such as malware or a compromised host. "Root touched it" is
-    not the test.
-- **A host-only finding** becomes a stated residual plus a register row by default, whatever its severity, and not a
-  fix round. The designer can pull one back to "fix now", saying why.
-- **After the third full round on a pull request**, the designer sorts each remaining minor that fails open:
-  - **fix now**, in this pull request, if it is a direct route a contained agent can use on its own to a credential,
-    an approval, an owner fact, or an escape;
-  - **otherwise, a stated limit plus a register row.** A gap the agent can use only with a precondition it cannot create
-    itself leans this way.
-  - A blocker or a major is not sorted: it stays "fix now" unless it is host-only. The stop rule (§8) still applies to
-    every round.
-- **A residual has two texts.** The private one holds the mechanism and its evidence, outside this repository, until it
-  is fixed. The public one, in the run's label where the run carries one, the pull request's Known limits and the stage
-  note, says what is not detected, its precondition class and its worst case. It does not describe the mechanism or
-  call it "fails open". The register row is public too: it names the deferred outcome, not the mechanism.
-- **Adopted text.** Where a residual or a sort narrows an adopted guarantee, the decision is the authority for that
-  narrowing. The stage note records it, and the contract's next revision names it beside its rule. Any other narrowing
-  of adopted text still goes to the operator.
-- **Nits ride the next pull request of S12-2's series** (operator, 2026-10-24, for the STG-12 S12-2 pull requests 2 to
-  8). A CLEAR in that series whose only open points are nits merges once `assurance` is green, and its nits are fixed in
-  the next pull request of the series, listed in its description, and checked by its review. The last pull request of
-  the series fixes its own nits. Only nits ride; a minor is fixed in its own pull request.
+AEW's security work is for three things, and only these:
+- a contained agent cannot fake the operator's approval;
+- a contained agent cannot forge an owner fact, that is, a record saying the operator decided something;
+- a contained agent cannot read a credential, or act as the operator outside its sandbox.
+
+What follows from them:
+- **A security finding counts only if a contained agent can do one of those on its own,** with what AEW gives it. An
+  AEW bug that lets an agent do one of the three counts.
+- **Anything else is not filed:** not as a finding, not as a residual, and not as a register row. That covers a
+  precondition needing root, the host's own configuration, hardware, a compromised host, malware, an unusual
+  deployment, or a second fault the agent cannot cause. Residuals and register rows already written stay.
+- **Ordinary bugs still count.** Where the product does the wrong thing in normal use, or loses or corrupts work, the
+  finding is a normal bug finding.
+- **Briefs and reviews.** Builder and reviewer briefs do not ask for escape probes, attack reproductions, hunts for
+  host side doors, or precondition classes. A test that shows the product refuses what it should is an ordinary
+  product test, and it stays: for example, the sandbox refusing a credential path, or a non-writer refusing a store
+  write. A reviewer reads the change and its tests against the three guarantees and for ordinary bugs.
+- **The basics are done by ordinary good practice.** The PIN, the keys and TLS use standard libraries and their
+  defaults, and get an ordinary review: no custom hardening, and no review beyond ordinary practice.
+
+**The posture behind it: AEW stays easy to use, so agents never want to go around it.**
+- **The main defence is a good governed path.** An agent goes around a process only if it is compromised, which is
+  unlikely, or if going around it is easier than following it, or if following it doesn't help the agent get its work
+  done.
+- **So friction is a security cost, not a safety margin.** Every design and review asks: is the governed path the
+  easiest way for an agent to get this done? Where it isn't, fix the path. Don't add a wall.
+- **A refusal an agent meets** says what happened and what to do instead, and it offers a way to ask for more.
+- **Containment stays for the unlikely compromised case,** kept to the core routes of the three guarantees above.
+
+**The one case where a finding is fixed after its pull request** (`AGENTS.md` §2): nits ride the next pull request of
+S12-2's series (operator, 2026-10-24, for the STG-12 S12-2 pull requests 2 to 9). A CLEAR in that series whose only
+open points are nits merges once `assurance` is green, and its nits are fixed in the next pull request of the series,
+listed in its description, and checked by its review. The last pull request of the series fixes its own nits. Only
+nits ride; a minor is fixed in its own pull request.

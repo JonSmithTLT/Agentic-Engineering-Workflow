@@ -12,9 +12,9 @@ The operator owns this file and the review guide; a change to either is merged b
   It gets the diff, the plan or design the work implements, and the repository. The same model is allowed (the
   Contract's review level R1).
 - **How a review is done is in the [review guide](docs/implementation/review-guide.md),** which every review brief
-  loads: the finding format, the labels (nit, fails closed or open, precondition class), defect classes (M1), one pass
-  raises everything, nits after a CLEAR, the stop rule, and proportion in a test-only pull request. Its author steps
-  (§6, §7, §9 and §10) bind authors too.
+  loads: the finding format, the labels, defect classes (M1), one pass raises everything, nits after a CLEAR, one full
+  round and a quick check, proportion in a test-only pull request, and what counts as a security finding. Where it says
+  what an author does, it binds authors too, and builder briefs load it.
 - **The review is posted on the pull request** as a comment that names the head commit it reviewed, and ends with a
   verdict line: `Review: CLEAR at <sha>` or `Review: FINDINGS at <sha>`. A review of an earlier commit does not cover
   later commits: after fixes, the reviewer (or a new independent one) posts a new verdict at the new head.
@@ -44,7 +44,8 @@ either withdraws it or the operator decides.
 The author may merge its own pull request when all of these hold on the **current head commit**:
 
 - the latest review verdict is `Review: CLEAR` at that commit (after nits, that is the verdict of the review the
-  review guide requires);
+  review guide requires), or the latest is a quick check whose points need no further check (review guide §8) and the
+  author's comment at that commit lists how each was fixed;
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a
   draft.

@@ -52,7 +52,8 @@ The lanes, the CI tiers, the static checks and the local commands are in
   while its test run is in progress.
 - **Never mark a test xfail or skip it to get green.** A test that fails and then passes on re-run is a defect to
   investigate. A slower test is a regression to find, not a timeout to raise.
-- **Fix what the static checks report;** do not silence a rule without a reason in the line's comment.
+- **Fix what the static checks report;** a `# noqa` is only for a reviewed false positive, and names the rule and the
+  reason (strategy §3).
 - **New behaviour comes with the test that proves it**, named for the guarantee (`test_a_diagnostic_run_never_...`).
   Engine invariants live in `tests/helpers/invariants.py`; extend them when a new state appears.
 - **A worktree's tests, and `tools/reference.py`, need an absolute `PYTHONPATH`** to that worktree's `src` when the

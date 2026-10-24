@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 from aew.errors import UsageError
-from aew.util import read_text_input
+from aew.util import YAML_MAX_DEPTH, read_text_input, yaml_too_deep
 
 OPTION = "--fields"
 HELP = ("option values as data: a YAML/JSON mapping (option name: value, or a list for a repeatable option) from "
@@ -91,6 +91,12 @@ def _load(text: str) -> dict[str, str | list[str]]:
     if not text.strip():
         return {}
     try:
+        # The pure-Python composer below recurses per level: a value nested past the YAML bound is refused first, as
+        # a usage error rather than a RecursionError (util.YAML_MAX_DEPTH).
+        line = yaml_too_deep(text, loader=yaml.BaseLoader)
+        if line is not None:
+            raise UsageError(f"--fields: the value nests deeper than {YAML_MAX_DEPTH} levels (at line {line}); give "
+                             "a mapping of option names to texts or lists of texts")
         for event in yaml.parse(text, Loader=yaml.BaseLoader):  # noqa: S506 - events only, nothing is constructed
             if isinstance(event, yaml.AliasEvent) or getattr(event, "anchor", None) is not None:
                 raise _refuse("a YAML anchor or alias (`&name`, `*name`) is not text", event)

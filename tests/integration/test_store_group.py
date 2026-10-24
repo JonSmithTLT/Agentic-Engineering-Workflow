@@ -884,6 +884,17 @@ def test_a_later_directory_alone_off_the_target_is_walked_at_the_next_open(tmp_p
 
 
 @posix
+def test_the_store_directory_alone_off_the_target_is_walked_at_the_next_open(tmp_path, monkeypatch):
+    """D-CS1-1's erratum: the record has the store directory itself, which an earlier version may have left wider than
+    the bound with every other directory and the control file at the target."""
+    def wider(root: Path, gid: int) -> None:
+        os.chmod(root / "state", 0o755)  # noqa: S103 (a directory off the target is the condition)
+
+    root, gid = store_at_target_with(tmp_path, monkeypatch, wider)
+    assert at(root, gid, GROUP_READ) == {}, at(root, gid, GROUP_READ)
+
+
+@posix
 def test_a_directory_two_levels_down_alone_off_the_target_is_walked_at_the_next_open(tmp_path, monkeypatch):
     """Review of #243 at 7f1b9411, P1: the record reaches every level, with every first-level directory at the
     target."""
@@ -999,12 +1010,17 @@ def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
         os.rename(p, outside)
         os.symlink(outside, p)
 
+    def another_file_renamed_over_it(p: Path, outside: Path) -> None:  # no link, one link: only the identity tells
+        os.rename(outside, p)
+
     hosts = [gh.make_host(primary=egid, user_private=False, aew=s), gh.make_host(primary=egid)]
-    for i, swap in enumerate((a_link_to, a_hard_link_to, moved_out_with_a_link_to_it)):
+    swaps = (a_link_to, a_hard_link_to, moved_out_with_a_link_to_it, another_file_renamed_over_it)
+    for i, swap in enumerate(swaps):
         outside = tmp_path / f"outside-{i}.txt"
         outside.write_text("not the store's\n", encoding="utf-8")
         os.chmod(outside, 0o604)
         before = os.stat(path if swap is moved_out_with_a_link_to_it else outside)
+        other = path if swap is another_file_renamed_over_it else outside
 
         def swapped(self, outside=outside, swap=swap):
             for p, st, is_dir in listed(self):
@@ -1016,7 +1032,7 @@ def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
         with monkeypatch.context() as m:
             m.setattr(store_mod.ControlStore, "_store_paths", swapped)
             make_store(root).read()
-        after = os.stat(outside)
+        after = os.stat(other)
         assert (after.st_ino, after.st_gid, stat.S_IMODE(after.st_mode)) == (
             before.st_ino, before.st_gid, stat.S_IMODE(before.st_mode)), swap.__name__
         path.unlink()
@@ -1027,7 +1043,7 @@ def test_the_walk_changes_only_the_files_it_listed(tmp_path, monkeypatch):
     os.chmod(outside, 0o604)
     before = os.stat(outside)
     a_hard_link_to(path, outside)
-    host.host = hosts[1]
+    host.host = hosts[len(swaps) % 2]  # the open walks
     store = make_store(root)
     store.read()
     after = os.stat(outside)

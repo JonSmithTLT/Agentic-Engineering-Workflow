@@ -424,7 +424,7 @@ def test_a_hidden_path_outside_aew_is_no_entry_and_a_layout_that_hides_none_unde
 
 
 def test_a_layout_with_no_hide_runs_keyword_is_refused_not_read_as_hiding_nothing():
-    with pytest.raises(C.ReferenceError, match="hide_runs"):
+    with pytest.raises(C.ReferenceError, match="no longer builds a layout with a `hide_runs` keyword"):
         hidden("def for_run(project):\n    return Layout(hide_dirs=())\n")
 
 

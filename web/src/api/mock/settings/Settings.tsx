@@ -89,7 +89,9 @@ export default function SettingsPage({ source = fixtureSettingsSource }: { sourc
     return () => { retired = true; controller.abort(); };
   }, [key, invalid, projectId, scenario, source, activity]);
   const data = current?.execution?.data;
-  const selected = data?.profiles.find(profile => String(profile.index) === selection);
+  const selected = selectedDigest === data?.document.digest
+    ? data?.profiles.find(profile => String(profile.index) === selection)
+    : undefined;
   useEffect(() => { if (pendingFocus.current && selected) { pendingFocus.current = false; focusBelowHeader(heading.current); } }, [selection, selected]);
   function change(name: string, value: string) {
     setParams(previous => { const next = new URLSearchParams(previous); next.set(name, value); if (name === 'settings_case') { next.delete('settings_profile'); next.delete('settings_digest'); } return next; });

@@ -26,6 +26,7 @@ import pytest
 from conftest import git, make_git_repo
 
 from aew.engine.api import AEW_GITIGNORE, Engine
+from aew.engine.store import STORE_REL
 from aew.harness.containment import layout as containment
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -125,6 +126,13 @@ def test_the_store_the_records_name_is_the_directory_the_engine_keeps_its_store_
     kept = engine.store.store_dir.relative_to(Path(engine.aew_root).resolve()).as_posix()
     assert [k for k, r in RECORDS.items() if r.fact["store"] and "/" not in k] == [kept]
     assert all(r.fact["store"] == (k == kept or k.startswith(kept + "/")) for k, r in RECORDS.items())
+
+
+def test_the_containment_layouts_own_spelling_of_the_store_is_the_store_the_records_name():
+    """The layout restates the store's place (`STORE`, to refuse a bind that reaches it) and nothing pinned it to the
+    engine's: a store moved in `STORE_REL` alone would leave the layout guarding the old directory."""
+    assert containment.STORE == (".aew", STORE_REL)
+    assert RECORDS[STORE_REL].fact["store"]
 
 
 def test_the_entries_the_records_call_hidden_are_the_paths_the_containment_layout_hides(tmp_path, monkeypatch):

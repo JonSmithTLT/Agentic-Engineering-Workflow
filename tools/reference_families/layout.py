@@ -210,8 +210,9 @@ def page(records: list[C.Record], placed: L.Placed) -> str:
         "the functions that write a path directly in the entry. **Read by** is the functions that read one, by the "
         "primitives listed at the end; a read through an API is the API function's, not its callers'.", "",
         "Both lists are lower bounds. The writes the writers family could not place, and the reads this page could not "
-        f"(below), may touch any entry. Read sites found: {placed.sites}; placed under `.aew`: {placed.placed_sites}; "
-        f"provably outside it or the directory itself: {placed.outside_sites}; not placed: {placed.unplaced_sites}.", ""]
+        f"(below), may touch any entry. Read sites found: {placed.sites}; placed under `.aew`: "
+        f"{placed.placed_sites}; provably outside it or the directory itself: {placed.outside_sites}; not placed: "
+        f"{placed.unplaced_sites}.", ""]
     for top in (r for r in records if "/" not in r.key):
         lines += [f"## `{top.key}`", ""]
         for r in (x for x in records if x.key == top.key or x.key.startswith(top.key + "/")):

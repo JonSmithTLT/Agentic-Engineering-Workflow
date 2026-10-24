@@ -165,7 +165,8 @@ def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():
 # --------------------------------------------------------------------------------------- where a read reads
 
 def classes(got: Any) -> tuple[int, int, int, int]:
-    """(sites, placed under `.aew`, outside it or the directory itself, not placed): the last three add up to the first."""
+    """(sites, placed under `.aew`, outside it or the directory itself, not placed): the last three add up to the
+    first."""
     assert got.placed_sites + got.outside_sites + got.unplaced_sites == got.sites
     return got.sites, got.placed_sites, got.outside_sites, got.unplaced_sites
 
@@ -289,18 +290,22 @@ def test_a_path_directly_in_an_entry_is_its_writers_and_readers_and_one_deeper_i
 
 
 def test_a_list_fact_is_sorted_and_names_a_function_once():
-    got = by_key(LY.records_of(inputs({"work/a": [W2, W1], "work/b": [W1], "state/s": [W1], "local/l": [W1]})))
+    """One path per list, so the order in which the paths are visited cannot hide a missing sort."""
+    got = by_key(LY.records_of(inputs({"work/a": [W2, W1, W2], "state/s": [W1], "local/l": [W1]},
+                                      {"work/a": [R2, R1, R2]})))
     assert got["work"].fact["writers"] == [{"module": "m.a", "symbol": "write_one"},
                                            {"module": "m.b", "symbol": "write_two"}]
+    assert got["work"].fact["readers"] == [{"module": "m.c", "symbol": "read_one"},
+                                           {"module": "m.d", "symbol": "read_two"}]
 
 
 def test_the_anchor_is_the_constant_then_a_writer_then_a_reader_then_one_below():
     got = by_key(LY.records_of(inputs(
-        writers={"work/x": [W2, W1], "state/a/b": [W2], "local/l": [W1]},
-        reads={"work/x": [R1], "state/s": [R1]},
+        writers={"work/x": [W2, W1], "state/a/b": [W2], "local/l": [W2, W1]},
+        reads={"work/x": [R1], "state/s": [R2, R1]},
         named={"work": [("m.layout", "WORK_DIR")], "state/a": [("m.layout", "A_DIR")]})))
     assert anchor(got["work"]) == ("m.layout", "WORK_DIR"), "the constant that spells it wins"
-    assert anchor(got["state"]) == R1, "no constant, no direct writer: the direct reader"
+    assert anchor(got["state"]) == R1, "no constant, no direct writer: the first direct reader, by sorted order"
     assert anchor(got["local"]) == W1, "no constant: the first writer, by sorted order"
     assert anchor(got["state/a"]) == ("m.layout", "A_DIR")
     got = by_key(LY.records_of(inputs(writers={"work/p/q/r": [W2], "state/s": [W1], "local/l": [W1]})))

@@ -25,7 +25,8 @@ PLANTED = {
                "/run/user/1000/systemd/private"],
 }
 ORDINARY = ["/var/lib/sss/pipes/nss", "/var/lib/sss/pipes/pam", "/home/u/project/app.sock", "/srv/x11/note.sock",
-            "/home/u/.aew-test-tmp/contain-1/s.sock", "/home/u/AEW-web/dev.sock"]
+            "/home/u/.aew-test-tmp/contain-1/s.sock", "/home/u/AEW-web/dev.sock",
+            "/home/u/aew-review/runs/b-A-1/sock/api.sock", "/srv/aew-x/s.sock"]
 
 
 @pytest.mark.parametrize("cls", sorted(PLANTED))
@@ -38,7 +39,8 @@ def test_each_failing_class_matches_its_planted_paths_and_nothing_else(cls):
 
 def test_an_unlisted_socket_is_reported_not_refused():
     """A site's ordinary services never block a run (SSSD's pipes): reported, not failing. A directory named like
-    AEW's own but not lower-case `aew-<service>` is not AEW's (the operator's checkouts are `AEW-<topic>`)."""
+    AEW's own is AEW's only directly in a runtime root: not upper-case `AEW-<topic>` (the operator's checkouts), and
+    not an `aew-*` directory anywhere else (a reviewer's tree on the Rocky VM held stale sockets of an old study)."""
     assert {p: S.classify(p, env={}) for p in ORDINARY} == dict.fromkeys(ORDINARY, S.REPORTED)
     assert S.REPORTED not in S.FAILING and S.OWN not in S.FAILING
 
@@ -55,6 +57,14 @@ def test_host_derived_paths_are_classified_from_the_launching_environment():
     assert S.classify("/srv/rt/sbus", env=env) == S.CREDENTIAL
     assert S.classify("/srv/keys/my-agent", env={}) == S.REPORTED  # without the variable, nothing marks it
     assert S.classify("/tmp/.X11-unix/X7", env={"DISPLAY": "remote.example:7"}) == S.DISPLAY  # by its own name too
+
+
+def test_an_aew_runtime_directory_counts_in_the_launching_environments_runtime_root_too():
+    env = {"XDG_RUNTIME_DIR": "/srv/rt"}
+    assert S.classify("/srv/rt/aew-g3/s", env=env) == S.APPROVAL
+    assert S.classify("/srv/rt/aew-wis/s", env=env) == S.AEW_SERVICE
+    assert S.classify("/srv/rt/aew-wis/s", env={}) == S.REPORTED
+    assert S.classify("/run/aew-g3", env={}) == S.REPORTED  # a socket named so, not in a directory of AEW's
 
 
 def test_the_runs_own_bridge_socket_is_its_own_never_a_failure():

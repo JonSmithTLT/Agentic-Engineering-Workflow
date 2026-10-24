@@ -25,8 +25,12 @@ OWN, REPORTED = "own", "reported"
 DISPLAY, APPROVAL, AEW_SERVICE, CREDENTIAL, ESCAPE = "display", "approval", "aew_service", "credential", "escape"
 FAILING = frozenset({DISPLAY, APPROVAL, AEW_SERVICE, CREDENTIAL, ESCAPE})
 
-# AEW's own runtime directories are named aew-<service> (/run/aew-g3/, /run/aew-wis/, /tmp/aew-bridge-*/): a socket
-# anywhere under one is that service's. The first match is the class; the run's own bridge is OWN before either.
+# AEW's own runtime directories are named aew-<service>, directly in a runtime root (/run/aew-g3/, /run/aew-wis/,
+# /tmp/aew-bridge-*/, or the launching environment's XDG_RUNTIME_DIR): a socket anywhere under one is that service's.
+# A directory elsewhere that is named aew-* (a checkout, a reviewer's tree) is no service's: on the Rocky VM a
+# reviewer's ~/aew-review held stale sockets of an old study, which refused every launch. The first match is the
+# class; the run's own bridge is OWN before either.
+RUNTIME_ROOTS = ("/run", "/var/run", "/tmp")  # noqa: S108 (paths it classifies, never a file it makes)
 ANCESTORS: tuple[tuple[str, str], ...] = (
     (APPROVAL, "aew-g3*"),                                # G3, the approval service
     (AEW_SERVICE, "aew-*"),                               # any other AEW service
@@ -68,13 +72,17 @@ def classify(path: str, *, own: tuple[str, ...] = (), env: Mapping[str, str] | N
     path = os.path.normpath(path)
     if any(path == os.path.normpath(d) or path.startswith(os.path.normpath(d) + os.sep) for d in own):
         return OWN
-    named = _named(os.environ if env is None else env)
+    env = os.environ if env is None else env
+    named = _named(env)
     if path in named:
         return named[path]
+    for root in (*RUNTIME_ROOTS, *([env["XDG_RUNTIME_DIR"]] if env.get("XDG_RUNTIME_DIR") else [])):
+        root = os.path.normpath(root)
+        below = path[len(root) + 1:].split(os.sep) if path.startswith(root + os.sep) else []
+        for cls, pattern in ANCESTORS:
+            if len(below) > 1 and fnmatchcase(below[0], pattern):
+                return cls
     parts = path.split(os.sep)
-    for cls, pattern in ANCESTORS:
-        if any(fnmatchcase(d, pattern) for d in parts[:-1]):
-            return cls
     name, parent, grand = parts[-1], (parts[-2] if len(parts) > 1 else ""), (parts[-3] if len(parts) > 2 else "")
     for cls, n, p, g in CLASSES:
         if fnmatchcase(name, n) and fnmatchcase(parent, p) and fnmatchcase(grand, g):

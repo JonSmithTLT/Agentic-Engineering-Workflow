@@ -316,6 +316,15 @@ def test_the_reading_agrees_with_a_hand_reading_of_the_writers_whose_paths_matte
     assert KNOWN <= found, sorted(KNOWN - found)
 
 
+def test_the_sites_the_page_lists_as_outside_aew_are_the_outside_records():
+    """Each site that the reading follows to a place outside `.aew` is a record (and the page lists the same sites)."""
+    records = {r.key for r in W.records_of(ANALYSIS) if r.key.startswith(f"{W.OUTSIDE_KEY}:")}
+    listed = {f"{W.OUTSIDE_KEY}:{m}:{s}:{p}" for sites in ANALYSIS.outside.values() for m, s, p in sites}
+    assert records == listed and records
+    page = W.page(ANALYSIS, W.records_of(ANALYSIS), W.TOP_LEVEL)
+    assert all(f"`{m}:{s}` ({p})" in page for sites in ANALYSIS.outside.values() for m, s, p in sites)
+
+
 def test_the_store_transaction_writers_are_exactly_the_session_write_sites():
     stage = {(s.module, s.symbol) for s in ANALYSIS.sites if s.primitive == "session.write"}
     placed = {(w.module, w.symbol) for ws in ANALYSIS.writers.values() for w in ws

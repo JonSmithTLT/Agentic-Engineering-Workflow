@@ -2,12 +2,12 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 344
+      "lower-bound": 379
     },
     "by_family": {
       "entry-points": 6,
       "modules": 174,
-      "writers": 170
+      "writers": 205
     },
     "by_family_and_coverage": {
       "entry-points": {
@@ -17,11 +17,11 @@
         "lower-bound": 174
       },
       "writers": {
-        "lower-bound": 170
+        "lower-bound": 205
       }
     },
-    "digest": "sha256:c40d1d007f9f43bbd7d8713b96dfb59ce22e89f795b8954f5d4d68087bc40c7b",
-    "records": 350,
+    "digest": "sha256:902ed43d25422114d8fcaf1e19c52d18830a0887fcda013e8cca69e0ba18cfe4",
+    "records": 385,
     "unresolved": 51
   },
   "gaps": [
@@ -11360,6 +11360,601 @@
             }
           ]
         }
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.cli.credentials:_open_terminal:open": {
+      "anchor": {
+        "module": "aew.cli.credentials",
+        "symbol": "_open_terminal"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "root": "the Windows console"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.cli.credentials:_open_terminal:os.open": {
+      "anchor": {
+        "module": "aew.cli.credentials",
+        "symbol": "_open_terminal"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "os.open",
+        "root": "an absolute path"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.engine.history_ops:HistoryCommands.history_reindex:Path.unlink": {
+      "anchor": {
+        "module": "aew.engine.history_ops",
+        "symbol": "HistoryCommands.history_reindex"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.engine.recall:_Matcher.__init__:sqlite3.connect": {
+      "anchor": {
+        "module": "aew.engine.recall",
+        "symbol": "_Matcher.__init__"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "sqlite3.connect",
+        "root": "an in-memory database"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.engine.recall:fts5_available:sqlite3.connect": {
+      "anchor": {
+        "module": "aew.engine.recall",
+        "symbol": "fts5_available"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "sqlite3.connect",
+        "root": "an in-memory database"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.bridge:stop_listener:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.harness.bridge",
+        "symbol": "stop_listener"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.layout:for_run:Path.mkdir": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.layout:for_run:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "for_run"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.layout:private_git:Path.mkdir": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.layout:private_git:shutil.copy2": {
+      "anchor": {
+        "module": "aew.harness.containment.layout",
+        "symbol": "private_git"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.copy2",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.probe:_control:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "_control"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.probe:_markers:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "_markers"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.probe:self_test:Path.unlink": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "self_test"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.probe:self_test:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "self_test"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment:doctor:Path.mkdir": {
+      "anchor": {
+        "module": "aew.harness.containment",
+        "symbol": "doctor"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.operator_endpoint:OperatorEndpoint.close:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.harness.operator_endpoint",
+        "symbol": "OperatorEndpoint.close"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.supervisor:main:open": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": "main"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "root": "the null device"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.history.index:HistoryIndex._db:Path.mkdir": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": "HistoryIndex._db"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.history.index:HistoryIndex._db:sqlite3.connect": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": "HistoryIndex._db"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "sqlite3.connect",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.history.index:HistoryIndex._rebuild:Path.unlink": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": "HistoryIndex._rebuild"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.history.index:HistoryIndex._use_private_copy:shutil.copy2": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": "HistoryIndex._use_private_copy"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.copy2",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.history.index:HistoryIndex.sync:Path.unlink": {
+      "anchor": {
+        "module": "aew.history.index",
+        "symbol": "HistoryIndex.sync"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.operator:_ask_posix:os.open": {
+      "anchor": {
+        "module": "aew.operator",
+        "symbol": "_ask_posix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "os.open",
+        "root": "an absolute path"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.operator:_ask_windows:open": {
+      "anchor": {
+        "module": "aew.operator",
+        "symbol": "_ask_windows"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "root": "the Windows console"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.operator:has_terminal:os.open": {
+      "anchor": {
+        "module": "aew.operator",
+        "symbol": "has_terminal"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "os.open",
+        "root": "an absolute path"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.snapshot.fingerprint:_staged_index:shutil.copy2": {
+      "anchor": {
+        "module": "aew.snapshot.fingerprint",
+        "symbol": "_staged_index"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.copy2",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.snapshot.fingerprint:_staged_index:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.snapshot.fingerprint",
+        "symbol": "_staged_index"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.snapshot.fingerprint:_working_index:shutil.copy2": {
+      "anchor": {
+        "module": "aew.snapshot.fingerprint",
+        "symbol": "_working_index"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.copy2",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.snapshot.fingerprint:_working_index:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.snapshot.fingerprint",
+        "symbol": "_working_index"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.integration:_prune_empty_parents:Path.rmdir": {
+      "anchor": {
+        "module": "aew.workspace.integration",
+        "symbol": "_prune_empty_parents"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.rmdir",
+        "root": "the repository's working tree"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.integration:sync_worktree:Path.unlink": {
+      "anchor": {
+        "module": "aew.workspace.integration",
+        "symbol": "sync_worktree"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "the repository's working tree"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.worktrees:_clear_orphan:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.workspace.worktrees",
+        "symbol": "_clear_orphan"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "the task workspaces' directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.worktrees:allocate:Path.mkdir": {
+      "anchor": {
+        "module": "aew.workspace.worktrees",
+        "symbol": "allocate"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "the task workspaces' directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.worktrees:allocate_detached:Path.mkdir": {
+      "anchor": {
+        "module": "aew.workspace.worktrees",
+        "symbol": "allocate_detached"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "root": "the task workspaces' directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.workspace.worktrees:remove:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.workspace.worktrees",
+        "symbol": "remove"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "root": "the task workspaces' directory"
       },
       "family": "writers"
     },

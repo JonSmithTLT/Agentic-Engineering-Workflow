@@ -257,6 +257,20 @@ def test_a_sibling_with_a_fixed_name_is_a_file_of_its_own():
                                  "local/operator/endpoint.tmp", "local/operator/endpoint2.json"]
 
 
+def test_a_write_provably_outside_aew_is_a_record_with_its_root_and_a_site_in_both_places_is_two():
+    """Placement PR: the sites the page lists as outside `.aew` are records, so the trace need not take them as
+    unplaced."""
+    a = analysed("def f(aew_root):\n    d = tempfile.mkdtemp()\n    (Path(d) / 'x').write_text('x')\n"
+                 "    (aew_root / 'state' / 'y').write_text('y')\n\n"
+                 "def g():\n    open(os.devnull, 'w')\n")
+    by_key = {r.key: r for r in W.records_of(a)}
+    assert by_key["outside:aew.m:f:Path.write_text"].fact == {
+        "primitive": "Path.write_text", "mechanism": W.DIRECT, "root": "a temporary directory"}
+    assert by_key["outside:aew.m:g:open"].fact["root"] == "the null device"
+    assert [w.symbol for w in a.writers["state/y"]] == ["f"], "the same function is a path record too"
+    assert not any(k.startswith("unresolved") for k in by_key)
+
+
 def test_the_stores_apply_step_is_the_write_mechanism_and_not_a_writer():
     """Placement PR: `ControlStore._apply` writes what a transaction staged (data from the redo record); the staging
     sites are the writers. Another function of the store that writes a path of its own is a writer."""
@@ -1038,7 +1052,8 @@ def test_the_page_says_how_many_registrations_and_which_it_could_not_read():
 
 def real_records() -> dict[str, dict[str, Any]]:
     a = analysed("REL = 'state/x.yaml'\n\ndef f(aew_root):\n    atomic_write(aew_root / REL, 'x')\n\n"
-                 "def g(a):\n    open(a.p, 'w')\n", roots={("aew.m", "f"): {"aew"}})
+                 "def g(a):\n    open(a.p, 'w')\n\n"
+                 "def h():\n    (Path(tempfile.mkdtemp()) / 'x').write_text('x')\n", roots={("aew.m", "f"): {"aew"}})
     return {r.id: r.as_json() for r in W.records_of(a)}
 
 
@@ -1059,6 +1074,7 @@ def mutate(records: dict[str, Any], rid: str, path: list[Any], value: Any) -> di
 
 
 PATH_ID, UNRESOLVED_ID = "writers:state/x.yaml", "writers:unresolved:aew.m:g:open"
+OUTSIDE_ID = "writers:outside:aew.m:h:Path.write_text"
 FAULTS = [
     ("a mechanism that is neither", PATH_ID, ["fact", "writers", 0, "mechanism"], "other", "has mechanism 'other'"),
     ("a writer without its entry kinds", PATH_ID, ["fact", "writers", 0, "entry_kinds"], Ellipsis, "is not ["),
@@ -1082,6 +1098,12 @@ FAULTS = [
     ("an unresolved write whose key is not its anchor", UNRESOLVED_ID, ["anchor", "symbol"], "h", "the key is not"),
     ("an unresolved write that carries another reason", UNRESOLVED_ID, ["coverage", "unresolved", 0, "why"], "x",
      "does not carry its own reason"),
+    ("an outside write whose key is not its anchor", OUTSIDE_ID, ["anchor", "symbol"], "g", "the key is not"),
+    ("an outside write with an empty root", OUTSIDE_ID, ["fact", "root"], "", "all non-empty"),
+    ("an outside write with a mechanism that is neither", OUTSIDE_ID, ["fact", "mechanism"], "other",
+     "is not one of the two"),
+    ("an outside write that claims something unresolved", OUTSIDE_ID, ["coverage", "unresolved"],
+     [{"module": "aew", "symbol": None, "why": "x"}], "has nothing unresolved"),
 ]
 
 

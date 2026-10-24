@@ -2,22 +2,22 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 172
+      "lower-bound": 174
     },
     "by_family": {
       "entry-points": 6,
-      "modules": 172
+      "modules": 174
     },
     "by_family_and_coverage": {
       "entry-points": {
         "complete-by-construction": 6
       },
       "modules": {
-        "lower-bound": 172
+        "lower-bound": 174
       }
     },
-    "digest": "sha256:810ca3387a4192020294062330cdaf080b643cc56bbcdd282be9a24520507d8f",
-    "records": 178,
+    "digest": "sha256:05d4f6ebff327bba79589ea5e9fe3ce768ed7d06047039ad4a1c6abb521adcc7",
+    "records": 180,
     "unresolved": 5
   },
   "gaps": [
@@ -2547,6 +2547,26 @@
         "aew.workspace.git"
       ]
     },
+    "modules:aew.harness.containment.egress": {
+      "anchor": {
+        "module": "aew.harness.containment.egress",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/egress.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.containment.peer"
+      ]
+    },
     "modules:aew.harness.containment.layout": {
       "anchor": {
         "module": "aew.harness.containment.layout",
@@ -2566,6 +2586,23 @@
         "aew.errors",
         "aew.workspace.git"
       ]
+    },
+    "modules:aew.harness.containment.peer": {
+      "anchor": {
+        "module": "aew.harness.containment.peer",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/peer.py"
+      },
+      "family": "modules",
+      "imports": []
     },
     "modules:aew.harness.containment.probe": {
       "anchor": {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { ReadTransport } from '../src/api/transport';
 import { responseSchemas } from '../src/api/schema';
 import world from '../src/api/mock/fixtures/F1.json';
@@ -8,6 +9,30 @@ const json = (value: unknown, etag = '"first"') =>
     headers: { 'Content-Type': 'application/json', ETag: etag },
   });
 describe('read transport', () => {
+  it.each(['work', 'attention'] as const)(
+    'rejects an oversized %s collection at its size bound and preserves valid cached data',
+    async (field) => {
+      const oversized = {
+        ...payload,
+        data: { ...payload.data, [field]: Array.from({ length: 7 }, () => null) },
+      };
+      const request = vi.fn()
+        .mockResolvedValueOnce(json(payload))
+        .mockResolvedValueOnce(json(oversized, '"rejected"'))
+        .mockResolvedValueOnce(new Response(null, { status: 304 }));
+      const client = new ReadTransport(request);
+      const first = await client.get('/overview', responseSchemas.OverviewResponse);
+      const error = await client.get('/overview', responseSchemas.OverviewResponse)
+        .catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(z.ZodError);
+      expect((error as z.ZodError).issues).toMatchObject([
+        { code: 'too_big', path: ['data', field], maximum: 6 },
+      ]);
+      const after = await client.get('/overview', responseSchemas.OverviewResponse);
+      expect(after.value).toBe(first.value);
+      expect(request.mock.calls[2][1].headers.get('If-None-Match')).toBe('"first"');
+    },
+  );
   it('uses conditional same-origin GET; 304 preserves generation, revision and payload identity', async () => {
     let now = new Date('2026-10-02T12:00:01Z');
     const request = vi

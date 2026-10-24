@@ -6,7 +6,8 @@ export const id = z
 export const cursor = z.string().min(1);
 export const controlRevision = z.string().regex(/^(0|[1-9][0-9]*)$/);
 export const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
-export const timestamp = z.iso.datetime({ offset: false });
+// Preserve the frozen UTC timestamp grammar independently of Zod's ISO defaults.
+export const timestamp = z.stringFormat('datetime', /^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$/);
 export const reason = z.strictObject({
   code: z.string(),
   message: z.string().nullable(),

@@ -48,21 +48,24 @@ def b64(s: str) -> str:
 class Live:
     def __init__(self, s: SV.Slice, clock: list[datetime]) -> None:
         self.s, self.clock = s, clock
-        # The engine's snapshot time, which AEW-owned stamps carry as `observed_at` (stg02/reads.py), follows the
-        # slice's clock, as every other time the slice serves does. Two reads of the same state are then the same
-        # read, and moving the clock moves both. On the wall clock, two reads a second boundary apart differed, and a
-        # test comparing them failed (#231's first CI run).
-        self._utc_now = R.utc_now
-        R.utc_now = lambda: W.utc(s.clock())
         self.srv = SV.make_server(s, 0)
         self.port = self.srv.server_address[1]
         self.thread = threading.Thread(target=self.srv.serve_forever, daemon=True)
         self.thread.start()
+        # The engine's snapshot time, which AEW-owned stamps carry as `observed_at` (stg02/reads.py), follows the
+        # slice's clock, as every other time the slice serves does. Two reads of the same state are then the same
+        # read, and moving the clock moves both. On the wall clock, two reads a second boundary apart differed, and a
+        # test comparing them failed (#231's first CI run). Patched after the last step that can raise, so a failed
+        # start leaves the reader's clock alone; no client has the port before the constructor returns.
+        self._utc_now = R.utc_now
+        R.utc_now = lambda: W.utc(s.clock())
 
     def close(self) -> None:
-        self.srv.shutdown()
-        self.srv.server_close()
-        R.utc_now = self._utc_now
+        try:
+            self.srv.shutdown()
+            self.srv.server_close()
+        finally:
+            R.utc_now = self._utc_now
 
     def request(self, method: str, path: str, headers: dict[str, str] | None = None, body: Any = None,
                 ) -> tuple[int, dict[str, str], Any]:

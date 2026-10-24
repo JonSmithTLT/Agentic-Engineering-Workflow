@@ -2,22 +2,22 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 173
+      "lower-bound": 175
     },
     "by_family": {
       "entry-points": 6,
-      "modules": 173
+      "modules": 175
     },
     "by_family_and_coverage": {
       "entry-points": {
         "complete-by-construction": 6
       },
       "modules": {
-        "lower-bound": 173
+        "lower-bound": 175
       }
     },
-    "digest": "sha256:06dfb70eb4a0a58aa85b0c7c2abaed9587aebe05dfe97aa89bc4dbae0f945e2c",
-    "records": 179,
+    "digest": "sha256:629136ce4c0e15811ed8f324618966d15b4ff405e3bac472ad64f2da8db350f6",
+    "records": 181,
     "unresolved": 5
   },
   "gaps": [
@@ -1080,6 +1080,7 @@
       "imports": [
         "aew",
         "aew.engine.api",
+        "aew.engine.store_group",
         "aew.util"
       ]
     },
@@ -1117,6 +1118,7 @@
       "family": "modules",
       "imports": [
         "aew",
+        "aew.doctor",
         "aew.engine.archive_ops",
         "aew.engine.assurance",
         "aew.engine.assurance_ops",
@@ -1848,7 +1850,6 @@
       "family": "modules",
       "imports": [
         "aew.engine.faults",
-        "aew.engine.lock",
         "aew.engine.outbox",
         "aew.engine.store",
         "aew.errors",
@@ -2232,11 +2233,49 @@
         "aew.engine.faults",
         "aew.engine.lock",
         "aew.engine.outbox",
+        "aew.engine.store_group",
+        "aew.engine.store_writers",
         "aew.errors",
         "aew.process_kind",
         "aew.profile",
         "aew.schemas",
         "aew.util"
+      ]
+    },
+    "modules:aew.engine.store_group": {
+      "anchor": {
+        "module": "aew.engine.store_group",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/store_group.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.engine.store_writers": {
+      "anchor": {
+        "module": "aew.engine.store_writers",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/store_writers.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.store_group"
       ]
     },
     "modules:aew.engine.ticket_fields": {

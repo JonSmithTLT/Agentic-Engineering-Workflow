@@ -532,8 +532,9 @@ def pid_alive(pid: int | None) -> bool:
 
 def _start_ticks(pid: int) -> int:
     """Linux: when the process started, in clock ticks since boot (``/proc/<pid>/stat`` field 22). Fixed for the
-    process's life: the boot clock is never stepped."""
-    return int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19])
+    process's life: the boot clock is never stepped. Read as latin-1: the comm before it is arbitrary bytes, which a
+    codec that can fail would turn into no start id (review of #250, M1)."""
+    return int(Path(f"/proc/{pid}/stat").read_text(encoding="latin-1").rsplit(")", 1)[1].split()[19])
 
 
 def started_at(pid: int | None) -> float | None:
@@ -572,9 +573,15 @@ def start_id(pid: int | None) -> str | None:
         return None
 
 
+def _status_lines(pid: int | str) -> list[str]:
+    """``/proc/<pid>/status``, line by line. Its ``Name:`` line holds the comm, arbitrary bytes in which the kernel
+    escapes only a newline and a backslash: read as latin-1, which never fails, and split on newlines alone (a comm may
+    hold any other line break ``str.splitlines`` knows, and would add a line of its own; review of #250, M1)."""
+    return Path("/proc", str(pid), "status").read_text(encoding="latin-1").split("\n")
+
+
 def _nspid(pid: int | str) -> list[int]:
-    status = Path("/proc", str(pid), "status").read_text()
-    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    fields = dict(line.split(":", 1) for line in _status_lines(pid) if ":" in line)
     return [int(x) for x in fields.get("NSpid", "").split()]
 
 
@@ -627,10 +634,10 @@ def _descends(pid: int, ancestor: int) -> bool:
         if pid == ancestor:
             return True
         try:
-            status = Path("/proc", str(pid), "status").read_text()
+            status = _status_lines(pid)
         except OSError:
             return False
-        pid = next((int(line.split()[1]) for line in status.splitlines() if line.startswith("PPid:")), 0)
+        pid = next((int(line.split()[1]) for line in status if line.startswith("PPid:")), 0)
         seen += 1
     return pid == ancestor
 

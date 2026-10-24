@@ -12,9 +12,11 @@ a process to run in, the **custody worker** (``aew integrate custody <IA-n>``):
 - **Principal.** Every commit goes through ``Kernel.custody_txn`` with that credential: it is admitted only while the
   custodian is active, holds the lease and belongs to the current Lead generation, and only for the closed family of
   integration-custody operations. It adds no authority and makes no judgment.
-- **Registers** ``{host_pid, started_at}`` on its custodian in its own first commit (S2): liveness, never authorization.
-  ``Queue.sync`` ends a custodian whose registered worker is gone, or that has none ``custody_register_s`` after its
-  grant, and that marks the lease ``reconcile``.
+- **Registers** ``{host_pid, started_at, start_id}`` on its custodian in its own first commit (S2): liveness, never
+  authorization. ``start_id`` names the process exactly (``procs.start_id``; ADR-0009 amendment 2026-10-23); a worker
+  whose start id cannot be read registers without one and is judged by ``started_at``. ``Queue.sync`` ends a custodian
+  whose registered worker is gone, or that has none ``custody_register_s`` after its grant, and that marks the lease
+  ``reconcile``.
 - **What it does, by validation mode** (its lease's candidate ``prepared``, not yet validated):
   - ``checks``: runs ``integrate.validate`` under its lease (``Validation.custody_validate``) and routes the result in
     the commit: a pass releases the lease to VALIDATED with the candidate kept; a fail or inconclusive result takes

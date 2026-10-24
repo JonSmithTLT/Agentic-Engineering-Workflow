@@ -8,8 +8,10 @@ boot id and the start ticks; on Windows the absolute creation time), compared ex
 Each reader of a record that names a process is proved here to prefer the record's start id, with the clock stepped
 after the record was written (``clock_step``); the writers that run in this process are proved with their reader. A
 reused pid, another boot, another platform's id and a malformed id each read as another process, and a record from
-before start ids keeps its start-time check. The custody worker, the validation executor, the dashboard and the
-supervisor write their records in ``tests/integration/test_process_identity_records.py``.
+before start ids keeps its start-time check. On Linux a comm (arbitrary bytes) that is not UTF-8, or that holds a line
+break, neither loses a process its start id nor breaks or forges a line of ``/proc/<pid>/status``. The custody worker,
+the validation executor, the dashboard and the supervisor write their records in
+``tests/integration/test_process_identity_records.py``.
 """
 
 from __future__ import annotations
@@ -61,6 +63,16 @@ def mine() -> str:
     return start
 
 
+def renamed(comm: bytes) -> subprocess.Popen[bytes]:
+    """Linux: a child that sets its own comm to ``comm`` (``prctl(PR_SET_NAME)``) and then waits."""
+    code = (f"import ctypes, sys, time; ctypes.CDLL(None).prctl(15, {comm!r}, 0, 0, 0); "
+            "sys.stdout.write('ready\\n'); sys.stdout.flush(); time.sleep(60)")
+    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE)
+    assert child.stdout is not None and child.stdout.readline() == b"ready\n"
+    assert Path(f"/proc/{child.pid}/comm").read_bytes() == comm + b"\n"  # the kernel holds the bytes as given
+    return child
+
+
 # ---------------------------------------------------------------------------------------------- the identity
 
 
@@ -78,6 +90,31 @@ def test_a_wall_clock_step_moves_the_epoch_start_time_but_never_the_start_id_on_
         assert procs.same_process(me, start)
         # The residual: a record from before start ids misjudges a live process once the clock has moved past 2 s.
         assert procs.same_process(me, before) is (moved <= 2.0)
+
+
+@pytest.mark.skipif(not IS_LINUX, reason="the comm and /proc are Linux's")
+def test_a_process_whose_comm_is_not_utf8_still_has_its_start_id_on_linux():
+    child = renamed(b"\xff\xfe) bad")
+    try:
+        raw = Path(f"/proc/{child.pid}/stat").read_bytes()
+        ticks = int(raw[raw.rindex(b")") + 1:].split()[19])  # field 22, parsed as bytes: no codec involved
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        assert procs.start_id(child.pid) == f"linux:{boot}:{ticks}"
+        assert procs.same_process(child.pid, f"linux:{boot}:{ticks}")
+    finally:
+        ended(child)
+
+
+@pytest.mark.skipif(not IS_LINUX, reason="the comm and /proc are Linux's")
+def test_a_comm_neither_breaks_nor_forges_a_line_of_proc_status_on_linux():
+    """``/proc/<pid>/status`` holds the comm raw, but for a newline and a backslash: one that is not UTF-8 must not stop
+    the read, and a line break ``str.splitlines`` knows (here \\x1e) must not add a forged ``PPid:`` line."""
+    child = renamed(b"\xff\x1ePPid:\t1")
+    try:
+        assert procs.host_pid(child.pid) == child.pid  # every process's status read, this one's included
+        assert procs._descends(child.pid, os.getpid())  # noqa: SLF001 (its real parent, not the PPid its comm spells)
+    finally:
+        ended(child)
 
 
 def test_a_start_id_names_one_process_of_one_boot():

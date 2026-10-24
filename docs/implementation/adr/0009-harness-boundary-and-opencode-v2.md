@@ -913,6 +913,12 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
 
   It is compared for equality only, so no tolerance is involved. An id from another platform or another boot, an id of
   another process, and a malformed id never match. `started_at` stays, for display and for records written before.
+- **The comm is arbitrary bytes:** a file name cut to 15 bytes, or whatever `prctl(PR_SET_NAME)` set.
+  `/proc/<pid>/stat` and `/proc/<pid>/status` are therefore read as latin-1, which never fails, and the status file is
+  split on newlines alone. The kernel escapes only a newline and a backslash in its `Name:` line.
+  - A comm that is not valid UTF-8 still has a start id, and its host pid and parent can still be read.
+  - A comm that holds another line break that `str.splitlines` knows cannot add a line of its own, such as a forged
+    `PPid:` (review of #250, M1).
 - **`procs.same_process(pid, started_by)`** keeps its two arguments.
   - `started_by` is the record's start id (a string, compared exactly) or, in a record from before start ids, its epoch
     time (a number, the old check).
@@ -930,8 +936,8 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
   | dashboard endpoint | `local/dashboard/server.json` | `start_id` | `dashboard.service` | `locate` |
   | run record | `run.json` | `supervisor_start_id`, `harness_start_ids` | the supervisor | `runlog.end_supervisor`, the harness test helpers |
 
-  A control-state record omits the field when the start id cannot be read; a local record holds `null`. The reader then
-  falls back to the record's start time. The broker record's reader refuses a `start_id` that is neither a string nor
+  A control-state record omits the field when its writer cannot read the start id; a local record holds `null`. The
+  reader then falls back to the record's start time. The broker record's reader refuses a `start_id` that is neither a string nor
   `null`, as it refuses every malformed field.
 - **The schema stays `aew/control/v2`, additive.**
   - The custody worker's `start_id` is an optional string, so a state from before it still loads.
@@ -945,7 +951,10 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
 ### Residuals (documented, not closed)
 - **Records written before this change** keep the start-time check, with its misjudgement after a step, until the
   process that wrote them exits. The custody worker's custodian is the longest-lived such record.
-- **An unreadable start id** (no `/proc`, an unreadable boot id) leaves the record on the start-time check.
+- **An unreadable start id** (no `/proc`, an unreadable boot id) leaves the record its writer makes on the start-time
+  check. A *reader* that cannot read the id of a record that holds one (an unreadable boot id, or an unreadable
+  `/proc/<pid>/stat`) judges the process gone. There is no fallback there: that is the same direction as before this
+  change, where an unreadable start time also read as gone (review of #250, N2).
 - **A time namespace** (Linux 5.6 and later) shows a process's start ticks relative to its own boot offset. AEW creates
   none (bubblewrap does not), and every writer and reader here is an AEW process on the host.
 - **The local records stay forgeable by the same uid**, as before: they only notify or locate, and grant nothing.
@@ -955,6 +964,8 @@ wall clock does. A reused pid, or the same pid after a reboot, is still told apa
   - a simulated `btime` step (`/proc/stat` patched where it is read) moves `started_at` but never `start_id`, and
     keeps `same_process` true;
   - a reused pid, another boot, another platform's id and malformed ids read as another process;
+  - on Linux, a child whose comm is not valid UTF-8 has the start id that a byte-level parse gives. One whose comm
+    also spells a `PPid:` line after a line break still has its host pid read, and still descends from its real parent;
   - a record from before start ids keeps its check;
   - one test per reader (executor, worker, locator, broker and its close, dashboard, teardown), with the clock stepped
     after the record was written. The step is simulated on Linux in `btime`, and elsewhere in each epoch start time.

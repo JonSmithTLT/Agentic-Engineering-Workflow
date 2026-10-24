@@ -11,6 +11,12 @@ skipped:
       btime (/proc/stat) is Linux's, and a wall-clock step moves it (ADR-0009 amendment 2026-10-23); Windows' process
       creation time is absolute, so no step moves it. Covered on Linux; every reader's preference for the start id is
       tested on every platform in the same file, with the step applied to each epoch start time.
+    tests/unit/test_process_identity.py::test_a_process_whose_comm_is_not_utf8_still_has_its_start_id_on_linux: >-
+      a comm (prctl PR_SET_NAME) and /proc/<pid>/stat are Linux's (review of #250, M1); Windows names a process by
+      its creation time, which holds no name. Covered on Linux.
+    tests/unit/test_process_identity.py::test_a_comm_neither_breaks_nor_forges_a_line_of_proc_status_on_linux: >-
+      /proc/<pid>/status and its Name line are Linux's (review of #250, M1); on Windows procs.host_pid returns its
+      argument and reads no file. Covered on Linux.
     tests/unit/test_hang_autopsy_units.py::test_a_child_that_exits_before_it_is_recorded_keeps_its_exit_status: >-
       the session's subreaper and its reaper are Linux's (tests/helpers/session_deadline.py); Windows defines the
       session's set by its job object and re-parents nothing (test_a_session_job_lists_exactly_its_members_and_refuses_breakaway).

@@ -48,10 +48,12 @@ SAME_PATH_CALLS = frozenset({"pathlib.Path", "pathlib.PurePath", "pathlib.PurePo
                              "os.path.abspath", "os.path.realpath", "os.path.normpath", "os.path.expanduser",
                              "os.path.expandvars"})
 JOIN_CALLS = frozenset({"os.path.join", "posixpath.join", "ntpath.join"})
-# A path derived from another by these is taken as the same path: a sibling (`with_name`, `with_suffix`, `with_stem`) is
-# the temp or queue file of the write protocol of the path it came from, and the others return the path itself.
-SAME_PATH_METHODS = frozenset({"resolve", "absolute", "expanduser", "as_posix", "with_name", "with_suffix",
-                               "with_stem"})
+# These return the path itself.
+SAME_PATH_METHODS = frozenset({"resolve", "absolute", "expanduser", "as_posix"})
+# A sibling whose name is computed (a temporary file named by the process) is taken as the same path: it is part of the
+# write protocol of the path it came from. A sibling with a fixed name (`with_name("endpoint.lock")`,
+# `.name + ".queue"`, `with_suffix(".tmp")`) is a file of its own and is evaluated as one.
+SIBLING_METHODS = frozenset({"with_name", "with_suffix", "with_stem"})
 TEMP_CALLS = frozenset({"tempfile.mkdtemp", "tempfile.gettempdir", "tempfile.mkstemp", "tempfile.TemporaryDirectory",
                         "tempfile.NamedTemporaryFile", "tempfile.mktemp"})
 # Strings that name a place outside `.aew` and are not absolute paths.
@@ -97,6 +99,7 @@ class Func:
     withs: dict[str, list[ast.expr]] = field(default_factory=dict)  # `with <context> as name`
     appends: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name.append(<element>)`
     subkeys: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name[<key>] = ...`
+    augs: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name |= value`, `name += value`
     key_loops: dict[str, list[ast.expr]] = field(default_factory=dict)  # `for name, _ in <mapping>.items()`
     returns: list[ast.expr] = field(default_factory=list)
     calls: list[ast.Call] = field(default_factory=list)
@@ -240,6 +243,7 @@ class _Scan(ast.NodeVisitor):
         if isinstance(node.target, ast.Name):
             if self.func is not None:
                 self.func.opaque.add(node.target.id)
+                self.func.augs.setdefault(node.target.id, []).append(node.value)
         self.generic_visit(node)
 
     def _loop(self, target: ast.expr, iterable: ast.expr) -> None:
@@ -580,7 +584,9 @@ def _join(a: Val, b: Val) -> Val:
 
 
 def _parent(v: Val) -> Val:
-    if v.kind in (ROOT, OUT, UNK):
+    if v.kind == ROOT:
+        return Val(OUT, "the repository's working tree")  # `.aew` sits directly in it
+    if v.kind in (OUT, UNK):
         return v
     head, sep, _ = v.text.rpartition("/")
     if not sep:
@@ -831,6 +837,8 @@ class Evaluator:
             method = e.func.attr
             if method in SAME_PATH_METHODS:
                 return self._ev(e.func.value, env, depth, seen)
+            if method in SIBLING_METHODS:
+                return self._sibling(e, method, env, depth, seen)
             if method == "joinpath":
                 values = self._ev(e.func.value, env, depth, seen)
                 for extra in e.args:
@@ -1004,6 +1012,44 @@ class Evaluator:
                     out |= self._ev(ret, Env(init.module, prop.key, bound.bindings), depth - 1, seen | {token})
         return capped(out)
 
+    def _sibling(self, e: ast.Call, method: str, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """``path.with_name(x)``, ``.with_suffix(x)``, ``.with_stem(x)``: the sibling named by a fixed string (or, for
+        ``with_name``, by the path's own ``.name`` plus a fixed string) is its own path; any other argument (a name
+        computed at run time, as a temporary file's is) leaves the path itself."""
+        receiver = e.func.value  # type: ignore[attr-defined]
+        base = self._ev(receiver, env, depth, seen)
+        if not e.args:
+            return base
+        arg = e.args[0]
+        own_name = (method == "with_name" and isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add)
+                    and isinstance(arg.left, ast.Attribute) and arg.left.attr == "name"
+                    and ast.unparse(arg.left.value) == ast.unparse(receiver))
+        fixed = self._ev(arg.right if own_name else arg, env, depth, seen)  # type: ignore[union-attr]
+        if not fixed or any(v.kind != STR or PLACEHOLDER in v.text for v in fixed):
+            return base
+        out: set[Val] = set()
+        for v in base:
+            if v.kind not in (TPL, STR):
+                out.add(v)
+                continue
+            head, _, seg = v.text.rpartition("/")
+            stem, dot, suffix = seg.rpartition(".")
+            if not dot or not stem:  # `.hidden` and `name` have no suffix
+                stem, suffix = seg, ""
+            else:
+                suffix = "." + suffix
+            for f in fixed:
+                if own_name:
+                    new = seg + f.text
+                elif method == "with_name":
+                    new = f.text
+                elif method == "with_suffix":
+                    new = stem + f.text
+                else:
+                    new = f.text + suffix
+                out.add(Val(v.kind, f"{head}/{new}" if _has_dir(v.text) else new))
+        return capped(out)
+
     # -- parameters and arguments
     def _bind_args(self, target: Func, call: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
                    ) -> dict[str, Values]:
@@ -1061,6 +1107,11 @@ def _argument(func: Func, name: str, call: ast.Call) -> ast.expr | None:
         if i < len(call.args) and not any(isinstance(a, ast.Starred) for a in call.args[: i + 1]):
             return call.args[i]
     return None
+
+
+def _has_dir(text: str) -> bool:
+    """Whether a template has a directory part (more than one segment)."""
+    return "/" in text
 
 
 def _src(node: ast.AST) -> str:

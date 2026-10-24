@@ -15,11 +15,14 @@ page; `index.json` holds the records (`writers:<path as a template>`, such as `w
   reason; every path record points at those, since any may write it. A destination provably outside `.aew` (a
   temporary directory, the console, the repository's working tree) is listed on the page and is no record. The set of
   entries directly under `.aew` is declared in the generator and pinned both ways by a test, so a new directory is a
-  decision and not a silent record. Every list is a lower bound, and says what it could not resolve.
+  decision and not a silent record. Every list is a lower bound, and says what it could not resolve. A call whose
+  `open` mode or `os.open` flags cannot be read (a parameter, a call) is an unresolved write too, never taken for a
+  read; a local name is read through its assignments in the function.
 - **Reach.** A writer carries the entry points whose declaring function reaches it by a chain of resolved calls (the
   CLI's registered handlers included). The CLI's four roles share one declaring function, so a writer it reaches is
-  reached from all four; the page says what that checks and what it does not, and a cut per role is a decision for the
-  design side.
+  reached from all four; each such record carries an unresolved item anchored at that function saying which of the
+  roles is not decided, and the page says what that checks and what it does not. A cut per role is the next pull
+  request of the series.
 - **Two readers.** A second detector, written over tokens and sharing no code with the first, finds the write-primitive
   calls, and the two agree on every module of the tree. What neither sees (a primitive chosen by a conditional callee,
   a local name bound to a primitive, a computed method name, a subprocess) is pinned by a probe each.

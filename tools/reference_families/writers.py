@@ -16,9 +16,12 @@ its own, ``unresolved:<module>:<symbol>:<primitive>``, with the reason, and ever
 one pointer item to them (any of them may write that path). A destination provably outside ``.aew`` (a temporary
 directory, the console, the repository's working tree) is listed on the page and is no record.
 
-Each writer carries the entry points that reach it (:mod:`reference_families.writers_reach`), as a lower bound; a writer
-with no chain is unresolved on the records it appears in. A second detector, :mod:`reference_families.writers_text`,
-finds the write-primitive calls by tokens, and the two must agree per module.
+Each writer carries the entry points that reach it (:mod:`reference_families.writers_reach`), as a lower bound (a chain
+of resolved calls, and nothing more); a writer with no chain is unresolved on the records it appears in. Where several
+entry points share one declaring function (the CLI's four roles), a writer it reaches is reached from all of them: its
+record says so, with an unresolved item anchored at that function, and the call graph does not decide which role
+runs it. A second detector, :mod:`reference_families.writers_text`, finds the write-primitive calls by tokens, and
+the two must agree per module.
 
 What it does not see is the family's ``cannot see`` list, pinned by probes in the tests: a path built in one function
 and written in another through a value this reading cannot follow (a command-line argument, an environment variable, a
@@ -30,7 +33,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
 
 from reference_families import common as C
@@ -74,7 +77,25 @@ RECEIVER_METHODS = frozenset({"write_text", "write_bytes", "mkdir", "unlink", "t
                               "hardlink_to"})
 WRITE_MODES = frozenset("wax+")
 WRITE_FLAGS = frozenset({"os.O_WRONLY", "os.O_RDWR", "os.O_CREAT", "os.O_APPEND", "os.O_TRUNC"})
-NOT_WRITES = ("chmod", "fsync_dir", "open for reading", "os.open for reading", "read_text", "read_bytes")
+# What this reading does not see, one entry per class: (a name the tests' probes are keyed by, how the page says it).
+# The page is written from this tuple and each entry has a probe, both ways (tests/unit/test_reference_writers_flow.py).
+CANNOT_SEE: tuple[tuple[str, str], ...] = (
+    ("cross-function-path", "a path built in one function and written in another through a value this reading cannot "
+     "follow (a command-line argument, an environment variable, a callback, a renderer)"),
+    ("conditional-callee", "a primitive called through a conditional expression, `(a if x else b)(path)` (the store's "
+     "own `write_file` does this)"),
+    ("local-name-primitive", "a primitive bound to a local name and called by it"),
+    ("computed-method", "a method named by a computed attribute, `getattr(path, name)(...)`"),
+    ("subprocess", "a write by a subprocess"),
+    ("other-openers", "an opener other than `open` and `Path.open`, such as `codecs.open`"),
+    ("tempfile-in-aew", "a file kept under `.aew` by `tempfile.NamedTemporaryFile(dir=...)` or `mkstemp(dir=...)`"),
+    ("keyword-target", "a `rename` or `replace` whose target is a keyword argument"),
+    ("other-session-spelling", "a store transaction's `write` on a receiver not spelled `session`"),
+    ("positional-open-mode", "a `.open(x)` whose positional argument is not a literal mode, which another API's "
+     "`.open` also has (a mode in `mode=` that cannot be read is an unresolved write)"),
+    ("metadata-calls", "`chmod`, `os.utime`, `fsync_dir` and other calls that change a file's metadata or durability "
+     "and not its content (not writes)"),
+)
 
 
 class Site(NamedTuple):
@@ -86,25 +107,90 @@ class Site(NamedTuple):
     values: F.Values
 
 
-def _mode_writes(node: ast.expr | None) -> bool:
-    return isinstance(node, ast.Constant) and isinstance(node.value, str) and any(c in WRITE_MODES for c in node.value)
+READ, WRITE, UNREADABLE = "read", "write", "unreadable"
+UNREADABLE_MARK = "?"  # a primitive label with this suffix: whether the call writes is not decided
+UNREADABLE_WHY = "its mode or flags are not a literal this reading can read, so whether it writes is not decided"
+
+
+def _combine(verdicts: Iterable[str]) -> str:
+    found = set(verdicts)
+    return WRITE if WRITE in found else UNREADABLE if UNREADABLE in found else READ
 
 
 def _keyword(call: ast.Call, name: str) -> ast.expr | None:
     return next((k.value for k in call.keywords if k.arg == name), None)
 
 
-def _flags_write(mod: F.Module, flags: ast.expr | None) -> bool:
-    """``os.open`` flags that create, append, truncate or open for writing: any ``os.O_*`` write flag in the expression
-    (the names are resolved by import, so ``from os import O_CREAT`` counts)."""
-    if flags is None:
-        return False
-    names = (n for n in ast.walk(flags) if isinstance(n, (ast.Name, ast.Attribute)))
-    return any(mod.aliases.resolve(n) in WRITE_FLAGS for n in names)
+def _bound_values(func: F.Func | None, name: str) -> list[ast.expr] | None:
+    """Every expression a local name is bound to in the function (assignments and `|=`), or None when it is bound to
+    nothing the function shows (a parameter, a global) or by a loop or an unpacking."""
+    if func is None or name in func.opaque and name not in func.augs or name in func.loops:
+        return None
+    values = [*func.assigns.get(name, []), *func.augs.get(name, [])]
+    return values or None
 
 
-def primitive_of(mod: F.Module, call: ast.Call) -> tuple[str, str, ast.expr] | None:
-    """(the primitive's label, its mechanism, the destination expression) when the call is a write site, else None."""
+def mode_verdict(func: F.Func | None, node: ast.expr | None, seen: frozenset[str] = frozenset()) -> str:
+    """Whether an `open` mode writes: a string literal decides it, as does a local name bound to literals, or a
+    conditional of them. Anything else (a parameter, a call) is UNREADABLE, never READ. No mode is `r`."""
+    if node is None:
+        return READ
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return WRITE if any(c in WRITE_MODES for c in node.value) else READ
+    if isinstance(node, ast.IfExp):
+        return _combine([mode_verdict(func, node.body, seen), mode_verdict(func, node.orelse, seen)])
+    if isinstance(node, ast.Name) and node.id not in seen:
+        bound = _bound_values(func, node.id)
+        if bound is not None:
+            return _combine(mode_verdict(func, v, seen | {node.id}) for v in bound)
+    return UNREADABLE
+
+
+def flags_verdict(mod: F.Module, func: F.Func | None, node: ast.expr | None, seen: frozenset[str] = frozenset()) -> str:
+    """Whether `os.open` flags write: any `os.O_*` write flag in the expression decides WRITE (names resolved by import,
+    so `from os import O_CREAT` counts; `getattr(os, "O_NOFOLLOW", 0)` names `os.O_NOFOLLOW`; a local name is followed
+    through its assignments and `|=`). Flags made only of `os.O_*` names and integers without a write flag are READ.
+    Anything else in the expression (a parameter, a call) is UNREADABLE unless a write flag is already there."""
+    names: set[str] = set()
+    unreadable = False
+
+    def collect(expr: ast.expr, guard: frozenset[str]) -> None:
+        nonlocal unreadable
+        if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
+            collect(expr.left, guard)
+            collect(expr.right, guard)
+        elif isinstance(expr, ast.Constant) and isinstance(expr.value, int):
+            return
+        elif isinstance(expr, (ast.Name, ast.Attribute)):
+            dotted = mod.aliases.resolve(expr)
+            if dotted is not None and dotted.startswith("os.O_"):
+                names.add(dotted)
+            elif isinstance(expr, ast.Name) and expr.id not in guard:
+                bound = _bound_values(func, expr.id)
+                if bound is None and expr.id in mod.consts:
+                    bound = [mod.consts[expr.id]]
+                if bound is None:
+                    unreadable = True
+                for value in bound or []:
+                    collect(value, guard | {expr.id})
+            else:
+                unreadable = True
+        elif (isinstance(expr, ast.Call) and mod.aliases.resolve(expr.func) == "getattr" and len(expr.args) >= 2
+              and mod.aliases.resolve(expr.args[0]) == "os" and isinstance(expr.args[1], ast.Constant)
+              and isinstance(expr.args[1].value, str) and expr.args[1].value.startswith("O_")):
+            names.add(f"os.{expr.args[1].value}")
+        else:
+            unreadable = True
+
+    if node is None:
+        return READ
+    collect(node, seen)
+    return WRITE if names & WRITE_FLAGS else UNREADABLE if unreadable else READ
+
+
+def primitive_of(mod: F.Module, call: ast.Call, func: F.Func | None = None) -> tuple[str, str, ast.expr] | None:
+    """(the primitive's label, its mechanism, the destination expression) when the call is a write site, else None.
+    A call whose mode or flags cannot be read has the label with `?` appended: whether it writes is not decided."""
     callee = mod.aliases.resolve(call.func)
     if callee is not None and (callee in mod.funcs or callee in mod.classes):
         callee = f"{mod.name}.{callee}"  # a function or class of this module, called by its bare name
@@ -115,14 +201,18 @@ def primitive_of(mod: F.Module, call: ast.Call) -> tuple[str, str, ast.expr] | N
         return None
     if callee in ("open", "io.open"):
         mode = call.args[1] if len(call.args) > 1 else _keyword(call, "mode")
-        if call.args and _mode_writes(mode):
-            return "open", DIRECT, call.args[0]
-        return None
+        if not call.args:
+            return None
+        verdict = mode_verdict(func, mode)
+        return None if verdict == READ else ("open" + (UNREADABLE_MARK if verdict == UNREADABLE else ""), DIRECT,
+                                             call.args[0])
     if callee == "os.open":
         flags = call.args[1] if len(call.args) > 1 else _keyword(call, "flags")
-        if call.args and _flags_write(mod, flags):
-            return "os.open", DIRECT, call.args[0]
-        return None
+        if not call.args:
+            return None
+        verdict = flags_verdict(mod, func, flags)
+        return None if verdict == READ else ("os.open" + (UNREADABLE_MARK if verdict == UNREADABLE else ""), DIRECT,
+                                             call.args[0])
     if not isinstance(call.func, ast.Attribute):
         return None
     method, receiver = call.func.attr, call.func.value
@@ -132,11 +222,27 @@ def primitive_of(mod: F.Module, call: ast.Call) -> tuple[str, str, ast.expr] | N
             and not isinstance(call.args[0], ast.Starred)):
         # `str.replace` takes two arguments and `datetime.replace` keywords only: one positional is a `Path` move
         return f"Path.{method}", DIRECT, call.args[0]
-    if method == "open" and _mode_writes(call.args[0] if call.args else _keyword(call, "mode")):
-        return "Path.open", DIRECT, receiver
+    if method == "open":
+        # a mode in a keyword is `Path.open`'s; a first positional that is not a literal may be another API's `.open(x)`
+        # (a URL opener's), so only a positional the function shows to be a mode string is read
+        keyword = _keyword(call, "mode")
+        arg = keyword if keyword is not None else (call.args[0] if call.args else None)
+        verdict = mode_verdict(func, arg)
+        if verdict == UNREADABLE and keyword is None:
+            return None
+        return None if verdict == READ else ("Path.open" + (UNREADABLE_MARK if verdict == UNREADABLE else ""), DIRECT,
+                                             receiver)
     if method == "write" and len(call.args) >= 2 and (C.dotted(receiver) or "").split(".")[-1] == "session":
         return "session.write", STORE_TRANSACTION, call.args[0]
     return None
+
+
+def primitive_labels() -> list[str]:
+    """The write primitives the reading knows, by the label a writer's `via` carries: one list for the page."""
+    labels = {label for label, _ in CALL_PRIMITIVES.values()}
+    labels |= {f"Path.{m}" for m in RECEIVER_METHODS} | {"open", "os.open", "Path.open", "Path.rename", "Path.replace",
+                                                          "session.write"}
+    return sorted(labels)
 
 
 def primitive_counts(program: F.Program) -> dict[str, Counter[str]]:
@@ -144,8 +250,9 @@ def primitive_counts(program: F.Program) -> dict[str, Counter[str]]:
     held to. No destination is read."""
     counts: dict[str, Counter[str]] = {}
     for name, mod in program.modules.items():
-        calls = [*mod.module_calls, *[c for f in mod.funcs.values() for c in f.calls]]
-        counts[name] = Counter(hit[0] for c in calls if (hit := primitive_of(mod, c)) is not None)
+        scopes = [(None, mod.module_calls), *[(f, f.calls) for f in mod.funcs.values()]]
+        counts[name] = Counter(hit[0] for func, calls in scopes for c in calls
+                               if (hit := primitive_of(mod, c, func)) is not None)
     return counts
 
 
@@ -160,7 +267,7 @@ def sites_of(program: F.Program, evaluator: F.Evaluator) -> list[Site]:
             if func is not None and (name, func.qual) in MECHANISM_FUNCTIONS:
                 continue
             for call in calls:
-                hit = primitive_of(mod, call)
+                hit = primitive_of(mod, call, func)
                 if hit is None:
                     continue
                 label, mechanism, dest = hit
@@ -226,6 +333,8 @@ POINTER = ("write sites whose destination this reading could not place under `.a
 
 def why_unplaced(primitive: str, reason: str) -> str:
     """The one sentence an unresolved write is listed under, on its record and in ``record_problems``."""
+    if primitive.endswith(UNREADABLE_MARK):
+        return f"{primitive[:-1]} that may write: {reason}"
     return f"{primitive} of a path this reading cannot place: {reason}"
 
 
@@ -309,6 +418,10 @@ def analyse(program: F.Program, top_level: frozenset[str], roots: dict[tuple[str
     outside: dict[str, set[tuple[str, str, str]]] = {}
     root_sites: set[tuple[str, str, str]] = set()
     for site in sites:
+        if site.primitive.endswith(UNREADABLE_MARK):  # whether it writes is not decided: unresolved, placed nowhere
+            entry = unresolved.setdefault((site.module, site.symbol, site.primitive), (site.mechanism, set()))
+            entry[1].add(UNREADABLE_WHY)
+            continue
         d = destination(site, top_level)
         for template in d.templates:
             grouped.setdefault(template, {}).setdefault((site.module, site.symbol, site.mechanism), set()).add(
@@ -335,7 +448,19 @@ def analyse(program: F.Program, top_level: frozenset[str], roots: dict[tuple[str
 def derived_top_level(sites: list[Site]) -> set[str]:
     """The first entries of the paths under ``.aew`` that the sites write (a computed first entry is not one): what
     :data:`TOP_LEVEL` is held to, both ways."""
-    return {first for site in sites for first in destination(site, frozenset()).undeclared}
+    return {first for site in sites if not site.primitive.endswith(UNREADABLE_MARK)
+            for first in destination(site, frozenset()).undeclared}
+
+
+def shared_roots(roots: Mapping[tuple[str, str], Iterable[str]]) -> dict[tuple[str, str], tuple[str, ...]]:
+    """The declaring functions that declare more than one entry point (the CLI's declares four roles)."""
+    return {root: tuple(sorted(keys)) for root, keys in roots.items() if len(set(keys)) > 1}
+
+
+def role_why(keys: Iterable[str]) -> str:
+    """What a record says of a writer a shared declaring function reaches: the call graph cannot tell which role."""
+    return ("the entry points " + ", ".join(sorted(keys)) + " share this declaring function; which of them reaches "
+            "this writer is not decided here, and none is ruled out")
 
 
 def pointer_item() -> dict[str, Any]:
@@ -345,6 +470,7 @@ def pointer_item() -> dict[str, Any]:
 def records_of(analysis: Analysis) -> list[C.Record]:
     records = []
     pointer = pointer_item()
+    shared = shared_roots(analysis.roots)
     for template, writers in analysis.writers.items():
         owners = analysis.named.get(template, [])
         anchor_module, anchor_symbol = owners[0] if owners else (writers[0].module, writers[0].symbol)
@@ -356,6 +482,9 @@ def records_of(analysis: Analysis) -> list[C.Record]:
                           "entry_points": keys, "entry_kinds": sorted({analysis.kinds[k] for k in keys})})
             if not keys:
                 unreached.append(C.unresolved_item(w.module, w.symbol, NO_CHAIN))
+            for root, group in shared.items():
+                if set(keys) & set(group):
+                    unreached.append(C.unresolved_item(root[0], root[1], role_why(group)))
         fact = {
             "prefix": template,
             "directory": template.split("/")[0],
@@ -376,11 +505,13 @@ def records_of(analysis: Analysis) -> list[C.Record]:
 WRITER_KEYS = {"module", "symbol", "mechanism", "via", "entry_points", "entry_kinds"}
 
 
-def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str]) -> list[str]:
+def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str],
+                    shared: Mapping[tuple[str, str], Iterable[str]] | None = None) -> list[str]:
     """The family's own invariants over its records as JSON (``Record.as_json`` keyed by id), which the index checks do
     not know: a writer's mechanism is one of two, its primitives are named, its entry points are rows of the owner's
-    table and its kinds are theirs, and every path record points at the unresolved ones. ``kinds`` is the owner's
-    table (entry-point key -> kind)."""
+    table and its kinds are theirs, a writer that a shared declaring function reaches says on its record that the role
+    is not decided, and every path record points at the unresolved ones. ``kinds`` is the owner's table (entry-point
+    key -> kind) and ``shared`` the declaring functions that declare several of its rows (:func:`shared_roots`)."""
     problems: list[str] = []
     pointer = pointer_item()
     for rid, r in sorted(records.items()):
@@ -424,8 +555,15 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str]) -> lis
         for name in ("named_by", "writers"):
             if name not in (r.get("fact_coverage") or {}):
                 problems.append(f"{rid}: no fact_coverage for {name}")
-        if pointer not in ((r.get("fact_coverage") or {}).get("writers") or {}).get("unresolved", []):
+        listed = ((r.get("fact_coverage") or {}).get("writers") or {}).get("unresolved", [])
+        if pointer not in listed:
             problems.append(f"{rid}: its writers do not point at the unresolved writes")
+        for root, group in sorted((shared or {}).items()):
+            reached = [w for w in writers if isinstance(w, dict) and set(w.get("entry_points", [])) & set(group)]
+            if reached and C.unresolved_item(root[0], root[1], role_why(group)) not in listed:
+                first = f"{reached[0]['module']}:{reached[0]['symbol']}"
+                problems.append(f"{rid}: {first} is reached from entry points that share {root[0]}:{root[1]}, and the "
+                                "record does not say which of them is not decided")
         if (r.get("coverage") or {}).get("unresolved") != [pointer]:
             problems.append(f"{rid}: its coverage does not point at the unresolved writes")
     return problems
@@ -494,10 +632,10 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         "the path exactly. A writer's `mechanism` is `store-transaction` (it stages the file in the control store's "
         "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives.", "",
         "The list is a lower bound. A write whose destination this reading could not place is its own record, below "
-        "and in [gaps.md](gaps.md), and any of those may write any path here. What this reading does not see: a path "
-        "built in one function and written in another through a value it cannot follow, a command-line argument or "
-        "an environment variable that names a directory, a method of an object whose class is not known, a write "
-        "by a subprocess, and `chmod` and `fsync_dir` (permission and durability calls, not writes).", ""]
+        "and in [gaps.md](gaps.md), and any of those may write any path here. A call whose `open` mode or `os.open` "
+        "flags cannot be read is one of those records too (its primitive ends in `?`): whether it writes is not "
+        "decided. The primitives it reads: " + ", ".join(f"`{label}`" for label in primitive_labels()) + ". "
+        "What this reading does not see: " + "; ".join(text for _, text in CANNOT_SEE) + ".", ""]
     by_dir: dict[str, list[C.Record]] = {}
     for r in records:
         if r.fact and r.fact.get("prefix"):
@@ -525,8 +663,8 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
     else:
         lines.append("None.")
     lines += ["", "## Writes outside `.aew`", "",
-              "Write sites whose destination this reading follows to a place outside `.aew`, so they are not records: "
-              "listed so that nothing is dropped unseen.", ""]
+              "Write sites whose destination this reading follows to a place outside `.aew`: listed so that nothing is "
+              "dropped unseen. A site that also writes a path under `.aew` is a record there too.", ""]
     for reason, sites in analysis.outside.items():
         lines.append(f"- {reason}: " + ", ".join(f"{_anchor(m, s)} ({p})" for m, s, p in sites))
     if analysis.root_sites:
@@ -543,7 +681,7 @@ def build(ctx: C.Context) -> C.Built:
     analysis = analyse(F.Program.of(trees), frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds,
                        R.dispatchers_of(ctx))
     records = records_of(analysis)
-    problems = record_problems({r.id: r.as_json() for r in records}, kinds)
+    problems = record_problems({r.id: r.as_json() for r in records}, kinds, shared_roots(analysis.roots))
     if problems:
         raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(problems[:20]))
     return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL)})

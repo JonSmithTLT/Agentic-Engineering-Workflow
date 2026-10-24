@@ -89,12 +89,30 @@ PRIMITIVES = [
     ("session.write('work/x', 'y')", {"session.write": 1}),
     ("ctx.session.write(rel, text)", {"session.write": 1}),
     ("a.replace(b); a.rename(c); open(p, 'a')", {"Path.replace": 1, "Path.rename": 1, "open": 1}),
+    # F3 (review of #254): a mode or flags that is a local name is read through the function's assignments
+    ("def f(p):\n    flags = os.O_WRONLY | os.O_CREAT\n    os.open(p, flags, 0o644)", {"os.open": 1}),
+    ("def f(p):\n    flags = os.O_RDONLY\n    flags |= os.O_CREAT\n    os.open(p, flags)", {"os.open": 1}),
+    ("def f(p):\n    mode = 'w'\n    open(p, mode)", {"open": 1}),
+    ("def f(p, x):\n    mode = 'w' if x else 'r'\n    open(p, mode)", {"open": 1}),
+    ("def f(p, x):\n    p.open('w' if x else 'r')", {"Path.open": 1}),
+    ("from os import O_CREAT\nos.open(p, O_CREAT)", {"os.open": 1}),
+    # ... and one that cannot be read is marked, never taken for a read
+    ("def f(p, flags):\n    os.open(p, flags)", {"os.open?": 1}),
+    ("def f(p, mode):\n    open(p, mode)", {"open?": 1}),
+    ("def f(p, mode):\n    open(p, mode=mode)", {"open?": 1}),
+    ("def f(p, m):\n    p.open(mode=m)", {"Path.open?": 1}),
+    ("def f(p):\n    flags = os.O_RDONLY | extra\n    os.open(p, flags)", {"os.open?": 1}),
 ]
 NOT_WRITES = [
     "text.replace('a', 'b')",                    # str.replace takes two arguments
     "when.replace(tzinfo=None)",                 # datetime.replace takes keywords only
     "open(p)", "open(p, 'r')", "open(p, 'rb')",  # reads
     "p.open()", "p.open('rb')",
+    "def f(p):\n    mode = 'r'\n    open(p, mode)",
+    "def f(p):\n    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)\n    flags |= os.O_NONBLOCK\n"
+    "    os.open(p, flags)",
+    # a flags name is read in its own function: the write flags of another function's `flags` are not this one's
+    "def a(p):\n    flags = os.O_WRONLY\n\ndef b(p):\n    flags = os.O_RDONLY\n    os.open(p, flags)",
     "os.open(p, os.O_RDONLY)",                   # a read
     "os.write(fd, b'x')", "fh.write('x')", "out.write('x')",   # a descriptor or a stream, not a path
     "os.chmod(p, 0o700)", "fsync_dir(d)",        # permission and durability, not writes
@@ -125,23 +143,46 @@ def test_a_primitive_called_through_an_alias_is_the_ast_readings_alone_and_pinne
     assert dict(ast_found) == {"os.replace": 1} and dict(text_found) == {}
 
 
-CANNOT_SEE = [
-    # a primitive that the call's own expression chooses, bound to a name, or built by a computed callee
-    "(create_exclusive if x else atomic_write)(p, 'x')",
-    "put = atomic_write\nput(p, 'x')",
-    "getattr(p, 'write_text')('x')",
-    "subprocess.run(['cp', a, b])",
-]
+PROBES = {
+    # the classes of the family's `cannot see` list that are about a primitive: both readers find nothing
+    "conditional-callee": "(create_exclusive if x else atomic_write)(p, 'x')",
+    "local-name-primitive": "put = atomic_write\nput(p, 'x')",
+    "computed-method": "getattr(p, 'write_text')('x')",
+    "subprocess": "subprocess.run(['cp', a, b])",
+    "other-openers": "codecs.open(p, 'w')",
+    "tempfile-in-aew": "tempfile.mkstemp(dir=d)",
+    "keyword-target": "a.rename(target=b)",
+    "other-session-spelling": "s.write('work/x', 'y')",
+    "positional-open-mode": "def f(p, req):\n    OPENER.open(req, timeout=3)",
+    "metadata-calls": "os.utime(p)\nos.chmod(p, 0o700)\nfsync_dir(d)",
+}
+THE_REST = {"cross-function-path"}  # about a destination, not a primitive: probed below
 
 
-@pytest.mark.parametrize("source", CANNOT_SEE)
-def test_what_neither_reader_can_see_is_pinned_by_a_probe_each(source):
-    """The family's 'cannot see' list: a primitive reached through a conditional callee (the store's `write_file` does
-    this), a local name bound to a primitive, a computed method name, and a subprocess. Each is missed by both readers,
-    so they agree and the tree check cannot flag it: it is listed here, and on the family's page."""
+def test_the_cannot_see_list_has_a_probe_for_each_class_and_nothing_else():
+    assert set(PROBES) | THE_REST == {name for name, _ in W.CANNOT_SEE}
+    assert len({name for name, _ in W.CANNOT_SEE}) == len(W.CANNOT_SEE)
+
+
+@pytest.mark.parametrize("name", sorted(PROBES))
+def test_what_neither_reader_can_see_is_pinned_by_a_probe_each(name):
+    """Each class is missed by both readers, so they agree and the tree check cannot flag it: it is listed on the page
+    (from the one tuple the probes read) and pinned here."""
     ast_found, text_found = counts("from aew.util import atomic_write, create_exclusive\nimport subprocess\n"
-                                   + source + "\n")
-    assert (dict(ast_found), dict(text_found)) == ({}, {}), source
+                                   + PROBES[name] + "\n")
+    assert (dict(ast_found), dict(text_found)) == ({}, {}), name
+
+
+def test_a_path_written_where_it_was_not_built_is_an_unresolved_record_not_a_miss():
+    a = analysed("def f(a):\n    (a.run_dir / 'x').write_text('x')\n")
+    assert a.writers == {} and any("not a value this reading can follow" in r for r in reasons(a))
+
+
+def test_the_page_says_each_class_of_what_it_cannot_see_and_names_the_primitives_it_reads():
+    a = analysed("REL = 'state/x.yaml'\n\ndef f(aew_root):\n    atomic_write(aew_root / REL, 'x')\n")
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert all(text in page for _, text in W.CANNOT_SEE)
+    assert all(f"`{label}`" in page for label in W.primitive_labels()) and "`session.write`" in page
 
 
 def test_a_one_argument_replace_is_a_path_move_and_a_two_argument_one_is_not():
@@ -185,19 +226,50 @@ def test_a_move_writes_its_destination_and_not_its_source():
     assert sorted(a.writers) == ["local/x.json"]
 
 
-def test_a_sibling_of_a_path_is_taken_as_the_same_path_so_a_write_protocol_is_one_record():
+def test_a_sibling_with_a_computed_name_is_the_same_path_so_a_write_protocol_is_one_record():
+    """A temporary file named by the process (`f".s.{os.getpid()}.tmp"`) is part of the write protocol of its target."""
     a = analysed("def f(aew_root):\n"
                  "    path = aew_root / 'local' / 's.json'\n"
-                 "    tmp = path.with_suffix('.tmp')\n"
+                 "    tmp = path.with_name(f'.s.{os.getpid()}.tmp')\n"
                  "    tmp.write_text('x')\n"
-                 "    os.replace(tmp, path)\n")
+                 "    os.replace(tmp, path)\n"
+                 "    twin = path.with_name(f'.{path.name}.{os.getpid()}.tmp')\n"
+                 "    twin.write_text('x')\n")
     assert sorted(a.writers) == ["local/s.json"]
     assert writers_of(a, "local/s.json") == [("aew.m", "f", W.DIRECT, ("Path.write_text", "os.replace"))]
+
+
+def test_a_sibling_with_a_fixed_name_is_a_file_of_its_own():
+    """Review of #254, F2: `with_name("endpoint.lock")`, a fixed `with_suffix`, and the path's own name plus a fixed
+    suffix (the turnstile's `.queue`) name files that are not the path they came from."""
+    a = analysed("LOCK_NAME = 'endpoint.lock'\n\n"
+                 "def f(aew_root):\n"
+                 "    locator = aew_root / 'local' / 'operator' / 'endpoint.json'\n"
+                 "    locator.with_name(LOCK_NAME).write_text('x')\n"
+                 "    locator.with_suffix('.tmp').write_text('x')\n"
+                 "    locator.with_stem('endpoint2').write_text('x')\n"
+                 "    open(locator.with_name(locator.name + '.queue'), 'a+b')\n")
+    assert sorted(a.writers) == ["local/operator/endpoint.json.queue", "local/operator/endpoint.lock",
+                                 "local/operator/endpoint.tmp", "local/operator/endpoint2.json"]
+
+
+def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
+    a = analysed("class Lock:\n    def __init__(self, path):\n        self.path = path\n"
+                 "    def open_queue(self):\n        open(self.path.with_name(self.path.name + '.queue'), 'a+b')\n\n"
+                 "def f(aew_root):\n    Lock(aew_root / 'local' / 'a.lock').open_queue()\n"
+                 "    Lock(aew_root / 'local' / 'b.lock').open_queue()\n")
+    assert sorted(a.writers) == ["local/a.lock.queue", "local/b.lock.queue"]
 
 
 def test_a_path_that_joins_the_dot_aew_directory_is_the_root_whatever_the_left_side_is():
     a = analysed("def f(repo_root):\n    (repo_root / '.aew' / 'state' / 'x').write_text('x')\n")
     assert sorted(a.writers) == ["state/x"] and a.outside == {}
+
+
+def test_the_parent_of_the_dot_aew_directory_is_the_repository_not_the_root():
+    """Review of #254, N1: `aew_root.parent / "state"` is a path in the repository's tree, not a record under `.aew`."""
+    a = analysed("def f(aew_root):\n    (aew_root.parent / 'state' / 'x').write_text('x')\n")
+    assert a.writers == {} and "the repository's working tree" in a.outside
 
 
 def test_the_repositorys_own_tree_is_outside_and_listed_not_a_record():
@@ -255,6 +327,55 @@ def test_a_method_of_a_receiver_whose_class_is_evident_is_followed_and_one_of_an
                  roots={("aew.m", "f"): {"aew"}})
     assert a.reach[("aew.m", "Box.put")] == {"aew"}
     assert W.records_of(a)[0].fact["writers"][0]["entry_points"] == ["aew"]  # type: ignore[index]
+
+
+def test_a_function_annotated_with_a_class_types_its_result_even_when_its_returns_do_not_show_one():
+    a = analysed("class Box:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'b').write_text('x')\n\n"
+                 "def make(registry) -> Box:\n    return registry.get('box')\n\n"
+                 "def main(aew_root, registry):\n    make(registry).put(aew_root)\n",
+                 roots={("aew.m", "main"): {"aew"}})
+    assert a.reach[("aew.m", "Box.put")] == {"aew"}
+    unannotated = ("class Box:\n    def put(self, aew_root):\n        pass\n\n"
+                   "def make(registry):\n    return registry.get('box')\n\n"
+                   "def main(aew_root, registry):\n    make(registry).put(aew_root)\n")
+    bare = analysed(unannotated, roots={("aew.m", "main"): {"aew"}})
+    assert ("aew.m", "Box.put") not in bare.reach, "without the annotation nothing types the result"
+
+
+def test_the_caps_on_callers_and_on_values_make_a_name_unknown_rather_than_slow_or_wrong():
+    callers = ("def put(path):\n    path.write_text('x')\n\n"
+               + "".join(f"def c{i}(aew_root):\n    put(aew_root / 'local' / 'f{i}')\n\n"
+                         for i in range(F.CALLERS + 1)))
+    a = analysed(callers)
+    assert a.writers == {} and any(f"more than {F.CALLERS} call sites" in r for r in reasons(a))
+    values = ("def f(aew_root, n):\n"
+              + "".join(f"    if n == {i}:\n        p = aew_root / 'local' / 'v{i}'\n" for i in range(F.VALUES + 1))
+              + "    p.write_text('x')\n")
+    b = analysed(values)
+    assert b.writers == {} and any(f"more than {F.VALUES} possible values" in r for r in reasons(b))
+
+
+def chained(n):
+    src = "def h0(p):\n    p.write_text('x')\n\n" + "".join(f"def h{k}(p):\n    h{k - 1}(p)\n\n" for k in range(1, n))
+    return src + f"def top(aew_root):\n    h{n - 1}(aew_root / 'local' / 'd')\n"
+
+
+def test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed():
+    assert sorted(analysed(chained(3)).writers) == ["local/d"]
+    deep = analysed(chained(F.DEPTH + 2))
+    assert deep.writers == {} and any("resolution depth limit" in r for r in reasons(deep))
+
+
+def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():
+    """The second reader is independent only if it shares no code with the first: standard library tokenizing alone."""
+    tree = ast.parse((ROOT / "tools" / "reference_families" / "writers_text.py").read_text(encoding="utf-8"))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            imported.add(node.module or "")
+    assert imported <= {"__future__", "io", "tokenize", "collections", "collections.abc"}, imported
 
 
 def test_a_super_constructor_and_a_facade_attribute_built_from_a_local_are_followed():
@@ -400,6 +521,40 @@ def test_a_writer_no_chain_reaches_is_unresolved_on_its_records_and_a_reached_on
     assert W.NO_CHAIN not in [i["why"] for i in reached.fact_coverage["writers"]["unresolved"]]  # type: ignore[index]
 
 
+SHARED = ("def writer(aew_root):\n    (aew_root / 'local' / 'c').write_text('x')\n\n"
+          "def solo(aew_root):\n    (aew_root / 'local' / 's').write_text('x')\n\n"
+          "def command(a):\n    writer(AEW)\n\ndef build(p):\n    p.set_defaults(handler=command)\n\n"
+          "def cli_main():\n    build(None)\n\ndef sup_main():\n    solo(AEW)\n")
+SHARED_ROOTS = {("aew.m", "cli_main"): {"aew", "aew lead mcp"}, ("aew.m", "sup_main"): {"aew.harness.supervisor"}}
+
+
+def shared_analysis():
+    return analysed(SHARED, roots=SHARED_ROOTS, dispatchers={("aew.m", "cli_main")})
+
+
+def test_a_writer_that_a_shared_declaring_function_reaches_says_on_its_record_that_the_role_is_not_decided():
+    """Review of #254, F1: the CLI's roles share one declaring function, so the writer it reaches lists them all; the
+    record carries an unresolved item at that function (the trace reads records only), and a writer reached from a
+    function that declares one entry point does not."""
+    a = shared_analysis()
+    by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
+    item = C.unresolved_item("aew.m", "cli_main", W.role_why(("aew", "aew lead mcp")))
+    assert item in by_key["local/c"].fact_coverage["writers"]["unresolved"]  # type: ignore[index]
+    assert item not in by_key["local/s"].fact_coverage["writers"]["unresolved"]  # type: ignore[index]
+    assert W.shared_roots(a.roots) == {("aew.m", "cli_main"): ("aew", "aew lead mcp")}
+    records = {r.id: r.as_json() for r in W.records_of(a)}
+    assert W.record_problems(records, KINDS, W.shared_roots(a.roots)) == []
+
+
+def test_a_record_that_leaves_out_the_role_item_of_a_shared_writer_is_refused():
+    a = shared_analysis()
+    records = {r.id: r.as_json() for r in W.records_of(a)}
+    cut = copy.deepcopy(records)
+    cut["writers:local/c"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
+    problems = W.record_problems(cut, KINDS, W.shared_roots(a.roots))
+    assert any("does not say which of them is not decided" in p for p in problems), problems
+
+
 def test_a_non_writer_root_is_exclusive_only_when_its_function_declares_no_store_writer():
     roots = {("aew.cli", "main"): {"aew", "aew lead mcp"}, ("aew.stg", "main"): {"aew.stg02.server"},
              ("aew.sup", "main"): {"aew.harness.supervisor"}}
@@ -445,6 +600,12 @@ FAULTS = [
      "coverage does not point"),
     ("writers without their coverage", PATH_ID, ["fact_coverage", "writers"], Ellipsis, "no fact_coverage for writers"),
     ("an unresolved write with an empty reason", UNRESOLVED_ID, ["fact", "reason"], "", "all non-empty"),
+    ("a path record whose writers do not point at the unresolved writes", PATH_ID,
+     ["fact_coverage", "writers", "unresolved"], [], "its writers do not point at the unresolved writes"),
+    ("an unresolved write with a mechanism that is neither", UNRESOLVED_ID, ["fact", "mechanism"], "other",
+     "is not one of the two"),
+    ("named_by without its coverage", PATH_ID, ["fact_coverage", "named_by"], Ellipsis,
+     "no fact_coverage for named_by"),
     ("an unresolved write whose key is not its anchor", UNRESOLVED_ID, ["anchor", "symbol"], "h", "the key is not"),
     ("an unresolved write that carries another reason", UNRESOLVED_ID, ["coverage", "unresolved", 0, "why"], "x",
      "does not carry its own reason"),

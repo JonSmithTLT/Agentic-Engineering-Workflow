@@ -171,9 +171,21 @@ def test_the_roots_the_reach_starts_from_are_the_owners_table_and_nothing_else()
 
 def test_every_writer_of_this_tree_names_entry_points_that_are_rows_of_the_table_and_their_kinds():
     records = W.records_of(ANALYSIS)
-    assert W.record_problems({r.id: r.as_json() for r in records}, TABLE) == []
+    assert W.record_problems({r.id: r.as_json() for r in records}, TABLE, W.shared_roots(ANALYSIS.roots)) == []
     named = {k for r in records for w in (r.fact or {}).get("writers", []) for k in w["entry_points"]}
     assert named and named <= set(TABLE)
+
+
+def test_the_cli_is_the_one_declaring_function_that_declares_several_entry_points_and_its_writers_say_so():
+    """Review of #254, F1: the CLI's four roles share `aew.cli.main:_main`. Every path record with a writer it reaches
+    carries the unresolved item that says which of them is not decided; no other declaring function is shared."""
+    shared = W.shared_roots(ANALYSIS.roots)
+    cli = {k for k, kind in TABLE.items() if "." not in k}
+    assert shared == {("aew.cli.main", "_main"): tuple(sorted(cli))}
+    item = W.C.unresolved_item("aew.cli.main", "_main", W.role_why(cli))
+    reached = [r for r in W.records_of(ANALYSIS) if r.fact and any(set(w["entry_points"]) & cli
+                                                                    for w in r.fact.get("writers", []))]
+    assert reached and all(item in r.fact_coverage["writers"]["unresolved"] for r in reached)  # type: ignore[index]
 
 
 # -------------------------------------------------------------- the reading against a hand reading of the code

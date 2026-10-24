@@ -2,12 +2,12 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 6,
-      "lower-bound": 327
+      "lower-bound": 334
     },
     "by_family": {
       "entry-points": 6,
       "modules": 173,
-      "writers": 154
+      "writers": 161
     },
     "by_family_and_coverage": {
       "entry-points": {
@@ -17,12 +17,12 @@
         "lower-bound": 173
       },
       "writers": {
-        "lower-bound": 154
+        "lower-bound": 161
       }
     },
-    "digest": "sha256:6bb60081e1c6c273fddc246da1d0484042345efb80cb1f03ed0c6a922559569b",
-    "records": 333,
-    "unresolved": 67
+    "digest": "sha256:b42508ac9a9401228431e9df0422b09385d25cdaff8947d734c8f8a49e6a714a",
+    "records": 340,
+    "unresolved": 69
   },
   "gaps": [
     {
@@ -60,6 +60,12 @@
       "module": "aew",
       "symbol": null,
       "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+    },
+    {
+      "family": "writers",
+      "module": "aew.cli.main",
+      "symbol": "_main",
+      "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
     },
     {
       "family": "writers",
@@ -306,6 +312,12 @@
       "module": "aew.harness.runlog",
       "symbol": "beat",
       "why": "atomic_write of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
+    },
+    {
+      "family": "writers",
+      "module": "aew.harness.runlog",
+      "symbol": "beat",
+      "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
     },
     {
       "family": "writers",
@@ -4794,6 +4806,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -4858,6 +4875,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -4958,6 +4980,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5078,6 +5105,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5155,6 +5187,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5232,6 +5269,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5291,6 +5333,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5467,6 +5514,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5526,6 +5578,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5585,6 +5642,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5730,6 +5792,11 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            },
+            {
               "module": "aew.engine.queue_ops",
               "symbol": "Queue._checkout_sync_lock",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
@@ -5798,6 +5865,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5858,6 +5930,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -5965,24 +6042,6 @@
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
-            "symbol": "FileLock._join_queue",
-            "via": [
-              "open"
-            ]
-          },
-          {
-            "entry_kinds": [
-              "non_writer",
-              "store_writer"
-            ],
-            "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
-            ],
-            "mechanism": "direct",
-            "module": "aew.engine.lock",
             "symbol": "FileLock._open",
             "via": [
               "open"
@@ -6002,6 +6061,75 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/control.lock.queue": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/control.lock.queue",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "via": [
+              "open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6219,6 +6347,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6301,6 +6434,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6346,24 +6484,6 @@
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
-            "symbol": "FileLock._join_queue",
-            "via": [
-              "open"
-            ]
-          },
-          {
-            "entry_kinds": [
-              "non_writer",
-              "store_writer"
-            ],
-            "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
-            ],
-            "mechanism": "direct",
-            "module": "aew.engine.lock",
             "symbol": "FileLock._open",
             "via": [
               "open"
@@ -6383,6 +6503,75 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/dashboard/endpoint.lock.queue": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/dashboard/endpoint.lock.queue",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "via": [
+              "open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6465,6 +6654,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -6972,6 +7166,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7032,6 +7231,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7092,6 +7296,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7151,6 +7360,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7210,6 +7424,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7269,6 +7488,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7328,6 +7552,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7388,6 +7617,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7448,6 +7682,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7507,6 +7746,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7625,6 +7869,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -7976,6 +8225,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8040,6 +8294,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8104,6 +8363,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8149,24 +8413,6 @@
             ],
             "mechanism": "direct",
             "module": "aew.engine.lock",
-            "symbol": "FileLock._join_queue",
-            "via": [
-              "open"
-            ]
-          },
-          {
-            "entry_kinds": [
-              "non_writer",
-              "store_writer"
-            ],
-            "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
-            ],
-            "mechanism": "direct",
-            "module": "aew.engine.lock",
             "symbol": "FileLock._open",
             "via": [
               "open"
@@ -8186,6 +8432,75 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/maps/registry.lock.queue": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/maps/registry.lock.queue",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "via": [
+              "open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8250,6 +8565,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8309,6 +8629,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8650,6 +8975,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8694,42 +9024,6 @@
               "aew lead mcp"
             ],
             "mechanism": "direct",
-            "module": "aew.engine.lock",
-            "symbol": "FileLock._join_queue",
-            "via": [
-              "open"
-            ]
-          },
-          {
-            "entry_kinds": [
-              "non_writer",
-              "store_writer"
-            ],
-            "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
-            ],
-            "mechanism": "direct",
-            "module": "aew.engine.lock",
-            "symbol": "FileLock._open",
-            "via": [
-              "open"
-            ]
-          },
-          {
-            "entry_kinds": [
-              "non_writer",
-              "store_writer"
-            ],
-            "entry_points": [
-              "aew",
-              "aew (worker run)",
-              "aew dashboard serve",
-              "aew lead mcp"
-            ],
-            "mechanism": "direct",
             "module": "aew.harness.operator_endpoint",
             "symbol": "OperatorEndpoint._release",
             "via": [
@@ -8751,7 +9045,6 @@
             "module": "aew.harness.operator_endpoint",
             "symbol": "OperatorEndpoint._write_locator",
             "via": [
-              "Path.write_text",
               "os.replace"
             ]
           }
@@ -8769,6 +9062,203 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/operator/endpoint.lock": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._open"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/operator/endpoint.lock",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._open",
+            "via": [
+              "open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/operator/endpoint.lock.queue": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/operator/endpoint.lock.queue",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "via": [
+              "open"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/operator/endpoint.tmp": {
+      "anchor": {
+        "module": "aew.harness.operator_endpoint",
+        "symbol": "OperatorEndpoint._write_locator"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/operator/endpoint.tmp",
+        "writers": [
+          {
+            "entry_kinds": [
+              "non_writer",
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew",
+              "aew (worker run)",
+              "aew dashboard serve",
+              "aew lead mcp"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.operator_endpoint",
+            "symbol": "OperatorEndpoint._write_locator",
+            "via": [
+              "Path.write_text"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8840,6 +9330,11 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            },
+            {
               "module": "aew.engine.context_ops",
               "symbol": "ContextPacks.build_pack",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
@@ -8902,6 +9397,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -8984,6 +9484,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9162,6 +9667,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9222,6 +9732,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9281,6 +9796,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9341,6 +9861,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9401,6 +9926,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9461,6 +9991,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9521,6 +10056,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9581,6 +10121,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9641,6 +10186,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9700,6 +10250,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9767,6 +10322,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9826,6 +10386,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9885,6 +10450,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -9949,6 +10519,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10008,6 +10583,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10067,6 +10647,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10266,6 +10851,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10437,6 +11027,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10496,6 +11091,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10555,6 +11155,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10629,6 +11234,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             },
             {
               "module": "aew.engine.store",
@@ -10710,6 +11320,11 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            },
+            {
               "module": "aew.engine.store",
               "symbol": "ControlStore._commit_unprofiled",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
@@ -10772,6 +11387,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10840,6 +11460,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10899,6 +11524,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -10958,6 +11588,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11017,6 +11652,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11094,6 +11734,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11158,6 +11803,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11235,6 +11885,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11294,6 +11949,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -11419,6 +12079,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             },
             {
               "module": "aew.engine.store",
@@ -12051,6 +12716,29 @@
       },
       "family": "writers"
     },
+    "writers:unresolved:aew.harness.runlog:beat:os.open": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "beat"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.runlog",
+            "symbol": "beat",
+            "why": "os.open of a path this reading cannot place: the attribute `args.run_dir` is not a value this reading can follow"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "os.open",
+        "reason": "the attribute `args.run_dir` is not a value this reading can follow"
+      },
+      "family": "writers"
+    },
     "writers:unresolved:aew.harness.runlog:take_requests:Path.unlink": {
       "anchor": {
         "module": "aew.harness.runlog",
@@ -12505,6 +13193,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -12564,6 +13257,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -12635,6 +13333,11 @@
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
             },
             {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
+            },
+            {
               "module": "aew.history.store",
               "symbol": "prewrite",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
@@ -12697,6 +13400,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }
@@ -12766,6 +13474,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             },
             {
               "module": "aew.engine.integration_ops",
@@ -12929,6 +13642,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             },
             {
               "module": "aew.engine.coordination_ops",
@@ -13161,6 +13879,11 @@
               "module": "aew",
               "symbol": null,
               "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.cli.main",
+              "symbol": "_main",
+              "why": "the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out"
             }
           ]
         }

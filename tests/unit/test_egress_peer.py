@@ -1,7 +1,8 @@
 """R-6's predicate and "public", as pure functions on address values (STG-05 CS-3a; F28 §3.4).
 
 Nothing here connects anywhere. The kernel oracle is replaced where a case needs a host interface, and is called for
-real only on the loopback address and a documentation address.
+real only on the loopback address and a documentation address. The routing tables' dump is parsed from synthetic
+bytes; the real tables are read with planted routes in ``tests/integration/test_egress_host_local.py``.
 """
 
 from __future__ import annotations
@@ -9,7 +10,9 @@ from __future__ import annotations
 import errno
 import ipaddress
 import socket
+import struct
 import types
+from collections.abc import Iterator
 
 import pytest
 
@@ -199,6 +202,122 @@ class _FakeSocketModule:
 def test_an_oracle_that_cannot_say_not_local_counts_the_address_as_local(monkeypatch, errors, local):
     fake = _FakeSocketModule(**errors)
     monkeypatch.setattr(peer, "socket", fake)
+    monkeypatch.setattr(peer, "local_routes", lambda family: [])  # the bind test alone: no local route covers it
     assert peer.is_host_address(ipaddress.IPv4Address("8.8.8.8")) is local
     assert peer.host_route("8.8.8.8") == (None if not local else "host_interface")
     assert fake.closed == (0 if fake.create_error is not None else 2)
+
+
+# A synthetic rtnetlink route dump (linux/netlink.h, linux/rtnetlink.h), the kernel's wire format.
+NEWROUTE, NOOP, ERROR, DONE, OVERRUN = 24, 1, 2, 3, 4
+UNICAST, LOCAL, ANYCAST = 1, 2, 4
+DUMP_INTR = 0x10
+
+
+def message(kind: int, body: bytes = b"", flags: int = 0) -> bytes:
+    length = 16 + len(body)
+    return struct.pack("=IHHII", length, kind, flags, 1, 0) + body + bytes(-length % 4)
+
+
+def attribute(kind: int, value: bytes) -> bytes:
+    return struct.pack("=HH", 4 + len(value), kind) + value + bytes(-len(value) % 4)
+
+
+def route(destination: str | None, prefix_length: int, *, kind: int = LOCAL, table: int = 255, family: int = 0,
+          flags: int = 0, raw_destination: bytes | None = None) -> bytes:
+    """One RTM_NEWROUTE message: a route of ``kind`` to ``destination``/``prefix_length`` in ``table``."""
+    if destination is not None:
+        ip = ipaddress.ip_address(destination)
+        family = family or (socket.AF_INET if ip.version == 4 else socket.AF_INET6)
+        raw_destination = ip.packed if raw_destination is None else raw_destination
+    family = family or socket.AF_INET6
+    attributes = attribute(15, struct.pack("=I", table))  # RTA_TABLE
+    if raw_destination is not None:
+        attributes = attribute(1, raw_destination) + attributes  # RTA_DST
+    header = struct.pack("=BBBBBBBBI", family, prefix_length, 0, 0, table if table < 256 else 252, 0, 0, kind, 0)
+    return message(NEWROUTE, header + attributes, flags)
+
+
+END = message(DONE, struct.pack("=i", 0))
+
+
+def dump(*datagrams: bytes):
+    def read(family: int) -> Iterator[bytes]:
+        yield from datagrams
+    return read
+
+
+def test_the_route_dump_gives_every_local_route_of_its_family_in_every_table():
+    """Right: the local routes of every table, across datagrams; unicast, anycast and the other family's are not."""
+    read = dump(route("3ffe:1::", 64) + route("3ffe:3::", 64, table=100) + message(NOOP),
+                route("2001:db8::", 32, kind=UNICAST) + route("3ffe:4::", 128, kind=ANYCAST)
+                + route("198.51.100.0", 24) + END)
+    assert peer.local_routes(socket.AF_INET6, read=read) == [ipaddress.ip_network("3ffe:1::/64"),
+                                                             ipaddress.ip_network("3ffe:3::/64")]
+    assert peer.local_routes(socket.AF_INET, read=read) == [ipaddress.ip_network("198.51.100.0/24")]
+
+
+@pytest.mark.parametrize("family", [socket.AF_INET, socket.AF_INET6], ids=["ipv4", "ipv6"])
+def test_a_local_default_route_covers_every_address(family):
+    """A route with no destination is the default route: its prefix is every address of the family."""
+    every = ipaddress.ip_network("0.0.0.0/0" if family == socket.AF_INET else "::/0")
+    assert peer.local_routes(family, read=dump(route(None, 0, family=family) + END)) == [every]
+
+
+@pytest.mark.parametrize("datagrams", [
+    [message(ERROR, struct.pack("=i", -1) + bytes(16))],
+    [route("3ffe:1::", 64) + message(DONE, struct.pack("=i", -16))],
+    [route("3ffe:1::", 64, flags=DUMP_INTR) + END],
+    [route("3ffe:1::", 64)],
+    [],
+    [route("3ffe:1::", 64)[:-8], END],
+    [bytes(8)],
+    [message(OVERRUN)],
+    [message(NEWROUTE, struct.pack("=BBBBBBBBI", socket.AF_INET6, 64, 0, 0, 255, 0, 0, LOCAL, 0)
+             + struct.pack("=HH", 64, 1) + bytes(16)) + END],
+    [route(None, 24, raw_destination=bytes(4)) + END],
+    [route(None, 64) + END],
+    [route("3ffe:1::", 129) + END],
+    [message(NEWROUTE, bytes(8)) + END],
+], ids=["error", "done-with-error", "interrupted", "no-end-marker", "nothing", "message-cut-short",
+        "header-cut-short", "overrun", "attribute-cut-short", "destination-wrong-size", "prefix-without-destination",
+        "prefix-too-long", "route-cut-short"])
+def test_a_route_dump_that_is_not_whole_is_never_read_as_complete(datagrams):
+    with pytest.raises(ValueError):
+        peer.local_routes(socket.AF_INET6, read=dump(*datagrams))
+
+
+def cannot_read(error: Exception):
+    def routes(family: int) -> list[peer.Network]:
+        raise error
+    return routes
+
+
+@pytest.mark.parametrize(("routes", "local"), [
+    (lambda family: [ipaddress.ip_network("3ffe:1::/64")], True),        # right: a local route covers it
+    (lambda family: [ipaddress.ip_network("3ffe:1:0:1::/64")], False),   # no local route covers it
+    (cannot_read(PermissionError(13, "synthetic")), True),               # the tables cannot be read: local
+    (cannot_read(ValueError("synthetic: not whole")), True),            # the dump is not whole: local
+], ids=["covered", "not-covered", "cannot-read", "not-whole"])
+def test_an_address_a_local_route_covers_is_local_and_unreadable_tables_count_as_local(monkeypatch, routes, local):
+    monkeypatch.setattr(peer, "_ROUTE_TABLES", True)
+    monkeypatch.setattr(peer, "_binds", lambda ip, family: False)
+    monkeypatch.setattr(peer, "local_routes", routes)
+    assert peer.is_host_address(ipaddress.ip_address("3ffe:1::5")) is local
+    assert peer.host_route("3ffe:1::5") == ("host_interface" if local else None)
+
+
+def test_where_the_tables_are_not_read_the_bind_test_is_the_whole_check(monkeypatch):
+    monkeypatch.setattr(peer, "_ROUTE_TABLES", False)
+    monkeypatch.setattr(peer, "_binds", lambda ip, family: False)
+    monkeypatch.setattr(peer, "local_routes", cannot_read(AssertionError("the tables were read")))
+    assert peer.is_host_address(ipaddress.ip_address("3ffe:1::5")) is False
+
+
+def test_the_real_tables_hold_loopback_on_linux_and_are_never_read_as_empty_elsewhere():
+    """The real dump, in the test's own namespace. Off Linux it raises rather than give no routes."""
+    if peer._ROUTE_TABLES:
+        assert any(ipaddress.ip_address("127.0.0.1") in prefix for prefix in peer.local_routes(socket.AF_INET))
+    else:
+        with pytest.raises(OSError):
+            peer.local_routes(socket.AF_INET)

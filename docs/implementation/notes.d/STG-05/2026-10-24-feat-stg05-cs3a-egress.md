@@ -4,8 +4,10 @@ wires nothing into a launch, so no run's network, behaviour or label changes. Li
 condition stands: nothing may call Linux runs network-contained before its live lane passes.
 
 - **`aew.harness.containment.peer`** is ruling R-6's one owner.
-  - `host_route` refuses loopback, link-local and host-local addresses: "this host" (`0.0.0.0/8`, `::`), and the
-    kernel's local table, read by a bind that is never listened on.
+  - `host_route` refuses loopback, link-local and host-local addresses: "this host" (`0.0.0.0/8`, `::`), and every
+    address the kernel delivers to this host, whatever route makes it local. That is an address that binds, or one a
+    `local` route covers in any of the kernel's routing tables, in either family. Tables that cannot be read count as
+    local.
   - It judges IPv4-mapped, IPv4-compatible and NAT64 forms by the IPv4 address they carry too.
   - It judges addresses, never names.
   - `not_public` is the any-public-address policy's test.
@@ -17,13 +19,13 @@ condition stands: nothing may call Linux runs network-contained before its live 
   - A tunnel ends both ways when either side ends it.
 - **Stricter than the hand-off, and accepted by the Lead:**
   - R-6 also refuses `0.0.0.0/8` and `::`.
-  - Host-local is the kernel's local table, not a list of interfaces.
+  - Host-local is whatever the kernel delivers to this host, not a list of interfaces.
   - A name with any refused answer is refused whole.
 - **Known limits**, which CS-3b or CS-4 decide where the shim, the proxy's only client, exists:
   - concurrent tunnels are unbounded;
   - an established tunnel has no idle timeout;
   - under `net.ipv4.ip_nonlocal_bind=1`, every address counts as local, so all egress is refused.
 - **CS-3b,** after CS-2 merges, wires it in: the AF_UNIX listener and its bind, the shim, the relay, the namespace, the
-  label and the self-test row. F28's row has this slice's one note, which names this stage
+  label and the self-test row. F28's row has one note, which points here
   ([`../F28/2026-10-23-feat-stg05-cs3a-egress.md`](../F28/2026-10-23-feat-stg05-cs3a-egress.md)). CS-3's later notes
   go here.

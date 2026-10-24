@@ -6,8 +6,9 @@ rule's one owner. It is called on resolved addresses, before the connect and aga
 address, never on a name: a name raises.
 
 - **Host-local** is "this host" (``0.0.0.0/8`` and ``::``, which a Linux connect delivers to loopback) and every
-  address in the kernel's local table (:func:`is_host_address`), not a list of interfaces: the kernel decides what it
-  delivers locally, AnyIP routes included.
+  address the kernel delivers to this host, whatever route makes it local (:func:`is_host_address`), not a list of
+  interfaces: an address that binds, or one a ``local`` route covers in any of the kernel's routing tables, in either
+  family. Where the tables cannot be read, the address counts as local.
 - **IPv6 forms of an IPv4 address** are judged by the IPv4 address too: IPv4-mapped (``::ffff:0:0/96``, which a
   dual-stack socket connects to over IPv4), IPv4-compatible (``::/96``, deprecated) and NAT64's well-known prefix
   (``64:ff9b::/96``). Zone ids are dropped (``fe80::1%eth0``). **Coverage limit:** no other embedding is unwrapped:
@@ -31,13 +32,17 @@ whose reachability IANA gives as not applicable, is refused too.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import ipaddress
 import socket
-from collections.abc import Callable
+import struct
+import sys
+from collections.abc import Callable, Generator, Iterable
 from typing import Any
 
 IP = ipaddress.IPv4Address | ipaddress.IPv6Address
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # R-6's ranges: (block, reason). Nothing in them is ever connected to.
 _IPV4_HOST_ROUTE = (
@@ -130,14 +135,107 @@ def _lookup(ip: IP, v4: tuple[Any, ...], v6: tuple[Any, ...]) -> str | None:
     return None
 
 
-def is_host_address(ip: IP) -> bool:
-    """Whether ``ip`` is in this host's local table: a ``bind`` to it (port 0, never listened on) succeeds only for an
-    address the kernel delivers locally. Fails closed: any error but ``EADDRNOTAVAIL`` (Windows' WSAEADDRNOTAVAIL,
-    10049, is the same ``errno``) counts as local, an IPv6 address on a host without IPv6 among them.
+# rtnetlink's wire format (linux/netlink.h, linux/rtnetlink.h), for a dump of the routing tables.
+_NLMSG = struct.Struct("=IHHII")      # nlmsghdr: length, type, flags, sequence, port id
+_RTMSG = struct.Struct("=BBBBBBBBI")  # rtmsg: family, dst_len, src_len, tos, table, protocol, scope, type, flags
+_RTATTR = struct.Struct("=HH")        # rtattr: length, type
+_NLMSG_NOOP, _NLMSG_DONE = 1, 3       # any other control message (NLMSG_ERROR, an overrun) means the dump failed
+_NLM_F_REQUEST, _NLM_F_DUMP_INTR, _NLM_F_DUMP = 0x1, 0x10, 0x300
+_RTM_NEWROUTE, _RTM_GETROUTE = 24, 26
+_RTN_LOCAL = 2
+_RTA_DST = 1
+# AEW's choice: each read of the dump waits this long at most, and a dump that stalls counts as unreadable.
+ROUTE_DUMP_TIMEOUT = 5.0
+# A dump's datagrams are at most 32 KiB (net/netlink/af_netlink.c caps max_recvmsg_len), so this never cuts one.
+_DATAGRAM = 65536
+# The tables are read where the proxy runs, on Linux. Elsewhere the bind test is the whole check.
+_ROUTE_TABLES = sys.platform == "linux"
 
-    Residual: with ``net.ipv4.ip_nonlocal_bind=1`` (or its IPv6 twin) every address binds, so every address counts as
-    local and the proxy refuses all egress. Safe, and surprising: the refusal's reason is ``host_interface``."""
-    family = socket.AF_INET if isinstance(ip, ipaddress.IPv4Address) else socket.AF_INET6
+
+def _route_dump(family: int) -> Generator[bytes, None, None]:
+    """The kernel's datagrams answering a dump of every routing table's ``family`` routes (rtnetlink, Linux only)."""
+    if sys.platform != "linux":
+        raise OSError(errno.EAFNOSUPPORT, "the routing tables are read only on Linux")
+    sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_ROUTE)
+    try:
+        sock.settimeout(ROUTE_DUMP_TIMEOUT)
+        request = _RTMSG.pack(family, 0, 0, 0, 0, 0, 0, 0, 0)  # table 0: every table
+        sock.send(_NLMSG.pack(_NLMSG.size + len(request), _RTM_GETROUTE, _NLM_F_REQUEST | _NLM_F_DUMP, 1, 0) + request)
+        while True:
+            data, _, flags, _ = sock.recvmsg(_DATAGRAM)
+            if flags & socket.MSG_TRUNC:
+                raise OSError(errno.EMSGSIZE, "a route dump datagram was cut short")
+            yield data
+    finally:
+        sock.close()
+
+
+def _local_prefix(body: bytes, family: int) -> Network | None:
+    """The prefix one dumped route covers if it is a ``local`` route of ``family``, else None."""
+    if len(body) < _RTMSG.size:
+        raise ValueError("a route message is cut short")
+    route_family, dst_len, _, _, _, _, _, kind, _ = _RTMSG.unpack_from(body)
+    if route_family != family or kind != _RTN_LOCAL:
+        return None
+    size = 4 if family == socket.AF_INET else 16
+    dst = None
+    offset = _RTMSG.size
+    while offset + _RTATTR.size <= len(body):
+        length, attribute = _RTATTR.unpack_from(body, offset)
+        if length < _RTATTR.size or offset + length > len(body):
+            raise ValueError("a route attribute is cut short")
+        if attribute == _RTA_DST:
+            dst = body[offset + _RTATTR.size:offset + length]
+        offset += (length + 3) & ~3
+    if dst is None and dst_len == 0:
+        dst = bytes(size)  # no destination: a default route, which covers every address
+    if dst is None or len(dst) != size:
+        raise ValueError("a local route's destination is malformed")
+    return ipaddress.ip_network((ipaddress.ip_address(dst), dst_len), strict=False)  # a prefix too long raises
+
+
+def _local_prefixes(datagrams: Iterable[bytes], family: int) -> list[Network]:
+    """The prefixes the ``local`` routes in a route dump cover. Raises ``ValueError`` unless the dump is whole: it ends
+    with the kernel's end marker, reports no error, and no table changed while it was read."""
+    prefixes: list[Network] = []
+    for data in datagrams:
+        offset = 0
+        while offset < len(data):
+            if len(data) - offset < _NLMSG.size:
+                raise ValueError("a route dump message is cut short")
+            length, kind, flags, _, _ = _NLMSG.unpack_from(data, offset)
+            if length < _NLMSG.size or offset + length > len(data):
+                raise ValueError("a route dump message is cut short")
+            if flags & _NLM_F_DUMP_INTR:
+                raise ValueError("a routing table changed while it was read")
+            body = data[offset + _NLMSG.size:offset + length]
+            if kind == _NLMSG_DONE:
+                if len(body) >= 4 and struct.unpack_from("=i", body)[0] < 0:
+                    raise ValueError("the kernel ended the route dump with an error")
+                return prefixes
+            if kind == _RTM_NEWROUTE:
+                prefix = _local_prefix(body, family)
+                if prefix is not None:
+                    prefixes.append(prefix)
+            elif kind != _NLMSG_NOOP:
+                raise ValueError(f"the route dump holds a message of type {kind}")
+            offset += (length + 3) & ~3
+    raise ValueError("the route dump ended before the kernel's end marker")
+
+
+def local_routes(family: int, *, read: Callable[[int], Generator[bytes, None, None]] = _route_dump) -> list[Network]:
+    """Every prefix a ``local`` route covers in any of the kernel's routing tables, for ``family`` (``AF_INET`` or
+    ``AF_INET6``): what ``ip route show table all type local`` lists. Every table, not a route lookup: a policy rule
+    can choose a table by more than the destination, and every table holds whatever any rule can choose. Raises
+    ``OSError`` or ``ValueError`` when the tables cannot be read whole."""
+    with contextlib.closing(read(family)) as datagrams:
+        return _local_prefixes(datagrams, family)
+
+
+def _binds(ip: IP, family: int) -> bool:
+    """Whether a ``bind`` to ``ip`` (port 0, never listened on) succeeds, which it does only for an address of this
+    host. Any error but ``EADDRNOTAVAIL`` (Windows' WSAEADDRNOTAVAIL, 10049, is the same ``errno``) counts as a
+    success, an IPv6 address on a host without IPv6 among them."""
     try:
         probe = socket.socket(family, socket.SOCK_STREAM)
     except OSError:
@@ -149,6 +247,27 @@ def is_host_address(ip: IP) -> bool:
     finally:
         probe.close()
     return True
+
+
+def is_host_address(ip: IP) -> bool:
+    """Whether the kernel delivers ``ip`` to this host, whatever route makes it local. Either test makes it local:
+    a bind to it succeeds (:func:`_binds`), or, on Linux, a ``local`` route covers it in one of the routing tables
+    (:func:`local_routes`). The bind test is kept: it is the whole check off Linux, and with both an address is
+    refused whenever either test would refuse it. Fails closed: a bind error but "not available", and tables that
+    cannot be read, count as local.
+
+    Residual: with ``net.ipv4.ip_nonlocal_bind=1`` (or its IPv6 twin) every address binds, so every address counts as
+    local and the proxy refuses all egress. Safe, and surprising: the refusal's reason is ``host_interface``. Each
+    check reads every table, which is slow only on a host that carries a full Internet routing table."""
+    family = socket.AF_INET if isinstance(ip, ipaddress.IPv4Address) else socket.AF_INET6
+    if _binds(ip, family):
+        return True
+    if not _ROUTE_TABLES:
+        return False
+    try:
+        return any(ip in prefix for prefix in local_routes(family))
+    except (OSError, ValueError, struct.error):
+        return True
 
 
 def host_route(value: Any, *, is_local: Callable[[IP], bool] = is_host_address) -> str | None:

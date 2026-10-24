@@ -56,7 +56,7 @@ from aew.harness.containment import peer
 # request-line and header-field limit (LimitRequestLine, LimitRequestFieldSize: 8190 bytes), rounded up.
 MAX_HEADER = 8192
 # The shim forwards a CONNECT as soon as the harness sends it. The whole request head has one deadline, this long
-# after the connection was accepted, however its bytes are spaced.
+# from when the proxy starts reading the request, however its bytes are spaced.
 HEADER_TIMEOUT = 10.0
 # A refused or unreachable address fails in milliseconds (F28 §1, P1); this bounds only a SYN nobody answers.
 CONNECT_TIMEOUT = 10.0
@@ -205,7 +205,7 @@ class EgressProxy:
     it serves only the connections passed to :meth:`handle`.
 
     ``resolve``, ``connect`` and ``is_local`` are seams for tests: the defaults are the host's resolver, a plain
-    connect to a literal address, and the kernel's local table. Nothing a request carries reaches them."""
+    connect to a literal address, and :func:`peer.is_host_address`. Nothing a request carries reaches them."""
 
     def __init__(self, policy: Policy, *, listener: socket.socket | None = None, resolve: Resolver = _resolve,
                  connect: Connector = _connect, is_local: Callable[[peer.IP], bool] = peer.is_host_address,

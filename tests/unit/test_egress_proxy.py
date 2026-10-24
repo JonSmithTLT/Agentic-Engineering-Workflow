@@ -84,9 +84,10 @@ class ConnectSpy:
     """Records every connect. With no ``peer`` it connects nowhere; with one it returns a socketpair end reporting
     that peer, and keeps the far end in ``far`` for the test to play the upstream."""
 
-    def __init__(self, peer_address: Any = None, *, small: bool = False) -> None:
+    def __init__(self, peer_address: Any = None, *, small: bool = False, kind: type[Reported] = Reported) -> None:
         self.peer_address = peer_address
         self.small = small
+        self.kind = kind
         self.calls: list[tuple[str, int]] = []
         self.far: list[socket.socket] = []
 
@@ -99,7 +100,7 @@ class ConnectSpy:
             small_buffers(near, far)
         far.settimeout(TIMEOUT)
         self.far.append(far)
-        up = Reported(fileno=near.detach())
+        up = self.kind(fileno=near.detach())
         up.reported = self.peer_address
         return up
 
@@ -709,3 +710,57 @@ def test_a_failing_accept_waits_between_tries_and_close_still_returns():
         if client is not None:
             client.close()
         front.close()
+
+
+def test_close_waits_only_for_threads_that_started():
+    """A thread recorded by the accept loop but not started yet, as ``close()`` may find one, is not waited for."""
+    proxy = EgressProxy(AnyPublic())
+    proxy._handlers.add(threading.Thread(target=lambda: None))
+    proxy.close()
+    assert proxy._wake_r.fileno() == -1
+
+
+class JoinRaises(threading.Thread):
+    """A started thread whose ``join`` fails."""
+
+    def join(self, timeout: float | None = None) -> None:
+        raise RuntimeError("synthetic: join failed")
+
+
+def test_close_closes_its_own_sockets_even_when_a_step_raises():
+    front = socket.create_server(("127.0.0.1", 0))
+    proxy = EgressProxy(AnyPublic(), listener=front)
+    thread = JoinRaises(target=lambda: None)
+    thread.start()
+    threading.Thread.join(thread, TIMEOUT)
+    try:
+        proxy._handlers.add(thread)
+        with pytest.raises(RuntimeError):
+            proxy.close()
+        assert front.fileno() == -1 and proxy._wake_r.fileno() == -1 and proxy._wake_w.fileno() == -1
+    finally:
+        front.close()
+
+
+class FailsOnceOpen(Reported):
+    """An upstream that fails, with an error that is not an ``OSError``, as soon as its tunnel is open."""
+
+    def settimeout(self, value: float | None) -> None:
+        if value is None:
+            raise TypeError("synthetic: fails once open")
+        super().settimeout(value)
+
+
+def test_an_error_inside_an_open_tunnel_is_counted_and_writes_nothing_into_it():
+    """After the 200 the bytes belong to the tunnel: the client gets exactly the 200, then the end."""
+    spy = ConnectSpy(peer_address=("8.8.8.8", 443), kind=FailsOnceOpen)
+    proxy = EgressProxy(AnyPublic(), resolve=Resolver({"public.example": ["8.8.8.8"]}), connect=spy,
+                        is_local=never_local)
+    try:
+        with served(proxy) as client:
+            client.sendall(request("public.example:443"))
+            assert read_exactly(client, len(ESTABLISHED)) == ESTABLISHED
+            assert client.recv(64) == b""
+    finally:
+        spy.close()
+    assert proxy.decisions == {"allowed": 1, "proxy_error": 1}

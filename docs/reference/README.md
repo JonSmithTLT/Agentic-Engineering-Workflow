@@ -7,6 +7,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total, and carries a `digest` of every record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its family (nothing lives only there). Schema `aew/reference-index/v1`.
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
+- [writers.md](writers.md): Writers
 
 ## A record
 
@@ -19,4 +20,4 @@ What the code is, enumerated from the code. It states what the code is, never wh
 
 ## When a change moves it
 
-A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site) runs `python tools/reference.py render` and commits `docs/reference/`. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line of `counts`, so a clean merge cannot leave the totals stale.
+A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site, a place that writes under `.aew`) runs `python tools/reference.py render` and commits `docs/reference/`. A new directory or file directly under `.aew` is declared first (`TOP_LEVEL` in `tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line of `counts`, so a clean merge cannot leave the totals stale.

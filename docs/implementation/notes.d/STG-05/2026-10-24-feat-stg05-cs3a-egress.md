@@ -27,7 +27,14 @@ condition stands: nothing may call Linux runs network-contained before its live 
   - under `net.ipv4.ip_nonlocal_bind=1`, every address counts as local, so all egress is refused;
   - a `local` route that covers every address, in any table, makes its whole family local, so all of that family's
     egress is refused.
+- **Not detected:** a destination that the host's own network configuration rewrites to this host after the proxy has
+  judged it. **Precondition:** that configuration is root's; AEW adds none, and no contained process can. **Worst
+  case:** a contained process reaches the host service such a configuration names. Everything else R-6 checks still
+  holds: the address actually connected is judged before the connect and again on the peer, against loopback,
+  link-local, every address assigned to this host, and every local route in any table. The check that would detect it
+  is register row F28.1, deferred (operator, 2026-10-24).
 - **CS-3b,** after CS-2 merges, wires it in: the AF_UNIX listener and its bind, the shim, the relay, the namespace, the
-  label and the self-test row. F28's row has one note, which points here
+  label and the self-test row. The label lists this residual: "egress (R-6): a destination the host's own network
+  configuration, root's, rewrites to this host is not detected." F28's row has one note, which points here
   ([`../F28/2026-10-23-feat-stg05-cs3a-egress.md`](../F28/2026-10-23-feat-stg05-cs3a-egress.md)). CS-3's later notes
   go here.

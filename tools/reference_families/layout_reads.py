@@ -150,7 +150,7 @@ def place(sites: list[ReadSite], top_level: frozenset[str]) -> Placed:
     for site in sites:
         complete, under = True, False
         for kind, text in site.values:
-            if kind == F.TPL and text.split("/")[0] in top_level and F.PLACEHOLDER not in text.split("/")[0]:
+            if kind == F.TPL and text.split("/")[0] in top_level:  # a computed first entry is `{}`, never declared
                 reads.setdefault(text, set()).add((site.module, site.symbol))
                 under = True
             elif kind not in (F.OUT, F.ROOT):  # outside `.aew`, or the directory itself: neither is unplaced

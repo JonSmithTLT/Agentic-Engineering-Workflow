@@ -350,6 +350,10 @@ skipped:
       /etc/resolv.conf's link chain is POSIX's, and making a symlink needs a privilege on Windows (STG-05 CS-2, the
       operator's ruling of 2026-10-24). Covered on Linux; the exception's place in the argv is tested on every platform
       (test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described_with_its_reason).
+    tests/unit/test_containment_sockets.py::test_the_resolved_spelling_comes_from_the_hosts_own_resolution: >-
+      Making a symlink needs a privilege on Windows, and the inventory's host paths are POSIX (STG-05 CS-2, review of
+      #244). Covered on Linux; the resolved spelling's use is tested on every platform
+      (test_a_socket_listed_through_a_link_is_checked_at_its_resolved_path_too).
     tests/unit/test_containment_probe.py::test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_there: >-
       The probe runs in a Linux sandbox, so its paths are POSIX, and making a symlink needs a privilege on Windows
       (STG-05 CS-2, review of #244, m2). Covered on Linux; the row's judgement of what it lists is tested on every

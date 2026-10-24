@@ -221,11 +221,12 @@ if __name__ == "__main__":
 @contextlib.contextmanager
 def _control() -> Iterator[tuple[str, str]]:
     """``(its path, its directory)``: a listener of the probe's own, bound before the socket table is read. A table
-    that does not list it is not this network namespace's (D-CS2-2). In a fresh private directory of the host's
-    temporary directory, which no sandbox sees (its /tmp is its own)."""
+    that does not list it is not this network namespace's (D-CS2-2). In a fresh private directory of the host's /tmp,
+    whatever TMPDIR says, which no sandbox sees (its /tmp is its own; as ``bridge.private_address``)."""
     if sys.platform == "win32":
         raise OSError("no Unix socket table on Windows")
-    directory = tempfile.mkdtemp(prefix="aew-probe-")
+    tmp = "/tmp"  # noqa: S108
+    directory = tempfile.mkdtemp(prefix="aew-probe-", dir=tmp if os.path.isdir(tmp) else None)
     path = os.path.join(directory, "control")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:

@@ -7,12 +7,16 @@ every platform. The real self-test on a real host is in tests/integration/test_c
 
 from __future__ import annotations
 
+import os
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 from aew.harness.containment import sockets as S
+
+REALDIR = S._realdir  # the host's own resolution, before any test fakes it
 
 # One planted path per row of the table, and the class it must get (the hand-off's list and the Lead's rulings).
 PLANTED = {
@@ -368,3 +372,40 @@ def test_a_listening_socket_the_launching_user_owns_whose_holder_cannot_be_ident
     got = S.inventory(control=CONTROL, env={})["candidates"]
     assert [(c["path"], c["class"], c.get("holder")) for c in got] == [
         (path, cls, S.UNIDENTIFIED if cls == S.CREDENTIAL else None)]
+
+
+def test_a_listening_socket_is_judged_by_its_own_holder_whatever_else_the_table_lists_under_its_name(monkeypatch):
+    """D-CS2-6 is decided per listening socket: another entry of the same name, held by a process the launcher can
+    read (an accepted connection, or a second listener), never identifies its holder."""
+    path = "/home/u/tools/svc.sock"
+    for other in ((6, path, False), (6, path, True)):
+        fake_host(monkeypatch, entries=[(5, path, True), other], listeners={6: "python3.11"},
+                  stats={path: (0x0802, 50, 1000)})
+        got = S.inventory(control=CONTROL, env={})["candidates"]
+        assert [(c["class"], c.get("holder")) for c in got] == [(S.CREDENTIAL, S.UNIDENTIFIED)], other
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a symlink needs a privilege on Windows, and the host's paths "
+                                                    "are POSIX where the inventory runs")
+def test_the_resolved_spelling_comes_from_the_hosts_own_resolution(monkeypatch, tmp_path):
+    """The resolved spelling of a listed path is the host's own (os.path.realpath of its directory), here on a link of
+    the test's own; the other tests fake it."""
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real, target_is_directory=True)
+    listed = str(tmp_path / "link" / "s.sock")
+    fake_host(monkeypatch, entries=[(1, listed, True)], stats={listed: (0x0802, 60)})
+    monkeypatch.setattr(S, "_realdir", REALDIR)
+    got = S.inventory(control=CONTROL, env={})["candidates"]
+    assert [c["real"] for c in got] == [{"path": os.path.join(os.path.realpath(real), "s.sock"), "fspath": None}]
+
+
+def test_a_directory_the_launcher_cannot_list_is_recorded_unchecked_with_why(monkeypatch):
+    """A listed path that is gone, in a directory the launcher cannot list, is recorded under unchecked with its
+    class and the error; it is never dropped."""
+    fake_host(monkeypatch, entries=[(1, "/home/other/cm/master.Xy12", True)],
+              directories={"/home/other/cm": PermissionError(13, "Permission denied")})
+    got = S.inventory(control=CONTROL, env={})
+    assert got["unchecked"] == [{"path": "/home/other/cm/master.Xy12", "class": S.REPORTED,
+                                 "error": "Permission denied"}]
+    assert got["candidates"] == []

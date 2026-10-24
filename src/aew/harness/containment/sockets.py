@@ -332,14 +332,12 @@ def inventory(*, control: str, own: tuple[str, ...] = (), env: Mapping[str, str]
     entries = table(path)
     held, unreadable = listeners({e.inode for e in entries})
     classes: dict[str, str] = {}
-    listening, identified = set(), set()
+    unheld: set[str] = set()  # names with a listening socket whose own inode no readable process holds (D-CS2-6)
     for e in entries:  # an accepted connection is listed under its listener's name: one class per name
         named = classes.get(e.name) or classify(e.name, own=own, env=env)
         classes[e.name] = worse(named, by_executable(held.get(e.inode)))
-        if e.listening:
-            listening.add(e.name)
-        if e.inode in held:
-            identified.add(e.name)
+        if e.listening and e.inode not in held:
+            unheld.add(e.name)
     uid = _uid()
     host = mounts()
     candidates: dict[str, dict[str, Any]] = {}
@@ -374,7 +372,7 @@ def inventory(*, control: str, own: tuple[str, ...] = (), env: Mapping[str, str]
             real = posixpath.join(_realdir(posixpath.dirname(p)), posixpath.basename(p))  # a sandbox's paths: POSIX
             if real != p:  # each spelling is checked inside, and takes its class (review of #244)
                 mine = worse(mine, classify(real, own=own, env=env))
-            unknown = name in listening and name not in identified and fst.st_uid == uid
+            unknown = name in unheld and fst.st_uid == uid
             if unknown:
                 mine = worse(mine, CREDENTIAL)
             prior = candidates.get(p)

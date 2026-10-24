@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import os
 import stat
 import sys
 from types import SimpleNamespace
@@ -135,6 +136,40 @@ def test_an_unreadable_table_is_an_error_the_row_fails_on(monkeypatch):
     got = probe._inventory(own=(), env={})
     assert got["error"].startswith("the socket table could not be read")
     assert probe._row2(LAYOUT, {**GOOD, "inventory": got})["ok"] is False
+
+
+def test_the_probes_control_listener_is_made_under_tmp_whatever_tmpdir_says(monkeypatch, tmp_path):
+    """Review of #244, n4: the control listener's directory is made in the host's /tmp, which no sandbox sees (each
+    has its own), even when the launching TMPDIR names a tree the read-only root shows. Synthetic: nothing is bound."""
+    made: dict = {}
+
+    def mkdtemp(**kw):
+        made.update(kw)
+        (tmp_path / "aew-probe-x").mkdir()
+        return str(tmp_path / "aew-probe-x")
+
+    class Listener:
+        def __init__(self, *_a):
+            pass
+
+        def bind(self, path):
+            made["bound"] = path
+
+        def listen(self, _n):
+            pass
+
+        def close(self):
+            pass
+
+    isdir = probe.os.path.isdir
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(probe, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(probe, "socket", SimpleNamespace(socket=Listener, AF_UNIX=1, SOCK_STREAM=1))
+    monkeypatch.setattr(probe.tempfile, "mkdtemp", mkdtemp)
+    monkeypatch.setattr(probe.os.path, "isdir", lambda p: p == "/tmp" or isdir(p))
+    with probe._control() as (path, directory):
+        assert (made["dir"], made["prefix"]) == ("/tmp", "aew-probe-")
+        assert made["bound"] == path == os.path.join(directory, "control")
 
 
 def test_a_table_that_does_not_parse_is_an_error_the_row_fails_on_never_a_crash(monkeypatch):
@@ -302,7 +337,8 @@ def test_the_probe_is_handed_each_spelling_of_each_socket():
 def test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_there(tmp_path):
     """Review of #244, m2: row 2's "holding only what the layout put there" rests on the probe's listing of each mask.
     In a synthetic tree, the paths the layout put there and the directories on the way to them are not listed, nor is
-    anything under them; any other entry is, a link on the way included."""
+    anything under them; any other entry is, a link included, and a link on the way to an allowed path too (review of
+    #244, n3)."""
     masked_tree = payload()["masked_tree"]
     root = tmp_path / "run"
     allowed = root / "media" / "u" / "d" / "proj"
@@ -310,9 +346,13 @@ def test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_th
     (root / "media" / "u" / "other").write_text("x")
     (root / "media" / "u" / "d" / ".hidden").mkdir()
     (root / "lnk").symlink_to(root / "media")
-    assert sorted(masked_tree(str(root), {str(allowed)})) == sorted(
-        str(p) for p in (root / "media" / "u" / "other", root / "media" / "u" / "d" / ".hidden", root / "lnk"))
-    assert masked_tree(str(root), {str(allowed), str(root / "media" / "u" / "other"),
+    (tmp_path / "elsewhere" / "proj").mkdir(parents=True)
+    (root / "via").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    beyond = root / "via" / "proj"  # allowed, but reached through a link
+    assert sorted(masked_tree(str(root), {str(allowed), str(beyond)})) == sorted(
+        str(p) for p in (root / "media" / "u" / "other", root / "media" / "u" / "d" / ".hidden", root / "lnk",
+                         root / "via"))
+    assert masked_tree(str(root), {str(allowed), str(beyond), str(root / "via"), str(root / "media" / "u" / "other"),
                                    str(root / "media" / "u" / "d" / ".hidden"), str(root / "lnk")}) == []
 
 

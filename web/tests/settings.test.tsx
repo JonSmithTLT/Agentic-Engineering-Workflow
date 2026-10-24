@@ -39,7 +39,7 @@ it('masked profile locators are digest-bound and not reusable from a different d
   mount(`?settings_case=withheld&settings_profile=1&settings_digest=sha256:${'b'.repeat(64)}`);
   await screen.findByText('Selected profile belongs to a different document digest. Select a profile from this document.');
   expect(screen.queryByRole('heading', { name: 'Profile 1 (name withheld)' })).toBeNull();
-  expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(0);
+  expect(screen.queryAllByRole('button', { pressed: true })).toHaveLength(0);
   const pick = screen.getByRole('button', { name: 'Profile 1 (name withheld)' });
   fireEvent.click(pick);
   await screen.findByRole('heading', { name: 'Profile 1 (name withheld)' });

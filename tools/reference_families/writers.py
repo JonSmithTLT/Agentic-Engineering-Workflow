@@ -17,11 +17,14 @@ one pointer item to them (any of them may write that path). A destination provab
 directory, the console, the repository's working tree) is listed on the page and is no record.
 
 Each writer carries the entry points that reach it (:mod:`reference_families.writers_reach`), as a lower bound (a chain
-of resolved calls, and nothing more); a writer with no chain is unresolved on the records it appears in. Where several
-entry points share one declaring function (the CLI's four roles), a writer it reaches is reached from all of them: its
-record says so, with an unresolved item anchored at that function, and the call graph does not decide which role
-runs it. A second detector, :mod:`reference_families.writers_text`, finds the write-primitive calls by tokens, and
-the two must agree per module.
+of resolved calls, and nothing more); a writer with no chain is unresolved on the records it appears in. The CLI's roles
+share one declaring function, and the command decides the role, so they are cut by the parser
+(:mod:`reference_families.writers_roles`): a handler is reached by the role of its command. A handler whose command
+cannot be read is reached by every role, and the writers behind it say so, with an unresolved item anchored at the
+function that registers it. The role the environment selects reaches nothing by the call graph: a store write that the
+general handlers reach carries an item that says the lock refuses it there (`process_kind.require_writer`, tested at run
+time and not proved here). A second detector, :mod:`reference_families.writers_text`, finds the write-primitive calls
+by tokens, and the two must agree per module.
 
 What it does not see is the family's ``cannot see`` list, pinned by probes in the tests: a path built in one function
 and written in another through a value this reading cannot follow (a command-line argument, an environment variable, a
@@ -39,9 +42,11 @@ from typing import Any, NamedTuple
 from reference_families import common as C
 from reference_families import writers_flow as F
 from reference_families import writers_reach as R
+from reference_families import writers_roles as ROLES
 
 FAMILY = "writers"
 STORE_TRANSACTION, DIRECT = "store-transaction", "direct"
+LOCAL = "local"  # the top-level directory of rebuildable runtime data, kept out of git (`AEW_GITIGNORE`)
 
 # The entries directly under `.aew` (directories, and the two files `.gitignore` and `project.yaml`). The code has no
 # single owner of this set (the project manifest names some of them), so it is declared here, pinned both ways by the
@@ -95,6 +100,9 @@ CANNOT_SEE: tuple[tuple[str, str], ...] = (
      "`.open` also has (a mode in `mode=` that cannot be read is an unresolved write)"),
     ("metadata-calls", "`chmod`, `os.utime`, `fsync_dir` and other calls that change a file's metadata or durability "
      "and not its content (not writes)"),
+    ("handler-by-name", "a command handler that calls an engine method by a name held in a variable, "
+     "`getattr(engine, name)(...)` (the `integrate` commands' handlers, for one): the writers behind it are not "
+     "attributed to the command's role"),
 )
 
 
@@ -123,11 +131,12 @@ def _keyword(call: ast.Call, name: str) -> ast.expr | None:
 
 def _bound_values(func: F.Func | None, name: str) -> list[ast.expr] | None:
     """Every expression a local name is bound to in the function (assignments and `|=`), or None when it is bound to
-    nothing the function shows (a parameter, a global) or by a loop or an unpacking."""
+    nothing the function shows (a parameter, a global, a name that is only augmented: what it started as is not shown)
+    or by a loop or an unpacking."""
     if func is None or name in func.opaque and name not in func.augs or name in func.loops:
         return None
-    values = [*func.assigns.get(name, []), *func.augs.get(name, [])]
-    return values or None
+    assigned = func.assigns.get(name, [])
+    return [*assigned, *func.augs.get(name, [])] if assigned else None
 
 
 def mode_verdict(func: F.Func | None, node: ast.expr | None, seen: frozenset[str] = frozenset()) -> str:
@@ -405,12 +414,17 @@ class Analysis(NamedTuple):
     named: dict[str, list[tuple[str, str]]]
     sites: list[Site]
     reach: dict[tuple[str, str], set[str]]  # (module, symbol) -> entry-point keys whose root reaches it
+    undecided: dict[tuple[str, str], set[tuple[str, str]]]  # (module, symbol) -> the registrars of handlers reaching it
     kinds: dict[str, str]  # entry-point key -> its kind
-    roots: dict[tuple[str, str], set[str]]
+    roles: ROLES.Roles | None  # the CLI's roles (None: the program has no CLI)
+    cut: ROLES.Cut | None  # the CLI cut per role
 
 
 def analyse(program: F.Program, top_level: frozenset[str], roots: dict[tuple[str, str], set[str]] | None = None,
-            kinds: dict[str, str] | None = None, dispatchers: set[tuple[str, str]] | None = None) -> Analysis:
+            kinds: dict[str, str] | None = None, cli: tuple[set[tuple[str, str]], ROLES.Roles, ROLES.Cut] | None = None
+            ) -> Analysis:
+    """``cli`` is what cuts the CLI's roles: the functions that declare them, the roles, and the cut (``None`` when the
+    program has no CLI: every root then reaches by calls alone)."""
     evaluator = F.Evaluator(program)
     sites = sites_of(program, evaluator)
     grouped: dict[str, dict[tuple[str, str, str], set[str]]] = {}
@@ -439,10 +453,12 @@ def analyse(program: F.Program, top_level: frozenset[str], roots: dict[tuple[str
             root_sites.add((site.module, site.symbol, site.primitive))
     writers = {t: [Writer(m, s, mech, tuple(sorted(via))) for (m, s, mech), via in sorted(by.items())]
                for t, by in sorted(grouped.items())}
+    cli_roots, roles, cut = cli if cli is not None else (set(), None, ROLES.Cut([], {}, {}))
+    reached = R.reached_from(program, roots or {}, cli_roots, cut)
     return Analysis(writers, {k: (m, "; ".join(sorted(r))) for k, (m, r) in sorted(unresolved.items())},
                     {k: sorted(v) for k, v in sorted(outside.items())}, sorted(root_sites),
-                    named_by(program, evaluator, top_level), sites,
-                    R.reached_from(program, roots or {}, dispatchers or set()), dict(kinds or {}), dict(roots or {}))
+                    named_by(program, evaluator, top_level), sites, reached.entry_points, reached.undecided,
+                    dict(kinds or {}), roles, cut if cli is not None else None)
 
 
 def derived_top_level(sites: list[Site]) -> set[str]:
@@ -452,15 +468,39 @@ def derived_top_level(sites: list[Site]) -> set[str]:
             for first in destination(site, frozenset()).undeclared}
 
 
-def shared_roots(roots: Mapping[tuple[str, str], Iterable[str]]) -> dict[tuple[str, str], tuple[str, ...]]:
-    """The declaring functions that declare more than one entry point (the CLI's declares four roles)."""
-    return {root: tuple(sorted(keys)) for root, keys in roots.items() if len(set(keys)) > 1}
+UNDECIDED_WHY = ("a handler registered here is of a command this reading cannot read from the parser, so which of the "
+                 "CLI's roles runs the writers it reaches is not decided, and it counts as run by every role")
+GATE_SYMBOL = ("aew.process_kind", "require_writer")
 
 
-def role_why(keys: Iterable[str]) -> str:
-    """What a record says of a writer a shared declaring function reaches: the call graph cannot tell which role."""
-    return ("the entry points " + ", ".join(sorted(keys)) + " share this declaring function; which of them reaches "
-            "this writer is not decided here, and none is ruled out")
+def store_class(directory: str, mechanism: str) -> bool:
+    """Whether a write is to the store: staged by the store's transaction, or direct under a directory other than
+    ``local/`` (the rebuildable data, which takes no control lock). A path prefix and a mechanism tell them apart; no
+    field says it."""
+    return mechanism == STORE_TRANSACTION or directory != LOCAL
+
+
+def gated(directory: str, mechanism: str, keys: Iterable[str], roles: ROLES.Roles | None) -> bool:
+    """Whether the worker role may reach this write without the call graph saying so: a store write that the general
+    handlers reach and the worker role (chosen by the environment, not by a command) is not already given."""
+    return roles is not None and store_class(directory, mechanism) and roles.general in set(keys) and (
+        roles.worker not in set(keys))
+
+
+# The run-time test of the gate, in tests/integration/test_non_writer_reads.py (a tree test holds that it exists).
+GATE_TEST = "test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock"
+
+
+def gate_item(roles: ROLES.Roles) -> dict[str, Any]:
+    return C.unresolved_item(*GATE_SYMBOL, (
+        f"the role `{roles.worker}` is chosen by an environment variable and not by a command, so the call graph "
+        "attributes no handler to it; a store write that its process reaches is refused by "
+        "`process_kind.require_writer` (at the control lock, and before an operation whose purpose is a write), "
+        f"tested at run time by `{GATE_TEST}` and not proved here"))
+
+
+def undecided_item(registrar: tuple[str, str]) -> dict[str, Any]:
+    return C.unresolved_item(registrar[0], registrar[1] or None, UNDECIDED_WHY)
 
 
 def pointer_item() -> dict[str, Any]:
@@ -470,7 +510,6 @@ def pointer_item() -> dict[str, Any]:
 def records_of(analysis: Analysis) -> list[C.Record]:
     records = []
     pointer = pointer_item()
-    shared = shared_roots(analysis.roots)
     for template, writers in analysis.writers.items():
         owners = analysis.named.get(template, [])
         anchor_module, anchor_symbol = owners[0] if owners else (writers[0].module, writers[0].symbol)
@@ -482,9 +521,9 @@ def records_of(analysis: Analysis) -> list[C.Record]:
                           "entry_points": keys, "entry_kinds": sorted({analysis.kinds[k] for k in keys})})
             if not keys:
                 unreached.append(C.unresolved_item(w.module, w.symbol, NO_CHAIN))
-            for root, group in shared.items():
-                if set(keys) & set(group):
-                    unreached.append(C.unresolved_item(root[0], root[1], role_why(group)))
+            unreached += [undecided_item(r) for r in sorted(analysis.undecided.get((w.module, w.symbol), ()))]
+            if analysis.roles is not None and gated(template.split("/")[0], w.mechanism, keys, analysis.roles):
+                unreached.append(gate_item(analysis.roles))
         fact = {
             "prefix": template,
             "directory": template.split("/")[0],
@@ -505,13 +544,14 @@ def records_of(analysis: Analysis) -> list[C.Record]:
 WRITER_KEYS = {"module", "symbol", "mechanism", "via", "entry_points", "entry_kinds"}
 
 
-def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str],
-                    shared: Mapping[tuple[str, str], Iterable[str]] | None = None) -> list[str]:
+def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles: ROLES.Roles | None = None,
+                    undecided: Mapping[tuple[str, str], Iterable[tuple[str, str]]] | None = None) -> list[str]:
     """The family's own invariants over its records as JSON (``Record.as_json`` keyed by id), which the index checks do
     not know: a writer's mechanism is one of two, its primitives are named, its entry points are rows of the owner's
-    table and its kinds are theirs, a writer that a shared declaring function reaches says on its record that the role
-    is not decided, and every path record points at the unresolved ones. ``kinds`` is the owner's table (entry-point
-    key -> kind) and ``shared`` the declaring functions that declare several of its rows (:func:`shared_roots`)."""
+    table and its kinds are theirs, a store write that only the general CLI handlers reach says on its record that the
+    worker role is gated at the lock, a writer behind a handler of a command not read says which function registers it,
+    and every path record points at the unresolved ones. ``kinds`` is the owner's table (entry-point key -> kind),
+    ``roles`` the CLI's roles and ``undecided`` the registering functions that reach each writer function."""
     problems: list[str] = []
     pointer = pointer_item()
     for rid, r in sorted(records.items()):
@@ -558,12 +598,18 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str],
         listed = ((r.get("fact_coverage") or {}).get("writers") or {}).get("unresolved", [])
         if pointer not in listed:
             problems.append(f"{rid}: its writers do not point at the unresolved writes")
-        for root, group in sorted((shared or {}).items()):
-            reached = [w for w in writers if isinstance(w, dict) and set(w.get("entry_points", [])) & set(group)]
-            if reached and C.unresolved_item(root[0], root[1], role_why(group)) not in listed:
-                first = f"{reached[0]['module']}:{reached[0]['symbol']}"
-                problems.append(f"{rid}: {first} is reached from entry points that share {root[0]}:{root[1]}, and the "
-                                "record does not say which of them is not decided")
+        for w in writers:
+            if not isinstance(w, dict) or set(w) != WRITER_KEYS:
+                continue
+            where = f"{rid}: {w['module']}:{w['symbol']}"
+            for registrar in sorted((undecided or {}).get((w["module"], w["symbol"]), ())):
+                if undecided_item(registrar) not in listed:
+                    problems.append(f"{where} is behind a handler registered in {registrar[0]}:{registrar[1]} for a "
+                                    "command this reading could not read, and the record does not say so")
+            if roles is not None and gated(fact.get("directory", ""), w["mechanism"], w["entry_points"], roles):
+                if gate_item(roles) not in listed:
+                    problems.append(f"{where} is a store write that the general handlers reach, and the record does "
+                                    "not say that the worker role is gated at the lock")
         if (r.get("coverage") or {}).get("unresolved") != [pointer]:
             problems.append(f"{rid}: its coverage does not point at the unresolved writes")
     return problems
@@ -578,46 +624,62 @@ def _anchor(module: str, symbol: str | None) -> str:
 NON_WRITER = "non_writer"
 
 
-def exclusive_non_writers(roots: dict[tuple[str, str], set[str]], kinds: dict[str, str]) -> set[str]:
-    """The entry-point keys whose declaring function declares no store writer: a writer reached from one of these is
-    reached from a process that may not write the store. (The CLI's one root declares the store writer ``aew`` too, so
-    its three non-writer roles are not here: which role runs a command is decided by the process's arguments and
-    environment.)"""
-    return {k for keys in roots.values() if all(kinds[x] == NON_WRITER for x in keys) for k in keys}
+def role_reach(analysis: Analysis, records: list[C.Record]
+               ) -> tuple[dict[str, set[tuple[str, str]]], dict[str, set[tuple[str, str]]]]:
+    """Per entry point, the writer functions it reaches that write the store, and those that write only under ``local/``
+    (a function is in the first when any of its writes is a store write)."""
+    store: dict[str, set[tuple[str, str]]] = {key: set() for key in sorted(analysis.kinds)}
+    local: dict[str, set[tuple[str, str]]] = {key: set() for key in sorted(analysis.kinds)}
+    for r in records:
+        for w in (r.fact or {}).get("writers", []):
+            for key in w["entry_points"]:
+                (store if store_class((r.fact or {})["directory"], w["mechanism"]) else local)[key].add(
+                    (w["module"], w["symbol"]))
+    return store, {key: found - store[key] for key, found in local.items()}
 
 
 def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
-    reached: dict[str, set[tuple[str, str]]] = {key: set() for key in sorted(analysis.kinds)}
-    writer_functions: set[tuple[str, str]] = set()
-    for r in records:
-        for w in (r.fact or {}).get("writers", []):
-            writer_functions.add((w["module"], w["symbol"]))
-            for key in w["entry_points"]:
-                reached[key].add((w["module"], w["symbol"]))
-    exclusive = sorted(exclusive_non_writers(analysis.roots, analysis.kinds))
-    flagged = sorted({fn for key in exclusive for fn in reached[key]})
-    unreached = sorted(fn for fn in writer_functions if not any(fn in v for v in reached.values()))
+    store, local = role_reach(analysis, records)
+    writer_functions = {(w["module"], w["symbol"]) for r in records for w in (r.fact or {}).get("writers", [])}
+    reached = {fn for found in (*store.values(), *local.values()) for fn in found}
+    non_writers = [key for key in sorted(analysis.kinds) if analysis.kinds[key] == NON_WRITER]
+    flagged = sorted({fn for key in non_writers for fn in store[key]})
+    permitted = sorted({fn for key in non_writers for fn in local[key]})
     lines = ["## Which entry points reach the writers", "",
              "A chain of resolved calls from the function where an entry point declares itself (see "
              "[entry-points.md](entry-points.md)), so a writer's `entry_points` is a lower bound: a callback, or a "
-             "call on an object whose class is not evident, is not followed. The CLI's four roles share one declaring "
-             "function, so a writer it reaches is reached from all four; which role runs a command is decided at run "
-             "time by arguments and environment, and not here. A command that writes the store in a non-writer role "
-             "is refused when it opens the control lock (`process_kind.require_writer`); that gate is tested at run "
-             "time, not proved here.", "",
-             f"Writer functions with a store-transaction or direct write placed under `.aew`: {len(writer_functions)}; "
-             f"reached from at least one entry point: {len(writer_functions) - len(unreached)}.", ""]
-    for key, fns in reached.items():
-        lines.append(f"- `{key}` ({analysis.kinds[key]}): {len(fns)} writer functions")
-    names = ", ".join(f"`{k}`" for k in exclusive) or "none"
+             "call on an object whose class is not evident, is not followed. The CLI declares its roles in one "
+             "function and the command decides which runs, so the parser cuts them: the handler a command registers "
+             "is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the "
+             "calls the CLI's function makes itself, which every command shares, by all of them. The role the "
+             "environment selects is no command's: the call graph gives it nothing, and a store write is refused "
+             "there by `process_kind.require_writer`, a gate tested at run time and not proved here.", ""]
+    cut = analysis.cut
+    if cut is not None and analysis.roles is not None:
+        roles = analysis.roles
+        named = ", ".join(f"`{role}`: {len(cut.handlers.get(role, ()))}" for role in sorted(roles.all - {roles.worker}))
+        undecided = sorted(cut.undecided)
+        lines += [f"The parser cut: {len(cut.registrations)} registrations of a command handler; handlers by role "
+                  f"({named}; `{roles.worker}`: none, by the environment). Registrations of a command this reading "
+                  "cannot read: " + (", ".join(_anchor(m, s or None) for m, s in undecided) if undecided else "none")
+                  + (" (their handlers count as run by every role, and the writers behind them say so)."
+                     if undecided else "."), ""]
+    lines += [f"Writer functions with a store-transaction or direct write placed under `.aew`: "
+              f"{len(writer_functions)}; reached from at least one entry point: {len(reached)}.", ""]
+    for key in sorted(analysis.kinds):
+        lines.append(f"- `{key}` ({analysis.kinds[key]}): {len(store[key] | local[key])} writer functions "
+                     f"({len(store[key])} write the store, {len(local[key])} only under `local/`)")
     found = "none." if not flagged else ", ".join(_anchor(m, s) for m, s in flagged)
-    lines += ["", "**Checked:** a writer reached from an entry point whose declaring function declares no store writer "
-              f"({names}): {found}",
-              "**Not checked:** the CLI's non-writer roles share their declaring function with the store writer "
-              "`aew`, so this reading cannot tell which of the four roles reaches a writer the CLI reaches (a "
-              "non-writer is not a process that writes nothing: it takes no control lock and may write its own files "
-              "under `local/`). Cutting the CLI per role needs the parser's subcommand-to-handler mapping for the "
-              "roles `cli_entry_point` names; that is a decision for the design side.", ""]
+    allowed = "none." if not permitted else ", ".join(_anchor(m, s) for m, s in permitted)
+    lines += ["", "**Checked:** a store write (a store-transaction writer, or a direct writer under a directory other "
+              "than `local/`) reached from an entry point of kind `non_writer` ("
+              + ", ".join(f"`{k}`" for k in non_writers) + f"): {found}",
+              "**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable "
+              "runtime data kept out of git (`AEW_GITIGNORE`), and a write there takes no control lock: "
+              f"{allowed}",
+              "**Not checked:** a handler that calls its engine method by a name held in a variable is not followed, "
+              "so the writers behind it are not attributed to its role; and what the worker role may write is "
+              "`process_kind.require_writer`'s to refuse (above), not this reading's to prove.", ""]
     return lines
 
 
@@ -635,7 +697,12 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         "and in [gaps.md](gaps.md), and any of those may write any path here. A call whose `open` mode or `os.open` "
         "flags cannot be read is one of those records too (its primitive ends in `?`): whether it writes is not "
         "decided. The primitives it reads: " + ", ".join(f"`{label}`" for label in primitive_labels()) + ". "
-        "What this reading does not see: " + "; ".join(text for _, text in CANNOT_SEE) + ".", ""]
+        "What this reading does not see: " + "; ".join(text for _, text in CANNOT_SEE) + ".", "",
+        "A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its own when its name is a fixed "
+        "string, or the path's own name, suffix or stem with a fixed string added "
+        "(`p.with_name(p.name + \".queue\")`). A name made by the process (a process or thread id, a clock, a random "
+        "value, `tempfile`) is part of the write protocol of its path and is taken as that path, as is an f-string "
+        "that starts with the path (`f\"{path}.tmp\"`). Any other name is a write this reading cannot place.", ""]
     by_dir: dict[str, list[C.Record]] = {}
     for r in records:
         if r.fact and r.fact.get("prefix"):
@@ -678,10 +745,10 @@ def build(ctx: C.Context) -> C.Built:
 
     trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
     kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
-    analysis = analyse(F.Program.of(trees), frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds,
-                       R.dispatchers_of(ctx))
+    program = F.Program.of(trees)
+    analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
     records = records_of(analysis)
-    problems = record_problems({r.id: r.as_json() for r in records}, kinds, shared_roots(analysis.roots))
+    problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)
     if problems:
         raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(problems[:20]))
     return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL)})

@@ -18,7 +18,6 @@ Unresolved items: **69**.
 ## writers (64)
 
 - `aew`: write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
-- `aew.cli.main:_main`: the entry points aew, aew (worker run), aew dashboard serve, aew lead mcp share this declaring function; which of them reaches this writer is not decided here, and none is ruled out
 - `aew.engine.context_ops:ContextPacks.build_pack`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.coordination_ops:Coordination._ensure_marker`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.coordination_ops:Coordination._write`: no static call chain from any entry point's declaring function reaches this writer
@@ -74,6 +73,7 @@ Unresolved items: **69**.
 - `aew.history.store:History.write_record`: session.write of a path this reading cannot place: `rel` is bound by a `with`, an unpacking or an `except`
 - `aew.history.store:prewrite`: create_exclusive of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it; a store write that its process reaches is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here
 - `aew.profile:cli_finish`: open of a path this reading cannot place: the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow
 - `aew.stg02.ledger:Ledger._connect`: sqlite3.connect of a path this reading cannot place: the attribute `a.state_dir` is not a value this reading can follow

@@ -118,8 +118,9 @@ def _scopes(tokens: Tokens) -> list[int]:
 
 def _assignments(tokens: Tokens, scopes: list[int]) -> dict[tuple[int, str], list[Tokens]]:
     """The right-hand sides assigned to each name, by (function, name): ``name = ...`` and ``name |= ...`` at the start
-    of a statement."""
-    found: dict[tuple[int, str], list[Tokens]] = {}
+    of a statement. A name that is only augmented has none: what it started as is not shown (a parameter, a global)."""
+    plain: dict[tuple[int, str], list[Tokens]] = {}
+    augmented: dict[tuple[int, str], list[Tokens]] = {}
     for i, t in enumerate(tokens):
         if t.type != tokenize.NAME or i + 1 >= len(tokens):
             continue
@@ -130,8 +131,8 @@ def _assignments(tokens: Tokens, scopes: list[int]) -> dict[tuple[int, str], lis
         j = i + 2
         while j < len(tokens) and tokens[j].type != tokenize.NEWLINE:
             j += 1
-        found.setdefault((scopes[i], t.string), []).append(tokens[i + 2:j])
-    return found
+        (plain if op.string == "=" else augmented).setdefault((scopes[i], t.string), []).append(tokens[i + 2:j])
+    return {key: [*rhs, *augmented.get(key, [])] for key, rhs in plain.items()}
 
 
 def _combine(verdicts: Iterable[str]) -> str:

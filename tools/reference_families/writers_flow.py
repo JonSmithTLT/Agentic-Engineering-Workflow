@@ -50,10 +50,15 @@ SAME_PATH_CALLS = frozenset({"pathlib.Path", "pathlib.PurePath", "pathlib.PurePo
 JOIN_CALLS = frozenset({"os.path.join", "posixpath.join", "ntpath.join"})
 # These return the path itself.
 SAME_PATH_METHODS = frozenset({"resolve", "absolute", "expanduser", "as_posix"})
-# A sibling whose name is computed (a temporary file named by the process) is taken as the same path: it is part of the
-# write protocol of the path it came from. A sibling with a fixed name (`with_name("endpoint.lock")`,
-# `.name + ".queue"`, `with_suffix(".tmp")`) is a file of its own and is evaluated as one.
-SIBLING_METHODS = frozenset({"with_name", "with_suffix", "with_stem"})
+# A sibling whose name is made by the process (a temporary file named by its process id) is taken as the same path:
+# it is part of the write protocol of the path it came from. A sibling with a fixed name (`with_name("endpoint.lock")`,
+# `.name + ".queue"`, `with_suffix(".tmp")`) is a file of its own and is evaluated as one. Any other is unplaced.
+SIBLING_PART = {"with_name": "name", "with_suffix": "suffix", "with_stem": "stem"}  # the part of a path each replaces
+SIBLING_METHODS = frozenset(SIBLING_PART)
+# Callees whose result is made by the process, so a name built from one is a temporary of the path it came from.
+PROCESS_CALLS = frozenset({"os.getpid", "threading.get_ident", "threading.get_native_id", "uuid.uuid1", "uuid.uuid4",
+                           "time.time", "time.time_ns", "time.monotonic", "time.monotonic_ns", "random.getrandbits",
+                           "secrets.token_hex", "secrets.token_urlsafe"})
 TEMP_CALLS = frozenset({"tempfile.mkdtemp", "tempfile.gettempdir", "tempfile.mkstemp", "tempfile.TemporaryDirectory",
                         "tempfile.NamedTemporaryFile", "tempfile.mktemp"})
 # Strings that name a place outside `.aew` and are not absolute paths.
@@ -89,7 +94,7 @@ def capped(values: set[Val] | Values) -> Values:
 class Func:
     module: str
     qual: str  # `Class.method`, `outer.inner` or `name`
-    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef  # a ClassDef for a dataclass's generated `__init__`
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda  # a ClassDef: a dataclass's `__init__`
     cls: str | None  # the innermost enclosing class, for `self`
     parent: Func | None  # the enclosing function, for a closure
     params: list[str]
@@ -100,6 +105,7 @@ class Func:
     appends: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name.append(<element>)`
     subkeys: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name[<key>] = ...`
     augs: dict[str, list[ast.expr]] = field(default_factory=dict)  # `name |= value`, `name += value`
+    unpacks: dict[str, list[tuple[int, ast.expr]]] = field(default_factory=dict)  # `for a, b in <literal>`: (index, it)
     key_loops: dict[str, list[ast.expr]] = field(default_factory=dict)  # `for name, _ in <mapping>.items()`
     returns: list[ast.expr] = field(default_factory=list)
     calls: list[ast.Call] = field(default_factory=list)
@@ -122,6 +128,7 @@ class Module:
     funcs: dict[str, Func] = field(default_factory=dict)
     classes: set[str] = field(default_factory=set)
     bases: dict[str, list[ast.expr]] = field(default_factory=dict)
+    handlers: dict[int, Func] = field(default_factory=dict)  # a `set_defaults(handler=lambda ...)`, by the lambda's id
     attrs: dict[tuple[str, str], list[tuple[Func | None, ast.expr]]] = field(default_factory=dict)
     module_calls: list[ast.Call] = field(default_factory=list)  # calls outside any function
 
@@ -144,6 +151,7 @@ class _Scan(ast.NodeVisitor):
         self.mod = mod
         self.func: Func | None = None
         self.cls: list[str] = []
+        self.handler_count: dict[str, int] = {}  # function -> the handler lambdas numbered so far
 
     # -- scopes
     def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
@@ -257,6 +265,10 @@ class _Scan(ast.NodeVisitor):
             self.func.key_loops.setdefault(target.elts[0].id, []).append(iterable.func.value)
             self.func.opaque.update(n.id for n in _targets(target) if n.id != target.elts[0].id)
         else:
+            if isinstance(target, ast.Tuple) and isinstance(iterable, (ast.Tuple, ast.List)):
+                for index, e in enumerate(target.elts):
+                    if isinstance(e, ast.Name):
+                        self.func.unpacks.setdefault(e.id, []).append((index, iterable))
             self.func.opaque.update(n.id for n in _targets(target))
 
     def visit_For(self, node: ast.For) -> None:
@@ -308,7 +320,32 @@ class _Scan(ast.NodeVisitor):
         if (self.func is not None and isinstance(f, ast.Attribute) and f.attr == "append"
                 and isinstance(f.value, ast.Name) and len(node.args) == 1):
             self.func.appends.setdefault(f.value.id, []).append(node.args[0])
-        self.generic_visit(node)
+        for child in ast.iter_child_nodes(node):
+            if (isinstance(child, ast.keyword) and isinstance(child.value, ast.Lambda) and child.arg == "handler"
+                    and isinstance(f, ast.Attribute) and f.attr == "set_defaults" and self.func is not None):
+                self._handler_lambda(child.value)
+            else:
+                self.visit(child)
+
+    def _handler_lambda(self, node: ast.Lambda) -> None:
+        """``parser.set_defaults(handler=lambda a: ...)``: the lambda is the command's handler, called by the CLI's
+        dispatch and not by the function that registers it, so its calls are its own and not the registering
+        function's (else the whole engine would be on the path every command shares)."""
+        outer = self.func
+        assert outer is not None
+        a = node.args
+        positional = [x.arg for x in (*a.posonlyargs, *a.args)]
+        params = [*positional, *([a.vararg.arg] if a.vararg else []), *[x.arg for x in a.kwonlyargs],
+                  *([a.kwarg.arg] if a.kwarg else [])]
+        defaults = dict(zip(reversed(positional), reversed(a.defaults), strict=False))
+        ordinal = self.handler_count[outer.qual] = self.handler_count.get(outer.qual, 0) + 1
+        func = Func(self.mod.name, f"{outer.qual}.<handler{ordinal}>", node, outer.cls, outer, params,
+                    defaults=defaults)
+        self.mod.funcs[func.qual] = func
+        self.mod.handlers[id(node)] = func
+        self.func = func
+        self.visit(node.body)
+        self.func = outer
 
 
 @dataclass
@@ -1013,20 +1050,28 @@ class Evaluator:
         return capped(out)
 
     def _sibling(self, e: ast.Call, method: str, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
-        """``path.with_name(x)``, ``.with_suffix(x)``, ``.with_stem(x)``: the sibling named by a fixed string (or, for
-        ``with_name``, by the path's own ``.name`` plus a fixed string) is its own path; any other argument (a name
-        computed at run time, as a temporary file's is) leaves the path itself."""
+        """``path.with_name(x)``, ``.with_suffix(x)``, ``.with_stem(x)``. Three cases. A sibling named by a fixed
+        string, or by the path's own name, suffix or stem plus a fixed string (``p.with_name(p.name + ".queue")``,
+        ``p.with_name(f"{p.name}.queue")``, ``p.with_suffix(p.suffix + ".bak")``), is a path of its own. One whose name
+        visibly comes from the process (a process or thread id, a clock, a random value, a temporary file) is part of
+        the write protocol of its path and is taken as that path. Any other (a name held in a parameter or a call this
+        reading cannot read) is a path this reading cannot place."""
         receiver = e.func.value  # type: ignore[attr-defined]
         base = self._ev(receiver, env, depth, seen)
         if not e.args:
             return base
         arg = e.args[0]
-        own_name = (method == "with_name" and isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add)
-                    and isinstance(arg.left, ast.Attribute) and arg.left.attr == "name"
-                    and ast.unparse(arg.left.value) == ast.unparse(receiver))
-        fixed = self._ev(arg.right if own_name else arg, env, depth, seen)  # type: ignore[union-attr]
+        tail = _own_part_tail(arg, SIBLING_PART[method], receiver)
+        fixed = self._ev(arg if tail is None else tail, env, depth, seen)
         if not fixed or any(v.kind != STR or PLACEHOLDER in v.text for v in fixed):
-            return base
+            if self._process_computed(arg, env):
+                return base
+            why = (f"a sibling of `{_src(receiver)}` named by `{_src(arg)}`, which is neither fixed nor made by "
+                   "the process")
+            unplaced: set[Val] = set()
+            for v in base:
+                unplaced |= unk(why) if v.kind in (TPL, STR) else {v}
+            return capped(unplaced)
         out: set[Val] = set()
         for v in base:
             if v.kind not in (TPL, STR):
@@ -1039,8 +1084,8 @@ class Evaluator:
             else:
                 suffix = "." + suffix
             for f in fixed:
-                if own_name:
-                    new = seg + f.text
+                if tail is not None:
+                    new = stem + f.text + suffix if method == "with_stem" else seg + f.text
                 elif method == "with_name":
                     new = f.text
                 elif method == "with_suffix":
@@ -1049,6 +1094,21 @@ class Evaluator:
                     new = f.text + suffix
                 out.add(Val(v.kind, f"{head}/{new}" if _has_dir(v.text) else new))
         return capped(out)
+
+    def _process_computed(self, expr: ast.expr, env: Env, depth: int = 3) -> bool:
+        """Whether a name visibly depends on the process: a call of ``PROCESS_CALLS`` (or of ``tempfile``) in the
+        expression, or in an assignment of a name in it."""
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        for node in ast.walk(expr):
+            if isinstance(node, ast.Call):
+                callee = mod.aliases.resolve(node.func)
+                if callee in PROCESS_CALLS or callee in TEMP_CALLS:
+                    return True
+            elif isinstance(node, ast.Name) and depth > 0 and func is not None:
+                if any(self._process_computed(rhs, env, depth - 1) for rhs in func.assigns.get(node.id, [])):
+                    return True
+        return False
 
     # -- parameters and arguments
     def _bind_args(self, target: Func, call: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
@@ -1106,6 +1166,20 @@ def _argument(func: Func, name: str, call: ast.Call) -> ast.expr | None:
         i = params.index(name)
         if i < len(call.args) and not any(isinstance(a, ast.Starred) for a in call.args[: i + 1]):
             return call.args[i]
+    return None
+
+
+def _own_part_tail(arg: ast.expr, part: str, receiver: ast.expr) -> ast.expr | None:
+    """The fixed end of ``<receiver>.<part> + tail`` or ``f"{<receiver>.<part>}tail"``, else None."""
+    def is_part(node: ast.expr) -> bool:
+        return (isinstance(node, ast.Attribute) and node.attr == part
+                and ast.unparse(node.value) == ast.unparse(receiver))
+
+    if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add) and is_part(arg.left):
+        return arg.right
+    if (isinstance(arg, ast.JoinedStr) and arg.values and isinstance(arg.values[0], ast.FormattedValue)
+            and is_part(arg.values[0].value) and arg.values[0].conversion == -1 and arg.values[0].format_spec is None):
+        return ast.JoinedStr(values=arg.values[1:]) if arg.values[1:] else ast.Constant("")
     return None
 
 

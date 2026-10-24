@@ -1143,13 +1143,21 @@ digest on both faces. That paragraph stays as the record of CS-1.
 - **Row 2 certifies the sandbox as the run starts.** The inventory is taken by the launch self-test, so a socket
   bound after it is not in it.
 - **The residuals above** are named, not closed.
-- **Known limits, each host-only** (stated, not fixed, under the operator's ruling of 2026-10-24 on host-only nits):
+- **Known limits, each host-only** (stated, not fixed, under the operator's ruling of 2026-10-24 on host-only nits;
+  deferred as register row F52):
   - **The GSS-API proxy:** its directory is masked where the proxy keeps it by default. Not covered: a proxy set up
     another way. Precondition: root's own configuration of the host. Worst case: its socket is reachable from inside
     and judged by the socket classes alone.
   - **Socket names and the launcher's locale:** not covered: a socket whose name the launcher's locale encodes
-    differently. Precondition: the operator's own locale. Worst case: that socket is recorded as unresolved and not
-    checked inside.
+    differently. Precondition: the operator's own locale. Worst case: that socket is reachable from inside, and the
+    label may not name it.
+  - **Shared listening sockets:** not covered: a listening socket shared by several of the launching user's
+    processes. Precondition: the operator's own processes. Worst case: that socket is reachable from inside and judged
+    as only one of those processes would mark it.
+  - **A socket linked into place:** not covered: one whose temporary name another socket in the same directory now
+    has. Precondition: the operator's own processes, or root's. Worst case: the launch is refused, naming the other
+    socket; where root made that other socket, the linked one is reachable from inside and judged by the socket
+    classes alone.
 - The claim is still filesystem integrity with the network shared. CS-3 gives runs their own network namespace.
 
 ### Tests

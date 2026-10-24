@@ -163,6 +163,7 @@ def test_the_probes_control_listener_is_made_under_tmp_whatever_tmpdir_says(monk
 
     isdir = probe.os.path.isdir
     monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(probe.tempfile, "tempdir", None)
     monkeypatch.setattr(probe, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(probe, "socket", SimpleNamespace(socket=Listener, AF_UNIX=1, SOCK_STREAM=1))
     monkeypatch.setattr(probe.tempfile, "mkdtemp", mkdtemp)

@@ -20,9 +20,9 @@
         "lower-bound": 170
       }
     },
-    "digest": "sha256:d59936d95ab916305d40bb46937337c158918cbb024cce3443197ae5c14d1c21",
+    "digest": "sha256:91eb79c3a970d6c5cd4a556383dd642a762c6255ddbb03bc96d01bc1a8ca84cd",
     "records": 350,
-    "unresolved": 54
+    "unresolved": 53
   },
   "gaps": [
     {
@@ -95,7 +95,7 @@
       "family": "writers",
       "module": "aew.engine.disposition_ops",
       "symbol": "_unlink",
-      "why": "Path.unlink of a path this reading cannot place: a loop variable over `paths`, a list this reading cannot read"
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
     },
     {
       "family": "writers",
@@ -246,12 +246,6 @@
       "module": "aew.harness.runlog",
       "symbol": "_open_append",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
-    },
-    {
-      "family": "writers",
-      "module": "aew.harness.runlog",
-      "symbol": "take_requests",
-      "why": "Path.unlink of a path this reading cannot place: a loop variable over `sorted(queue.glob('*.json')) if is_queue else []`"
     },
     {
       "family": "writers",
@@ -5917,6 +5911,62 @@
       },
       "family": "writers"
     },
+    "writers:local/anomalies/{}": {
+      "anchor": {
+        "module": "aew.engine.disposition_ops",
+        "symbol": "_unlink"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/anomalies/{}",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.engine.disposition_ops",
+            "symbol": "_unlink",
+            "via": [
+              "Path.unlink"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.engine.disposition_ops",
+              "symbol": "_unlink",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:local/anomalies/{}.json": {
       "anchor": {
         "module": "aew.engine.disposition_ops",
@@ -7517,6 +7567,61 @@
       },
       "family": "writers"
     },
+    "writers:local/harness/runs/R-{}-{}/requests/{}": {
+      "anchor": {
+        "module": "aew.harness.runlog",
+        "symbol": "take_requests"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/R-{}-{}/requests/{}",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "take_requests",
+            "via": [
+              "Path.unlink"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
     "writers:local/harness/runs/R-{}-{}/run.json": {
       "anchor": {
         "module": "aew.harness.runlog",
@@ -8380,6 +8485,20 @@
             "symbol": "deliver_request",
             "via": [
               "atomic_write"
+            ]
+          },
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew.harness.supervisor"
+            ],
+            "mechanism": "direct",
+            "module": "aew.harness.runlog",
+            "symbol": "take_requests",
+            "via": [
+              "Path.unlink"
             ]
           }
         ]
@@ -12922,29 +13041,6 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.engine.disposition_ops:_unlink:Path.unlink": {
-      "anchor": {
-        "module": "aew.engine.disposition_ops",
-        "symbol": "_unlink"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.disposition_ops",
-            "symbol": "_unlink",
-            "why": "Path.unlink of a path this reading cannot place: a loop variable over `paths`, a list this reading cannot read"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.unlink",
-        "reason": "a loop variable over `paths`, a list this reading cannot read"
-      },
-      "family": "writers"
-    },
     "writers:unresolved:aew.engine.faults:pause:open": {
       "anchor": {
         "module": "aew.engine.faults",
@@ -13264,29 +13360,6 @@
         "mechanism": "direct",
         "primitive": "Path.open",
         "reason": "`run_dir` of `HarnessAdapter.__init__` is not passed at a call"
-      },
-      "family": "writers"
-    },
-    "writers:unresolved:aew.harness.runlog:take_requests:Path.unlink": {
-      "anchor": {
-        "module": "aew.harness.runlog",
-        "symbol": "take_requests"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.runlog",
-            "symbol": "take_requests",
-            "why": "Path.unlink of a path this reading cannot place: a loop variable over `sorted(queue.glob('*.json')) if is_queue else []`"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.unlink",
-        "reason": "a loop variable over `sorted(queue.glob('*.json')) if is_queue else []`"
       },
       "family": "writers"
     },

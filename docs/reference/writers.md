@@ -44,6 +44,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 - `local`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.engine.outbox:bump_wake` (direct: Path.mkdir); `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.mkdir); `aew.harness.containment.layout:for_run` (direct: Path.mkdir); `aew.history.index:HistoryIndex._db` (direct: Path.mkdir)
 - `local/anomalies`, named by `aew.engine.disposition_ops:SPOOL_REL`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.mkdir)
+- `local/anomalies/{}`: written or removed by `aew.engine.disposition_ops:_unlink` (direct: Path.unlink)
 - `local/anomalies/{}.json`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.write_text)
 - `local/checkout-sync.lock`, named by `aew.engine.queue_ops:CHECKOUT_SYNC_LOCK`: written or removed by `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.unlink, os.open)
 - `local/control.lock`, named by `aew.engine.store:LOCK_REL`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
@@ -69,6 +70,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/R-{}-{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
+- `local/harness/runs/R-{}-{}/requests/{}`: written or removed by `aew.harness.runlog:take_requests` (direct: Path.unlink)
 - `local/harness/runs/R-{}-{}/run.json`: written or removed by `aew.harness.runlog:write_record` (direct: atomic_write)
 - `local/harness/runs/R-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
@@ -83,7 +85,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/{}/requests`: written or removed by `aew.harness.runlog:deliver_request` (direct: Path.mkdir)
-- `local/harness/runs/{}/requests/{}`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write)
+- `local/harness/runs/{}/requests/{}`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write); `aew.harness.runlog:take_requests` (direct: Path.unlink)
 - `local/harness/runs/{}/requests/{}-{}-interrupt.json`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write)
 - `local/harness/runs/{}/requests/{}-{}-send.json`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write)
 - `local/harness/runs/{}/requests/{}-{}-stop.json`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write)
@@ -200,13 +202,13 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 76; reached from at least one entry point: 55.
+Writer functions with a store-transaction or direct write placed under `.aew`: 78; reached from at least one entry point: 56.
 
 - `aew` (store_writer): 48 writer functions (24 write the store, 24 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
 - `aew lead mcp` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew.harness.supervisor` (store_writer): 10 writer functions (0 write the store, 10 only under `local/`)
+- `aew.harness.supervisor` (store_writer): 11 writer functions (0 write the store, 11 only under `local/`)
 - `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
@@ -225,7 +227,6 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 ## Writes this reading could not place
 
-- `aew.engine.disposition_ops:_unlink` (direct: Path.unlink): a loop variable over `paths`, a list this reading cannot read
 - `aew.engine.faults:pause` (direct: open): element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.migrate_ops:Migration.discard_unreachable` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.store:ControlStore._apply` (direct: write_file): under `.aew`, but its first directory or file name is computed
@@ -240,7 +241,6 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.adapter:OpenCodeAdapter.launch` (direct: Path.write_text): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:server_env` (direct: Path.mkdir): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.client:Server.start` (direct: Path.open): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
-- `aew.harness.runlog:take_requests` (direct: Path.unlink): a loop variable over `sorted(queue.glob('*.json')) if is_queue else []`
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.usage_live:Meter._persist` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds

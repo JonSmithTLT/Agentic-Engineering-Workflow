@@ -1136,6 +1136,11 @@ class Evaluator:
             return capped(out)
         if isinstance(iterable, ast.Name):
             return self._elements_of_name(iterable.id, env, depth, seen)
+        if isinstance(iterable, ast.IfExp):  # `xs if cond else []`: the elements of either arm
+            return capped(self._element(iterable.body, env, depth, seen)
+                          | self._element(iterable.orelse, env, depth, seen))
+        if isinstance(iterable, ast.Subscript) and isinstance(iterable.slice, ast.Slice):  # `xs[:n]`
+            return self._element(iterable.value, env, depth, seen)
         if isinstance(iterable, ast.Call):
             callee = mod.aliases.resolve(iterable.func)
             if callee in ("sorted", "list", "tuple", "set", "reversed", "filter") and iterable.args:
@@ -1166,6 +1171,8 @@ class Evaluator:
         """The elements of a local list: those of every list, tuple or comprehension assigned to it, and every
         ``name.append(element)``. A list that comes from anywhere else (a parameter, a call) is UNK."""
         func = self._func(env)
+        if func is not None and name in func.params and name not in func.assigns:
+            return self._elements_of_param(func, name, depth, seen)
         if func is None or name not in func.assigns:
             return unk(f"a loop variable over `{name}`, a list this reading cannot read")
         token = ("elements", func.module, func.qual, name)
@@ -1209,6 +1216,26 @@ class Evaluator:
                                 depth - 1, seen)
         return capped(out) if out else unk(
             f"`{flag}` of `{module}`, which no AEW start of it passes: its starter names it")
+
+    def _elements_of_param(self, func: Func, name: str, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The elements of a list passed as an argument: those of the list every static call passes (a local list is
+        read as ``_elements_of_name`` reads it, in the caller). A function nothing calls, or called from more places
+        than the program reads, is UNK."""
+        token = ("elements", func.module, func.qual, name)
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else unk("resolution depth limit")
+        sites = self.p.callers.get(func.key, [])
+        if not sites or len(sites) > CALLERS:
+            return unk(f"a loop variable over `{name}`, a list this reading cannot read")
+        out: set[Val] = set()
+        for caller, caller_mod, call in sites:
+            arg = _argument(func, name, call)
+            if arg is None:
+                out.add(Val(UNK, f"a loop variable over `{name}`, which a call leaves out"))
+            else:
+                out |= self._element(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
+                                     seen | {token})
+        return capped(out)
 
     def _typed_attribute(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
                          ) -> Values | None:

@@ -698,6 +698,34 @@ def test_a_loop_over_literal_rows_takes_the_element_of_each_row_for_each_target(
     assert sorted(a.writers) == ["state/a", "state/b"]
 
 
+DROP = "def drop(paths):\n    for path in paths:\n        path.unlink()\n\n"
+
+
+def test_a_loop_over_a_list_passed_as_an_argument_takes_the_elements_the_caller_built():
+    """Placement PR: the signal files `finalize` collects and hands to `_unlink`: a conditional, a slice, `sorted` and a
+    glob on the way, and a local list built with `append`."""
+    a = analysed(DROP + "def f(aew_root):\n    spool = aew_root / 'local' / 'signals'\n    folded = []\n"
+                 "    for entry in sorted(spool.glob('*.json'))[:5] if spool.is_dir() else []:\n"
+                 "        folded.append(entry)\n    drop(folded)\n")
+    assert sorted(a.writers) == ["local/signals/{}"] and a.unresolved == {}
+
+
+def test_a_conditional_iterable_is_the_elements_of_either_arm():
+    a = analysed("def f(aew_root, cond):\n    for name in ('a', 'b') if cond else ('c',):\n"
+                 "        (aew_root / 'state' / name).write_text('x')\n")
+    assert sorted(a.writers) == ["state/a", "state/b", "state/c"]
+
+
+@pytest.mark.parametrize("calls", [
+    "",                                                     # nothing calls it
+    "def f():\n    drop(load())\n",                         # a list from a call this reading cannot read
+    "def f(aew_root):\n    drop(aew_root / 'local')\n",     # not a list at all
+])
+def test_a_list_argument_this_reading_cannot_read_leaves_the_loop_variable_unknown(calls):
+    a = analysed(DROP + calls)
+    assert a.writers == {} and a.unresolved
+
+
 # A value on the command line: the supervisor reads `--run-dir`, and the start of it spells the value.
 SUPERVISOR = ("import argparse\nfrom pathlib import Path\n\n"
               "def write_it(run_dir):\n    (run_dir / 'heartbeat').write_text('x')\n\n"

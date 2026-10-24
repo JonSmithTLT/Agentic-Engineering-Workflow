@@ -15,6 +15,7 @@ import errno
 import hashlib
 import itertools
 import os
+import random
 import re
 import runpy
 import shutil
@@ -234,7 +235,8 @@ def test_the_record_format_parses_and_refuses_what_it_does_not_define():
     assert not record.signals["sss"].covers(1000)
     assert sg.parse_record("[Service]\nUser=x\n") is None
     for bad in ("Group=aew-op\n", "Group=a 1\nGroup=b 2\n", "Signal=sss 900-999\n", "Signal=sss 9-1 why\n",
-                "Signal=sss x why\n", "Members=op\n", "Signal=sss 1 a\nSignal=sss 2 b\n"):
+                "Signal=sss x why\n", "Members=op\n", "Signal=sss 1 a\nSignal=sss 2 b\n",
+                "Group=aew-op\x85990\n"):  # AEW alone reads the record: a line ends wherever Python ends one
         with pytest.raises(ValueError):
             sg.parse_record(f"[X-AEW-Store-Group]\n{bad}")
 
@@ -395,6 +397,29 @@ def test_a_line_of_a_files_database_ends_only_at_a_newline(tmp_path):
     (etc / "group").write_bytes(b"op:x:1000:\r\nwheel:x:10:op\r\nana:x:1000\r\n")
     assert [(f[0], f[2], sg._members(f[3])) for f in sg._fields(etc / "group", 3)] == [("op", "1000", ()),
                                                                                        ("wheel", "10", ("op",))]
+
+
+@pytest.mark.parametrize(("name", "text", "glibc"), [
+    # A `+` after a carriage return inside a line starts no NIS line, so `compat` reads this file alone.
+    ("passwd", "root:x:0:0::/root:/bin/sh\r+nis\n", {"nis": False}),
+    # The words after a break character inside a line are the members of that line's group, not a group of their own.
+    ("group", "op:x:1000:\nwheel:x:10:\x85ana:x:1000:\n", {"group": [("op", "1000"), ("wheel", "10")]}),
+    # The same for an account: no account `ana` has 1000 as its primary group.
+    ("passwd", "op:x:1000:1000::/home/op:/bin/sh\nroot:x:0:0::/root:/bin/sh ana:x:1001:1000::/:/bin/sh\n",
+     {"passwd": [("op", "1000"), ("root", "0")]}),
+    # A CRLF line whose last field is its ID: glibc's number field ends at the carriage return, so the line is no entry.
+    ("group", "op:x:1000:\r\nana:x:1000\r\n", {"group": [("op", "1000")]}),
+], ids=["a-nis-after-a-carriage-return", "b-a-group-after-a-break", "c-an-account-after-a-break", "d-crlf-id-last"])
+def test_each_line_of_a_files_database_is_read_as_glibc_reads_it(tmp_path, name, text, glibc):
+    """A process holds what the resolver returns, and glibc's ``files`` source reads these files to a newline: each row
+    states glibc's reading of one line, which the listing gives, and no entry beyond it, which no process can hold."""
+    conf, etc = tmp_path / "nsswitch.conf", tmp_path / "etc"
+    etc.mkdir()
+    conf.write_bytes(b"passwd: files\ngroup: compat\n")
+    (etc / name).write_bytes(text.encode())
+    found = {"nis": sg._nis_lines(etc), "group": [(f[0], f[2]) for f in sg._fields(etc / "group", 3)],
+             "passwd": [(f[0], f[3]) for f in sg._fields(etc / "passwd", 4)]}
+    assert {k: found[k] for k in glibc} == glibc, found
 
 
 class _G:
@@ -1031,31 +1056,63 @@ class Refusal:
 
 
 def check_refusal_case(store: store_mod.ControlStore, root: Path, refusal: Refusal, host: sg.HostGroups,
-                       case: tuple, *, last: bool) -> None:
-    """The property's predicate, at one point of one case (the property's docstring)."""
+                       case: tuple, *, last: bool) -> tuple:
+    """The property's predicate, at one point of one case (the property's docstring), and what it saw there."""
     target = store.group_view().target
     problems = store.path_problems(target)
-    assert problems is not None
-    refused, held = ({refusal.rel} if refusal.kind else set()), refusal.held(root)
+    refusals = store.walk_refusals()
+    assert problems is not None and refusals is not None
+    refused, held, at = ({refusal.rel} if refusal.kind else set()), refusal.held(root), store._at(target)
     off = {p for p, _g, _m in problems}
     assert off <= refused | {CONTROL}, (case, problems)  # (1)
     if CONTROL in off - refused:
         assert {m for p, _g, m in problems if p == CONTROL} == {store_mod.WALKING_FILE_MODE}, (case, problems)
-    if store._at(target):
+    if at:
         assert problems == [], (case, problems)  # (2)
-    assert held <= {p for p, _why in store.walk_refusals() or []}, case  # (3)
+    assert held <= {p for p, _why in refusals}, case  # (3)
     assert gh.readers(host, {p: v for p, v in state_of(root).items() if p not in refused}) == set(), case  # (4)
     if last and not held:
-        assert store._at(target) and problems == [], (case, problems)  # (5)
+        assert at and problems == [], (case, problems)  # (5)
+    return tuple(problems), at, tuple(refusals), tuple(sorted(held))
+
+
+def start_state(root: Path) -> tuple:
+    """What a case's outcome depends on, read before it is opened: the refusal property's memo key, with the target.
+    For each path in the case's directory (the project's ``.aew``, and what a refusal keeps beside it), its ``lstat``
+    (type, mode, owner, group and links; another account's file shows the owner it is simulated with), each file's
+    bytes, and each link's target within the directory. ``.aew/local`` is left out: the control lock and the running
+    writers' registry, which are this process's own and alike in every case."""
+    base = root.parent
+    out = []
+    for d, dirs, files in os.walk(base):
+        dirs[:] = [n for n in dirs if Path(d, n) != root / "local"]
+        for p in (Path(d) / n for n in [*dirs, *files]):
+            st = os.lstat(p)
+            if stat.S_ISLNK(st.st_mode):
+                content = Path(os.readlink(p)).relative_to(base).as_posix()
+            else:
+                content = hashlib.sha256(p.read_bytes()).hexdigest() if stat.S_ISREG(st.st_mode) else None
+            out.append((p.relative_to(base).as_posix(), stat.S_IFMT(st.st_mode), stat.S_IMODE(st.st_mode), st.st_uid,
+                        st.st_gid, st.st_nlink, content))
+    return tuple(sorted(out))
+
+
+VALIDATE = 0.05  # the share of the cases a memo answers that the refusal property also runs, to check the memo's key
 
 
 def refusal_property(tmp_path: Path, monkeypatch, first: str, second: str, spec: tuple[str, str, str] | None,
-                     txns: int) -> int:
-    """The refusal property for one ordered pair of targets and one refusal (or none): the number of cases it checked.
-    Each case starts from a store at ``first`` with the refusal on it, takes no cut, one cut (a walk toward ``second``
-    cut at each of its steps) or two (that, then a walk toward each target cut at each of its steps), then opens the
-    store toward each target and commits twice. After the open and after each commit, with the refused path, and
-    ``held`` that path while its refusal holds:
+                     txns: int) -> tuple[int, int, int]:
+    """The refusal property for one ordered pair of targets and one refusal (or none): the cases it enumerated, the
+    cases it ran, and the cases it ran again to check its memo. Each case starts from a store at ``first`` with the
+    refusal on it, takes no cut, one cut (a walk toward ``second`` cut at each of its steps) or two (that, then a walk
+    toward each target cut at each of its steps), then opens the store toward each target and commits twice.
+
+    Cases that start alike end alike: a case whose start (:func:`start_state`) and target an earlier case had is
+    answered by that case's outcome (what the predicate saw at each point, and every path's group and mode at the end).
+    A fixed-seed sample of those (:data:`VALIDATE`, and always the first) is run as well, and must end exactly as its
+    memo says, so a key that misses something the outcome depends on fails the test.
+
+    After the open and after each commit, with the refused path, and ``held`` that path while its refusal holds:
     (1) no path but the refused one and the control file is off the target, and the control file, where it is not the
         refused one, is off it only at the in-progress mode (a swept refusal ends after the walk it stopped, so its
         path waits for the next comparison's walk);
@@ -1064,7 +1121,11 @@ def refusal_property(tmp_path: Path, monkeypatch, first: str, second: str, spec:
     (4) no one but the operator can read any path but the refused one;
     (5) after the second commit, with nothing ``held``, the record and every store path are at the target.
     The refused store file is the oldest log record of two (``txns``), which no commit or recovery writes: recovery
-    writes the newest record if it is missing, and refuses one that is a link out of the project."""
+    writes the newest record if it is missing, and refuses one that is a link out of the project.
+
+    Out of the model, and so not a case: a store path replaced from outside after a completed walk, such as a link put
+    back as a file at another mode. The record does not vouch for what no walk listed; `aew doctor` names such a path
+    (``path_problems``), and the walk does not revisit it while the record is at the target (:class:`Refusal`)."""
     egid, s = gh.held()
     hosts = {"owner_only": gh.make_host(primary=egid, user_private=False),
              "aew": gh.make_host(primary=egid, user_private=False, aew=s),
@@ -1079,25 +1140,35 @@ def refusal_property(tmp_path: Path, monkeypatch, first: str, second: str, spec:
     monkeypatch.setattr(store_mod, "validate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
     refusal = Refusal(monkeypatch, spec)
-    cases = 0
+    memo: dict[tuple, tuple] = {}
+    sample = random.Random(repr((first, second, spec)))
+    cases = validated = 0
+
+    def run(root: Path, case: tuple) -> tuple:
+        store = make_store(root)
+        store.read()
+        seen = [check_refusal_case(store, root, refusal, host.host, case, last=False)]
+        one_transaction(store)
+        seen.append(check_refusal_case(store, root, refusal, host.host, case, last=False))
+        one_transaction(store)
+        seen.append(check_refusal_case(store, root, refusal, host.host, case, last=True))
+        return *seen, tuple(sorted(state_of(root).items()))
 
     def finish(source: Path, cuts: tuple) -> None:
-        nonlocal cases
+        nonlocal cases, validated
         for then in TARGETS:
             root = tmp_path / f"case-{cases}" / ".aew"
             copy_store(source, root)
             refusal.carry(source, root)
             host.host = hosts[then]
-            store = make_store(root)
-            store.read()
             case = (first, second, spec, cuts, then)
-            check_refusal_case(store, root, refusal, host.host, case, last=False)
-            one_transaction(store)
-            check_refusal_case(store, root, refusal, host.host, case, last=False)
-            one_transaction(store)
-            check_refusal_case(store, root, refusal, host.host, case, last=True)
+            key = (start_state(root), tuple(sorted(refusal.held(root))), then)
             cases += 1
-            del store
+            if key not in memo:
+                memo[key] = run(root, case)
+            elif validated == 0 or sample.random() < VALIDATE:
+                validated += 1
+                assert run(root, case) == memo[key], case
             shutil.rmtree(root.parent)
 
     origin = tmp_path / "origin" / ".aew"
@@ -1125,10 +1196,10 @@ def refusal_property(tmp_path: Path, monkeypatch, first: str, second: str, spec:
                 if not cut:
                     break
         shutil.rmtree(once.parent)
-    return cases
+    return cases, len(memo), validated
 
 
-REFUSALS = [None, *itertools.product(("second_link", "symbolic_link", "other_account"), ("control", "store_file"),
+REFUSALS =[None, *itertools.product(("second_link", "symbolic_link", "other_account"), ("control", "store_file"),
                                      ("persistent", "swept"))]
 
 
@@ -1140,9 +1211,11 @@ def test_the_record_vouches_only_for_a_walk_that_changed_every_path_it_listed(tm
     """D-CS1-1's erratum and its third amendment, as the designer's property over refusals and cuts
     (:func:`refusal_property`): a refusal of each kind on the control file and on a store file, persistent and swept,
     combined with no cut, one or two, and checked after an open and after two commits."""
-    cases = refusal_property(tmp_path, monkeypatch, first, second, spec, txns=2)
-    record_property("cases", cases)
+    cases, ran, validated = refusal_property(tmp_path, monkeypatch, first, second, spec, txns=2)
+    for name, value in (("cases", cases), ("ran", ran), ("validated", validated)):
+        record_property(name, value)
     assert cases >= 3 * (1 + 4 + 4 * 3), cases  # every walk has at least four steps: the test proves something
+    assert ran == cases or validated >= 1, (cases, ran, validated)  # a memo answered cases, so its key was checked
 
 
 @posix
@@ -1544,15 +1617,24 @@ def test_doctor_names_a_store_path_the_walk_cannot_change_and_wis_waits_for_it(t
     store.read()
     found = doctor_checks(store)
     assert store.path_problems(store.group_view().target) == []
+    detail = found["store-modes"]["detail"]
     assert found["store-modes"]["status"] == "WARN", found
-    assert "state/log/000001.yaml (a file with 2 names)" in found["store-modes"]["detail"], found
+    assert ("state/log/000001.yaml (a file with 2 names: remove its other names, which may be outside the store "
+            "(`find / -xdev -samefile .aew/state/log/000001.yaml` lists them))") in detail, detail
     assert found["wis-store"]["status"] == "WARN" and "cannot change" in found["wis-store"]["detail"], found
+    os.unlink(tmp_path / "snapshot.yaml")
+    record, real_lstat = root / "state" / "log" / "000001.yaml", os.lstat
+    with monkeypatch.context() as m:  # root's file, as `lstat` shows it (the property's simulation of an owner)
+        m.setattr(os, "lstat", lambda p, *a, **k: _Owned(real_lstat(p, *a, **k), 0)
+                  if Path(p) == record else real_lstat(p, *a, **k))
+        detail = doctor_checks(store)["store-modes"]["detail"]
+    assert f"state/log/000001.yaml (root's: as root, `chown {gh.OP} .aew/state/log/000001.yaml`" in detail, detail
     control, real = root / "state" / "control.yaml", tmp_path / "real.yaml"
     os.rename(control, real)
     os.symlink(real, control)
-    assert "state/control.yaml (a symbolic link)" in doctor_checks(store)["store-modes"]["detail"]
+    detail = doctor_checks(store)["store-modes"]["detail"]
+    assert "state/control.yaml (a symbolic link: the next commits replace it with the file)" in detail, detail
     os.replace(real, control)
-    os.unlink(tmp_path / "snapshot.yaml")
     store = make_store(root)
     store.read()
     found = doctor_checks(store)

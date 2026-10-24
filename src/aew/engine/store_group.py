@@ -377,7 +377,10 @@ def nss_sources(nsswitch: Path = NSSWITCH, etc: Path = ETC) -> dict[str, bool]:
 def _lines(path: Path) -> list[str]:
     """The lines of ``nsswitch.conf`` or of a files database, as glibc reads them: each ends at a newline only. The
     file is read as bytes, because a text read ends a line at a lone carriage return too, and ``str.splitlines`` at
-    nine more characters."""
+    nine more characters. What a process holds is what the resolver returns: ``initgroups`` and the ``getgr*`` calls
+    reach these files through glibc's ``files`` source, which reads to a newline, and the merged enumeration
+    (:func:`read_host`) has every entry any source returns. A line Python would end anywhere else is no entry a process
+    can hold, so reading one would be a false alarm, not a protection."""
     return path.read_bytes().decode("utf-8", errors="replace").split("\n")
 
 

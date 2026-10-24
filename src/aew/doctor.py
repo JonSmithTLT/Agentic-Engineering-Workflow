@@ -157,14 +157,13 @@ def store_checks(view: Any, problems: list[tuple[str, int, int]] | None,
                "so set these by hand, each path's commands in the order given, as the walk steps "
                f"(narrow, then the group, then widen): {by_hand}"
                f"{'; and the rest the same way' if len(problems) > 5 else ''} (a path another account "
-               "owns needs that account). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
+               "owns needs that account or root). Nothing may exceed 0640 files and 0750 directories (WIS-00)"
                if problems else "")
+        owner = host.operator if host is not None and not host.operator.startswith("uid ") else "<you>"
         cannot = (f"AEW cannot change {len(refused)} path(s) in the store: "
-                  f"{', '.join(f'{rel} ({why})' for rel, why in refused[:5])}{' ...' if len(refused) > 5 else ''}. "
-                  "While one is there, the store's record is at no target, so every command walks the store again "
-                  "and WIS cannot be qualified. Have another account's path given to you or removed, and remove a "
-                  "file's other names, which may be outside the store (`find / -xdev -samefile PATH` lists them); "
-                  "a symbolic link at the control file is replaced by the next commits" if refused else "")
+                  f"{'; '.join(f'{rel} ({why}: {_refused_fix(rel, why, owner)})' for rel, why in refused[:5])}"
+                  f"{' ...' if len(refused) > 5 else ''}. While one is there, the store's record is at no target, so "
+                  "every command walks the store again and WIS cannot be qualified" if refused else "")
         checks.append(_check("store-modes", "WARN" if problems or refused else "PASS",
                              ". ".join(x for x in (off, cannot) if x) or
                              f"every path in the store is at its target: gid {target.gid}, {modes}"))
@@ -197,6 +196,17 @@ def _by_hand(rel: str, gid: int, mode: int, target: Any) -> str:
         return f"`rm {path}`"
     return ", ".join(f"`chmod {value:04o} {path}`" if op == "mode" else f"`chgrp {value} {path}`"
                      for op, value in sg.steps(gid, mode, target, rel.endswith("/")))
+
+
+def _refused_fix(rel: str, why: str, owner: str) -> str:
+    """What makes one store path the walk cannot change (``ControlStore.walk_refusals``) one it can, from the project's
+    directory. Only root gives a file to another account, so a path of root's or another account's needs root."""
+    path = f".aew/{rel}"
+    if why.startswith(("root's", "another account's")):
+        return f"as root, `chown {owner} {path}`, or remove it"
+    if why == "a symbolic link":
+        return "the next commits replace it with the file"
+    return f"remove its other names, which may be outside the store (`find / -xdev -samefile {path}` lists them)"
 
 
 def _parts(found: Any) -> str:

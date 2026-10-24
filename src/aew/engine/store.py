@@ -287,7 +287,7 @@ def _refusal(st: os.stat_result, is_dir: bool) -> str | None:
     if sys.platform == "win32":  # pragma: windows-only (no store walk on Windows)
         return None
     if st.st_uid != os.geteuid():  # pragma: posix-only
-        return f"another account's (uid {st.st_uid})"
+        return "root's" if st.st_uid == 0 else f"another account's (uid {st.st_uid})"
     if not is_dir and st.st_nlink != 1:
         return f"a file with {st.st_nlink} names"
     return None

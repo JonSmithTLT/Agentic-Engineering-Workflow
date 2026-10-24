@@ -555,8 +555,9 @@ def test_display_files_and_the_xauthority_file_are_masked_by_type_when_present(t
     env = {"XAUTHORITY": str(xauth), "XDG_CACHE_HOME": str(xdg / "cache"), "XDG_CONFIG_HOME": str(xdg / "config")}
     layout = run_layout(tmp_path, "reviewer", home=str(home), env=env)
     real = os.path.realpath
-    assert {real(home / ".Xauthority"), real(home / ".ICEauthority"), real(xauth), real(home / ".config/git/credentials"),
-            real(xdg / "config" / "git" / "credentials")} <= set(layout.hide_files)
+    files = {real(home / ".Xauthority"), real(home / ".ICEauthority"), real(xauth),
+             real(home / ".config/git/credentials"), real(xdg / "config" / "git" / "credentials")}
+    assert files <= set(layout.hide_files)
     assert {real(home / ".cache/git/credential"), real(home / ".git-credential-cache"),
             real(xdg / "cache" / "git" / "credential")} <= set(layout.hide_dirs)
     assert set(layout.display_files) == {real(home / ".Xauthority"), real(home / ".ICEauthority"), real(xauth)}

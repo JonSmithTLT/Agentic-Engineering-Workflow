@@ -568,8 +568,8 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     compaction window: every command a worker's agent can run (``worker_surface.commands``) works or is refused for a
     reason of its own, with no crash and nothing met read-only, and only WRITER_ONLY is refused as a non-writer's
     (review of #231, m7: `context pack` crashed on the mask, and `history reindex` blamed "another AEW process").
-    The one class that still meets the read-only filesystem, a fingerprint read's git writing objects, is pinned as
-    ``worker_surface.READER_GIT_GAP``, with why."""
+    A fingerprint read's git writing objects met the read-only store until STG-05 CS-2 (D-CS2-1): the pin,
+    ``worker_surface.READER_GIT_GAP``, is empty now, and the real object store is unchanged across the run."""
     import json
     from concurrent.futures import ThreadPoolExecutor
 
@@ -594,8 +594,10 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
         return argv, subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=180,
                                     stdin=subprocess.DEVNULL)
 
+    objects = worker_surface.objects(w.p.root)
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(run_one, worker_surface.commands(w)))
+    assert worker_surface.objects(w.p.root) == objects  # D-CS2-1: a reader never writes the real object store
     gap = {worker_surface.words(a) for a, r in results if worker_surface.git_object_store_refused(r.stderr)}
     met = {" ".join(a): r.stderr[-300:] for a, r in results
            if any(sign in r.stderr for sign in worker_surface.WRITE_FAILURES)
@@ -611,3 +613,50 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
 
     refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
     assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)
+
+
+# ------------------------------------------------------------------ STG-05 CS-2: a workspace fingerprint is a read
+
+_READER_FINGERPRINT = """
+import json, sys
+from pathlib import Path
+from aew import process_kind
+from aew.snapshot import fingerprint
+process_kind.declare("aew (worker run)")
+ws = Path(sys.argv[1])
+print(json.dumps({"fingerprint": fingerprint.relevant_inputs_fingerprint(ws), "tree": fingerprint.working_tree_id(ws)}))
+"""
+
+
+@pytest.mark.parametrize("state", ["uncommitted_edits", "fresh_worktree"])
+def test_a_readers_fingerprint_in_its_sandbox_equals_the_writers(lab, state):
+    """D-CS2-1: in a reader's sandbox, where the real object store is read-only, a fingerprint read works, for a
+    workspace with uncommitted edits and for a worktree just made (its index racily clean, so every file is read
+    again); its value is the one a writer computes for the same tree; and the real object store is unchanged."""
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import worker_surface
+
+    from aew.snapshot import fingerprint
+
+    ws = lab.ws
+    if state == "uncommitted_edits":
+        (ws / "f.txt").write_text("edited, not committed\n")
+        (ws / "new.txt").write_text("untracked\n")
+    else:
+        ws = lab.root / "fresh"
+        assert git("worktree", "add", "-q", "--detach", str(ws), cwd=lab.repo).returncode == 0
+    lab.run.mkdir(parents=True, exist_ok=True)
+    layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=lab.run,
+                       scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None, home=str(lab.home),
+                       project=str(lab.repo), runs=str(lab.run.parent))
+    objects = worker_surface.objects(lab.repo)
+    # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    res = lab.sh(layout, f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} {sys.executable} -c '{_READER_FINGERPRINT}' "
+                         f"{ws}", cwd=ws)
+    assert res.returncode == 0, res.stderr
+    assert worker_surface.objects(lab.repo) == objects
+    seen = json.loads(res.stdout)
+    assert seen == {"fingerprint": fingerprint.relevant_inputs_fingerprint(ws),  # the writer's, on the host
+                    "tree": fingerprint.working_tree_id(ws)}

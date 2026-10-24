@@ -69,7 +69,7 @@ SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".passwor
                ".cache/git/credential", ".git-credential-cache")
 SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
                 ".claude.json",  # provider credential/config location
-                ".config/git/credentials")  # git's store helper reads it beside ~/.git-credentials (the Lead, 2026-10-23)
+                ".config/git/credentials")  # git's store helper reads it too (the Lead, 2026-10-23)
 # The display's credential files (STG-05 CB-04): masked like the secret files, plus the file the launching XAUTHORITY
 # names (:func:`_env_masks`). The launch self-test's row 3 finds each unreadable from inside.
 DISPLAY_FILES = (".Xauthority", ".ICEauthority")

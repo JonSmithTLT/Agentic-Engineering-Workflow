@@ -42,19 +42,14 @@ WRITER_ONLY: dict[tuple[str, ...], str] = {
 # (`context show` regenerating a pack under the mask was one: #231 at 51fffde1, CI).
 WRITE_FAILURES = ("Traceback", "Read-only file system", "Permission denied")
 
-# A known gap, pinned shrink-only (register F2's note of 2026-10-23, as reported to the designer): a read that
-# fingerprints a workspace (`aew.snapshot.fingerprint._working_index`, `git add -A` into a throwaway index) needs git
-# to write the blob of each changed or racily clean file. It has two faces, and this pin sees only the first:
-# - in a reader's sandbox, which has no private object store, only the read-only real one, the read fails with a
-#   GIT_ERROR;
-# - outside a sandbox (every worker run on Windows, any non-writer run uncontained), the same read succeeds by
-#   writing loose objects into the real repository's `.git/objects`, which the `.aew` tree diff does not judge.
-# It predates CB-09 (the reader layout of M4-B). The designer ruled the outcome (D-CS2-1, 2026-10-23: a fingerprint is
-# a read, it works in a reader's sandbox and equals a writer's value, and a reader never writes the real object
-# store), and the operator placed it in CS-2 (its outcome 7), whose fix and test must cover both faces. When it lands,
-# this pin empties and the sandbox test passes without it. Writers are unaffected: theirs is the private index and
-# object store. Limit: a fingerprint read that fails for another reason is not in this class.
-READER_GIT_GAP: frozenset[tuple[str, ...]] = frozenset({("gate", "show"), ("work", "roles")})
+# The reader git gap, closed (STG-05 CS-2, D-CS2-1): a read that fingerprints a workspace wrote the blob of each changed
+# or racily clean file (`git add -A` into a throwaway index). In a reader's sandbox, whose real object store is
+# read-only, `gate show` and `work roles` failed with a GIT_ERROR; outside one (every worker run on Windows, any
+# non-writer run uncontained) they wrote loose objects into the real `.git/objects`. A fingerprint now writes no object
+# (`aew.snapshot.fingerprint`), and both faces are judged by the object store's digest (:func:`objects`). The pin stays,
+# empty: the class coming back fails the sandbox test as a change of the pin. Limit: a fingerprint read that fails for
+# another reason is not in this class.
+READER_GIT_GAP: frozenset[tuple[str, ...]] = frozenset()
 
 
 def git_object_store_refused(stderr: str) -> bool:
@@ -168,6 +163,17 @@ def snapshot(aew: Path) -> dict[str, object]:
                 out[(base / name).relative_to(aew).as_posix()] = (st.st_size, st.st_mtime_ns, st.st_ino)
             except OSError as exc:  # removed between the walk and the stat: still a change, seen as one
                 out[(base / name).relative_to(aew).as_posix()] = f"unreadable {exc.errno}"
+    return out
+
+
+def objects(repo: Path) -> dict[str, tuple[int, int]]:
+    """The repository's real object store, by (size, mtime) of every file: a new loose object, a new pack and a
+    freshened object all show (D-CS2-1: a reader never writes it, inside a sandbox or outside one)."""
+    out = {}
+    for d, _, files in os.walk(repo / ".git" / "objects"):
+        for name in files:
+            st = os.stat(Path(d) / name)
+            out[(Path(d) / name).relative_to(repo).as_posix()] = (st.st_size, st.st_mtime_ns)
     return out
 
 

@@ -9,8 +9,11 @@ the commands the code admits and the causes it can refuse with mechanically.
   source by two independent detectors (`ast`, and a text reading that shares no code) and tied to the matrix by exact route,
   prefix before one placeholder, or the route's regex. Six routes are served today; a test sends a request to every route of
   the matrix with the owners replaced by spies and reaches an owner through exactly those. A route-shaped string the module
-  compares a path with and the matrix does not explain would be an unresolved item (none today), so the label is
-  lower-bound.
+  compares a path with and the matrix does not explain would be an unresolved item (none today), however much of a route
+  it is the front of, and so would a `/_test/` literal without the method test the server uses beside it, so the label is
+  lower-bound. What neither detector sees is stated and pinned, one probe each: a `match` statement, a regex written at the
+  call site, a collection compared by name, a literal handed to a helper, a segment comparison, `endswith`,
+  `removeprefix`, a variable, a dict lookup, a concatenation; and `served` is read per route, not per method.
 - **`commands`** (10): one record per action of `adopted.registry()`, with its `origin`, its `owner` (`sole_admitting_owner`)
   and `reaches_owner`, whether admission can hand the action to an owner. The registry cannot say that; `Carrier._member`
   does, with two literals (an action whose origin is not the delegated-grant origin is refused before any owner state is
@@ -18,12 +21,15 @@ the commands the code admits and the causes it can refuse with mechanically.
   and a test drives a command set for a protected action, a delegated action with a current bound delegation, and that one,
   through the carrier to confirm it. Complete-by-construction for the action set; the registry and the refusal map name the
   same ten actions, tested both ways.
-- **`command-refusals`** (72: 69 vendored and 3 code): one record per cause an action can return, with the wire reason it
+- **`command-refusals`** (72: 69 vendored and 3 code): one record per cause the lookup resolves, with the wire reason it
   maps to and its source (`vendored` is the loaded map, `code` is `SLICE_OWNER_REASONS`). `NOT_MODELLED` is not a third
   source: `Carrier._member` returns it through `refusal` like every other cause. Complete-by-construction, because every
   refusal result is built in the one lookup, which fails closed, and the places that make a result with a `reason_code` are
-  a declared set held to the source both ways. The causes the code spells (literals given to `refusal`, and the returns of
-  `_delegation` that `_member` hands it through a variable) are read both ways and each is a key of some table. A cause no
-  table names, a refusal whose cause cannot be read, or a builder outside the set makes every refusal record lower-bound.
+  a declared set held to the source both ways, in three spellings (a dict literal, a subscript store, a keyword argument;
+  a computed key, `setattr` and a `**` of a dict built elsewhere are not seen, pinned). The causes the code spells
+  (literals given to `refusal`, and the returns of `_delegation` that `_member` hands it through a variable) are read both
+  ways and each is a key of some table. A cause no table names, a refusal whose cause cannot be read (a keyword cause, a
+  helper that returns something but a constant, a second different origin or action test in `_member`), or a builder
+  outside the set makes every refusal record lower-bound.
 - **What a change to the wire does.** Adding a route, a handler branch, an action, a cause, or a place that builds a refusal
   changes the page and the index: run `python tools/reference.py render` and commit `docs/reference/`.

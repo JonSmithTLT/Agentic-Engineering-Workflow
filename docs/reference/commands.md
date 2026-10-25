@@ -4,7 +4,7 @@ The routes of the STG-02 wire (the vendored HTTP/Problem matrix), the actions th
 
 ## Routes
 
-22 routes in the matrix; the slice's server serves 6 of them, read from the source of `aew/stg02/server.py` (its dispatch is a chain of comparisons, not a table). A test-only route is served only with `--test-routes`.
+22 routes in the matrix; the slice's server serves 6 of them, read from the source of `aew/stg02/server.py` (its dispatch is a chain of comparisons, not a table). A test-only route is served only with `--test-routes`. `Served: no` means the reading found no handler for the route, and the reading is a lower bound: it does not see a route reached through a `match` statement, a regex written at the call site, a collection compared by name, a literal handed to a helper, a segment comparison, `endswith`, `removeprefix`, a variable, a dict lookup or a concatenation. It reads each route once, not each (method, route). A test sends a request to every route and reaches the same served set.
 
 | Method | Route | Served | Test only |
 |---|---|---|---|
@@ -35,7 +35,7 @@ The routes of the STG-02 wire (the vendored HTTP/Problem matrix), the actions th
 
 ## Commands
 
-One row per action of the registry: its origin, its sole admitting owner, and whether admission can hand it to an owner (`Carrier._member` refuses every action whose origin is not the delegated-grant origin before any owner state is read, and hands one action of the rest on).
+One row per action of the registry: its origin, its sole admitting owner, and whether admission can hand it to an owner (`reaches_owner`, read from `Carrier._member`).
 
 | Action | Origin | Owner | Reaches the owner |
 |---|---|---|---|
@@ -52,7 +52,7 @@ One row per action of the registry: its origin, its sole admitting owner, and wh
 
 ## Refusal causes
 
-Each cause an action can return, with the wire reason it maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the same lookup as every other.
+Each cause the lookup resolves for an action (a key of one of the two tables), with the wire reason it maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the same lookup as every other.
 
 | Action | Cause | Reason | Source |
 |---|---|---|---|

@@ -108,6 +108,11 @@ def test_the_routes_are_tied_to_the_matrix_by_exact_literal_prefix_and_pattern()
     ("\n\ndef extra(path):\n    return path == '/v1/read/nowhere'\n", "'/v1/read/nowhere', which is no route"),
     ("\n\ndef extra(path):\n    return path.startswith('/zzz/')\n", "'/zzz/', which starts no route"),
     ("\n\ndef extra(path):\n    return re.compile(r'/v1/read/(.*)').fullmatch(path)\n", None),
+    # the front of a matrix route compared exactly is no family prefix (those are given to startswith)
+    ("\n\ndef extra(path):\n    return path == '/v1/read'\n", "'/v1/read', which is no route"),
+    ("\n\ndef extra(path):\n    return path == '/v1/read/runs/'\n", "'/v1/read/runs/', which is no route"),
+    # a test route needs the method test the server uses beside it
+    ("\n\ndef extra(path):\n    return path == '/_test/zzz'\n", "'/_test/zzz', a test route without the method test"),
 ])
 def test_a_route_shaped_string_the_matrix_does_not_explain_is_unresolved_not_dropped(extra, fragment):
     values = {**VALUES, "BAD": re.compile(r"/v1/read/other/([^/]*)")}
@@ -133,6 +138,38 @@ def test_a_route_that_is_in_a_variable_is_in_neither_reading():
                    "def f(path):\n    return {'/v1/read/waiting': 1}[path]\n"):
         ours, theirs = both(source)
         assert ours == theirs and ours.exact == []
+
+
+@pytest.mark.parametrize(("name", "extra"), [
+    ("a match statement", "\n\ndef f(path):\n    match path:\n        case '/v1/read/work/x':\n            return 1\n"),
+    ("a regex written inline at the call site",
+     "\n\ndef f(path):\n    return re.fullmatch(r'/v1/read/work/([^/]*)/([^/]*)', path)\n"),
+    ("a module-level collection compared by name",
+     "\n\nOTHER = ('/v1/read/work/x',)\n\n\ndef f(path):\n    return path in OTHER\n"),
+    ("a literal handed to a helper that compares it",
+     "\n\ndef same(path, route):\n    return path == route\n\n\n"
+     "def f(path):\n    return same(path, '/v1/read/work/x')\n"),
+    ("a segment comparison", "\n\ndef f(path):\n    return path.split('/')[-1] == 'waiting'\n"),
+    ("endswith", "\n\ndef f(path):\n    return path.endswith('/waiting')\n"),
+    ("removeprefix", "\n\ndef f(path):\n    return path.removeprefix('/v1/read/') == 'work'\n"),
+])
+def test_what_neither_server_reading_sees_is_pinned_one_probe_each(name, extra):
+    """The list of the module's docstring and of the page: each shape is in neither reading, so the served set (a lower
+    bound) does not move; the observed request test is what would show it."""
+    ours, theirs = both(SERVER + extra)
+    assert ours == theirs == both(SERVER)[0], name
+
+
+def test_served_is_read_per_route_and_not_per_method(monkeypatch):
+    """A route with two methods in the matrix shows both as served, or neither: the matrix has one method for each
+    route today, and the reading ties a route, not a (method, route)."""
+    from aew.stg02 import adopted
+
+    rows = adopted.matrix()
+    waiting = next(r for r in rows if r["route"] == "/v1/read/waiting")
+    monkeypatch.setattr(adopted, "matrix", lambda: [*rows, {**waiting, "method": "post"}])
+    served = {r.key: (r.fact or {})["served"] for r in S.build(C.Context(ROOT))}
+    assert served["GET /v1/read/waiting"] is True and served["POST /v1/read/waiting"] is True
 
 
 def test_the_text_reading_sees_the_front_of_a_concatenated_route_and_the_ast_reading_does_not():
@@ -211,8 +248,8 @@ def test_both_readings_find_the_origin_the_action_the_causes_and_the_builders():
     assert ours.causes == ["DELEGATED_GRANT_UNVERIFIED", "DELEGATION_EXPIRED", "HEB_STATE_UNKNOWN", "NOT_MODELLED",
                            "ORIGIN_NOT_ESTABLISHED"]
     assert ours.unreadable == []
-    assert set(ours.builders) == {("refusal", "name"), ("Carrier._heb_continue", "none"),
-                                  ("Carrier._result", "subscript")}
+    assert set(ours.builders) == {("refusal", "literal", "name"), ("Carrier._heb_continue", "literal", "none"),
+                                  ("Carrier._result", "literal", "subscript")}
 
 
 def test_a_refusal_whose_cause_cannot_be_read_is_reported_not_dropped():
@@ -221,13 +258,91 @@ def test_a_refusal_whose_cause_cannot_be_read_is_reported_not_dropped():
     assert ours == theirs and ours.unreadable == ["elsewhere"]
 
 
+@pytest.mark.parametrize("extra", [
+    "def elsewhere(action):\n    return refusal(action, cause='MADE_UP')\n",
+    "def elsewhere(action):\n    return refusal(action)\n",
+])
+def test_a_refusal_with_its_cause_as_a_keyword_or_missing_is_reported_not_skipped(extra):
+    ours, theirs = both_commands(COMMANDS + "\n\n" + extra)
+    assert ours == theirs and ours.unreadable == ["elsewhere"], extra
+
+
+def test_a_cause_from_a_helper_that_returns_something_but_a_constant_is_reported_not_dropped():
+    """The right case is the helper that returns string constants and None (``_delegation``); the wrong one also
+    returns a variable, so the causes read from it would be incomplete."""
+    assert both_commands(COMMANDS)[0].unreadable == []
+    tail = "\n\n    def _heb_continue"
+    source = COMMANDS.replace("        return None" + tail, "        return req" + tail)
+    assert source != COMMANDS
+    ours, theirs = both_commands(source)
+    assert ours == theirs and ours.unreadable == ["_member"]
+    assert ours.delegation == ["DELEGATED_GRANT_UNVERIFIED", "DELEGATION_EXPIRED"]  # the constants are still read
+
+
+def test_a_second_different_origin_or_action_test_makes_the_shape_not_found_not_the_last_one():
+    """Two different literals make the one the reading takes ambiguous; the same literal twice does not."""
+    again = COMMANDS.replace('        r = REGISTRY[action]\n', '        r = REGISTRY[action]\n'
+                             '        if r["origin"] != "CURRENT_DELEGATED_GRANT":\n            pass\n')
+    ours, theirs = both_commands(again)
+    assert ours == theirs and (ours.origin, ours.action) == ("CURRENT_DELEGATED_GRANT", "CONTINUE_ELIGIBLE_WORK")
+    other_origin = COMMANDS.replace('        r = REGISTRY[action]\n', '        r = REGISTRY[action]\n'
+                                    '        if r["origin"] != "ANOTHER_ORIGIN":\n            pass\n')
+    ours, theirs = both_commands(other_origin)
+    assert ours == theirs and (ours.origin, ours.action) == (None, "CONTINUE_ELIGIBLE_WORK")
+    other_action = COMMANDS.replace('        r = REGISTRY[action]\n', '        r = REGISTRY[action]\n'
+                                    '        if action != "ANOTHER_ACTION":\n            pass\n')
+    ours, theirs = both_commands(other_action)
+    assert ours == theirs and (ours.origin, ours.action) == ("CURRENT_DELEGATED_GRANT", None)
+
+
 def test_a_second_builder_of_a_reason_code_is_a_builder_the_declared_set_does_not_have():
     source = COMMANDS + "\n\ndef sneak(reason):\n    return {'outcome': 'REFUSED', 'reason_code': reason}\n"
     ours, theirs = both_commands(source)
     assert ours == theirs
-    assert set(ours.builders) - K.BUILDERS == {("sneak", "name")}
+    assert set(ours.builders) - K.BUILDERS == {("sneak", "literal", "name")}
     other = COMMANDS + "\n\ndef sneak():\n    return {'reason_code': 'MADE_UP'}\n"
-    assert set(both_commands(other)[0].builders) - K.BUILDERS == {("sneak", "other")}
+    assert set(both_commands(other)[0].builders) - K.BUILDERS == {("sneak", "literal", "other")}
+
+
+@pytest.mark.parametrize(("name", "extra", "builder"), [
+    ("a subscript store", "\n\ndef sneak(m, code):\n    m['reason_code'] = code\n    return m\n",
+     ("sneak", "store", "name")),
+    ("a store of a literal", "\n\ndef sneak(m):\n    m['reason_code'] = 'MADE_UP'\n", ("sneak", "store", "other")),
+    ("an update with the keyword", "\n\ndef sneak(m, code):\n    m.update(reason_code=code)\n    return m\n",
+     ("sneak", "keyword", "name")),
+    ("a dict made with the keyword", "\n\ndef sneak(reason):\n    return dict(outcome='REFUSED', reason_code=reason)\n",
+     ("sneak", "keyword", "name")),
+    ("a constructor with the keyword", "\n\ndef sneak(reason):\n    return Result(reason_code=reason)\n",
+     ("sneak", "keyword", "name")),
+])
+def test_a_reason_code_made_by_a_store_or_a_keyword_is_a_builder_the_declared_set_does_not_have(name, extra, builder):
+    """The wrong cases of the builder rule beside the dict literal: each of the other two spellings of making a
+    ``reason_code`` is found by both readings, and is not one of the declared places."""
+    ours, theirs = both_commands(COMMANDS + extra)
+    assert ours == theirs, name
+    assert set(ours.builders) - K.BUILDERS == {builder}, name
+
+
+@pytest.mark.parametrize("extra", [
+    "\n\ndef reads(m):\n    return m['reason_code']\n",
+    "\n\ndef compares(m):\n    return m['reason_code'] == 'X' and m['reason_code'] != 'Y'\n",
+    "\n\ndef shaped(reason_code=None):\n    return reason_code\n",
+])
+def test_a_use_of_a_reason_code_that_makes_none_is_not_a_builder(extra):
+    """The missing cases: a read, a comparison and a parameter of that name make no result."""
+    ours, theirs = both_commands(COMMANDS + extra)
+    assert ours == theirs and set(ours.builders) == set(both_commands(COMMANDS)[0].builders)
+
+
+@pytest.mark.parametrize("extra", [
+    "\n\ndef sneak(m, key, code):\n    m[key] = code\n",
+    "\n\ndef sneak(m, code):\n    setattr(m, 'reason_code', code)\n",
+    "\n\ndef sneak(base):\n    return {**base}\n",
+])
+def test_what_the_builder_readings_do_not_see_is_pinned_one_probe_each(extra):
+    """A computed key, ``setattr`` and a ``**`` of a dict built elsewhere are not seen (the module says so)."""
+    ours, theirs = both_commands(COMMANDS + extra)
+    assert ours == theirs and set(ours.builders) == set(both_commands(COMMANDS)[0].builders)
 
 
 def test_a_source_without_the_member_function_has_no_origin_and_no_action():

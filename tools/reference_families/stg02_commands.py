@@ -10,7 +10,7 @@ is refused before any owner state is read, and of the rest only the one action `
 independently written second reading), so ``reaches_owner`` follows the code: today only ``CONTINUE_ELIGIBLE_WORK``.
 If the shape of ``_member`` is not found the field is null and the cause is an unresolved item of every record.
 
-**``command-refusals``.** One record per refusal cause an action can return: ``adopted.refusals()`` (source
+**``command-refusals``.** One record per refusal cause the lookup resolves: ``adopted.refusals()`` (source
 ``vendored``, the loaded map, anchored at it) and ``commands.SLICE_OWNER_REASONS`` (source ``code``, causes the code
 defines itself), with the wire ``reason`` each maps to. ``NOT_MODELLED`` is not a third source: ``Carrier._member``
 returns it through ``refusal`` like every other cause, and it is a key of the vendored map for each action that can
@@ -20,11 +20,18 @@ return it.
 cause)`` looks the pair up in the two tables and fails closed (an ``AssertionError``, never a default code) when
 neither has it; the only other places that make a result with a ``reason_code`` pass a refusal's through or say there
 is none, and the set of those places is declared (:data:`BUILDERS`) and held to the source in both directions. So a
-cause the admission path returns is a key of one of the two tables. The causes the code spells, as literals in
-``refusal`` calls and as the returns of ``_delegation`` (which ``_member`` hands to ``refusal`` through a variable),
-are read the same two ways, and each must be a key of some table. A literal cause no table names, a ``refusal`` call
-whose cause cannot be read, a table action the registry lacks, or a builder outside the declared set, is an unresolved
-item of every refusal record, and the label is then lower-bound.
+cause the admission path returns is a key of one of the two tables. A place that makes a ``reason_code`` is read in
+three spellings, by both detectors: a dict literal with the key, a subscript store to it, and a keyword argument of
+that name on any call (``dict(...)``, ``.update(...)``, a constructor). A computed key, ``setattr`` and a ``**`` of a
+dict built elsewhere are not seen (pinned, one probe each); a dict built elsewhere is read where it is made. The causes
+the code spells, as literals in ``refusal`` calls and as the returns of ``_delegation`` (which ``_member`` hands to
+``refusal`` through a variable), are read the same two ways, and each must be a key of some table. A literal cause no
+table names, a ``refusal`` call whose cause cannot be read, a table action the registry lacks, or a builder outside the
+declared set, is an unresolved item of every refusal record, and the label is then lower-bound. A reading that cannot
+be sure is stated as unreadable and not guessed: a ``refusal`` call with fewer than two positional arguments, a cause
+variable from a helper that returns something other than a string constant, and a second, different
+``r["origin"] != ...`` or ``action != ...`` in ``_member`` (which would make the one the reading takes ambiguous) are
+all unresolved items.
 """
 
 from __future__ import annotations
@@ -40,11 +47,12 @@ ADOPTED = "aew.stg02.adopted"
 COMMAND_MODULE = "aew.stg02.commands"
 LOOKUP = f"{COMMAND_MODULE}:refusal"
 REGISTRY = f"{ADOPTED}:registry"
-# The places that build a result with a ``reason_code``, by symbol and by what the value is: the lookup (a name, the
-# reason it found), the owner's success (None) and the two pass-throughs of a member's reason (a subscript), into the
-# owner's record and into the receipt.
-BUILDERS: frozenset[tuple[str, str]] = frozenset({("refusal", "name"), ("Carrier._heb_continue", "none"),
-                                                  ("Carrier._allocate", "subscript"), ("Carrier._result", "subscript")})
+# The places that build a result with a ``reason_code``, by symbol, by how (a dict literal, a subscript store, a keyword
+# argument) and by what the value is: the lookup (a name, the reason it found), the owner's success (None) and the two
+# pass-throughs of a member's reason (a subscript), into the owner's record and into the receipt.
+BUILDERS: frozenset[tuple[str, str, str]] = frozenset({
+    ("refusal", "literal", "name"), ("Carrier._heb_continue", "literal", "none"),
+    ("Carrier._allocate", "literal", "subscript"), ("Carrier._result", "literal", "subscript")})
 _TESTS = "tests/integration/test_reference_stg02.py"
 COMMAND_TESTS = (
     f"{_TESTS}::test_the_command_records_are_the_registry_both_ways",
@@ -63,7 +71,7 @@ class Reading(NamedTuple):
     causes: list[str]  # every cause literal given to ``refusal``, and the returns of ``_delegation`` it is handed
     unreadable: list[str]  # symbols of ``refusal`` calls whose cause could not be read
     delegation: list[str]  # the string returns of ``Carrier._delegation``
-    builders: list[tuple[str, str]]  # (symbol, kind) of every dict with a "reason_code" key
+    builders: list[tuple[str, str, str]]  # (symbol, form, kind) of every place that makes a "reason_code"
 
 
 def _kind(value: ast.expr) -> str:
@@ -77,14 +85,31 @@ def _kind(value: ast.expr) -> str:
 
 
 class _Builders(C.Scoped):
+    """Every place that makes a ``reason_code``, by symbol, form and what the value is: a dict literal with the key, a
+    subscript store to the key, and a keyword argument of that name on any call. A computed key, ``setattr`` and a
+    ``**`` of a dict built elsewhere are not seen."""
+
     def __init__(self) -> None:
         super().__init__()
-        self.found: set[tuple[str, str]] = set()
+        self.found: set[tuple[str, str, str]] = set()
 
     def visit_Dict(self, node: ast.Dict) -> None:
         for key, value in zip(node.keys, node.values, strict=True):
             if isinstance(key, ast.Constant) and key.value == "reason_code":
-                self.found.add((self.symbol or "", _kind(value)))
+                self.found.add((self.symbol or "", "literal", _kind(value)))
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            if (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
+                    and target.slice.value == "reason_code"):
+                self.found.add((self.symbol or "", "store", _kind(node.value)))
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        for keyword in node.keywords:
+            if keyword.arg == "reason_code":
+                self.found.add((self.symbol or "", "keyword", _kind(keyword.value)))
         self.generic_visit(node)
 
 
@@ -93,8 +118,16 @@ def _string_returns(fn: ast.FunctionDef) -> list[str]:
     return sorted({v.value for v in returns if isinstance(v.value, str)})
 
 
+def _other_returns(fn: ast.FunctionDef) -> bool:
+    """Whether the function returns anything but a string constant or None: a cause read from it would be incomplete."""
+    return any(isinstance(r, ast.Return) and r.value is not None
+               and not (isinstance(r.value, ast.Constant) and (isinstance(r.value.value, str) or r.value.value is None))
+               for r in ast.walk(fn))
+
+
 def read(tree: ast.Module) -> Reading:
-    origin = action = None
+    origins: set[str] = set()
+    actions: set[str] = set()
     causes: set[str] = set()
     unreadable: list[str] = []
     delegation: list[str] = []
@@ -112,9 +145,12 @@ def read(tree: ast.Module) -> Reading:
             left = node.left
             if (isinstance(left, ast.Subscript) and isinstance(left.slice, ast.Constant)
                     and left.slice.value == "origin"):
-                origin = node.comparators[0].value
+                origins.add(node.comparators[0].value)
             elif isinstance(left, ast.Name) and left.id == "action":
-                action = node.comparators[0].value
+                actions.add(node.comparators[0].value)
+    # two different literals make the one the reading takes ambiguous: not found, never "the last one"
+    origin = next(iter(origins)) if len(origins) == 1 else None
+    action = next(iter(actions)) if len(actions) == 1 else None
     scopes = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
     for fn in scopes:
         assigned: dict[str, str] = {}  # name -> the method of the carrier whose returns it holds
@@ -124,13 +160,16 @@ def read(tree: ast.Module) -> Reading:
                     and isinstance(node.value.func.value, ast.Name) and node.value.func.value.id == "self"):
                 assigned[node.targets[0].id] = node.value.func.attr
         for node in ast.walk(fn):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "refusal"
-                    and len(node.args) >= 2):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "refusal"):
+                continue
+            if len(node.args) < 2:  # the cause is a keyword, or missing: not read
+                unreadable.append(fn.name)
                 continue
             cause = node.args[1]
             if isinstance(cause, ast.Constant) and isinstance(cause.value, str):
                 causes.add(cause.value)
-            elif isinstance(cause, ast.Name) and assigned.get(cause.id) in methods:
+            elif (isinstance(cause, ast.Name) and assigned.get(cause.id) in methods
+                  and not _other_returns(methods[assigned[cause.id]])):
                 causes.update(_string_returns(methods[assigned[cause.id]]))
             else:
                 unreadable.append(fn.name)
@@ -171,9 +210,9 @@ def build(ctx: C.Context) -> list[C.Record]:
                                               "closed on it)"))
     problems += [C.unresolved_item(COMMAND_MODULE, symbol, "a refusal whose cause this reading cannot read")
                  for symbol in reading.unreadable]
-    for symbol, kind in sorted(set(reading.builders) - BUILDERS):
+    for symbol, form, kind in sorted(set(reading.builders) - BUILDERS):
         problems.append(C.unresolved_item(COMMAND_MODULE, symbol or None,
-                                          f"builds a result with a reason_code ({kind}) outside the declared places"))
+                                          f"makes a reason_code ({form}, {kind}) outside the declared places"))
     for action in sorted((set(vendored) | set(own)) - set(registry)):
         problems.append(C.unresolved_item(ADOPTED, "refusals", f"{action} has refusal causes and is no action of the "
                                           "registry"))

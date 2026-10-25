@@ -2,9 +2,9 @@
 ``stg02-routes``, ``commands`` and ``command-refusals``, on one page.
 
 The routes of the STG-02 wire and whether the slice's server serves them (``stg02_server.py``), the actions the
-command path admits and whether admission can hand one to an owner, and the refusal causes each action can return
-(``stg02_commands.py``). Each recogniser has a second, independently written detector. Every name here is the code's
-own, as the vendored files and the slice's modules spell them; nothing states what the wire should be.
+command path admits and whether admission can hand one to an owner, and the refusal causes the lookup resolves for each
+action (``stg02_commands.py``). Each recogniser has a second, independently written detector. Every name here is the
+code's own, as the vendored files and the slice's modules spell them; nothing states what the wire should be.
 """
 
 from __future__ import annotations
@@ -38,25 +38,27 @@ def page(records: list[C.Record]) -> str:
              "## Routes", "",
              f"{total} routes in the matrix; the slice's server serves {served} of them, read from the source of "
              "`aew/stg02/server.py` (its dispatch is a chain of comparisons, not a table). A test-only route is served "
-             "only with `--test-routes`.", "",
+             "only with `--test-routes`. `Served: no` means the reading found no handler for the route, and the "
+             "reading is a lower bound: it does not see a route reached through a `match` statement, a regex written "
+             "at the call site, a collection compared by name, a literal handed to a helper, a segment comparison, "
+             "`endswith`, `removeprefix`, a variable, a dict lookup or a concatenation. It reads each route once, "
+             "not each (method, route). A test sends a request to every route and reaches the same served set.", "",
              "| Method | Route | Served | Test only |", "|---|---|---|---|"]
     for f in facts(stg02_server.FAMILY):
         lines.append(f"| {f['method']} | `{f['route']}` | {'yes' if f['served'] else 'no'} | "
                      f"{'yes' if f['test_only'] else 'no'} |")
     lines += ["", "## Commands", "",
-              "One row per action of the registry: its origin, its sole admitting owner, and whether admission "
-              "can hand "
-              "it to an owner (`Carrier._member` refuses every action whose origin is not the delegated-grant origin "
-              "before any owner state is read, and hands one action of the rest on).", "",
+              "One row per action of the registry: its origin, its sole admitting owner, and whether admission can "
+              "hand it to an owner (`reaches_owner`, read from `Carrier._member`).", "",
               "| Action | Origin | Owner | Reaches the owner |", "|---|---|---|---|"]
     for f in facts(stg02_commands.COMMANDS):
         reach = {True: "yes", False: "no", None: "unknown"}[f["reaches_owner"]]
         lines.append(f"| `{f['action']}` | `{f['origin']}` | `{f['owner']}` | {reach} |")
     lines += ["", "## Refusal causes", "",
-              "Each cause an action can return, with the wire reason it maps to. Source `vendored` is the loaded "
-              "refusal "
-              "map; source `code` is a cause the slice defines itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a "
-              "cause of the vendored map, returned through the same lookup as every other.", "",
+              "Each cause the lookup resolves for an action (a key of one of the two tables), with the wire reason it "
+              "maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines "
+              "itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the "
+              "same lookup as every other.", "",
               "| Action | Cause | Reason | Source |", "|---|---|---|---|"]
     for f in facts(stg02_commands.REFUSALS):
         lines.append(f"| `{f['action']}` | `{f['cause']}` | `{f['reason']}` | {f['source']} |")

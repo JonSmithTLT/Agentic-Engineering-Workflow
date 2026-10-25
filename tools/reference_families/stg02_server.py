@@ -18,14 +18,21 @@ given to ``fullmatch``, ``match`` or ``search``. Each is then tied to the matrix
 * a regex serves a route when it is the route with each placeholder written ``([^/]*)``;
 * a prefix that is the front of a route but does not end at a placeholder (``/v1/read/``, ``/o01/``) is a family prefix,
   which selects a handler and serves no route by itself;
-* an exact literal under ``/_test/`` is a test-only route (served only with ``--test-routes``).
+* an exact literal under ``/_test/`` that sits beside a ``method == ...`` test in one ``and`` (the form the server
+  uses, ``method == "POST" and path in (...)``) is a test-only route (served only with ``--test-routes``).
 
 Anything else is an unresolved item, anchored at the server: a string the module compares a path with that the matrix
-does not explain. ``stg02_server_text.py`` is the second, independently written detector, and the two agree on the
-tree (``tests/integration/test_reference_stg02.py``). What neither sees (a route spelled by concatenation, a
-comparison held in a variable, a regex built at run time, a route handled by a dict lookup) is pinned there, one probe
-each, and an observed cross-check (a request to every matrix route, with the owners replaced by spies) reaches the
-same served set.
+does not explain, however much of a route it is the front of (an exact comparison with ``/v1/read`` is not a family
+prefix, which is given to ``startswith``), and a ``/_test/`` literal without that method test.
+``stg02_server_text.py`` is the second, independently written detector, and the two agree on the tree
+(``tests/integration/test_reference_stg02.py``). What neither sees is pinned in
+``tests/unit/test_reference_stg02_controls.py``, one probe each: a route spelled by concatenation, a comparison held in
+a variable, a regex built at run time or written inline at the call site, a route handled by a dict lookup or a
+``match`` statement with string cases, a module-level collection compared by name (``path in ROUTES``), a literal
+handed to a helper that compares it, a segment comparison (``path.split("/")``), and ``endswith`` or ``removeprefix``.
+The reading is a lower bound for that reason, and an observed cross-check (a request to every matrix route, with the
+owners replaced by spies) reaches the same served set today. ``served`` is read per route, not per (method, route):
+each matrix route has one method today, and a route with two would show both as served or neither.
 """
 
 from __future__ import annotations
@@ -166,8 +173,10 @@ def tie(templates: list[str], reading: Reading) -> Served:
         if literal in templates:
             served.add(literal)
         elif literal.startswith(TEST_PREFIX):
-            continue
-        elif not any(t.startswith(literal) for t in templates):
+            if literal not in reading.test_methods:
+                unresolved.append(f"the module compares a path with {literal!r}, a test route without the method test "
+                                  "this reading expects (method == ... and path in (...))")
+        else:
             unresolved.append(f"the module compares a path with {literal!r}, which is no route of the matrix")
     for prefix in reading.prefixes:
         tied = False

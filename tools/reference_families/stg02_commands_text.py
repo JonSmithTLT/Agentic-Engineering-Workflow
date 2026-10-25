@@ -5,7 +5,8 @@ standard item for a recogniser that feeds an enforced check).
 no code with it: only ``re`` and the tuple type it answers with. The two must agree on the source and on every planted
 case (``tests/integration/test_reference_stg02.py``, ``tests/unit/test_reference_stg02_controls.py``). Text is the
 cruder reading (it follows the file's own spellings, ``refusal(<action>, "CAUSE")``, ``r["origin"] != "X"`` and
-``action != "Y"``, skips a line that is only a comment, and finds a function's body by its indentation), so it is the
+``action != "Y"``, and for a ``reason_code`` the three spellings ``"reason_code": v``, ``["reason_code"] = v`` and
+``reason_code=v``; it skips a line that is only a comment and finds a function's body by its indentation), so it is the
 cross-check and the AST reading is the source.
 """
 
@@ -21,8 +22,12 @@ _REFUSAL = re.compile(r"""\brefusal\(\s*([^,()]*(?:\[[^\]]*\])?[^,()]*)\s*,\s*""
                       r"""(?:["']([A-Z_0-9]+)["']|([^,)\s]+(?:\([^)]*\))?))""")
 _ASSIGNED = re.compile(r"^\s*(\w+)\s*=\s*self\.(\w+)\(")
 _DEF = re.compile(r"^(?:async\s+)?def\s+(\w+)|^class\s+(\w+)")
+_REFUSAL_SHORT = re.compile(r"""\brefusal\(\s*[^,()]*\)""")
 _RETURN_STR = re.compile(r"""^\s*return\s+["']([A-Z_0-9]+)["']""")
+_RETURN_ANY = re.compile(r"""^\s*return\s+(\S.*)$""")
 _REASON = re.compile(r"""["']reason_code["']\s*:\s*([^,}\n]+)""")
+_STORE = re.compile(r"""\[\s*["']reason_code["']\s*\]\s*=(?!=)\s*([^\n]+)""")
+_KEYWORD = re.compile(r"""\breason_code\s*=(?!=)\s*([^,)\n]+)""")
 
 
 def _indent(line: str) -> int:
@@ -30,7 +35,7 @@ def _indent(line: str) -> int:
 
 
 def _kind(value: str) -> str:
-    value = value.strip()
+    value = value.split("#")[0].strip()
     if value == "None":
         return "none"
     if re.fullmatch(r"[A-Za-z_]\w*", value):
@@ -60,31 +65,49 @@ def read(text: str) -> Reading:
         if found:
             returns.setdefault(symbol, []).append(found.group(1))
     method_returns = {symbol.rsplit(".", 1)[-1]: sorted(set(v)) for symbol, v in returns.items() if "." in symbol}
-    origin = action = None
+    other_returns: set[str] = set()  # methods that return something but a string constant or None
+    for line, symbol in zip(lines, symbols, strict=True):
+        got_return = _RETURN_ANY.match(line)
+        if got_return and "." in symbol and not _RETURN_STR.match(line) and got_return.group(1).strip() != "None":
+            other_returns.add(symbol.rsplit(".", 1)[-1])
+    origins: set[str] = set()
+    actions: set[str] = set()
     causes: set[str] = set()
     unreadable: set[str] = set()
-    builders: set[tuple[str, str]] = set()
+    builders: set[tuple[str, str, str]] = set()
     assigned_in: dict[str, dict[str, str]] = {}
     for line, symbol in zip(lines, symbols, strict=True):
         if line.strip().startswith("#"):
             continue
         if symbol.endswith("._member"):
             if (hit := _ORIGIN.search(line)) is not None:
-                origin = hit.group(1)
+                origins.add(hit.group(1))
             if (hit := _ACTION.search(line)) is not None:
-                action = hit.group(1)
+                actions.add(hit.group(1))
         got = _ASSIGNED.match(line)
         if got:
             assigned_in.setdefault(symbol, {})[got.group(1)] = got.group(2)
-        calls = [] if line.lstrip().startswith(("def ", "async def ")) else _REFUSAL.findall(line)
+        is_def = line.lstrip().startswith(("def ", "async def "))
+        calls = [] if is_def else _REFUSAL.findall(line)
         for _first, literal, name in calls:
+            helper = assigned_in.get(symbol, {}).get(name)
             if literal:
                 causes.add(literal)
-            elif name in assigned_in.get(symbol, {}) and assigned_in[symbol][name] in method_returns:
-                causes.update(method_returns[assigned_in[symbol][name]])
+            elif helper in method_returns and helper not in other_returns:
+                causes.update(method_returns[helper])
             else:
                 unreadable.add(symbol.split(".")[-1])
-        for value in _REASON.findall(line):
-            builders.add((symbol, _kind(value)))
+        if not is_def:
+            for _short in _REFUSAL_SHORT.findall(line):
+                unreadable.add(symbol.split(".")[-1])
+            for value in _REASON.findall(line):
+                builders.add((symbol, "literal", _kind(value)))
+            for value in _STORE.findall(line):
+                builders.add((symbol, "store", _kind(value)))
+            for value in _KEYWORD.findall(line):
+                builders.add((symbol, "keyword", _kind(value)))
     delegation = method_returns.get("_delegation", [])
+    # two different literals make the one the reading takes ambiguous: not found
+    origin = next(iter(origins)) if len(origins) == 1 else None
+    action = next(iter(actions)) if len(actions) == 1 else None
     return Reading(origin, action, sorted(causes), sorted(unreadable), delegation, sorted(builders))

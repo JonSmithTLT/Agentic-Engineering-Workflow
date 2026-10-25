@@ -1031,7 +1031,7 @@ def number_of(node: ast.expr) -> int | float | None:
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
         inner = number_of(node.operand)
         return None if inner is None else -inner if isinstance(node.op, ast.USub) else inner
-    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
         return node.value
     return None
 

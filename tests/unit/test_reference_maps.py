@@ -227,7 +227,7 @@ UNPLACED = ("aew", None, "read sites whose path this reading could not place")
 UNLISTED = ("aew.process_kind", None, "a function that works without the control lock is not listed")
 
 
-def says(*items: tuple) -> dict[str, dict]:
+def says(*items: tuple) -> dict[str, Any]:
     return {"unresolved": [{"module": m, "symbol": s, "why": w} for m, s, w in items], "label": "lower-bound"}
 
 

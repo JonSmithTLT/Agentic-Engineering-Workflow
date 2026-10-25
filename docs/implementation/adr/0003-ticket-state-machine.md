@@ -129,7 +129,7 @@ AEW's deterministic machinery may produce check evidence under a custody invocat
 - **The transition.** In checks mode, a failed check moves the Ticket COMMIT_READY → VERIFICATION_FAILED through `integrate.validate`: the edge `verify.ingest` takes for a failed verifier, taken from the engine's own `check_result` evidence. No verifier or verification evidence is written, and `verify.ingest` is not called. The table's rule for that edge now names both operations; every other edge keeps exactly one.
 - **Gate evaluation.** Ticket-scope gates count only role evidence, so engine evidence never satisfies a Ticket gate. The inherited gate `post_integration_verifier` is an integration-scope obligation: the Ticket's own gates report it CURRENT, and `integrate validate` and `publish` enforce it (ADR-0004's third amendment of today).
 
-## Amendment 2026-10-25 — a return through a hub meets the gates of the phase it enters (EW-U06.f, register E85)
+## Amendment 2026-10-25 — a return from escalation meets the gates of the phase it enters, a reconcile the guard of its direct edge (EW-U06.f, register E85)
 
 A return from escalation meets the gates of the phase it enters. A reconcile after an interruption meets the guard of
 the Lead's direct edge from the interrupted phase, where the table has one. The table is unchanged: no edge is added

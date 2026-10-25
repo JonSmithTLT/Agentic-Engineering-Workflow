@@ -349,7 +349,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
     monkeypatch.setattr(lead_broker, "POLL_S", poll)
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
-    engine.store.lock_timeout = 1.0  # the relation, not the scale: the main case's 10.0 would make 27 s of holds
+    # The relation, not the scale (10.0 would make 27 s of holds). At 6 x POLL_S, the past-the-bound wait ends
+    # (lock timeout + 4 x POLL_S) mid-way through the watchdog's second read (+ POLL_S to 2 x lock timeout + POLL_S):
+    # a late watchdog or a late sampler has 3 x POLL_S either way before the stack is sampled between reads
+    engine.store.lock_timeout = 6 * poll
     broker = lead_broker.LeadBroker(engine, project.token)
     park = tmp_path / "park"
     held, go, release = threading.Event(), threading.Event(), threading.Event()

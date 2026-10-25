@@ -1026,13 +1026,13 @@ ORDERINGS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 SHAPE_NUMBERS = (0, 1, -1)  # an equality with these is a shape test (`len(x) == 1`); an ordering with them is a bound
 
 
-def integer_of(node: ast.expr) -> int | None:
-    """An integer literal, a negative one included (it is a unary minus on a constant, never a Constant)."""
-    if isinstance(node, ast.Constant) and type(node.value) is int:
+def number_of(node: ast.expr) -> int | float | None:
+    """A number literal: an integer or a float, with a unary minus or plus on it (`-5`, `+5`; never a Constant)."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        inner = number_of(node.operand)
+        return None if inner is None else -inner if isinstance(node.op, ast.USub) else inner
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
         return node.value
-    if (isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant)
-            and type(node.operand.value) is int):
-        return -node.operand.value
     return None
 
 
@@ -1045,11 +1045,19 @@ def holds_a_depth(node: ast.expr) -> bool:
 class Bounds(C.Scoped):
     """Everything in one module that can bound what the generator follows or shows.
 
-    ``numbers``: an ordering against any integer (0, 1 and negative numbers included), an equality against any integer
-    but 0, 1 and -1, and an integer parameter default but 0, counted per file and text (a second site of one text is a
-    second entry). ``guards``: a comparison of a depth against 0 or 1, either side, or ``not depth``, counted per
-    function. Not seen, and stated: a bound spelled through a local name (``limit = 5; n <= limit``) or arithmetic
-    (``n <= 2 * 25``)."""
+    ``numbers``: an ordering against any number (an integer or a float; 0, 1, negative and unary-plus numbers
+    included), an equality against any number but 0, 1 and -1, and a number as a parameter default (a function, an
+    async function or a lambda) but 0, counted per file and text (a second site of one text is a second entry).
+    ``guards``: a depth tested against 0 or 1 by an ordering or an equality (either side, floats too), by membership in
+    a literal that holds 0 or 1 (``depth in (0, 1)``), by negation (``not depth``) or by truth (``if depth:``, a
+    boolean operand, a conditional's test), counted per function.
+
+    Not seen, and stated (each is pinned in ``UNSEEN_BOUNDS``): a bound spelled through a local name (``limit = 5;
+    n <= limit``) or arithmetic (``n <= 2 * 25``); a depth counter that is not named for depth (``not hops``,
+    ``hops == 0``: a guard is found by its name); a number given to a call (``range(50)``, ``textwrap.shorten(s,
+    60)``, ``deque(xs, maxlen=50)``, ``xs[:min(len(xs), 50)]``), which is every ``rsplit(".", 1)`` and ``.get(k, 0)``
+    too; and a bound with no literal at all (a recursion with no depth parameter, a loop ended by a condition elsewhere,
+    a cap through an imported constant, which only the constants rule sees)."""
 
     def __init__(self, stem: str) -> None:
         super().__init__()
@@ -1057,36 +1065,69 @@ class Bounds(C.Scoped):
         self.numbers: Counter[str] = Counter()
         self.guards: Counter[str] = Counter()
 
+    def _guard(self) -> None:
+        self.guards[f"{self.stem}:{self.symbol or ''}"] += 1
+
+    def _truth(self, test: ast.expr) -> None:
+        if holds_a_depth(test):
+            self._guard()
+
     def visit_Compare(self, node: ast.Compare) -> None:
         operands = [node.left, *node.comparators]
         for op, left, right in zip(node.ops, operands, operands[1:], strict=False):
-            values = [v for v in (integer_of(left), integer_of(right)) if v is not None]
-            if any(holds_a_depth(x) for x in (left, right)) and any(v in (0, 1) for v in values):
-                self.guards[f"{self.stem}:{self.symbol or ''}"] += 1
+            values = [v for v in (number_of(left), number_of(right)) if v is not None]
+            members = [number_of(e) for e in right.elts] if isinstance(right, (ast.Tuple, ast.List, ast.Set)) else []
+            if isinstance(op, (ast.In, ast.NotIn)) and holds_a_depth(left) and any(v in (0, 1) for v in members):
+                self._guard()
+            elif any(holds_a_depth(x) for x in (left, right)) and any(v in (0, 1) for v in values):
+                self._guard()
             elif values and (isinstance(op, ORDERINGS) or any(v not in SHAPE_NUMBERS for v in values)):
                 self.numbers[f"{self.stem}:{ast.unparse(node)}"] += 1
         self.generic_visit(node)
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
-        if isinstance(node.op, ast.Not) and holds_a_depth(node.operand):
-            self.guards[f"{self.stem}:{self.symbol or ''}"] += 1
+        if isinstance(node.op, ast.Not):
+            self._truth(node.operand)
         self.generic_visit(node)
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_If(self, node: ast.If) -> None:
+        self._truth(node.test)
+        self.generic_visit(node)
+
+    visit_While = visit_IfExp = visit_If
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        for operand in node.values:
+            self._truth(operand)
+        self.generic_visit(node)
+
+    def _defaults(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
         args = node.args
+        name = node.name if not isinstance(node, ast.Lambda) else "lambda"
         named = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
                  *((a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=True) if d is not None)]
         for arg, default in named:
-            value = integer_of(default)
+            value = number_of(default)
             if value not in (None, 0):
-                self.numbers[f"{self.stem}:{node.name}({arg.arg}={value})"] += 1
+                self.numbers[f"{self.stem}:{name}({arg.arg}={value})"] += 1
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._defaults(node)
         super().visit_FunctionDef(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._defaults(node)
+        super().visit_AsyncFunctionDef(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._defaults(node)
+        self.generic_visit(node)
 
 
 def bounds_of(path: Path, tree: ast.Module) -> tuple[set[str], Counter[str], Bounds]:
-    """(integer constants named like a cap, at module or class level, annotated or not, in any case; slices cut at a
-    number, a constant or from the end, and `islice`-like calls with a number, counted; the numbers and the depth
-    guards)."""
+    """(number constants named like a cap, at module or class level, annotated or not, in any case; slices cut at a
+    number, a constant or from the end (any unary minus, a name too: `xs[-WORDS:]`), and `islice`-like calls with a
+    number, counted; the numbers and the depth guards)."""
     constants: set[str] = set()
     cuts: Counter[str] = Counter()
     stem = path.stem
@@ -1099,15 +1140,15 @@ def bounds_of(path: Path, tree: ast.Module) -> tuple[set[str], Counter[str], Bou
                 targets, value = [node.target], node.value
             else:
                 continue
-            if isinstance(value, ast.Constant) and type(value.value) is int:
+            if number_of(value) is not None:
                 constants |= {f"{stem}.{t.id}" for t in targets if isinstance(t, ast.Name) and CAP_NAMES.search(t.id)}
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
             upper, lower = node.slice.upper, node.slice.lower
-            if integer_of(upper) is not None if upper is not None else False:
+            if upper is not None and number_of(upper) is not None:
                 cuts[f"{stem}:{ast.unparse(node)}"] += 1
             elif (isinstance(upper, ast.Name) and upper.id.isupper()) or (
-                    lower is not None and (integer_of(lower) or 0) < 0):
+                    isinstance(lower, ast.UnaryOp) and isinstance(lower.op, ast.USub)):
                 cuts[f"{stem}:{ast.unparse(node)}"] += 1
         elif isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] in LIMIT_CALLS:
             cuts[f"{stem}:{ast.unparse(node)}"] += 1
@@ -1164,31 +1205,64 @@ def test_every_depth_guard_of_the_generator_is_held_to_a_planted_case_or_excused
 
 PLANTED_BOUNDS = (
     "import itertools\n"
-    "NEW_LIMIT: int = 5\nmax_items = 5\nWORDS = 5\nNAMED = 'x'\n"
+    "NEW_LIMIT: int = 5\nmax_items = 5\nWORDS = 5\nNAMED = 'x'\nRATIO_CAP = 0.5\n"
     "class Box:\n    CAP = 7\n"
     "def f(xs, depth=3, flag=1, other=None, start=0):\n"
     "    if depth > 9 or len(xs) <= 4 or depth == 0 or len(xs) >= 1 or len(xs) == 1 or len(xs) == 5:\n"
-    "        return xs[-5:] + xs[:7] + xs[1:] + xs[:i + 1]\n"
+    "        return xs[-5:] + xs[:7] + xs[1:] + xs[:i + 1] + xs[-WORDS:]\n"
     "    if len(xs) <= 1 or len(xs) > -5 or len(xs) <= 1:\n        return list(itertools.islice(xs, 5))\n"
     "def g(*, window: int = 12):\n    return window\n"
     "def h(n, link_depth):\n"
     "    if link_depth < 1 or not link_depth or link_depth <= 0 or 1 > link_depth:\n        return None\n"
-    "    limit = 5\n    return n <= limit or n <= 2 * 25\n")
+    "def k(xs, depth, hops):\n"
+    "    if depth:\n        return 1\n"
+    "    if depth in (0, 1):\n        return 2\n"
+    "    if hops or depth and xs:\n        return 3\n"
+    "    if depth <= 0.0 or len(xs) <= 50.0 or len(xs) <= +5:\n        return 4\n"
+    "    return 1 if depth else 2\n"
+    "async def a(xs, limit=50.5):\n    return limit\n"
+    "late = lambda xs, n=7: n\n")
 
 
-def test_the_one_method_sees_each_spelling_a_bound_can_take_and_pins_what_it_does_not_see():
-    """The spellings that escaped the first sweeps (#264 F2, #266 F-1, #267 Q-1): a number in a comparison or a default,
-    an annotated, class-level or lower-case constant, a slice from the end, an `islice`, an ordering against 0, 1 or a
-    negative number, a second site of one text, a depth tested as `< 1`, `not depth` or `1 >`. Pinned as not seen, so
-    that seeing them is a decision: a bound through a local name or arithmetic."""
+def test_the_one_method_sees_each_spelling_a_bound_can_take():
+    """The spellings that escaped the first sweeps (#264 F2, #266 F-1, #267 Q-1, review of #268 M-3): a number in a
+    comparison or a default (a function's, an async function's, a lambda's), an annotated, class-level, lower-case or
+    float constant, a slice from the end (through a literal or a name), an `islice`, an ordering against 0, 1, a
+    negative, a positive-signed or a float number, a second site of one text, a depth tested as `< 1`, `not depth`,
+    `1 >`, `<= 0.0`, `depth in (0, 1)`, `if depth:` (or as an operand or a conditional's test)."""
     constants, cuts, found = bounds_of(Path("m.py"), ast.parse(PLANTED_BOUNDS))
-    assert constants == {"m.NEW_LIMIT", "m.max_items", "m.CAP"}, "a name that says nothing of a cap is not one"
-    assert set(cuts) == {"m:xs[-5:]", "m:xs[:7]", "m:itertools.islice(xs, 5)"} and set(cuts.values()) == {1}
+    assert constants == {"m.NEW_LIMIT", "m.max_items", "m.CAP", "m.RATIO_CAP"}, "a name with no cap in it is none"
+    assert set(cuts) == {"m:xs[-5:]", "m:xs[:7]", "m:xs[-WORDS:]", "m:itertools.islice(xs, 5)"}
+    assert set(cuts.values()) == {1}
     assert found.numbers == Counter({
         "m:depth > 9": 1, "m:len(xs) <= 4": 1, "m:len(xs) >= 1": 1, "m:len(xs) == 5": 1, "m:len(xs) <= 1": 2,
-        "m:len(xs) > -5": 1, "m:f(depth=3)": 1, "m:f(flag=1)": 1, "m:g(window=12)": 1}), "a second site counts twice"
-    assert found.guards == Counter({"m:f": 1, "m:h": 4}), "per function: `== 0`, then `< 1`, `not`, `<= 0`, `1 >`"
-    assert "n <= limit" not in " ".join(found.numbers) and "2 * 25" not in " ".join(found.numbers)
+        "m:len(xs) > -5": 1, "m:f(depth=3)": 1, "m:f(flag=1)": 1, "m:g(window=12)": 1, "m:len(xs) <= 50.0": 1,
+        "m:len(xs) <= +5": 1, "m:a(limit=50.5)": 1, "m:lambda(n=7)": 1}), "a second site counts twice"
+    assert found.guards == Counter({"m:f": 1, "m:h": 4, "m:k": 5}), (
+        "per function: `== 0`; `< 1`, `not`, `<= 0`, `1 >`; truth, membership, an operand, `<= 0.0`, a conditional")
+
+
+# What the one method does not see, stated in `Bounds`' docstring and pinned: each of these passes both tests, so that
+# seeing one is a decision (review of #268, M-3).
+UNSEEN_BOUNDS = (
+    "import textwrap\nfrom collections import deque\n"
+    "def f(xs, s, n, hops):\n"
+    "    limit = 5\n"
+    "    if n <= limit or n <= 2 * 25:\n        return xs\n"
+    "    if not hops or hops == 0:\n        return xs\n"
+    "    for _ in range(50):\n        xs = xs[1:]\n"
+    "    return (textwrap.shorten(s, 60), deque(xs, maxlen=50), xs[:min(len(xs), 50)])\n")
+
+
+def test_what_the_one_method_does_not_see_is_stated_and_pinned():
+    """A bound through a local name or arithmetic, a depth counter not named for depth (`not hops`, `hops == 0`), and a
+    number given to a call (`range(50)`, `textwrap.shorten(s, 60)`, `deque(xs, maxlen=50)`, `xs[:min(len(xs), 50)]`)."""
+    constants, cuts, found = bounds_of(Path("m.py"), ast.parse(UNSEEN_BOUNDS))
+    assert (constants, cuts, found.numbers, found.guards) == (set(), Counter(), Counter(), Counter())
+    said = " ".join((Bounds.__doc__ or "").split())
+    for text in ("limit = 5", "2 * 25", "not hops", "hops == 0", "range(50)", "shorten(s, 60)", "maxlen=50",
+                 "min(len(xs), 50)"):
+        assert text in said, text
 
 
 # A slice of the generator that bounds nothing it follows: what it shows (the text of an expression quoted in a reason,

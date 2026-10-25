@@ -2,14 +2,14 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 32,
-      "lower-bound": 454
+      "lower-bound": 459
     },
     "by_family": {
       "control-keys": 92,
       "entry-points": 6,
       "layout": 53,
-      "modules": 174,
-      "writers": 161
+      "modules": 177,
+      "writers": 163
     },
     "by_family_and_coverage": {
       "control-keys": {
@@ -23,15 +23,15 @@
         "lower-bound": 53
       },
       "modules": {
-        "lower-bound": 174
+        "lower-bound": 177
       },
       "writers": {
-        "lower-bound": 161
+        "lower-bound": 163
       }
     },
-    "digest": "sha256:28e4dc52657cc0786ae6d5a834742303bcc294301031b6b85bf37b9e9c99e229",
-    "records": 486,
-    "unresolved": 72
+    "digest": "sha256:dba2326e190c43ee7c82dd4aec7655d8634da8db52ea29816c589fb23795f5a2",
+    "records": 491,
+    "unresolved": 74
   },
   "gaps": [
     {
@@ -186,6 +186,12 @@
     },
     {
       "family": "writers",
+      "module": "aew.engine.validation_ops",
+      "symbol": "Validation.establish",
+      "why": "shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow"
+    },
+    {
+      "family": "writers",
       "module": "aew.engine.work_ops",
       "symbol": "WorkCommands.work_create",
       "why": "session.write of a path this reading cannot place: a subscript, `unit['record']`"
@@ -253,19 +259,19 @@
     {
       "family": "writers",
       "module": "aew.harness.containment.probe",
-      "symbol": "self_test",
+      "symbol": "_self_test",
       "why": "Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read"
     },
     {
       "family": "writers",
       "module": "aew.harness.containment.probe",
-      "symbol": "self_test",
+      "symbol": "_self_test",
       "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
     },
     {
       "family": "writers",
       "module": "aew.harness.containment.probe",
-      "symbol": "self_test",
+      "symbol": "_self_test",
       "why": "Path.write_bytes of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`"
     },
     {
@@ -363,6 +369,12 @@
       "module": "aew.harness.steering_loop",
       "symbol": "_write",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
+    },
+    {
+      "family": "writers",
+      "module": "aew.harness.supervisor",
+      "symbol": "Supervisor._contain",
+      "why": "shutil.rmtree of a path this reading cannot place: the attribute `self.layout.net_dir` is not a value this reading can follow"
     },
     {
       "family": "writers",
@@ -9512,6 +9524,7 @@
       "imports": [
         "aew.errors",
         "aew.harness.containment.layout",
+        "aew.harness.containment.netns",
         "aew.harness.containment.probe",
         "aew.harness.containment.sockets",
         "aew.workspace.git"
@@ -9557,6 +9570,29 @@
         "aew.workspace.git"
       ]
     },
+    "modules:aew.harness.containment.netns": {
+      "anchor": {
+        "module": "aew.harness.containment.netns",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/netns.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.containment.egress",
+        "aew.harness.containment.layout",
+        "aew.harness.containment.relay"
+      ]
+    },
     "modules:aew.harness.containment.peer": {
       "anchor": {
         "module": "aew.harness.containment.peer",
@@ -9590,9 +9626,49 @@
       },
       "family": "modules",
       "imports": [
+        "aew.harness.containment.egress",
         "aew.harness.containment.layout",
+        "aew.harness.containment.netns",
+        "aew.harness.containment.relay",
         "aew.harness.containment.sockets"
       ]
+    },
+    "modules:aew.harness.containment.relay": {
+      "anchor": {
+        "module": "aew.harness.containment.relay",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/relay.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.containment.egress"
+      ]
+    },
+    "modules:aew.harness.containment.shim": {
+      "anchor": {
+        "module": "aew.harness.containment.shim",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/harness/containment/shim.py"
+      },
+      "family": "modules",
+      "imports": []
     },
     "modules:aew.harness.containment.sockets": {
       "anchor": {
@@ -9787,6 +9863,7 @@
         "aew.errors",
         "aew.harness.agentenv",
         "aew.harness.base",
+        "aew.harness.containment.netns",
         "aew.harness.contract",
         "aew.harness.opencode.capabilities",
         "aew.harness.opencode.client",
@@ -10055,6 +10132,7 @@
         "aew.harness.base",
         "aew.harness.bridge",
         "aew.harness.containment",
+        "aew.harness.containment.netns",
         "aew.harness.containment.probe",
         "aew.harness.contract",
         "aew.harness.delivery",
@@ -10592,6 +10670,7 @@
       "imports": [
         "aew.engine.faults",
         "aew.errors",
+        "aew.harness.containment.layout",
         "aew.harness.procs"
       ]
     },
@@ -18427,6 +18506,29 @@
       },
       "family": "writers"
     },
+    "writers:unresolved:aew.engine.validation_ops:Validation.establish:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.engine.validation_ops",
+        "symbol": "Validation.establish"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation.establish",
+            "why": "shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "reason": "the attribute `layout.net_dir` is not a value this reading can follow"
+      },
+      "family": "writers"
+    },
     "writers:unresolved:aew.engine.work_ops:WorkCommands.work_create:session.write": {
       "anchor": {
         "module": "aew.engine.work_ops",
@@ -18657,10 +18759,10 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.containment.probe:self_test:Path.rmdir": {
+    "writers:unresolved:aew.harness.containment.probe:_self_test:Path.rmdir": {
       "anchor": {
         "module": "aew.harness.containment.probe",
-        "symbol": "self_test"
+        "symbol": "_self_test"
       },
       "basis": "static",
       "coverage": {
@@ -18668,7 +18770,7 @@
         "unresolved": [
           {
             "module": "aew.harness.containment.probe",
-            "symbol": "self_test",
+            "symbol": "_self_test",
             "why": "Path.rmdir of a path this reading cannot place: a loop variable over `markers`, a list this reading cannot read"
           }
         ]
@@ -18680,10 +18782,10 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.containment.probe:self_test:Path.unlink": {
+    "writers:unresolved:aew.harness.containment.probe:_self_test:Path.unlink": {
       "anchor": {
         "module": "aew.harness.containment.probe",
-        "symbol": "self_test"
+        "symbol": "_self_test"
       },
       "basis": "static",
       "coverage": {
@@ -18691,7 +18793,7 @@
         "unresolved": [
           {
             "module": "aew.harness.containment.probe",
-            "symbol": "self_test",
+            "symbol": "_self_test",
             "why": "Path.unlink of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read"
           }
         ]
@@ -18703,10 +18805,10 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.containment.probe:self_test:Path.write_bytes": {
+    "writers:unresolved:aew.harness.containment.probe:_self_test:Path.write_bytes": {
       "anchor": {
         "module": "aew.harness.containment.probe",
-        "symbol": "self_test"
+        "symbol": "_self_test"
       },
       "basis": "static",
       "coverage": {
@@ -18714,7 +18816,7 @@
         "unresolved": [
           {
             "module": "aew.harness.containment.probe",
-            "symbol": "self_test",
+            "symbol": "_self_test",
             "why": "Path.write_bytes of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `workspace` is bound by a `with`, an unpacking or an `except`"
           }
         ]
@@ -18999,6 +19101,29 @@
         "mechanism": "direct",
         "primitive": "atomic_write",
         "reason": "the attribute `args.run_dir` is not a value this reading can follow"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.harness.supervisor:Supervisor._contain:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.harness.supervisor",
+        "symbol": "Supervisor._contain"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.supervisor",
+            "symbol": "Supervisor._contain",
+            "why": "shutil.rmtree of a path this reading cannot place: the attribute `self.layout.net_dir` is not a value this reading can follow"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "reason": "the attribute `self.layout.net_dir` is not a value this reading can follow"
       },
       "family": "writers"
     },

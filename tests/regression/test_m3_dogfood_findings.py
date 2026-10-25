@@ -116,8 +116,9 @@ def test_resume_in_a_lead_session_whose_broker_is_gone_says_it_holds_no_authorit
 
 def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_path):
     """Companion review B2 (AEW-INV-ISO-001, FALSE_CONTAINMENT_CLAIM): run metadata and operator status state the
-    containment a run actually had, so its absence is never read as containment. Linux runs are contained (M4-B);
-    Windows runs say `workdir_separation_only`. Neither claims network isolation."""
+    containment a run actually had, so its absence is never read as containment. Linux runs are contained (M4-B),
+    in a network of their own (F28, STG-05 CS-3b: `proxy_only`); Windows runs say `workdir_separation_only`, and
+    `not_provided` for the network."""
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("R-INV-0001-1", IMPLEMENT)
     lab.lead("work", "assign", wid, "--launch")
@@ -125,7 +126,9 @@ def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_
     record = lab.record("R-INV-0001-1")["containment"]
     [run] = lab.ok("harness", "status")["runs"]
     doctor = {c["check"]: c for c in lab.ok("doctor", "--json")["checks"]}
-    assert record["network"] == run["containment"]["network"] == ("not_provided" if IS_WINDOWS else "shared")
+    assert record["network"] == run["containment"]["network"]
+    assert record["network"]["mode"] == ("not_provided" if IS_WINDOWS else "proxy_only")
+    assert record["network"]["provider_relay"] == "none"  # the fake harness calls no provider
     if IS_WINDOWS:
         assert record["filesystem"] == run["containment"]["filesystem"] == "workdir_separation_only"
         assert record["process_ownership"] == "job_object"
@@ -137,7 +140,7 @@ def test_every_run_states_its_real_containment_and_nothing_claims_more(lab, tmp_
         assert record["process_ownership"] == "pid_namespace"
         assert record["self_test"]["ok"] is True
         assert doctor["containment"]["status"] == "PASS"
-        assert "the network is shared" in doctor["containment"]["detail"]
+        assert "their network is proxy_only" in doctor["containment"]["detail"]
 
 
 def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_path):

@@ -119,6 +119,27 @@ def test_requested_skills_are_reported_unavailable_and_stay_denied():
     assert effect(provided["permissions"], "skill", "python-development") == "deny"
 
 
+def test_a_run_on_its_own_network_is_told_what_it_reaches_and_how_to_ask_for_more():
+    """#257's review, F3: the run's network, from its label: the mode, what it reaches, that the rest is refused by
+    design, and the setting the Lead asks the operator for. The upstream and the stated limits stay the operator's;
+    a run on the host's network gets no such line."""
+    def line(network: dict[str, Any] | None) -> list[str]:
+        system = projection.invocation_config(contract(), network=network)["agents"][projection.AGENT]["system"]
+        assert "https://upstream.example" not in system and "the stated residual" not in system
+        return [s for s in system.splitlines() if "network of its own" in s]
+
+    [own] = line({"mode": "proxy_only", "provider_relay": "configured", "provider_upstream": "https://upstream.example",
+                  "egress_allow": ["models.opencode.ai:443", "pypi.org:443"], "limits": ["the stated residual"]})
+    assert own == ("- This run has a network of its own (`proxy_only`): it reaches your model's provider and, through "
+                   "`HTTPS_PROXY`, only `models.opencode.ai:443`, `pypi.org:443`. Every other connection is refused by "
+                   "design. If your work needs another host, do not work around the refusal: name the `host:port` and "
+                   "what you needed it for in your report, so the Lead can ask the operator to add it to "
+                   "`containment.network.egress_allow`.")
+    [isolated] = line({"mode": "isolated", "provider_relay": "none"})
+    assert "(`isolated`): it has no route out. Every other connection is refused by design." in isolated
+    assert line(None) == []
+
+
 def test_the_pinned_model_is_everywhere_a_model_is_chosen():
     config = projection.invocation_config(contract())
     pinned = {"providerID": "anthropic", "model": "claude-sonnet-5", "variant": "high"}

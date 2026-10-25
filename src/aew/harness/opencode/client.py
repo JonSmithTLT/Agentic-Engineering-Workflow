@@ -9,6 +9,10 @@ there but does not depend on it: the supervisor's process tree ends the server e
 The event stream (``GET /api/event``) is volatile and has no replay. It is used only to react quickly
 and to record telemetry. Completion and every other decision are read from the REST API, so losing the
 stream never looks like anything having happened.
+
+In a network of its own (F28; STG-05 CS-3b) the server's loopback is the sandbox's, which the host cannot reach: it
+listens on a fixed port there, and every call goes through the shim's socket file instead (``unix``), with the same
+HTTP. The server still announces ``http://127.0.0.1:<port>``, which is checked as before.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from aew.errors import HarnessLaunchFailed
 
@@ -57,13 +61,53 @@ class OpenCodeUnavailable(Exception):
     """The server could not be reached (not started, exited, or the connection broke)."""
 
 
+class UnixConnection(http.client.HTTPConnection):
+    """HTTP over a socket file: the shim's, which forwards to the server's loopback port in its sandbox."""
+
+    def __init__(self, path: str, timeout: float | None = None) -> None:
+        super().__init__("127.0.0.1", timeout=timeout)
+        self.path = path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)  # pyright: ignore[reportAttributeAccessIssue]
+        try:
+            sock.settimeout(self.timeout)
+            sock.connect(self.path)
+        except BaseException:
+            sock.close()
+            raise
+        self.sock = sock
+
+
+class _UnixHandler(urllib.request.HTTPHandler):
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self.path = path
+
+    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        def connection(_host: str, /, *, timeout: float | None = None, **_kw: Any) -> http.client.HTTPConnection:
+            return UnixConnection(self.path, timeout)
+
+        return self.do_open(cast(Any, connection), req)
+
+
 class Client:
-    def __init__(self, url: str, password: str) -> None:
+    def __init__(self, url: str, password: str, *, unix: str | None = None) -> None:
         self.url = url.rstrip("/")
+        self.unix = unix
         self._auth = "Basic " + base64.b64encode(f"opencode:{password}".encode()).decode()
+        self._opener = LOOPBACK_OPENER if unix is None else urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _UnixHandler(unix))
 
     def headers(self, accept: str = "application/json") -> dict[str, str]:
         return {"Authorization": self._auth, "Accept": accept, "Content-Type": "application/json"}
+
+    def connection(self, timeout: float) -> http.client.HTTPConnection:
+        """A connection to the server for ``http.client`` (the event stream): its socket file, or its loopback port."""
+        if self.unix is not None:
+            return UnixConnection(self.unix, timeout)
+        target = urllib.parse.urlsplit(self.url)
+        return http.client.HTTPConnection(target.hostname or "127.0.0.1", target.port, timeout=timeout)
 
     def request(self, method: str, path: str, body: Any = None, params: dict[str, str] | None = None,
                 timeout: float = REQUEST_TIMEOUT_S) -> Any:
@@ -71,7 +115,7 @@ class Client:
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(url, data=data, method=method, headers=self.headers())  # noqa: S310
         try:  # self.url is the run's own server, checked to be http://127.0.0.1:<port> when it started
-            with LOOPBACK_OPENER.open(req, timeout=timeout) as resp:
+            with self._opener.open(req, timeout=timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -111,18 +155,22 @@ def location(directory: str) -> dict[str, str]:
 class Server:
     """One private ``serve --stdio`` process, started by the caller's spawner (the run's process tree)."""
 
-    def __init__(self, proc: subprocess.Popen[bytes], url: str, password: str, started_s: float) -> None:
+    def __init__(self, proc: subprocess.Popen[bytes], url: str, password: str, started_s: float, *,
+                 unix: str | None = None) -> None:
         self.proc = proc
         self.url = url
         self.password = password
         self.started_s = started_s
-        self.client = Client(url, password)
+        self.unix = unix
+        self.client = Client(url, password, unix=unix)
 
     @classmethod
     def start(cls, spawn: Callable[..., subprocess.Popen[bytes]], command: list[str], *, env: dict[str, str],
-              cwd: str, log_path: Path, timeout: float = START_TIMEOUT_S) -> Server:
-        """Start the server and read its ``{"url"}`` line. ``env`` must already hold ``OPENCODE_PASSWORD``."""
-        argv = [*command, "serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"]
+              cwd: str, log_path: Path, timeout: float = START_TIMEOUT_S, port: int = 0,
+              unix: str | None = None) -> Server:
+        """Start the server and read its ``{"url"}`` line. ``env`` must already hold ``OPENCODE_PASSWORD``. In a
+        network of its own the server listens on ``port`` inside, which the shim forwards from ``unix``."""
+        argv = [*command, "serve", "--stdio", "--hostname", "127.0.0.1", "--port", str(port)]
         t0 = time.monotonic()
         with log_path.open("ab") as log:
             proc = spawn(argv, env=env, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
@@ -157,8 +205,12 @@ class Server:
                 proc.kill()
                 raise HarnessLaunchFailed(f"the OpenCode server announced {str(url)[:80]!r}, not an http://127.0.0.1 "
                                           "address; refusing to send it the server password")
+            if unix is not None and urllib.parse.urlsplit(str(url)).port != port:  # the shim forwards to that port only
+                proc.kill()
+                raise HarnessLaunchFailed(f"the OpenCode server announced {str(url)[:80]!r}, not the port {port} it "
+                                          "was given in its network namespace, so the network shim cannot reach it")
             # The rest of stdout keeps draining in the pump thread, so the pipe never blocks the server.
-            return cls(proc, str(url), env["OPENCODE_PASSWORD"], time.monotonic() - t0)
+            return cls(proc, str(url), env["OPENCODE_PASSWORD"], time.monotonic() - t0, unix=unix)
 
     def alive(self) -> bool:
         return self.proc.poll() is None
@@ -217,10 +269,9 @@ class EventStream:
 
     def _run(self) -> None:
         backoff = 0.2
-        target = urllib.parse.urlsplit(self.client.url)
         while not self._stop.is_set() and self.alive():
             try:
-                conn = http.client.HTTPConnection(target.hostname or "127.0.0.1", target.port, timeout=30)
+                conn = self.client.connection(timeout=30)
                 conn.request("GET", "/api/event", headers=self.client.headers("text/event-stream"))
                 resp = conn.getresponse()
                 if resp.status != 200:

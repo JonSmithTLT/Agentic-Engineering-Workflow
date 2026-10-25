@@ -132,6 +132,7 @@ class FakeAdapter(HarnessAdapter):
 
 # ---------------------------------------------------------------------------------------------- test helpers
 
+FAKE_UPSTREAM = "https://fakeprov.invalid/v1"
 POLICY = {
     "schema": "aew/execution/v1", "configured": True, "harness": "fake",
     "profiles": {"standard": {"provider": "fakeprov", "model": "fake-model", "effort": "high"}},
@@ -146,6 +147,8 @@ class HarnessLab:
     tmp: Path
     env: dict[str, str] = field(default_factory=dict)
     sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
+    closers: list[Any] = field(default_factory=list)  # what else the lab started, each closed by cleanup()
+    provider: Any = None  # the provider its runs' relay reaches, when it started one (fake_opencode.ProviderUpstream)
 
     def __post_init__(self) -> None:
         import harness_diagnostics  # a failed test reports and keeps this lab's runs (register E3)
@@ -154,7 +157,7 @@ class HarnessLab:
 
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
-               extra_env: dict[str, str] | None = None) -> HarnessLab:
+               extra_env: dict[str, str] | None = None, provider_upstream: str = "") -> HarnessLab:
         scripts = tmp / "fake-scripts"
         scripts.mkdir(parents=True, exist_ok=True)
         (tmp / "sync").mkdir(exist_ok=True)
@@ -163,6 +166,13 @@ class HarnessLab:
         # script and tests exchange pid and sync files through these two directories, so the lab's policy adds them
         # as operator-declared writable roots (recorded on every run's label, like any operator addition).
         policy.setdefault("containment", {"writable": [str(scripts), str(tmp / "sync")]})
+        # A contained OpenCode run (Linux, F28) gets a provider relay, with a fixed upstream for its provider: the
+        # one the lab started (``fake_opencode.ProviderUpstream``), else one that resolves nowhere (.invalid,
+        # RFC 6761), which a fake that never calls its provider never reaches.
+        containment = dict(policy["containment"])
+        network = dict(containment.get("network") or {})
+        network["upstreams"] = {"fakeprov": provider_upstream or FAKE_UPSTREAM, **(network.get("upstreams") or {})}
+        policy["containment"] = {**containment, "network": network}
         (project.root / ".aew/policy/execution.yaml").write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
         project.pin_policy()  # the lab's policy is the project's starting policy, not an edit under test
         env = {"AEW_HARNESS_ADAPTERS": f"fake={HERE / 'fake_harness.py'}:FakeAdapter",
@@ -256,6 +266,8 @@ class HarnessLab:
                 proc.communicate()
         with real_runtime():
             self._end_runs()
+        for close in self.closers:
+            close()
 
     def _end_runs(self) -> None:
         from aew.engine.api import Engine

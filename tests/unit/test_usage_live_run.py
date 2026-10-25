@@ -68,6 +68,7 @@ class StubServer:
 
     def __init__(self, url: str, password: str) -> None:
         self.url, self.password = url, password
+        self.unix = None  # a server on the host's loopback, not behind a run's network shim (F28, STG-05 CS-3b)
         self.proc = StubProc()
         self.started_s = 0.01
         self.client = Client(url, password)
@@ -119,7 +120,8 @@ class Rig:
             scratch=str(self.run_dir / "scratch"), extra={"provider_env": []})
 
     def adapter(self, cls: type[A.OpenCodeAdapter] = A.OpenCodeAdapter) -> A.OpenCodeAdapter:
-        return cls(SimpleNamespace(spawn=None), self.run_dir, self.events.append)  # type: ignore[arg-type]  # stubbed start
+        return cls(SimpleNamespace(spawn=None, network=None), self.run_dir,  # type: ignore[arg-type]  # stubbed start
+                   self.events.append)
 
     def live(self) -> dict[str, Any]:
         sample = runlog.read_live(self.run_dir)

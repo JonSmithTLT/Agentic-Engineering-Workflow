@@ -46,7 +46,9 @@ keeps it, adding and reordering items (designer, 2026-10-25; the rebaseline's li
   order in the other. A **Stage** row need not be named: a stage waits in the map's order for its hand-off, and is
   named once it is queued;
 - it is §1's intro's only table: a line that starts a table (``|``, after at most three spaces) is the header, the
-  separator or an item. A line indented further, or by a tab, is a code block in Markdown, not a table line.
+  separator or an item. A line indented further, or by a tab, is a code block in Markdown, not a table line. A second
+  table in the list's own shape (headed ``#``, with numbers that continue the list) is read as more items: the check
+  does not tell it apart (quick check of #273, N2).
 
 The table is one cell, the intro, so two changes to it conflict. The Lead keeps the order, but a change that closes or
 retargets a row the list names must edit the list in the same change (its refusals say so), and renumber what follows.

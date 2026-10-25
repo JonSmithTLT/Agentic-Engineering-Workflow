@@ -885,6 +885,10 @@ def test_the_now_list_reads_an_indented_item_and_refuses_a_second_table():
         "list is §1's only table)",
         "§1's intro has a table line that is not a Now item, its header or its separator: '| one | two |' (the Now "
         "list is §1's only table)"]
+    # Quick check of #273, N1: the refusal reaches a stray line indented by up to three spaces too
+    assert _with_now(lambda intro: intro + "\n\n   | Gate | When |") == [
+        "§1's intro has a table line that is not a Now item, its header or its separator: '| Gate | When |' (the Now "
+        "list is §1's only table)"]
     assert _with_now(lambda intro: intro + "\n\n    | not | a table |\n\t| nor | this |") == []
 
 

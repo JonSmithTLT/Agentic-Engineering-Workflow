@@ -438,13 +438,23 @@ def test_resolve_keeps_a_row_moved_on_either_side_and_marks_two_different_moves(
     assert "marked: sections 6 rows order" in capsys.readouterr().out
 
 
+def like_named_gates(data: dict[str, Any]) -> dict[str, Any]:
+    """The register with a second §1 row named like the last one. §1 held two gates named alike until the register
+    rebaseline (2026-10-24) and holds none now, so the test plants the pair its subject needs."""
+    data = copy.deepcopy(data)
+    gates = section(data, 1)["rows"]
+    gates.append(dict(gates[-1]) | {section(data, 1)["columns"][1]: "A second row named alike."})
+    return data
+
+
 def gate_closed(data: dict[str, Any], name: str, nth: int) -> dict[str, Any]:
     """The register with the ``nth`` §1 gate called ``name`` moved to §9 as a closed ``Gate`` row."""
     data = copy.deepcopy(data)
+    first, condition = section(data, 1)["columns"][:2]
     gates = section(data, 1)["rows"]
-    gate = gates.pop([i for i, r in enumerate(gates) if r["Gate"] == name][nth])
+    gate = gates.pop([i for i, r in enumerate(gates) if r[first] == name][nth])
     closed = section(data, 9)
-    closed["rows"].append(dict(zip(closed["columns"], ["Gate", f"{gate['Gate']}: {gate['Condition'][:40]}",
+    closed["rows"].append(dict(zip(closed["columns"], ["Gate", f"{gate[first]}: {gate[condition][:40]}",
                                                        "2026-10-10", "This test"], strict=True)))
     return register.normalize(data)
 
@@ -453,23 +463,25 @@ def test_like_named_gates_are_matched_by_content_so_nothing_is_lost(repo, capsys
     """§1 has two gates named alike and §9 several rows whose first cell is `Gate`: `resolve` matches such rows by
     content, not position (review of PR #151 at 1546799, 2). Closing one like-named gate while the other is edited
     merges, and two gates closed on different sides are both closed, with both §9 records kept: nothing is deleted."""
-    name = Counter(r["Gate"] for r in section(DATA, 1)["rows"]).most_common(1)[0][0]
-    a, b = same_gap(DATA)
-    edited = copy.deepcopy(DATA)
-    [r for r in section(edited, 1)["rows"] if r["Gate"] == name][1]["Condition"] += " Edited."
-    stopped_merge(repo, register_files(), register_files(closed_into(gate_closed(DATA, name, 0), a)),
+    base = like_named_gates(DATA)
+    column, condition = section(base, 1)["columns"][:2]
+    name = Counter(r[column] for r in section(base, 1)["rows"]).most_common(1)[0][0]
+    a, b = same_gap(base)
+    edited = copy.deepcopy(base)
+    [r for r in section(edited, 1)["rows"] if r[column] == name][1][condition] += " Edited."
+    stopped_merge(repo, register_files(base), register_files(closed_into(gate_closed(base, name, 0), a)),
                   register_files(closed_into(edited, b)))
     assert register.resolve(repo.path) == 0, capsys.readouterr().out
     assert load((repo.path / REG_YAML).read_text(encoding="utf-8")) == closed_into(gate_closed(edited, name, 0), a, b)
 
     other_repo = Repo(repo.path.parent / "other")
-    first, second = section(DATA, 1)["rows"][0]["Gate"], section(DATA, 1)["rows"][1]["Gate"]
-    stopped_merge(other_repo, register_files(), register_files(gate_closed(DATA, first, 0)),
-                  register_files(gate_closed(DATA, second, 0)))
+    first, second = section(base, 1)["rows"][0][column], section(base, 1)["rows"][1][column]
+    stopped_merge(other_repo, register_files(base), register_files(gate_closed(base, first, 0)),
+                  register_files(gate_closed(base, second, 0)))
     assert register.resolve(other_repo.path) == 0, capsys.readouterr().out
     merged = load((other_repo.path / REG_YAML).read_text(encoding="utf-8"))
-    assert merged == gate_closed(gate_closed(DATA, first, 0), second, 0)
-    assert len(section(merged, 9)["rows"]) == len(section(DATA, 9)["rows"]) + 2
+    assert merged == gate_closed(gate_closed(base, first, 0), second, 0)
+    assert len(section(merged, 9)["rows"]) == len(section(base, 9)["rows"]) + 2
 
 
 def test_like_named_rows_that_cannot_be_told_apart_are_marked_never_guessed(repo, capsys):

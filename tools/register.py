@@ -89,27 +89,28 @@ YAML = ROOT / "docs" / "implementation" / "future-work.yaml"
 DUE_YAML = ROOT / "docs" / "implementation" / "decisions-due.yaml"
 DUE_MD = ROOT / "docs" / "implementation" / "decisions-due.md"
 DUE_SCHEMA = "aew/decisions-due/v1"
-# The points a decision can be due by, soonest first: the gates and M4 phases in their order (docs/README.md), then the
-# later milestones and the register's open-ended targets.
-DUE_ORDER = ("M4-D", "Gate: before F15.2 ships", "M4-E", "M4-F", "M4-G", "M4-H", "M4", "Gate: before internal alpha",
-             "M5", "M6", "Evaluation", "Unscheduled")
+# The points a decision can be due by, soonest first: the build queue, the milestones and the gate in their order
+# (future-work.md §1), then the register's open-ended targets (the register rebaseline, operator, 2026-10-24).
+DUE_ORDER = ("Now", "Contained", "V-01", "Gate: before internal alpha", "Internal alpha", "After the trace",
+             "Evaluation", "Unscheduled")
 NEEDS = ("decision", "design", "adoption")
 OWNERS = ("operator", "designer", "operator and designer")
 SCHEMA = "aew/register/v1"
-TARGETS = ("Gate", "M4", "M5", "M6", "Hierarchy revision", "M4 candidate", "Designer", "Evaluation",
+TARGETS = ("Gate", "Now", "Contained", "V-01", "Internal alpha", "After the trace", "Designer", "Evaluation",
            "On measured need", "Unscheduled", "Stage")
 # Derived from TARGETS (the one list; the preamble's table names the same ones, test_register keeps them equal). The
-# longest name is tried first so that ``M4 candidate`` is not read as ``M4``, and nothing ends a match, so the M4 phases
-# (``**M4-E.**``) still read as ``M4``.
+# longest name is tried first so that a target that starts another is not read as the shorter one, and nothing ends a
+# match, so a target followed by more bold text (``**V-01, I-6.**``) still reads as ``V-01``.
 TARGET_RE = re.compile(r"^\*\*(Gate: [^*]+|" + "|".join(
     re.escape(t) for t in sorted((t for t in TARGETS if t != "Gate"), key=len, reverse=True)) + ")")
 SECTION_RE = re.compile(r"^## (\d+)\. (.+)$")
 COLUMNS_RE = re.compile(r"^<!-- columns: (.+) -->$")
 ROW_RE = re.compile(r"^### (.+)$")
 BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
-# A row id is a letter and a number (``F2``, ``F15.5``), or a build stage of the architecture map (``STG-05``: one row
-# per stage, each slice noting on it; designer ruling D-CS1-12, 2026-10-23).
-_ID = r"(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2})"
+# A row id is a letter and a number (``F2``, ``F15.5``), a build stage of the architecture map (``STG-05``: one row per
+# stage, each slice noting on it; designer ruling D-CS1-12, 2026-10-23), or a hold group (``HOLD-09``: one row per
+# adopted position, the pre-rebaseline rows on its topic; the register rebaseline, 2026-10-24).
+_ID = r"(?:[A-Z][0-9]+(?:\.[0-9]+)?|STG-[0-9]{2}|HOLD-[0-9]{2})"
 ID_RE = re.compile(rf"^{_ID}$")
 # An id beside a label in parentheses, which three closed rows carry (``E33 (part)``, ``Q9 (decisions)``).
 LABELLED_ID_RE = re.compile(rf"^{_ID}(?: \([^()\n]+\))?$")

@@ -2,6 +2,6 @@
 Type=Application
 Name=AEW approvals
 Comment=Approve or decline AEW's protected actions with your G3 PIN
-Exec=/usr/local/bin/aew-g3-confirm
+Exec=/opt/aew-g3/bin/aew-g3-confirm
 Terminal=false
 Categories=Utility;

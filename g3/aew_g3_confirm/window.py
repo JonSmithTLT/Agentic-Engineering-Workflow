@@ -1,9 +1,15 @@
-"""The confirmer's window (A-37 G3-03, G3-05; STG-03, G3-B): GTK3, through the host's own ``python3-gobject``.
+"""The confirmer's window (A-37 G3-03, G3-05; STG-03, G3-B; addendum 4): GTK3, through the host's own
+``python3-gobject``.
 
 The only module that imports GTK, so no CI test opens a window; the run under the host's Python drives it on a private
-broadway display (``tests/helpers/g3_confirm_py36.py``). It takes the PIN only from its own entry field, typed on
-its own window; never from its arguments, its environment, standard input or any IPC (G3-05). Each decision is sent
-once, from a worker thread, with every button held until the reply; the PIN field is cleared as the decision leaves.
+broadway display (``tests/helpers/g3_confirm_py36.py``). It takes the PIN only from its own entry field, typed on its
+own window; never from its arguments, its environment, standard input or any IPC (G3-05). Each decision is sent once,
+from a worker thread, with every button held until the reply; the PIN field is cleared as the decision leaves.
+
+One instance per desktop session (``Gtk.Application``). Started at login it has no window: it polls the pending list
+and posts one notification per pending approval, in fixed text and with no decision on it. The window is shown only
+by the operator's own act, a launch from the menu or a click on a notification, and only in ``App.present``: nothing
+the poll does opens, raises or focuses it (addendum 4).
 """
 
 import sys
@@ -13,11 +19,24 @@ from typing import Any, Callable, Dict, List, Optional
 import gi  # pyright: ignore[reportMissingImports] - the host's python3-gobject, absent from CI
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk  # noqa: E402  # pyright: ignore[reportMissingImports] - after require_version
+from gi.repository import Gio, GLib, Gtk  # noqa: E402  # pyright: ignore[reportMissingImports] - after require_version
 
 from . import core  # noqa: E402 - after GTK's version is pinned, as PyGObject requires
 
 TITLE = "AEW approvals"
+
+
+def _in_background(call: Callable[[], Any], done: Callable[[Any, Optional[Exception]], None]) -> None:
+    def work() -> None:
+        result = None  # type: Any
+        error = None  # type: Optional[Exception]
+        try:
+            result = call()
+        except Exception as e:  # any failure is shown as no answer; core's texts never hold the PIN
+            error = e
+        GLib.idle_add(lambda: done(result, error) and False)
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 class Confirmer:
@@ -27,7 +46,6 @@ class Confirmer:
         self.current = None  # type: Optional[Dict[str, Any]]
         self.window = Gtk.Window(title=TITLE)
         self.window.set_default_size(980, 720)
-        self.window.connect("destroy", Gtk.main_quit)
 
         self.approvals = Gtk.ListStore(str, str)  # approval_ref, expires_at
         self.listing = Gtk.TreeView(model=self.approvals)
@@ -71,8 +89,8 @@ class Confirmer:
     def _refresh(self, notice: str = "") -> None:
         """Lists the open approvals again; ``notice``, a decision's outcome, stays shown above what the list says."""
         self._busy(True)
-        self._in_background(lambda: core.list_pending(self.sock_path),
-                            lambda result, error: self._listed(result, error, notice))
+        _in_background(lambda: core.list_pending(self.sock_path),
+                       lambda result, error: self._listed(result, error, notice))
 
     def _listed(self, result: Any, error: Optional[Exception], notice: str) -> None:
         self.pending = result if error is None else []
@@ -126,7 +144,7 @@ class Confirmer:
     def _decide(self, pin: Optional[str]) -> None:
         ref = core.summary(self.current or {})[0]
         self._busy(True)
-        self._in_background(lambda: core.decide(ref, pin, self.sock_path), self._decided)
+        _in_background(lambda: core.decide(ref, pin, self.sock_path), self._decided)
 
     def _decided(self, outcome: Any, error: Optional[Exception]) -> None:
         # Every outcome refreshes the list: a decided, lost or expired approval leaves it (addendum 2 §1).
@@ -139,26 +157,89 @@ class Confirmer:
         if not busy:
             self._show(self.current)
 
-    def _in_background(self, call: Callable[[], Any], done: Callable[[Any, Optional[Exception]], None]) -> None:
-        def work() -> None:
-            result = None  # type: Any
-            error = None  # type: Optional[Exception]
-            try:
-                result = call()
-            except Exception as e:  # any failure is shown as no answer; core's texts never hold the PIN
-                error = e
-            GLib.idle_add(lambda: done(result, error) and False)
 
-        threading.Thread(target=work, daemon=True).start()
+class App:
+    """The one instance in a desktop session: the window when the operator asks for it, and the notifications."""
+
+    def __init__(self, at_login: bool, sock_path: str = core.CONFIRM_SOCK) -> None:
+        self.at_login = at_login
+        self.sock_path = sock_path
+        self.confirmer = None  # type: Optional[Confirmer]
+        self.watch = core.Watch()
+        self.polling = False
+        self.started = False
+        self.app = Gtk.Application(application_id=core.APP_ID)
+        self.app.connect("activate", self._on_activate)
+        show = Gio.SimpleAction.new("show", None)  # a notification's click: the operator's own act
+        show.connect("activate", lambda _a, _p: self.present())
+        self.app.add_action(show)
+        self.notification = Gio.Notification.new(core.NOTIFY_TITLE)
+        self.notification.set_body(core.NOTIFY_BODY)
+        self.notification.set_default_action("app.show")  # no buttons: a decision is made only in the window
+
+    def _on_activate(self, _app: Any) -> None:
+        if not self.started:
+            self.started = True
+            self.app.hold()  # alive with no window; the window's close hides it, or quits a menu-started instance
+            self._poll()
+            GLib.timeout_add_seconds(core.POLL_S, self._poll)
+            if self.at_login:
+                return
+        self.present()
+
+    def present(self) -> None:
+        """The only place the window is shown, raised or focused: a launch from the menu, or a notification's click."""
+        if self.confirmer is None:
+            self.confirmer = Confirmer(self.sock_path)
+            self.confirmer.window.connect("delete-event", self._on_close)
+        self.confirmer.window.show_all()
+        self.confirmer.window.present()
+        self.confirmer._refresh()
+
+    def _on_close(self, window: Any, _event: Any) -> bool:
+        window.hide()
+        if not self.at_login:
+            self.app.quit()
+        return True
+
+    # ------------------------------------------------------------------------------------------ the notifications
+    def _poll(self) -> bool:
+        if not self.polling:  # a read still in flight (up to TIMEOUT_S) is waited for, never doubled
+            self.polling = True
+            _in_background(lambda: core.list_pending(self.sock_path), self._polled)
+        return True  # the timer keeps running
+
+    def _polled(self, result: Any, error: Optional[Exception]) -> None:
+        self.polling = False
+        if isinstance(error, core.NotPermitted) and self.at_login and self.confirmer is None:
+            self.app.quit()  # another account's login: it exits, with no window, notification or message
+            return
+        if error is not None:
+            return  # the service is down or stalled: it degrades quietly, and the next poll tries again
+        post, withdraw = self.watch.update(result)
+        for ref in post:  # with no notification service, GLib drops these; nothing fails and no dialog appears
+            self.app.send_notification(core.notification_id(ref), self.notification)
+        for ref in withdraw:
+            self.app.withdraw_notification(core.notification_id(ref))
 
 
 def main(argv: List[str]) -> int:
-    """Takes no arguments: nothing reaches the confirmer but the operator's own typing (G3-05)."""
-    if argv:
+    """Takes no argument but the autostart entry's ``--at-login``: nothing reaches the confirmer but the operator's own
+    typing (G3-05)."""
+    if argv not in ([], [core.AT_LOGIN]):
         sys.stderr.write("aew-g3-confirm takes no arguments: the PIN is typed into its window only\n")
         return 2
-    app = Confirmer()
-    app.window.show_all()
-    app._refresh()
-    Gtk.main()
-    return 0
+    at_login = argv == [core.AT_LOGIN]
+    if at_login and not core.may_use():
+        return 0  # another account's login: the socket is the operator's (addendum 4)
+    GLib.set_application_name(TITLE)
+    app = App(at_login)
+    try:
+        app.app.register(None)
+    except GLib.Error:
+        if at_login:
+            return 0  # no session bus: nothing to notify through, and nothing fails
+        raise
+    if at_login and app.app.get_is_remote():
+        return 0  # one instance per session: a second login start never activates, so never opens, the first
+    return app.app.run([sys.argv[0]])

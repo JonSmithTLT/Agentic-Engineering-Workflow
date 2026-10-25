@@ -9,9 +9,10 @@ draw (``aew_g3.wire.STATUS``), and root's command (``aew_g3.COMMAND``).
 
 import http.client
 import json
+import os
 import socket
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 CONFIRM_SOCK = "/run/aew-g3/confirm.sock"
 PENDING_PATH = "/g3/v1/pending"
@@ -21,6 +22,13 @@ WIRE = "g3-0.6.1-candidate"
 MAX_LINES = 243  # PendingApproval.rendering.maxItems (R2-1)
 COMMAND = "/usr/local/sbin/aew-g3"
 TIMEOUT_S = 30  # the service's own request timeout: a stall is waited out no longer than the service waits for us
+
+# Addendum 4: the confirmer starts at login, with no window, and posts a notification per pending approval.
+APP_ID = "org.aew.G3Confirm"  # also both desktop entries' file name, by which a desktop finds the app's notifications
+AT_LOGIN = "--at-login"  # the autostart entry's one argument: start with no window. Never a PIN's route (G3-05)
+POLL_S = 5  # addendum 4's chosen default: short beside an approval's expiry, 10 minutes at most (G3-02)
+NOTIFY_TITLE = "An AEW approval is waiting"  # fixed: no rendering line and no text from the request (G3-03)
+NOTIFY_BODY = "Open AEW approvals to see it in full, and approve or decline it there."
 
 # What the operator is told after a decision, by outcome: fixed text, never anything the service or a client sent.
 APPROVED, DECLINED = "APPROVED", "DECLINED"
@@ -45,6 +53,10 @@ UNREACHABLE = ("The G3 service did not answer. Nothing is known to be decided: t
 
 class Unreachable(Exception):
     """No answer from the service on the socket, or an answer that is not the G3 wire's."""
+
+
+class NotPermitted(Unreachable):
+    """The service is another account's: its socket refuses this one, or it answers PEER_NOT_PERMITTED."""
 
 
 class Malformed(Exception):
@@ -76,6 +88,8 @@ def _call(sock_path: str, method: str, path: str, body: Optional[bytes]) -> Tupl
         if reply.getheader(WIRE_HEADER) != WIRE:
             raise Unreachable("the reply on " + sock_path + " is not the G3 wire's (" + WIRE + ")")
         return reply.status, (json.loads(raw.decode("utf-8")) if raw else None)
+    except PermissionError:  # the socket is mode 0600 and another account's
+        raise NotPermitted("PermissionError on " + sock_path) from None
     except (OSError, http.client.HTTPException, ValueError) as e:
         raise Unreachable(type(e).__name__ + " on " + sock_path) from None
     finally:
@@ -87,8 +101,36 @@ def list_pending(sock_path: str = CONFIRM_SOCK) -> List[Dict[str, Any]]:
     status, body = _call(sock_path, "GET", PENDING_PATH, None)
     if status != 200 or not isinstance(body, list):
         code = body.get("code") if isinstance(body, dict) else None
-        raise Unreachable(MESSAGES.get(str(code), "the service answered " + str(status)))
+        refusal = NotPermitted if code == "PEER_NOT_PERMITTED" else Unreachable
+        raise refusal(MESSAGES.get(str(code), "the service answered " + str(status)))
     return body
+
+
+def may_use(sock_path: str = CONFIRM_SOCK) -> bool:
+    """False when the socket is there and not this account's to use: another user's login, where the autostart entry
+    runs too (addendum 4). A missing socket is a service not yet up, which the confirmer waits for."""
+    return not os.path.exists(sock_path) or os.access(sock_path, os.R_OK | os.W_OK)
+
+
+class Watch:
+    """Which notifications to post and withdraw (addendum 4): one per pending ``approval_ref``, posted once, withdrawn
+    when its approval leaves the list (decided, expired, or lost to a restart). Only a successful list is given here:
+    a failed one changes nothing, so a stalled read never withdraws a notification only to post it again."""
+
+    def __init__(self) -> None:
+        self.posted: Set[str] = set()
+
+    def update(self, pending: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
+        """The refs to notify of, and the refs to withdraw, from one successful list."""
+        now = {summary(p)[0] for p in pending} - {""}
+        post, withdraw = sorted(now - self.posted), sorted(self.posted - now)
+        self.posted = now
+        return post, withdraw
+
+
+def notification_id(approval_ref: str) -> str:
+    """The desktop's id for an approval's notification: a key, never shown."""
+    return "pending:" + approval_ref
 
 
 def decision_body(pin: Optional[str]) -> bytes:

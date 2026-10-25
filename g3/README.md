@@ -23,7 +23,7 @@ This directory holds part G3-A, the service and its systemd units, and part G3-B
 | The key, the PIN's hash, the ledger | `/var/lib/aew-g3` (`StateDirectory=`), mode 0600 | the service's account alone |
 | `request.sock`, `confirm.sock` | `/run/aew-g3/`, from `aew-g3.socket` | the operator's account only (`SocketUser=`, mode 0600, and a UID check on every request) |
 | The public keys and `issuer_ref` | `/run/aew-g3/keys/`, mode 0644 | anyone, for audit |
-| `aew_g3_confirm`, the confirmer | `/opt/aew-g3/aew_g3_confirm`, root-owned; launched by `/usr/local/bin/aew-g3-confirm` and the desktop entry "AEW approvals" | the operator, on their own desktop, outside any sandbox |
+| `aew_g3_confirm`, the confirmer | `/opt/aew-g3/aew_g3_confirm` and its launcher `/opt/aew-g3/bin/aew-g3-confirm`, root-owned; started at login by `/etc/xdg/autostart/org.aew.G3Confirm.desktop`, and from the menu entry "AEW approvals" | the operator, on their own desktop, outside any sandbox |
 
 The operator's editable `aew` install never runs any of it. The service takes three things from `aew`, the sealed
 O-01 command schema, the action registry, and SW-02's canonical bytes and set digest, so it derives them from their
@@ -50,15 +50,34 @@ The window where the operator approves or declines (A-37 G3-03, G3-05). It lists
 `template_id`, a typed field its `field_path` and its value as JSON, an owner fact its owner, fact, observation and
 values. Every value is escaped to ASCII, so no control, bidirectional or look-alike character can disguise it. A
 rendering it cannot show exactly can only be declined. The PIN comes only from the window's own entry field: the
-confirmer takes no arguments, and reads nothing from its environment, standard input or any IPC. Each decision is sent
-once; after any outcome, the list is refreshed, and the outcome is told in fixed text, never text the service sent.
+confirmer takes no argument but the autostart entry's `--at-login`, and reads nothing from its environment, standard
+input or any IPC. Each decision is sent once; after any outcome, the list is refreshed, and the outcome is told in
+fixed text, never text the service sent.
+
+**How it reaches the operator** (the designer's addendum 4):
+- **It starts at login,** with no window, from a root-owned entry in `/etc/xdg/autostart/`. There is one instance
+  per desktop session, and a launch from the menu opens that instance's window.
+- **It notifies:** it reads the pending list every 5 seconds, and posts one notification per pending approval through
+  the desktop's notification service. The notification is in fixed text, with no rendering line and no decision on it,
+  and is withdrawn when the approval leaves the list. A click on it opens the window.
+- **It never opens, raises or focuses itself.** The poll touches only the notifications, never the window or its
+  list, so an approval arriving never moves the operator's selection or a half-typed PIN. Under xrdp, which is X11, a
+  window could take focus, so this is the confirmer's own rule.
+- **It degrades quietly:** with no notification service, or the G3 service down, nothing fails and no dialog appears.
+- **On another account's login** the entry runs too. That account cannot use `confirm.sock`, so the confirmer exits
+  at once, silently.
+- **The operator can turn it off** for themselves in their desktop's startup settings; the menu still works.
+- **The service** logs a successful pending read no more, so the polling does not bury the journal. A refused or failed
+  read is logged, as is every other request.
 
 - **The toolkit:** GTK3, through the host's own Python 3 and `python3-gobject` (Rocky 8: `/usr/libexec/platform-python`,
   Python 3.6). The confirmer uses the standard library and GTK only, never `aew` or `aew_g3`, so the facts it restates
   (the socket, the wire's header and version, the rendering's line limit, the Problem codes, root's command) are held
   to their owners by a test.
-- **Launching it:** by hand, from "AEW approvals" among the desktop's applications, or `/usr/local/bin/aew-g3-confirm`.
-  It needs an X11 or Wayland session of the operator's own. If the host lacks GTK3 for that Python, `install.sh` says
+- **Launching it:** from "AEW approvals" among the desktop's applications, a notification's click, or
+  `/usr/local/bin/aew-g3-confirm`. Both desktop entries are named for its application id, `org.aew.G3Confirm`, as
+  the desktop's notifications require, and run `/opt/aew-g3/bin/aew-g3-confirm`. It needs an X11 or Wayland session
+  of the operator's own. If the host lacks GTK3 for that Python, `install.sh` says
   so, and approvals wait until root installs `gtk3` and `python3-gobject`.
 
 ## Install (root, on the host)
@@ -72,7 +91,8 @@ The full path, because Rocky 8's `sudo` searches only its `secure_path`, which l
 
 `install.sh` enables both units, so the service comes back after a reboot. A reinstall keeps the PIN, the key, the
 ledger and `etc/deployment.json`, and says so; set the PIN only after the first install. It also installs the
-confirmer, its launcher and its desktop entry, and checks that the host's Python can load GTK3 for it.
+confirmer, its launcher, its menu entry and its autostart entry, and checks that the host's Python can load GTK3 for
+it. The confirmer starts by itself from the operator's next login.
 
 - `set-pin` reads the PIN twice from the terminal. It stores only a salted scrypt hash, and the minimum length the PIN
   was set under. Setting the PIN also ends a lockout.
@@ -97,12 +117,15 @@ confirmer, its launcher and its desktop entry, and checks that the host's Python
   refusal waits for the declared body. A stalled client is dropped at the request timeout. Bodies at and over
   `MAX_BODY`, a PIN that is not UTF-8 and a body nested past the parser are each held to their rule.
 - **`tests/unit/test_g3_confirm.py`:** the confirmer's restated facts against their owners, what it shows of each kind
-  of line, the renderings it refuses whole, the decisions it sends, and the outcome texts. Two static checks keep it
-  within Python 3.6: the parser at its lowest version, and a list of the later names the parser cannot see.
+  of line, the renderings it refuses whole, the decisions it sends, and the outcome texts. For the notifications: one
+  per approval, never repeated, withdrawn when it leaves the list, in fixed text; the desktop entries; and that only
+  one method shows the window, reached only by a launch or a click. Two static checks keep it within Python 3.6: the
+  parser at its lowest version, and a list of the later names the parser cannot see.
 - **`tests/integration/test_g3_confirm_process.py`:** the confirmer's core against the real service, on Linux: listing,
-  approving once, declining, every refusal it can draw, and a service that does not answer or is not G3's.
+  approving once, declining, every refusal it can draw, another account's socket, the service's log of pending reads,
+  and a service that does not answer or is not G3's.
 - **`tests/helpers/g3_confirm_py36.py`:** the run under the host's own Python 3.6, which CI does not have, against a
-  throwaway service. On a private broadway display it also drives the real window. Its result is recorded in the pull
-  request.
+  throwaway service. On a private broadway display and a private session bus, it also drives the real window and the
+  notifications, through a stand-in notification service. Its result is recorded in the pull request.
 
 **Coverage:** the coverage ratchet measures `src/aew` only, so it does not count this package's lines.

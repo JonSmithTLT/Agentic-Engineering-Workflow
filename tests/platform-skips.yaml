@@ -571,6 +571,14 @@ skipped:
       the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
       tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_another_accounts_socket_is_not_permitted_and_a_service_not_yet_up_is_waited_for: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_a_successful_pending_read_writes_no_log_line_and_a_refused_one_does: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
     tests/integration/test_g3_confirm_process.py::test_no_answer_and_an_answer_without_the_g3_wire_are_unreachable_never_a_decision: >-
       the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in

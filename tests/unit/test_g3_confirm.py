@@ -38,13 +38,31 @@ def test_the_confirmers_restated_facts_are_their_owners() -> None:
     assert set(decision["properties"]["decision"]["enum"]) == {"APPROVE", "DECLINE"}
 
 
-def test_install_sh_and_the_desktop_entry_launch_the_same_confirmer_the_same_way() -> None:
+def _install_value(install: str, name: str) -> str:
+    found = re.findall(rf"^{name}=(\S+)", install, re.M)
+    assert len(found) == 1, (name, found)
+    return found[0]
+
+
+def test_install_sh_and_both_desktop_entries_launch_the_same_confirmer_from_the_pinned_path() -> None:
+    """Addendum 4: the menu entry and the autostart entry are root's, hold no code and no values, and name only the
+    executable under the install root; each is named for the application id, as the desktop's notifications need."""
     install = (ROOT / "install.sh").read_bytes().decode()
-    confirm = re.search(r"^CONFIRM=(\S+)$", install, re.M)
-    python = re.search(r"^CONFIRM_PY=(\S+)$", install, re.M)
-    assert confirm and python
-    desktop = (ROOT / "desktop" / "aew-g3-confirm.desktop").read_bytes().decode()
-    assert re.findall(r"^Exec=(.*)$", desktop, re.M) == [confirm.group(1)]  # no argument: nothing but typing (G3-05)
+    confirm, install_root = _install_value(install, "CONFIRM"), _install_value(install, "ROOT")
+    assert confirm.startswith(install_root + "/")  # G3-14: under the one root-owned path
+    menu = ROOT / "desktop" / (core.APP_ID + ".desktop")
+    login = ROOT / "desktop" / "autostart" / (core.APP_ID + ".desktop")
+    assert sorted(p.relative_to(ROOT / "desktop").as_posix() for p in (ROOT / "desktop").rglob("*") if p.is_file()) \
+        == sorted([menu.name, "autostart/" + login.name])
+    for entry, exec_line in ((menu, confirm), (login, confirm + " " + core.AT_LOGIN)):  # no other argument (G3-05)
+        text = entry.read_bytes().decode()
+        assert re.findall(r"^Exec=(.*)$", text, re.M) == [exec_line], entry.name
+        assert set(re.findall(r"^(\w[\w-]*)=", text, re.M)) <= {
+            "Type", "Name", "Comment", "Exec", "Terminal", "Categories", "NoDisplay", "X-GNOME-Autostart-enabled"}
+    assert _install_value(install, "DESKTOP") == "/usr/share/applications/" + menu.name
+    assert _install_value(install, "AUTOSTART") == "/etc/xdg/autostart/" + login.name
+    assert 'cp "$HERE/desktop/autostart/' + login.name + '" "$AUTOSTART"' in install
+    assert 'chmod 0644 "$DESKTOP" "$AUTOSTART"' in install
     assert re.search(r"^exec \$CONFIRM_PY -I -B -c '.*from aew_g3_confirm\.window import main.*' \"\\\$@\"$",
                      install, re.M)
     assert 'cp "$HERE"/aew_g3_confirm/*.py "$ROOT/aew_g3_confirm/"' in install
@@ -137,6 +155,61 @@ def test_an_outcome_the_table_lacks_is_named_as_sent_and_never_reads_as_approved
     said = {c: core.message(c).lower() for c in core.MESSAGES if c not in (core.APPROVED, "NOT_FOUND")}
     assert all("nothing was approved" in m for m in said.values()), said
     assert "approved" not in core.message("NOT_FOUND").lower()
+
+
+# ------------------------------------------------------------------------------------------------ addendum 4
+def _pending(*refs: str) -> list[dict[str, Any]]:
+    return [{**_p1(), "approval_ref": r} for r in refs]
+
+
+def test_each_pending_approval_is_notified_once_and_withdrawn_when_it_leaves_the_list() -> None:
+    watch = core.Watch()
+    assert watch.update(_pending("approval:a", "approval:b")) == (["approval:a", "approval:b"], [])
+    assert watch.update(_pending("approval:a", "approval:b")) == ([], [])  # later polls do not repeat it
+    assert watch.update(_pending("approval:b", "approval:c")) == (["approval:c"], ["approval:a"])
+    assert watch.update([]) == ([], ["approval:b", "approval:c"])  # decided, expired, or lost to a restart
+    assert watch.update(_pending("approval:b")) == (["approval:b"], [])  # back on the list: a new notification
+    assert core.notification_id("approval:b") != core.notification_id("approval:c")
+
+
+def test_the_notification_is_fixed_text_that_carries_nothing_from_the_request() -> None:
+    p1 = _p1()
+    served = {json.dumps(v) for ln in p1["rendering"] for v in ln["values"].values()}
+    served |= {ln["template_id"] for ln in p1["rendering"]} | {p1["approval_ref"]}
+    for text in (core.NOTIFY_TITLE, core.NOTIFY_BODY):
+        assert not [s for s in served if s.strip('"') and s.strip('"') in text], text
+    window = (PACKAGE / "window.py").read_bytes().decode()
+    assert "add_button" not in window and "set_button" not in window  # no approve or decline button on it
+    assert re.findall(r"Gio\.Notification\.new\(([^)]*)\)", window) == ["core.NOTIFY_TITLE"]
+    assert re.findall(r"\.set_body\(([^)]*)\)", window) == ["core.NOTIFY_BODY"]
+
+
+# Every call that opens, raises or focuses a window, and the one method allowed to make them: the operator's own act
+# (a launch from the menu, or a notification's click). The poll never reaches it (addendum 4).
+SHOWS = {"present", "present_with_time", "show", "show_all", "show_now", "grab_focus", "deiconify", "set_keep_above",
+         "set_urgency_hint", "set_focus", "activate_focus", "maximize", "fullscreen", "stick"}
+
+
+def _calls(node: ast.AST) -> list[ast.Attribute]:
+    return [n.func for n in ast.walk(node) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
+
+
+def test_only_app_present_opens_raises_or_focuses_the_window_and_only_the_operators_acts_reach_it() -> None:
+    tree = ast.parse((PACKAGE / "window.py").read_bytes().decode())
+    shows: dict[str, set[str]] = {}
+    callers = set()
+    for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
+        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef)):
+            for f in _calls(fn):
+                if isinstance(f.value, ast.Name) and f.value.id == "self" and f.attr == "present":
+                    callers.add(cls.name + "." + fn.name)  # App's own present()
+                elif f.attr in SHOWS:
+                    shows.setdefault(cls.name + "." + fn.name, set()).add(f.attr)
+    assert shows == {"App.present": {"show_all", "present"}}, shows  # control: it is found where it is
+    # Its callers: the "show" action (a notification's click) and activate (a launch), never a poll.
+    assert callers == {"App.__init__", "App._on_activate"}, callers
+    poll = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in ("_poll", "_polled")]
+    assert len(poll) == 2 and not {f.attr for fn in poll for f in _calls(fn)} & (SHOWS | {"_refresh"})
 
 
 # ------------------------------------------------------------------------------------------------ Python 3.6

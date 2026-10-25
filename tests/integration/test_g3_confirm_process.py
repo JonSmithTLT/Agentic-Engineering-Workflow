@@ -107,11 +107,52 @@ def test_each_refusal_reaches_the_operator_as_its_own_fixed_text(served: tuple[G
     reached["APPROVAL_EXPIRED"] = core.decide(held, G.PIN, sock)
     monkeypatch.setattr(server, "peer_uid", lambda conn: os.getuid() + 1)
     reached["PEER_NOT_PERMITTED"] = core.decide("g3:approval:x", None, sock)
-    with pytest.raises(core.Unreachable) as listing:
+    with pytest.raises(core.NotPermitted) as listing:  # at login, the confirmer exits on it (addendum 4)
         core.list_pending(sock)
     assert str(listing.value) == core.MESSAGES["PEER_NOT_PERMITTED"]
     assert reached == {code: code for code in reached}, reached
     assert set(reached) | {"NOT_FOUND", core.APPROVED, core.DECLINED} == set(core.MESSAGES)  # each has its own text
+
+
+@pytest.mark.skipif(sys.platform != "win32" and os.geteuid() == 0, reason="root passes every file mode")
+def test_another_accounts_socket_is_not_permitted_and_a_service_not_yet_up_is_waited_for(
+        served: tuple[G.Rig, str], tmp_path: Path) -> None:
+    """Addendum 4: the autostart entry runs at every account's login, and confirm.sock is the operator's, mode 0600.
+    On another account the confirmer exits at once, silently; a socket not there yet is a service not yet up."""
+    _, sock = served
+    assert core.may_use(sock) and core.list_pending(sock) == []  # control: the operator's own
+    os.chmod(sock, 0)  # as another account sees the operator's 0600 socket
+    try:
+        assert not core.may_use(sock)
+        with pytest.raises(core.NotPermitted):
+            core.list_pending(sock)
+    finally:
+        os.chmod(sock, 0o600)
+    absent = str(tmp_path / "absent.sock")
+    assert core.may_use(absent)
+    with pytest.raises(core.Unreachable) as down:
+        core.list_pending(absent)
+    assert not isinstance(down.value, core.NotPermitted)  # down is waited for, never taken for another account
+
+
+def test_a_successful_pending_read_writes_no_log_line_and_a_refused_one_does(
+        served: tuple[G.Rig, str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Addendum 4: the confirmer reads the list every few seconds, so the service logs a successful read no more; a
+    refused or failed read, and every other request, is logged as before."""
+    from aew_g3 import server
+
+    rig, sock = served
+    capsys.readouterr()
+    for _ in range(3):
+        core.list_pending(sock)
+    assert core.PENDING_PATH not in capsys.readouterr().err
+    assert core.decide(_pending(rig), None, sock) == core.DECLINED
+    assert "POST " + core.DECISION_PATH in capsys.readouterr().err  # control: every other request is logged
+    monkeypatch.setattr(server, "peer_uid", lambda conn: os.getuid() + 1)
+    with pytest.raises(core.NotPermitted):
+        core.list_pending(sock)
+    refused = [ln for ln in capsys.readouterr().err.splitlines() if "GET " + core.PENDING_PATH in ln]
+    assert len(refused) == 1 and " 403 " in refused[0], refused
 
 
 def test_no_answer_and_an_answer_without_the_g3_wire_are_unreachable_never_a_decision(tmp_path: Path) -> None:

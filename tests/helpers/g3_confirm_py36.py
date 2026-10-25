@@ -67,6 +67,8 @@ def main(argv):
         done.append("wrong PIN, approve, retry NOT_FOUND")
     if os.environ.get("GDK_BACKEND") == "broadway":  # a private broadwayd: the window is built, never on a screen
         done += drive_window(window, core, confirm, ask, pin)
+        if os.environ.get("DBUS_SESSION_BUS_ADDRESS", "").startswith("unix:"):  # a private bus from dbus-run-session
+            done += drive_app(window, core, g3_dir, confirm, ask)
     for line in done:
         print("ok:", line)
     print("PY36-CONFIRMER-CHECKS PASS")
@@ -109,6 +111,156 @@ def drive_window(window, core, confirm, ask, pin):
             assert app.pin.get_text() == "", "the PIN left the field as the decision left"
             pump(lambda: core.MESSAGES[core.APPROVED] in app.status.get_text(), "approving")
         said.append("window: " + decision.lower() + " through the window, " + str(expected) + " rows shown")
+    return said
+
+
+NOTIFICATIONS = """<node><interface name="org.freedesktop.Notifications">
+<method name="Notify"><arg type="s" direction="in"/><arg type="u" direction="in"/><arg type="s" direction="in"/>
+<arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="as" direction="in"/>
+<arg type="a{sv}" direction="in"/><arg type="i" direction="in"/><arg type="u" direction="out"/></method>
+<method name="CloseNotification"><arg type="u" direction="in"/></method>
+<method name="GetCapabilities"><arg type="as" direction="out"/></method>
+<method name="GetServerInformation"><arg type="s" direction="out"/><arg type="s" direction="out"/>
+<arg type="s" direction="out"/><arg type="s" direction="out"/></method>
+<signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
+<signal name="NotificationClosed"><arg type="u"/><arg type="u"/></signal>
+</interface></node>"""
+# Every call that opens, raises or focuses a window (tests/unit/test_g3_confirm.py, SHOWS, as GTK names them).
+SHOWS = {"Widget": ("show", "show_all", "show_now", "grab_focus"),
+         "Window": ("present", "present_with_time", "deiconify", "set_keep_above", "set_urgency_hint", "set_focus",
+                    "maximize", "fullscreen", "stick")}
+
+
+def drive_app(window, core, g3_dir, confirm, ask):
+    """Addendum 4, on a private session bus with a stand-in notification service (GTK's freedesktop backend): the
+    login start shows no window and posts one fixed-text notification per pending approval, once, and withdraws it when
+    the approval is decided; a poll never opens, raises or focuses a window, with the window closed or open; a click
+    opens it; a menu launch opens the running instance's window, and a second login start does nothing; with no
+    notification service nothing fails; and on another account's socket the login start quits with nothing shown."""
+    import subprocess
+    import time
+
+    gio, glib, gtk = window.Gio, window.GLib, window.Gtk
+    calls, ids, said = [], [0], []
+
+    def on_call(conn, sender, path, iface, method, params, invocation):
+        calls.append((method, params.unpack()))
+        if method == "Notify":
+            ids[0] += 1
+            invocation.return_value(glib.Variant("(u)", (ids[0],)))
+        elif method == "GetCapabilities":
+            invocation.return_value(glib.Variant("(as)", (["actions", "body"],)))
+        elif method == "GetServerInformation":
+            invocation.return_value(glib.Variant("(ssss)", ("stand-in", "aew", "0", "1.2")))
+        else:
+            invocation.return_value(None)
+
+    def pump(until, what, secs=15):
+        deadline = time.monotonic() + secs
+        while not until():
+            glib.MainContext.default().iteration(False)
+            assert time.monotonic() < deadline, "never got to: " + what
+            time.sleep(0.01)
+
+    def poll(app):
+        app._poll()
+        pump(lambda: not app.polling, "a poll's end")
+        for _ in range(20):  # GLib's notification calls are asynchronous: let them reach the bus
+            glib.MainContext.default().iteration(False)
+            time.sleep(0.01)
+
+    def notifies():
+        return [c[1] for c in calls if c[0] == "Notify"]
+
+    shows = []
+
+    def counted(real, name):
+        def call(self, *a):
+            shows.append(name)
+            return real(self, *a)
+        return call
+
+    for cls, names in SHOWS.items():
+        for name in names:
+            setattr(getattr(gtk, cls), name, counted(getattr(getattr(gtk, cls), name), name))
+
+    bus = gio.bus_get_sync(gio.BusType.SESSION, None)
+    iface = gio.DBusNodeInfo.new_for_xml(NOTIFICATIONS).interfaces[0]
+    bus.register_object("/org/freedesktop/Notifications", iface, on_call, None, None)
+    owned = []
+    owner = gio.bus_own_name_on_connection(bus, "org.freedesktop.Notifications", gio.BusNameOwnerFlags.NONE,
+                                           lambda *a: owned.append(1), None)
+    pump(lambda: owned, "owning the notification service's name")
+
+    app = window.App(True, confirm)
+    app.app.register(None)
+    assert not app.app.get_is_remote()
+    app._on_activate(app.app)  # the login start
+    ref = ask()
+    poll(app)
+    pump(lambda: notifies(), "a notification")
+    sent = notifies()
+    assert len(sent) == 1 and sent[0][3:6] == (core.NOTIFY_TITLE, core.NOTIFY_BODY, ["default", ""]), sent
+    poll(app)
+    poll(app)
+    assert len(notifies()) == 1, "a later poll repeated it"
+    assert app.confirmer is None and shows == [], shows
+    said.append("login start: no window; one notification, fixed text, no buttons; not repeated")
+
+    assert core.decide(ref, None, confirm) == core.DECLINED
+    poll(app)
+    pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal")
+    said.append("decided: withdrawn")
+
+    run = [sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {g3_dir!r}); "
+           "from aew_g3_confirm.window import main; sys.exit(main(sys.argv[1:]))"]
+    second = subprocess.Popen(run + [core.AT_LOGIN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pump(lambda: second.poll() is not None, "a second login start's exit", 30)
+    assert second.returncode == 0 and app.confirmer is None and shows == [], (second.returncode, shows)
+    said.append("a second login start: exit 0, nothing opened")
+
+    ask()
+    poll(app)
+    pump(lambda: len(notifies()) == 2, "the next approval's notification")
+    bus.emit_signal(None, "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "ActionInvoked",
+                    glib.Variant("(us)", (ids[0], "default")))  # the operator's click
+    pump(lambda: app.confirmer is not None and app.confirmer.window.get_visible(), "the window, on the click")
+    assert {"show_all", "present"} <= set(shows)
+    said.append("a click opens the window")
+    del shows[:]
+    ask()
+    poll(app)
+    pump(lambda: len(notifies()) == 3, "a notification with the window open")
+    assert shows == [], shows
+    said.append("with the window open: notified, and the window not raised or focused")
+
+    app.confirmer.window.hide()
+    menu = subprocess.Popen(run, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pump(lambda: menu.poll() is not None and app.confirmer.window.get_visible(), "the menu launch's window", 30)
+    assert menu.returncode == 0 and "present" in shows
+    said.append("a menu launch opens the running instance's window")
+
+    gio.bus_unown_name(owner)
+    toplevels = len(gtk.Window.list_toplevels())
+    del shows[:]
+    ask()
+    poll(app)
+    poll(app)
+    assert len(notifies()) == 3 and len(gtk.Window.list_toplevels()) == toplevels and shows == []
+    said.append("no notification service: nothing fails, no dialog")
+
+    os.chmod(confirm, 0)  # as another account sees the operator's 0600 socket
+    try:
+        other = window.App(True, confirm)
+        quits = []
+        other.app.quit = lambda: quits.append(1)
+        other._on_activate(other.app)
+        pump(lambda: quits, "another account's login start quitting")
+        assert other.confirmer is None and len(notifies()) == 3 and shows == []
+    finally:
+        os.chmod(confirm, 0o600)
+        other.polling = True  # its timer's later polls stay idle: it stands for an instance that has quit
+    said.append("another account: quits, with nothing shown")
     return said
 
 

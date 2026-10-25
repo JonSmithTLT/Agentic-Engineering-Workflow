@@ -187,17 +187,18 @@ def lowered(before, after):
 def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
     """EW-U05.g: a reorganization preserves the applicable proof obligations. Every unit the move takes keeps its
     effective class, its inherited non-waivable gates and its integration's validation by a verifier, or the move is
-    refused, naming what each unit would lose and what to do instead, and nothing changes. Each remedy is then taken
-    and admitted. Class 1 Tickets are validated by checks here, so only an ancestor's floor makes it a verifier."""
+    refused, naming what each unit would lose and what to do instead, and nothing changes. Each remedy the refusals
+    name is then taken and admitted. Class 1 Tickets are validated by checks here, so only an ancestor's floor makes
+    it a verifier."""
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}
     p = sample_project(tmp_path, gates=gates)
     floor, gate = ("--min-descendant-class", "3", "--rationale", "crosses the auth boundary"), \
         ("--mandatory-gate", "review_security")
     hardening = create_unit(p, "epic", "Hardening", extra=(*floor, *gate))
-    same = create_unit(p, "epic", "Hardening too", extra=(*floor, *gate))
     floor_only = create_unit(p, "epic", "Floor only", extra=floor)
     gate_only = create_unit(p, "epic", "Gate only", extra=gate)
+    swapped = create_unit(p, "epic", "Another gate", extra=(*floor, "--mandatory-gate", "review_performance"))
     plain = create_unit(p, "epic", "Plain")
     more = create_unit(p, "epic", "More", extra=("--min-descendant-class", "4", "--rationale", "money moves", *gate,
                                                  "--mandatory-gate", "post_integration_verifier"))
@@ -210,80 +211,167 @@ def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
     assert before[change]["verifier"]
 
     def refused(*args):
+        """The refusal, its options derived from the losses (reclassify only for a class or a verifier), and nothing
+        changed: ``(dropped, instead by option)``."""
         rev = p.rev()
         out = err(p, "work", "move", story, *args, "--reason", "reorganize")
         assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "move_lowers_obligations"
-        assert [o["option"] for o in out["details"]["instead"]] == [
-            "move_under_an_equal_parent", "create_the_parent_with_them", "reclassify_first"]
+        assert out["message"].startswith("a move that would lower") and "this move would lower" in out["message"]
+        dropped, instead = out["details"]["dropped"], {o["option"]: o for o in out["details"]["instead"]}
+        ranked = sorted(w for w, d in dropped.items() if "effective_class" in d or "integration_verifier" in d)
+        assert list(instead) == ["move_under_an_equal_parent", "create_the_parent_with_them",
+                                 *(["reclassify_first"] if ranked else [])]
+        assert instead["create_the_parent_with_them"]["gates"] == sorted(
+            {g for d in dropped.values() for g in d.get("non_waivable_gates", [])})
+        assert "--rationale" in instead["create_the_parent_with_them"]["how"] or not ranked
+        assert not ranked or instead["reclassify_first"]["units"] == ranked
         assert p.rev() == rev and show(p, story)["parent"] == hardening and inherited(p, story) == before
-        return out["details"]["dropped"]
+        return dropped, instead
 
     # Neither the floor nor the gate, and no parent at all (the missing case): every unit would lose both.
     for target in (("--parent", plain), ("--parent", "none")):
-        dropped = refused(*target)
+        dropped, named = refused(*target)
         assert set(dropped) == moved
         assert all(d["effective_class"] == {"before": 3, "after": 1} and d["non_waivable_gates"] == ["review_security"]
                    for d in dropped.values())
         assert {w for w, d in dropped.items() if "integration_verifier" in d} == {change}
-    # The floor kept, the gate dropped; the gate kept, the floor (and with it the floor's verifier) dropped.
-    assert refused("--parent", floor_only) == {w: {"non_waivable_gates": ["review_security"]} for w in moved}
-    dropped = refused("--parent", gate_only)
+        assert named["create_the_parent_with_them"]["floor"] == named["reclassify_first"]["class"] == 3
+    # The floor kept and the gate dropped; and as many gates but another one (gates are a set, not a count). No class
+    # or verifier is lost, so raising a class is not offered.
+    for target in (floor_only, swapped):
+        dropped, instead = refused("--parent", target)
+        assert dropped == {w: {"non_waivable_gates": ["review_security"]} for w in moved}
+        assert instead["create_the_parent_with_them"]["floor"] is None
+    # The gate kept, the floor (and with it the floor's verifier) dropped.
+    dropped, _ = refused("--parent", gate_only)
     assert {w: set(d) for w, d in dropped.items()} == {story: {"effective_class"}, look: {"effective_class"},
                                                        change: {"effective_class", "integration_verifier"}}
-    # Each remedy, taken: the units' own class raised first, then the gate-only parent admits them.
-    for wid in (story, change, look):
-        p.lead("work", "reclassify", wid, "--class", "3", "--reason", "meet the floor before the move")
+    # Each remedy, taken. reclassify_first: the units' own class raised as named, then the gate-only parent admits them.
+    for wid in named["reclassify_first"]["units"]:
+        p.lead("work", "reclassify", wid, "--class", str(named["reclassify_first"]["class"]), "--reason",
+               "meet the floor before the move")
     reclassified = inherited(p, story)
     p.lead("work", "move", story, "--parent", gate_only, "--reason", "the floor is now the units' own class")
     assert show(p, story)["parent"] == gate_only and not lowered(reclassified, inherited(p, story))
-    # A parent created with the same floor and gate, then one that requires more. Nothing in the subtree is lowered.
+    # create_the_parent_with_them: a parent created with the floor and gates the refusal names admits the move.
+    create = named["create_the_parent_with_them"]
+    made = create_unit(p, "epic", "Hardening too", extra=(
+        "--min-descendant-class", str(create["floor"]), "--rationale", "keeps the floor",
+        *(x for g in create["gates"] for x in ("--mandatory-gate", g))))
     at_gate_only = inherited(p, story)
-    p.lead("work", "move", story, "--parent", same, "--reason", "same obligations, new home")
+    p.lead("work", "move", story, "--parent", made, "--reason", "same obligations, new home")
     after = inherited(p, story)
-    assert show(p, story)["parent"] == same and not lowered(at_gate_only, after) and not lowered(before, after)
+    assert show(p, story)["parent"] == made and not lowered(at_gate_only, after) and not lowered(before, after)
+    # move_under_an_equal_parent: one that requires more admits it too. Nothing in the subtree is lowered.
     p.lead("work", "move", story, "--parent", more, "--reason", "stricter home")
     after_more = inherited(p, story)
     assert not lowered(after, after_more) and all(a["class"] == 4 for a in after_more.values())
     assert_control_invariants(p)
 
 
+def test_a_move_that_would_lower_obligations_is_refused_before_any_replan_is_asked(tmp_path):
+    """A move that both lowers obligations and changes the inherited edges of started work is refused for its
+    obligations first: no change of state meets that refusal, so asking for a replan first would end the started
+    attempt for nothing. The started work stays RUNNING. Planted control: with the gate kept, the same move meets the
+    dependency refusal."""
+    p = sample_project(tmp_path)
+    upstream = create_unit(p, "ticket", "Upstream", extra=("--non-mutating",))
+    gated = create_unit(p, "epic", "Security", extra=("--mandatory-gate", "review_security"))
+    linked = create_unit(p, "epic", "Linked", extra=("--depends-on", upstream))
+    keeps = create_unit(p, "epic", "Linked and gated", extra=("--depends-on", upstream,
+                                                              "--mandatory-gate", "review_security"))
+    story = create_unit(p, "story", "Sessions", parent=gated)
+    look = create_investigation(p, tmp_path, parent=story)
+    dispatch(p, look)
+    rev = p.rev()
+    out = err(p, "work", "move", story, "--parent", linked, "--reason", "reorganize")
+    assert out["code"] == "OBLIGATIONS_DROPPED" and set(out["details"]["dropped"]) == {story, look}
+    assert p.rev() == rev and show(p, look)["state"] == "RUNNING" and show(p, story)["parent"] == gated
+    out = err(p, "work", "move", story, "--parent", keeps, "--reason", "reorganize")
+    assert out["code"] == "ILLEGAL_TRANSITION" and out["details"]["in_progress"] == [look]
+    assert p.rev() == rev and show(p, look)["state"] == "RUNNING"
+    assert_control_invariants(p)
+
+
 def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
-    """EW-U05.g holds for a promotion too: a Ticket promoted out of a Story with its own floor or non-waivable gate
+    """EW-U05.g holds for a promotion too: a unit promoted out of a parent with its own floor or non-waivable gate
     keeps every obligation, checked over the moved subtree through the owners as for a move, or the promotion is
-    refused, naming what it would lose, and nothing is created. Class 1 Tickets are validated by checks here, so only
-    the Story's floor makes the mutating one's a verifier."""
+    refused, naming the promotion, what each unit would lose and what to do instead, and nothing is created. Each
+    remedy a refusal names is taken. Class 1 Tickets are validated by checks here, so only a parent's floor makes a
+    mutating one's a verifier."""
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}
     p = sample_project(tmp_path, gates=gates)
-    floor = ("--min-descendant-class", "2", "--rationale", "money moves")
+    floor, gate = ("--min-descendant-class", "2", "--rationale", "money moves"), ("--mandatory-gate", "review_security")
     epic = create_unit(p, "epic", "Initiative")
-    gated = create_unit(p, "story", "Payments", parent=epic, extra=(*floor, "--mandatory-gate", "review_security"))
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=(*floor, *gate))
     floored = create_unit(p, "story", "Ledger", parent=epic, extra=floor)
     change = create_unit(p, "ticket", "Charge the card", parent=gated)
     look = create_investigation(p, tmp_path, parent=gated)
     posting = create_unit(p, "ticket", "Post the entry", parent=floored)
 
-    def promote(wid):
-        return p.lead("work", "promote", wid, "--to", "story", "--title", f"{wid}, wider", "--reason", "scope grew")[
+    def promote(wid, to="story"):
+        return p.lead("work", "promote", wid, "--to", to, "--title", f"{wid}, wider", "--reason", "scope grew")[
             "promoted_to"]
 
-    def refused(wid, parent, losses):
+    def refused(wid, parent, losses, to="story"):
+        """The refusal over ``wid``'s subtree, each unit's losses exactly as named, and nothing created: its options by
+        name. The options are a promotion's: create the parent with them and move the unit there; reclassify only for
+        a class or a verifier."""
         rev, before = p.rev(), inherited(p, wid)
-        out = err(p, "work", "promote", wid, "--to", "story", "--title", "Wider", "--reason", "three components")
+        out = err(p, "work", "promote", wid, "--to", to, "--title", "Wider", "--reason", "three components")
         assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "move_lowers_obligations"
-        assert {w: set(d) for w, d in out["details"]["dropped"].items()} == {wid: losses}
-        assert out["details"]["dropped"][wid]["effective_class"] == {"before": 2, "after": 1}
+        assert out["message"].startswith("a promotion that would lower") and "this promotion would lower" in out[
+            "message"]
+        assert {w: set(d) for w, d in out["details"]["dropped"].items()} == losses
+        instead = {o["option"]: o for o in out["details"]["instead"]}
+        ranked = any({"effective_class", "integration_verifier"} & lost for lost in losses.values())
+        assert list(instead) == ["create_the_parent_then_move", *(["reclassify_first"] if ranked else [])]
+        home = show(p, parent).get("parent")
+        assert f"work create {to}" in instead["create_the_parent_then_move"]["how"]
+        assert (f"--parent {home}" in instead["create_the_parent_then_move"]["how"]) == bool(home)
         assert p.rev() == rev and show(p, wid)["parent"] == parent and inherited(p, wid) == before  # nothing created
+        return instead
 
-    refused(change, gated, {"effective_class", "non_waivable_gates", "integration_verifier"})
-    refused(look, gated, {"effective_class", "non_waivable_gates"})
-    refused(posting, floored, {"effective_class", "integration_verifier"})
-    # The remedy for a floor: the Ticket meets it with its own class first; the promotion then lowers nothing.
-    p.lead("work", "reclassify", posting, "--class", "2", "--reason", "meet the floor before the promotion")
+    def take_create_then_move(wid, named, kind="story"):
+        """The promotion's remedy: the parent created with the floor and gates named, under the same home, and a
+        move; nothing in the moved subtree is lowered."""
+        home = show(p, show(p, wid)["parent"]).get("parent")
+        made = create_unit(p, kind, f"{wid}, its own {kind}", parent=home, extra=(
+            *(("--min-descendant-class", str(named["floor"]), "--rationale", "kept") if named["floor"] else ()),
+            *(x for g in named["gates"] for x in ("--mandatory-gate", g))))
+        before = inherited(p, wid)
+        p.lead("work", "move", wid, "--parent", made, "--reason", "its own parent, with what it inherited")
+        assert show(p, wid)["parent"] == made and lowered(before, inherited(p, wid)) == []
+
+    # A mutating Ticket out of a Story with a floor and a gate: reclassify_first meets the class and the verifier, and
+    # the promotion is then refused for the gate alone, which only the created parent keeps.
+    named = refused(change, gated, {change: {"effective_class", "non_waivable_gates", "integration_verifier"}})
+    p.lead("work", "reclassify", change, "--class", str(named["reclassify_first"]["class"]), "--reason", "the floor")
+    named = refused(change, gated, {change: {"non_waivable_gates"}})
+    take_create_then_move(change, named["create_the_parent_then_move"])
+    # A non-mutating Ticket out of the same Story: the created parent keeps the floor and the gate.
+    named = refused(look, gated, {look: {"effective_class", "non_waivable_gates"}})
+    take_create_then_move(look, named["create_the_parent_then_move"])
+    # A floor-only Story: the Ticket meets the floor with its own class first; the promotion then lowers nothing.
+    named = refused(posting, floored, {posting: {"effective_class", "integration_verifier"}})
+    p.lead("work", "reclassify", posting, "--class", str(named["reclassify_first"]["class"]), "--reason", "the floor")
     before = inherited(p, posting)
     story = promote(posting)
     assert show(p, story)["parent"] == epic and show(p, posting)["parent"] == story
     assert lowered(before, inherited(p, story)) == []
+    # A real subtree: a Story with its Tickets promoted to an Epic out of an Epic with a floor and a gate. Every unit of
+    # the subtree is named, and the Epic created with them admits the Story.
+    guarded = create_unit(p, "epic", "Guarded", extra=(*floor, *gate))
+    sessions = create_unit(p, "story", "Sessions", parent=guarded)
+    rotate = create_unit(p, "ticket", "Rotate the key", parent=sessions)
+    survey = create_unit(p, "ticket", "Survey use", parent=sessions, extra=("--non-mutating",))
+    named = refused(sessions, guarded, {sessions: {"effective_class", "non_waivable_gates"},
+                                        survey: {"effective_class", "non_waivable_gates"},
+                                        rotate: {"effective_class", "non_waivable_gates", "integration_verifier"}},
+                    to="epic")
+    assert named["reclassify_first"]["units"] == sorted((sessions, rotate, survey))
+    take_create_then_move(sessions, named["create_the_parent_then_move"], kind="epic")
     # A promotion that skips no ancestor's obligations is admitted as before, and lowers nothing.
     plain = create_investigation(p, tmp_path, parent=epic, title="Plain look")
     before = inherited(p, plain)

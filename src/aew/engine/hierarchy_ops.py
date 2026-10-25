@@ -55,14 +55,7 @@ MOVE_LOWERS_OBLIGATIONS = "move_lowers_obligations"  # ObligationsDropped's reas
 # CANCELLED are its recorded closeout and cancellation, and there is no reopen; the archive takes only these states and
 # has no way back). They are the only units a move may leave out of its comparison.
 FINAL = frozenset(s for s in transitions.STATES if not transitions.allowed_from(s))
-# What the Lead may do instead of a move that would lower obligations (ObligationsDropped's details["instead"]).
-INSTEAD = (
-    {"option": "move_under_an_equal_parent", "how": "move it under a parent that requires at least as much"},
-    {"option": "create_the_parent_with_them",
-     "how": "give the new parent the floor and the gates when it is created (work create with --min-descendant-class "
-            "and --mandatory-gate)"},
-    {"option": "reclassify_first", "how": "raise a unit's own class first (work reclassify)"},
-)
+MOVE, PROMOTE = "move", "promotion"  # the operation a refusal names: `work move`, or `work promote` (which moves)
 
 
 def inherited_obligations(state: dict[str, Any], work_ids: list[str], gates_policy: dict[str, Any]) -> dict[str, Any]:
@@ -105,6 +98,38 @@ def lowered_obligations(before: dict[str, Any], after: dict[str, Any]) -> dict[s
             lost["integration_verifier"] = was["validation"]["sources"]
         if lost:
             out[wid] = lost
+    return out
+
+
+def instead_of_lowering(state: dict[str, Any], operation: str, work_id: str, new_parent: str | None,
+                        before: dict[str, Any], dropped: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the Lead may do instead of a move or promotion that would lower obligations (ObligationsDropped's
+    ``details["instead"]``), derived from what the units would lose and from the operation. A parent that requires at
+    least as much keeps every obligation: for a move, an existing one or one created with them; a promotion chooses its
+    own new parent, so that parent is created with them and the unit moved under it instead (carrying them onto the
+    promoted parent is a follow-on). Where a class or a verifier would be lost, the units' own class raised first meets
+    that part, never a gate."""
+    ranked = sorted(w for w, lost in dropped.items() if "effective_class" in lost or "integration_verifier" in lost)
+    floor = max((before[w]["effective_class"] for w in ranked), default=None)
+    gates = sorted({g for lost in dropped.values() for g in lost.get("non_waivable_gates", [])})
+    flags = ", ".join(([f"--min-descendant-class {floor} and its --rationale"] if floor is not None else [])
+                      + [f"--mandatory-gate {g}" for g in gates])
+    them = {"floor": floor, "gates": gates}
+    if operation == PROMOTE:
+        assert new_parent is not None  # a promotion moves the unit under the parent it creates
+        kind, home = state["work"][new_parent]["kind"], state["work"][new_parent].get("parent")
+        out = [{"option": "create_the_parent_then_move", **them,
+                "how": f"create the {kind} with them yourself (work create {kind}"
+                       + (f" --parent {home}" if home else "") + f", with {flags}), then move {work_id} under it "
+                       "(work move) instead of promoting it"}]
+    else:
+        out = [{"option": "move_under_an_equal_parent", "how": "move it under a parent that requires at least as much"},
+               {"option": "create_the_parent_with_them", **them,
+                "how": f"create that parent with them (work create, with {flags}), then move it there"}]
+    if floor is not None:
+        out.append({"option": "reclassify_first", "class": floor, "units": ranked,
+                    "how": f"raise the own class of {', '.join(ranked)} to {floor} first (work reclassify), then "
+                           f"retry the {operation}" + ("; that does not keep a gate" if gates else "")})
     return out
 
 
@@ -500,7 +525,7 @@ class Hierarchy:
                 touched.append(wid)
         return touched
 
-    def _move(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
+    def _move(self, ctx: Any, work_id: str, new_parent: str | None, why: str, *, operation: str = MOVE) -> list[str]:
         state = ctx.state
         if work_id not in state["work"]:
             return self._move_archived(ctx, work_id, new_parent, why)
@@ -522,8 +547,10 @@ class Hierarchy:
         unit["parent"] = new_parent
         unit.setdefault("parent_history", []).append({"from": old, "to": new_parent, "at": utc_now(), "reason": why})
         self.units.refuse_cycles(state)
-        self._refuse_dependency_change_of_started_work(state, before, "this move")
-        self._refuse_lowered_obligations(state, obligations, gates_policy, "this move")
+        # Obligations first: no state change meets that refusal, so the dependency refusal's advice (a replan) would
+        # end a started attempt for nothing.
+        self._refuse_lowered_obligations(state, obligations, gates_policy, operation, work_id, new_parent)
+        self._refuse_dependency_change_of_started_work(state, before, f"this {operation}")
         return self._invalidate_bindings(state, work_id, f"moved from {old} to {new_parent}: {why}")
 
     def _move_archived(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
@@ -564,7 +591,7 @@ class Hierarchy:
 
     @staticmethod
     def _refuse_lowered_obligations(state: dict[str, Any], before: dict[str, Any], gates_policy: dict[str, Any],
-                                    what: str) -> None:
+                                    operation: str, work_id: str, new_parent: str | None) -> None:
         """A reorganization preserves the proof obligations of the work it moves (EW-U05.g): no unit still to be
         proven ends with a lower effective class, fewer inherited non-waivable gates, or its integration validated by
         checks where a verifier validated it. A move or promotion that would lower any of them is refused, naming what
@@ -573,12 +600,13 @@ class Hierarchy:
         a second source of obligations."""
         dropped = lowered_obligations(before, inherited_obligations(state, list(before), gates_policy))
         if dropped:
+            instead = instead_of_lowering(state, operation, work_id, new_parent, before, dropped)
             raise ObligationsDropped(
-                "a move that would lower a unit's inherited obligations is refused (EW-U05.g); "
-                f"{what} would lower "
+                f"a {operation} that would lower a unit's inherited obligations is refused (EW-U05.g); "
+                f"this {operation} would lower "
                 + "; ".join(f"{w}: {_describe_lost(lost)}" for w, lost in sorted(dropped.items()))
-                + ". Instead: " + "; or ".join(o["how"] for o in INSTEAD),
-                reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=[dict(o) for o in INSTEAD])
+                + ". Instead: " + "; or ".join(o["how"] for o in instead),
+                reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=instead)
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None,
                   reason: str) -> dict[str, Any]:
@@ -621,7 +649,7 @@ class Hierarchy:
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")
                 self.units.set_state(unit, "REPLAN_REQUIRED", f"promoted to {new_id} ({decision}): {reason}",
                                      state=state)
-            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})")
+            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})", operation=PROMOTE)
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,

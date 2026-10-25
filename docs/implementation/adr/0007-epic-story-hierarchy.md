@@ -100,9 +100,14 @@ A Story's or Epic's `state` is recomputed inside every Lead commit (`hierarchy.r
   `gates.effective_obligations` and `validation.obligation`.
 - Refused rather than carried: a unit's own `mandatory_gates` and floor apply to its descendants only (above), so a
   move could not hand the moved unit itself what its old ancestors required without a second source of obligations.
-  The Lead moves the work under a parent that requires at least as much, creates the new parent with the floor and
-  gates, or raises a unit's own class first (`aew work reclassify`).
+- The refusal says whether a move or a promotion was refused, and its `details["instead"]` derive what the Lead may do
+  from the losses and the operation. A move goes under a parent that requires at least as much, or under a new one
+  created with the floor and gates (`aew work create` with `--min-descendant-class` and its `--rationale`, and
+  `--mandatory-gate`). A promotion chooses its own new parent, so the Lead creates that parent with them and moves the
+  unit under it instead; carrying them onto the promoted parent is a follow-on. Where a class or a verifier would be
+  lost, raising the units' own class first (`aew work reclassify`) meets that part; it never keeps a gate. The
+  obligations are checked before the move's refusal for the dependencies of started work, since no change of state
+  meets them.
 - Only units in a state the machine never leaves (no rule starts there: DONE and CANCELLED) are not compared: they
   are never live again, and their completion records hold what they met. Nothing revives one: a parent has no reopen,
-  and the archive takes only those states and has no way back. The refusal's `details` also list what the Lead may do
-  instead.
+  and the archive takes only those states and has no way back.

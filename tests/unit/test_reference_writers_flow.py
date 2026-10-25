@@ -673,6 +673,29 @@ def test_the_bases_of_a_class_are_followed_to_the_cap_and_no_further():
     assert short == [f"B{F.MRO_DEPTH - i}" for i in range(F.MRO_DEPTH + 1)] and short[-1] == "B0"
 
 
+def peaks_of(source: str) -> dict[str, int]:
+    with F.measuring() as peaks:
+        analysed(source)
+    return dict(peaks)
+
+
+def test_the_figures_the_page_prints_for_a_measured_cap_are_what_a_planted_source_needs():
+    """What the tree tests hold each measured cap to (twice the figure): the figure is the planted source's own."""
+    assert peaks_of(alternatives(5))["alternatives"] == 5
+    assert peaks_of(many("    (aew_root / 'state' / name).write_text('x')\n", 7))["values"] == 7
+    assert peaks_of(named_through(3))["assignments"] == 3
+    assert peaks_of(named_through(F.ASSIGNMENT_DEPTH + 1))["assignments"] == F.ASSIGNMENT_DEPTH + 1, "one past: cut"
+    assert 0 < peaks_of(chained(3))["depth"] < peaks_of(chained(6))["depth"] <= F.DEPTH
+    prog = program({"aew.m": "class B0:\n    pass\n\n" + "".join(f"class B{i}(B{i - 1}):\n    pass\n\n"
+                                                                  for i in range(1, 5))})
+    with F.measuring() as bases:
+        prog.mro(prog.modules["aew.m"], "B4")
+    assert bases["mro"] == 4
+    with F.measuring() as quiet:
+        pass
+    assert quiet == dict.fromkeys(F.MEASURED, 0), "a block that follows nothing measures nothing"
+
+
 def test_every_cap_reason_comes_from_cap_reason_and_is_told_by_is_cap():
     for cap in F.caps():
         name = cap.name.removeprefix("writers_flow.")

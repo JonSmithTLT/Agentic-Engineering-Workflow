@@ -379,8 +379,12 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
 
 # The constants to double: derived from `caps()`, the one list, so a cap that is listed cannot escape the hold
 # (review of the placement pull request, F3).
-CAPS = tuple(({"writers_flow": F, "writers_roles": K}[cap.name.split(".")[0]], cap.name.split(".")[1])
-             for cap in (*F.caps(), *K.caps()))
+def cap_constants() -> tuple[tuple[object, str], ...]:
+    return tuple(({"writers_flow": F, "writers_roles": K}[cap.name.split(".")[0]], cap.name.split(".")[1])
+                 for cap in (*F.caps(), *K.caps()))
+
+
+CAPS = cap_constants()
 
 
 def without_the_caps_section(page: str) -> str:
@@ -407,6 +411,15 @@ def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_th
     monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
     halved = {r.id: r.as_json() for r in W.build(CTX).records}
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
+
+
+def test_a_cap_listed_later_is_doubled_too(monkeypatch):
+    """Review of the placement pull request, F3 (its planted `NEWCAP_DEPTH`): the list the hold doubles is `caps()`'s,
+    read when the test runs, so a cap added to either list is held without a second edit."""
+    real = K.caps()
+    extra = F.Cap("writers_roles.NEWCAP_DEPTH", 5, "a planted cap", "chosen", "nothing")
+    monkeypatch.setattr(K, "caps", lambda: (*real, extra))
+    assert (K, "NEWCAP_DEPTH") in cap_constants() and len(cap_constants()) == len(CAPS) + 1
 
 
 def test_every_cap_the_caps_derive_is_a_constant_of_its_module():

@@ -38,6 +38,7 @@ callback), a write by a subprocess, a method of an object whose class is not evi
 from __future__ import annotations
 
 import ast
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
@@ -344,6 +345,7 @@ def destination(site: Site, top_level: frozenset[str]) -> Destination:
 
 UNRESOLVED_KEY = "unresolved"  # `writers:unresolved:<module>:<symbol>:<primitive>`: a write not placed under `.aew`
 OUTSIDE_KEY = "outside"  # `writers:outside:<module>:<symbol>:<primitive>`: a write provably outside `.aew`
+PATH_LIKE = re.compile(r"[\\/]|^[A-Za-z]:|^~")  # a separator, a drive or a home: what a root must never contain
 POINTER_SYMBOL = None
 NO_CHAIN = "no static call chain from any entry point's declaring function reaches this writer"
 POINTER = ("write sites whose destination this reading could not place under `.aew` are records of this family keyed "
@@ -592,6 +594,8 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
                 continue
             if fact["mechanism"] not in (STORE_TRANSACTION, DIRECT):
                 problems.append(f"{rid}: mechanism {fact['mechanism']!r} is not one of the two")
+            if any(PATH_LIKE.search(place) for place in fact["root"].split("; ")):
+                problems.append(f"{rid}: a root names a place (`a temporary directory`), never a path of this machine")
             if (r.get("coverage") or {}).get("unresolved") != []:
                 problems.append(f"{rid}: a write whose root is known has nothing unresolved")
             continue

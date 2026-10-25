@@ -553,13 +553,13 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
 
 def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one_by_one():
     """The sweep, made mechanical: a module-level integer named like a cap, and a slice cut at a number or a
-    constant, in `tools/reference_families`. Each is a cap of `caps()` (and so on the page, with its source and what the
-    reading does past it) or a display truncation named here with the reason it cuts no analysis. A new one fails this
-    test until it is decided."""
+    constant, in `tools/reference_families` and `tools/reference.py`. Each is a cap of `caps()` (and so on the page,
+    with its source and what the reading does past it) or a display truncation named here with the reason it cuts no
+    analysis. A new one fails this test until it is decided."""
     cap_names = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)")
     constants: set[str] = set()
     slices: set[str] = set()
-    for path in sorted((ROOT / "tools" / "reference_families").glob("*.py")):
+    for path in sorted([*(ROOT / "tools" / "reference_families").glob("*.py"), ROOT / "tools" / "reference.py"]):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in tree.body:
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and type(node.value.value) is int:
@@ -1135,6 +1135,11 @@ FAULTS = [
      "is not one of the two"),
     ("an outside write that claims something unresolved", OUTSIDE_ID, ["coverage", "unresolved"],
      [{"module": "aew", "symbol": None, "why": "x"}], "has nothing unresolved"),
+    # the designer: a root names a place, never a path of the machine the reference was made on
+    ("an outside write whose root is a drive path", OUTSIDE_ID, ["fact", "root"], "C:\\work\\tmp", "never a path"),
+    ("an outside write whose root is a home path", OUTSIDE_ID, ["fact", "root"], "~/work", "never a path"),
+    ("an outside write one of whose roots is a path", OUTSIDE_ID, ["fact", "root"],
+     "a temporary directory; /var/tmp", "never a path"),
 ]
 
 

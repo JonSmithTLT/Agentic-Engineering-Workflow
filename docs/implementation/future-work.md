@@ -900,6 +900,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
 
+### E86
+
+**Work:** The order of collection decides which `conftest` a helper imports. `tests/conftest.py` and `tests/discovery/conftest.py` both load as the module `conftest`, so a helper that runs `from conftest import ...` (`tests/helpers/vertical/scripted_operator.py`) gets the discovery one when `tests/discovery` is collected first in a session, and fails with an `ImportError`
+
+**Source:** Seen locally on 2026-10-25, with `tests/unit/test_ci_tools.py` and `tests/discovery/test_static_texts.py` under `-n 4` in one session; reproduced at #277's head and at its base by #277's review (N4)
+
+**When:** **Unscheduled**: no required lane collects `tests/discovery` with the other directories (`test_no_required_lane_collects_the_discovery_lane`), so only a local run that mixes them meets it
+
+**Notes:** Filed by the Lead with #277, as its review's N4 asked
+
+*Later notes: `notes.d/E86/`, oldest first (`python tools/register.py show E86`).*
+
 ### E87
 
 **Work:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3, 3.12 and 3.12a, which cover a Story or Epic move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names

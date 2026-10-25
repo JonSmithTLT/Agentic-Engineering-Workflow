@@ -237,10 +237,10 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   never colours the merge gate's run) runs on every push to `main` and on dispatch, uploads the ledgers and summaries
   as artifacts (`vertical-ledger-<OS>`), and writes the summaries to the run's summary page. It does not run on pull
   requests (operator, 2026-10-23): it is red on `main`, so on a pull request its result says nothing about that pull
-  request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; when pushes land close
-  together GitHub keeps only the newest pending one, as for every push run on `main`
-  ([testing-and-ci-strategy.md](testing-and-ci-strategy.md) §3). It is not in `assurance`'s needs. It is honestly red
-  while the ledger is not zero: no xfail, no skip, no lowered assertion.
+  request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; its runs share one
+  group, so when pushes land close together GitHub keeps only the newest pending one (`ci`'s push runs, by contrast,
+  get one for every merge: [testing-and-ci-strategy.md](testing-and-ci-strategy.md) §3). It is not in `assurance`'s
+  needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered assertion.
 - **Platforms.** It runs on Windows and Linux; any platform-only part is pinned in `tests/platform-skips.yaml` (none
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).

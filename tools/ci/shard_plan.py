@@ -11,7 +11,7 @@ setup came out of. A shard is estimated as ``lanes.partition`` will cut it, from
 - its tests' seconds over the platform's xdist workers, or its longest test if that is more;
 - plus the lane's time outside its tests (the median of its kept runs).
 The tests are the ones each lane held on `main`'s last kept run, so a pull request's new tests count from the first
-green `main` run after it merges.
+green `main` run after it merges whose save is the newest (overlapping runs: strategy §7).
 
 tests/durations.json, the committed table, holds each lane's count too (``shards``), and a run never gives a lane
 fewer: a pull request that moves a lot of test time into one lane raises that lane's count there, so its own run

@@ -4,12 +4,13 @@
 Durations only balance shards; they never decide which tests run.
 
 With ``--history`` (the merge gate's own use), it keeps the rolling history: every green push run on `main` adds its
-reports, each test keeps its last :data:`KEEP` durations, and ``--out`` is written as the median of them, the table
-the shards balance on. The history also keeps what ``shard_plan.py`` sizes the lanes from: the lane each test ran in,
-each platform's xdist workers, each lane's time outside its tests, and how much of the job's deadline its sessions
-started with. When the history is missing, unreadable or not of a history's shape, it starts from ``--seed`` (the
-committed table). The committed table, tests/durations.json, is refreshed by copying a green `main` run's
-``shard-durations`` artifact over it (``shard_plan.py`` writes it, with each lane's shard count).
+reports (overlapping runs can lose some: strategy §7), each test keeps its last :data:`KEEP` durations, and ``--out``
+is written as the median of them, the table the shards balance on. The history also keeps what ``shard_plan.py`` sizes
+the lanes from: the lane each test ran in, each platform's xdist workers, each lane's time outside its tests, and how
+much of the job's deadline its sessions started with. When the history is missing, unreadable or not of a history's
+shape, it starts from ``--seed`` (the committed table). The committed table, tests/durations.json, is refreshed by
+copying a green `main` run's ``shard-durations`` artifact over it (``shard_plan.py`` writes it, with each lane's shard
+count).
 
     python tools/ci/update_durations.py REPORT_DIR --history history.json --seed tests/durations.json \
         --out durations.json --run-label "<run id>/<attempt> <sha>"

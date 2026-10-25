@@ -69,15 +69,15 @@ but does not automatically waive the requirement. Unknown attribution remains UN
 The operator, 2026-10-24, in place of the delta review after nits of 2026-10-10: a minor or a nit never blocks a
 merge (`AGENTS.md` §2), and none is dropped. A review whose open points are only minors and nits (none of them a
 security finding an agent can reach, §3) ends `Review: CLEAR` and lists each one, with its label and its fix line.
-Each minor or nit, from any review, is then handled in one of three ways:
+None is left untracked (operator, 2026-10-24): at merge, the author's comment names, for each one, the commit that
+fixed it or where it is tracked. Each minor or nit, from any review, is handled in one of three ways:
 - **In the same pass,** when the author is changing the pull request anyway: after a FINDINGS, a merge of `main`, or
   any other change. A quick check covers it where one follows (§8).
 - **Before merge, when trivial:** a fix that changes only the wording of a document, a comment or a docstring, and
   nothing that runs or that tests or operators read (a doctest, help text, an error message or a reason code), goes
   in on top of the CLEAR with no further review round, when it causes no large delay. The author's comment lists each
   with how it was fixed, and CI at the new head is green (`AGENTS.md` §4).
-- **Otherwise as a tracked follow-on,** which the author records before merge, and the author's comment lists where
-  each is tracked:
+- **Otherwise as a tracked follow-on,** which the author records before merge:
   - **In a series** (the pull requests that a plan or a register row lists in order), the review names the next pull
     request of the series. That pull request fixes it, lists it in its description, and its review checks it. The last
     pull request of a series fixes its own, or tracks them as below.
@@ -94,9 +94,11 @@ Three rules for what follows a verdict:
   commit of `main` that H contains, and B the newest commit of `main` that R contains, H is a re-render of R when all of
   these hold:
   - R is an ancestor of H. A rebase is never a re-render.
-  - Outside the generated files, the paths that differ between M and H are exactly those that differ between B and R;
-    each is byte-identical at H and at R; and none of them differs between B and M. So `main` changed no file the
-    pull request changes, and no conflict outside the generated files was resolved, by hand or by taking a side.
+  - Outside the generated files, the paths that differ between M and H are exactly those that differ between B and R.
+    Each is byte-identical at H and at R, unless `main` changed it too (it differs between B and M). Such a path
+    passes only when git merges it with no conflict and H's version of it is exactly what that merge gives
+    (`git merge-tree --write-tree R M`), so the pull request's own lines in it are unchanged (operator, 2026-10-24).
+    So no conflict outside the generated files was resolved, by hand or by taking a side.
   - The generated files are what `python tools/reference.py render` writes (all of `docs/reference/`) and what
     `python tools/register.py render` writes (`future-work.md` and `decisions-due.md`), and both generators' `check`
     pass at H. `register.py render` also rewrites the register's YAML, which is a source: a render that changes it,

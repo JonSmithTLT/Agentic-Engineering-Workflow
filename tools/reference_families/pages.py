@@ -1,11 +1,14 @@
-"""The two pages that belong to no one family: the directory's README and ``gaps.md`` (STG-12 S12-2).
+"""The pages that belong to no one family: the directory's README, ``gaps.md`` and the two maps (STG-12 S12-2).
 
-Both are drawn from the index alone. The README carries no counts (they are measured in ``index.json``), so a change to
-one family's records changes that family's page and the index, and nothing else.
+All are drawn from the index alone. The README carries no counts (they are measured in ``index.json``), so a change to
+one family's records changes that family's page and the index, and nothing else. The maps join records of several
+families (the data-flow map) or read one machine's (the state maps), so they cannot be a family's page.
 """
 
 from __future__ import annotations
 
+import re
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from typing import Any
 
@@ -13,6 +16,8 @@ from reference_families import common as C
 
 GAPS = "gaps.md"
 README = "README.md"
+DATA_FLOW = "data-flow.md"
+STATE_MAPS = "state-transitions.md"
 
 
 def _anchor(module: str, symbol: str | None) -> str:
@@ -42,6 +47,218 @@ def gaps_page(index: Mapping[str, Any]) -> str:
         lines.append("")
     if not by_family:
         lines += ["None.", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+# ------------------------------------------------------------------------------------------------------------ the maps
+# What a record states is drawn; a joined fact is joined on what the records carry; what no record states is counted
+# here from the records and listed under "Not drawn", never drawn from a guess.
+
+Function = tuple[str, str]  # (module, symbol)
+
+
+def _records(index: Mapping[str, Any], family: str) -> list[tuple[str, dict[str, Any]]]:
+    return [(rid, r) for rid, r in sorted(index["records"].items()) if r["family"] == family]
+
+
+class _Ids:
+    """Diagram ids: a lowercase slug with a prefix for what it names. The prefix keeps an id from being a keyword of
+    the language or the shape of a requirement id; two names with one slug are refused, not merged."""
+
+    def __init__(self) -> None:
+        self.taken: dict[str, str] = {}
+
+    def of(self, prefix: str, name: str) -> str:
+        slug = f"{prefix}_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}"
+        if self.taken.setdefault(slug, name) != name:
+            raise C.ReferenceError(f"two names make the diagram id {slug!r}: {self.taken[slug]!r} and {name!r}")
+        return slug
+
+
+def _label(text: str) -> str:
+    return text.replace('"', "#quot;").replace("\n", " ")
+
+
+def _functions(n: int) -> str:
+    return f"{n} function" + ("" if n == 1 else "s")
+
+
+def _top(prefix: str) -> str:
+    return prefix.split("/")[0]
+
+
+def data_flow_page(index: Mapping[str, Any]) -> str:
+    """Which process (an entry point) writes or reads which entry of ``.aew``, and the one boundary the records state.
+
+    A write is a ``writers`` record's (entry point, entry of ``.aew``) pair. A read is a function the ``layout`` records
+    name as a reader of the entry that another record also reaches from entry points: a writer item carries them, and so
+    does a lock-free member of the ``concurrency`` family. Every other reader is counted, not drawn."""
+    processes = {r["fact"]["entry_point"]: r["fact"] for _rid, r in _records(index, "entry-points")}
+    layout = [r["fact"] for _rid, r in _records(index, "layout")]
+    flags = {f["prefix"]: f for f in layout if _top(f["prefix"]) == f["prefix"]}
+    reached: dict[Function, set[str]] = defaultdict(set)
+    writes: dict[tuple[str, str], set[Function]] = defaultdict(set)
+    unreached_writes: dict[str, set[Function]] = defaultdict(set)
+    outside = unplaced = 0
+    for rid, r in _records(index, "writers"):
+        f = r["fact"]
+        if "writers" not in f:
+            if rid.startswith("writers:outside:"):
+                outside += 1
+            elif rid.startswith("writers:unresolved:"):
+                unplaced += 1
+            else:
+                raise C.ReferenceError(f"{rid}: a writers record the data-flow map does not read (it has no `writers`)")
+            continue
+        for w in f["writers"]:
+            fn = (w["module"], w["symbol"])
+            for ep in w["entry_points"]:
+                writes[(ep, _top(f["prefix"]))].add(fn)
+                reached[fn].add(ep)
+            if not w["entry_points"]:
+                unreached_writes[_top(f["prefix"])].add(fn)
+    for rid, r in _records(index, "concurrency"):
+        if rid.startswith("concurrency:lock-free:"):
+            reached[(r["fact"]["module"], r["fact"]["symbol"])] |= set(r["fact"]["entry_points"])
+    reads: dict[tuple[str, str], set[Function]] = defaultdict(set)
+    unreached_reads: dict[str, set[Function]] = defaultdict(set)
+    for f in layout:
+        for reader in f["readers"]:
+            fn = (reader["module"], reader["symbol"])
+            for ep in reached.get(fn, ()):
+                reads[(ep, _top(f["prefix"]))].add(fn)
+            if not reached.get(fn):
+                unreached_reads[_top(f["prefix"])].add(fn)
+    unknown = sorted({ep for ep, _entry in (*writes, *reads)} - set(processes))
+    if unknown:
+        raise C.ReferenceError(f"the data-flow map: entry points no `entry-points` record names: {unknown}")
+    tops = sorted({*flags, *(t for _ep, t in (*writes, *reads)), *unreached_writes, *unreached_reads})
+
+    def group(top: str) -> str:
+        fact = flags.get(top, {})
+        return "store" if fact.get("store") else "masked" if fact.get("masked_by_containment") else "other"
+
+    titles = {"store": "the control store", "masked": "masked from a contained run", "other": "other entries of .aew"}
+    ids = _Ids()
+    chart = ["flowchart LR"]
+    for kind in sorted({f["kind"] for f in processes.values()}):
+        chart.append(f'    subgraph {ids.of("kind", kind)}["kind: {_label(kind)}"]')
+        chart += [f'        {ids.of("proc", n)}["{_label(n)}"]' for n, f in sorted(processes.items())
+                  if f["kind"] == kind]
+        chart.append("    end")
+    chart.append('    subgraph aew_dir[".aew"]')
+    for name, title in titles.items():
+        members = [t for t in tops if group(t) == name]
+        if members:
+            chart.append(f'        subgraph {ids.of("group", name)}["{title}"]')
+            chart += [f'            {ids.of("path", t)}["{_label(t)}"]' for t in members]
+            chart.append("        end")
+    chart.append("    end")
+    if unreached_writes:
+        chart.append('    no_writer["written by functions no entry point reaches"]')
+    if unreached_reads:
+        chart.append('    no_reader["read by functions no entry point reaches"]')
+    for (ep, top), fns in sorted(writes.items()):
+        chart.append(f'    {ids.of("proc", ep)} -->|"{_functions(len(fns))}"| {ids.of("path", top)}')
+    for top, fns in sorted(unreached_writes.items()):
+        chart.append(f'    no_writer -->|"{_functions(len(fns))}"| {ids.of("path", top)}')
+    for (ep, top), fns in sorted(reads.items()):
+        chart.append(f'    {ids.of("path", top)} -.->|"{_functions(len(fns))}"| {ids.of("proc", ep)}')
+    for top, fns in sorted(unreached_reads.items()):
+        chart.append(f'    {ids.of("path", top)} -.->|"{_functions(len(fns))}"| no_reader')
+    lines = [
+        "# Data flow", "",
+        "Which process writes or reads which entry of `.aew`, drawn from the records alone. Generated by `python "
+        "tools/reference.py render`; do not edit. A process is an entry point ([entry-points.md](entry-points.md)), "
+        "grouped by its kind: a **store_writer** takes the control lock and a **non_writer** reads lock-free. An entry "
+        "is a top-level one of the layout ([layout.md](layout.md)). A solid arrow is a write and a dashed one a read, "
+        "labelled with the number of distinct functions that do it. A write is a `writers` record's (entry point, "
+        "entry) pair ([writers.md](writers.md)). A read is a function the `layout` records name as a reader of the "
+        "entry that another record also reaches from entry points, a writer item or a lock-free member of the "
+        "`concurrency` family ([concurrency.md](concurrency.md)); every other reader is drawn once, into the box "
+        "\"read by functions no entry point reaches\". The group \"masked from a contained run\" is the layout's "
+        "`masked_by_containment`, the one trust boundary the records state.", "",
+        "```mermaid", *chart, "```", "",
+        "## Processes", "", "| Entry point | Kind | Why |", "|---|---|---|"]
+    lines += [f"| `{n}` | {f['kind']} | {f['reason']} |" for n, f in sorted(processes.items())]
+    lines += ["", "## Entries of `.aew`", "",
+              "| Entry | Group | Written by | Read by | Written by no entry point | Read by no entry point |",
+              "|---|---|---|---|---|---|"]
+    for t in tops:
+        wrote = ", ".join(f"`{ep}` ({len(fns)})" for (ep, top), fns in sorted(writes.items()) if top == t) or "-"
+        read = ", ".join(f"`{ep}` ({len(fns)})" for (ep, top), fns in sorted(reads.items()) if top == t) or "-"
+        lines.append(f"| `{t}` | {titles[group(t)]} | {wrote} | {read} | {len(unreached_writes.get(t, ()))} "
+                     f"| {len(unreached_reads.get(t, ()))} |")
+    lines += ["", "## Not drawn", "",
+              f"- Writes by functions the call graph attributes to no entry point: "
+              f"{sum(len(v) for v in unreached_writes.values())} (entry, function) pairs, drawn from the box \"written "
+              "by functions no entry point reaches\".",
+              f"- Reads by functions no record reaches from an entry point: "
+              f"{sum(len(v) for v in unreached_reads.values())} (entry, function) pairs, drawn into the box \"read by "
+              "functions no entry point reaches\"; each is in the layout page with its function.",
+              f"- {outside} write sites outside `.aew` and {unplaced} write sites this reading could not place belong "
+              "to no entry of the map (the writers page lists them).",
+              "- The bridge and the network. No record attributes a bridge call, or a route served, to the process "
+              "that makes or serves it; the routes and tools are in [interfaces.md](interfaces.md), and what each "
+              "process is stands in its reason above. Which entry points run contained is not a fact of the records "
+              "either.", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+# (title, the states family, the edges family; None where the code records no table of how a state follows another)
+MACHINES = (
+    ("Ticket", "states", "transitions"),
+    ("Configuration document", "configuration-states", None),
+    ("Live usage", "usage-live-states", None),
+)
+
+
+def state_maps_page(index: Mapping[str, Any]) -> str:
+    """One state diagram per machine. The Ticket machine's edges are the ``transitions`` records; the other two state
+    sets are drawn as states only, because the code records no edge table for them (their ``exits`` are empty and say
+    so). A state with an exit is refused, so an edge is never silently dropped."""
+    lines = [
+        "# State transition maps", "",
+        "One diagram per state machine of the code, drawn from the records alone. Generated by `python "
+        "tools/reference.py render`; do not edit. An edge of the Ticket machine is labelled with the operation that "
+        "takes it (and the others the code names for it), then `[guard]` when the edge has one, then `(reason)` when "
+        "the operation must be given a reason. A state with a closing arrow is terminal. The tables, the guards and "
+        "which edges code that does not ask the table can take are in [state-machines.md](state-machines.md); a "
+        "second state set no table lists is in [gaps.md](gaps.md).", ""]
+    for title, family, edges_family in MACHINES:
+        found = _records(index, family)
+        if not found:
+            raise C.ReferenceError(f"the state maps: no `{family}` record")
+        states = [r["fact"] for _rid, r in found]
+        names = {f["state"] for f in states}
+        ids = _Ids()
+        chart = ["stateDiagram-v2", "    direction LR"]
+        order = sorted(states, key=lambda f: (f.get("phase") is None, f.get("phase") or 0, f.get("position", 0),
+                                              f["state"]))
+        chart += [f'    state "{_label(f["state"])}" as {ids.of("st", f["state"])}' for f in order]
+        chart += [f'    {ids.of("st", f["state"])} --> [*]' for f in order if f.get("terminal")]
+        by_coverage: Counter[str] = Counter()
+        if edges_family:
+            for _rid, r in _records(index, edges_family):
+                f = r["fact"]
+                if f["from"] not in names or f["to"] not in names:
+                    raise C.ReferenceError(
+                        f"the state maps: the edge {f['from']} -> {f['to']} has a state no record has")
+                label = " / ".join([f["via"], *f.get("also", [])])
+                label += f" [{f['guard']}]" if f["guard"] else ""
+                label += " (reason)" if f["reason_required"] else ""
+                chart.append(f'    {ids.of("st", f["from"])} --> {ids.of("st", f["to"])} : {_label(label)}')
+                by_coverage[r["coverage"]["label"]] += 1
+            lines += [f"## {title}", "", f"{len(states)} states, {sum(by_coverage.values())} edges: "
+                      + ", ".join(f"{n} {label}" for label, n in sorted(by_coverage.items())) + ".", ""]
+        else:
+            if any(f["exits"] for f in states):
+                raise C.ReferenceError(f"the state maps: a {family} state has exits, which are not drawn")
+            unresolved = found[0][1].get("fact_coverage", {}).get("exits", {}).get("unresolved") or [{}]
+            why = unresolved[0].get("why", "")
+            tail = f' The records say "{why}", so no edge is drawn.' if why else " No edge is drawn."
+            lines += [f"## {title}", "", f"{len(states)} states, in the order the code lists them." + tail, ""]
+        lines += ["```mermaid", *chart, "```", ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 

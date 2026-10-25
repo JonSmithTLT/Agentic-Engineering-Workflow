@@ -131,6 +131,14 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
                     f"`{CHECK}` fetches the pinned payload again (online), or `{IMPORT}` imports, from the "
                     "operator's bundle, one that matches its pin (offline)", str(path))
+    done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
+    if not path.exists() and done is not None and done.get("sha256") != pinned["sha256"] \
+            and not (state.get("fetch_failures") or {}).get(f"{name}:{key}"):
+        # A new pin (CAPR-03): checked before under another one, and this one's payload is not here yet
+        return Copy(AEW_COPY, STALE, f"its pin changed since it was checked (checked {str(done.get('sha256'))[:16]}, "
+                    f"now pinned {pinned['sha256'][:16]}), and the newly pinned payload is not on this host yet",
+                    f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from the operator's bundle (offline)",
+                    str(path), done.get("at"))
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
         cause = (f"its pinned payload is not on this host: the fetch failed at {failed.get('at')} "
@@ -143,7 +151,6 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
                     f"`{CHECK}` refuses it and fetches it again (online), or `{IMPORT}` with the operator's bundle "
                     "(offline)", str(path))
-    done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
 

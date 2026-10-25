@@ -47,7 +47,8 @@ def environment_checks() -> list[dict[str, str]]:
     and the other checks still run (doctor reports, never crashes; review of #230, m5)."""
     checks: list[dict[str, str]] = []
     for name, check in (("platform", platform_qualification), ("python", _python), ("git", _git),
-                        ("modules", _modules), ("yaml", _yaml), ("capability", _capabilities)):
+                        ("modules", _modules), ("yaml", _yaml), ("harness", _harness),
+                        ("capability", _capabilities)):
         try:
             found = check()
         except Exception as exc:
@@ -94,6 +95,22 @@ def _yaml() -> dict[str, str]:
         return _check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state")
     return _check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and writes the "
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
+
+
+def _harness() -> dict[str, str]:
+    """The harness binary, a host prerequisite doctor names (CAPR-12; the designer's CAP-1 rule 9): where a launch
+    from this environment finds it, without starting it. WARN when there is none: AEW runs, and harness launches are
+    refused until it is there."""
+    from aew.errors import AEWError
+    from aew.harness.opencode import capabilities
+    from aew.harness.opencode.adapter import binary_command
+
+    try:
+        path = binary_command()[-1]
+    except AEWError as exc:
+        return _check("harness", "WARN", f"harness launches are refused here: {exc.message}")
+    return _check("harness", "PASS", f"OpenCode CLI at {path} (tested versions: "
+                  f"{', '.join(capabilities.TESTED_VERSIONS)}; its version is checked at each launch)")
 
 
 def _capabilities() -> list[dict[str, str]]:

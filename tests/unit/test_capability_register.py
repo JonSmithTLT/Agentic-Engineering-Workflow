@@ -199,6 +199,23 @@ def test_q04_a_broken_provider_reads_unavailable_with_its_cause(reg, monkeypatch
 
 
 def test_q04_a_re_pinned_record_reads_stale_until_it_is_checked(reg, monkeypatch):
+    """A new pin: the payload checked under the old one is no proof of the new one, which is not here yet."""
+    _import(reg)
+    assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
+    body = reg["body"] + (b"\n" if not IS_WINDOWS else b"\0")  # a different executable: a new pin
+    archive = _archive(body, MEMBER)
+    repinned = _record(body, archive)
+    monkeypatch.setattr(records, "shipped", lambda: {"fake": repinned})
+    cap = _cap()
+    assert cap["observed_status"] == status.STALE and "its pin changed since it was checked" in cap["cause"]
+    assert "aew capability check" in cap["fix"]
+    monkeypatch.setattr(P, "fetch", lambda pinned: archive)
+    ops.check("fake")
+    cap = _cap()
+    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and Path(cap["path"]).read_bytes() == body
+
+
+def test_q04_a_changed_record_reads_stale_until_it_is_checked(reg, monkeypatch):
     _import(reg)
     assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
     changed = copy.deepcopy(reg["shipped"]["fake"])
@@ -460,3 +477,18 @@ def test_doctor_names_each_capability_pass_when_usable_and_warn_never_fail_other
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
     assert rows["capability:FAKE_SEARCH"]["status"] == "PASS"
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("FUNCTIONAL_ONLY: served by fake 1.0, AEW's pinned")
+
+
+def test_doctor_names_the_harness_a_host_prerequisite(tmp_path, monkeypatch):
+    """CAPR-12 (the designer's CAP-1 rule 9): doctor names the harness; without one AEW runs and launches refuse."""
+    from aew import doctor
+    from aew.harness.opencode.adapter import BIN_ENV
+
+    monkeypatch.setenv(BIN_ENV, str(tmp_path / "no-such-opencode"))
+    row = next(c for c in doctor.environment_checks() if c["check"] == "harness")
+    assert row["status"] == "WARN" and "harness launches are refused" in row["detail"] and BIN_ENV in row["detail"]
+    present = tmp_path / "opencode-cli"
+    present.write_bytes(b"")
+    monkeypatch.setenv(BIN_ENV, str(present))
+    row = next(c for c in doctor.environment_checks() if c["check"] == "harness")
+    assert row["status"] == "PASS" and str(present) in row["detail"]

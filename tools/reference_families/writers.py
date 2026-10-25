@@ -9,12 +9,14 @@ store transaction's ``session.write(path, content)``). The destination expressio
 :mod:`reference_families.writers_flow`; a value that is a path under ``.aew`` whose first entry is one of
 :data:`TOP_LEVEL` becomes a record, keyed by the path as a template (``work/{}/completion.md``: ``{}`` is a computed
 segment), with its writers: the module and function, the mechanism (``store-transaction`` or ``direct``) and the
-primitives. ``aew.util`` and the store's own ``write_file`` are the write mechanism, not writers: their callers are.
+primitives. ``aew.util``, the store's own ``write_file`` and the store's apply step are the write mechanism, not
+writers: their callers (and the staging sites) are.
 
 A destination that is not provably under ``.aew`` and not provably outside it is **unresolved**: the site is a record of
 its own, ``unresolved:<module>:<symbol>:<primitive>``, with the reason, and every path record's list of writers carries
 one pointer item to them (any of them may write that path). A destination provably outside ``.aew`` (a temporary
-directory, the console, the repository's working tree) is listed on the page and is no record.
+directory, the console, the repository's working tree) is a record too, ``outside:<module>:<symbol>:<primitive>``, with
+its root: nothing is dropped unseen, and the trace need not take it as unplaced.
 
 Each writer carries the entry points that reach it (:mod:`reference_families.writers_reach`), as a lower bound (a chain
 of resolved calls, and nothing more); a writer with no chain is unresolved on the records it appears in. The CLI's roles
@@ -36,6 +38,7 @@ callback), a write by a subprocess, a method of an object whose class is not evi
 from __future__ import annotations
 
 import ast
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
@@ -61,9 +64,11 @@ TOP_LEVEL: tuple[str, ...] = (".gitignore", "coordination", "decisions", "eviden
                               "policy", "pricing", "project.yaml", "records", "roles", "state", "work")
 
 # `aew.util` is the write mechanism: its callers are the writers, so a path written inside it is its caller's. So is the
-# store's own `write_file` (every write into the store goes through it: its docstring says so).
+# store's own `write_file` (every write into the store goes through it: its docstring says so). So is the store's apply
+# step, `ControlStore._apply`: it writes the files the transactions staged, whose paths are the `session.write` sites'
+# (the writers, and records here); its own target is data read from the redo record, which no reading follows.
 MECHANISM_MODULES = frozenset({"aew.util"})
-MECHANISM_FUNCTIONS = frozenset({("aew.engine.store", "write_file")})
+MECHANISM_FUNCTIONS = frozenset({("aew.engine.store", "write_file"), ("aew.engine.store", "ControlStore._apply")})
 STORE = "aew.engine.store"
 
 UTIL = "aew.util"
@@ -339,6 +344,8 @@ def destination(site: Site, top_level: frozenset[str]) -> Destination:
 # ------------------------------------------------------------------------------------------------------------ records
 
 UNRESOLVED_KEY = "unresolved"  # `writers:unresolved:<module>:<symbol>:<primitive>`: a write not placed under `.aew`
+OUTSIDE_KEY = "outside"  # `writers:outside:<module>:<symbol>:<primitive>`: a write provably outside `.aew`
+PATH_LIKE = re.compile(r"[\\/]|^[A-Za-z]:|^~")  # a separator, a drive or a home: what a root must never contain
 POINTER_SYMBOL = None
 NO_CHAIN = "no static call chain from any entry point's declaring function reaches this writer"
 # Said by every family that lists the writes (the layout family points here too), so it names its own: review of the
@@ -547,6 +554,16 @@ def records_of(analysis: Analysis) -> list[C.Record]:
         records.append(C.Record(FAMILY, f"{UNRESOLVED_KEY}:{module}:{symbol}:{primitive}", module, symbol, "static",
                                 C.lower_bound([item]),
                                 {"primitive": primitive, "mechanism": mechanism, "reason": reason}))
+    mechanisms = {(s.module, s.symbol, s.primitive): s.mechanism for s in analysis.sites}
+    roots: dict[tuple[str, str, str], set[str]] = {}
+    for root, found in analysis.outside.items():
+        for site in found:
+            roots.setdefault(site, set()).add(root)
+    for (module, symbol, primitive), named in sorted(roots.items()):
+        records.append(C.Record(FAMILY, f"{OUTSIDE_KEY}:{module}:{symbol}:{primitive}", module, symbol, "static",
+                                C.lower_bound(),
+                                {"primitive": primitive, "mechanism": mechanisms[(module, symbol, primitive)],
+                                 "root": "; ".join(sorted(named))}))
     return records
 
 
@@ -569,6 +586,21 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
             continue
         fact, anchor = r.get("fact") or {}, r.get("anchor") or {}
         key = rid.removeprefix(f"{FAMILY}:")
+        if key.startswith(OUTSIDE_KEY + ":"):
+            expect = f"{OUTSIDE_KEY}:{anchor.get('module')}:{anchor.get('symbol')}:{fact.get('primitive')}"
+            if key != expect:
+                problems.append(f"{rid}: the key is not {expect}")
+            if set(fact) != {"primitive", "mechanism", "root"} or not all(
+                    isinstance(v, str) and v for v in fact.values()):
+                problems.append(f"{rid}: a write outside `.aew` has a primitive, a mechanism and a root, all non-empty")
+                continue
+            if fact["mechanism"] not in (STORE_TRANSACTION, DIRECT):
+                problems.append(f"{rid}: mechanism {fact['mechanism']!r} is not one of the two")
+            if any(PATH_LIKE.search(place) for place in fact["root"].split("; ")):
+                problems.append(f"{rid}: a root names a place (`a temporary directory`), never a path of this machine")
+            if (r.get("coverage") or {}).get("unresolved") != []:
+                problems.append(f"{rid}: a write whose root is known has nothing unresolved")
+            continue
         if key.startswith(UNRESOLVED_KEY + ":"):
             expect = f"{UNRESOLVED_KEY}:{anchor.get('module')}:{anchor.get('symbol')}:{fact.get('primitive')}"
             if key != expect:
@@ -707,7 +739,23 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
     return lines
 
 
-def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]) -> str:
+def cap_lines(caps: Iterable[F.Cap]) -> list[str]:
+    lines = ["## Caps of the reading", "",
+             "Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the "
+             "reading says so: the reason is on the unresolved write, or the writer carries the no-chain item, or the "
+             "registration counts as run by every role. A tree test doubles every cap and holds this page and "
+             "`index.json` unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut "
+             "at a number of lines and says how many it left out, and an expression quoted in a reason is cut with "
+             "`...`: those are not caps on what the reading follows.", ""]
+    for cap in caps:
+        measured = "" if cap.measured is None else f" The largest in this tree: {cap.measured}."
+        lines.append(f"- `{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; "
+                     f"past it: {cap.past}.{measured}")
+    return [*lines, ""]
+
+
+def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...],
+         caps: Iterable[F.Cap] | None = None) -> str:
     lines = [
         "# Writers", "",
         "Every path under `.aew` that AEW code writes, and the module and function that writes it. Generated by "
@@ -716,7 +764,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         "(through assignments, constants, `self` attributes, parameters and the functions that build paths). A path is "
         "a template: `{}` is a segment computed at run time. `named_by` lists the module-level constants that spell "
         "the path exactly. A writer's `mechanism` is `store-transaction` (it stages the file in the control store's "
-        "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives.", "",
+        "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives. The "
+        "store's apply step writes whatever the transactions staged, so the staging sites are the writers and it is "
+        "not.", "",
         "The list is a lower bound. A write whose destination this reading could not place is its own record, below "
         "and in [gaps.md](gaps.md), and any of those may write any path here. A call whose `open` mode or `os.open` "
         "flags cannot be read is one of those records too (its primitive ends in `?`): whether it writes is not "
@@ -744,6 +794,7 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
             lines.append(f"- `{r.key}`" + (f", named by {named}" if named else "") + f": written or removed by {who}")
         lines.append("")
     lines += reach_lines(analysis, records)
+    lines += cap_lines((*F.caps(), *ROLES.caps()) if caps is None else caps)
     unresolved = sorted((r for r in records if r.key.startswith(UNRESOLVED_KEY + ":")), key=lambda r: r.key)
     lines += ["## Writes this reading could not place", ""]
     if unresolved:
@@ -754,8 +805,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
     else:
         lines.append("None.")
     lines += ["", "## Writes outside `.aew`", "",
-              "Write sites whose destination this reading follows to a place outside `.aew`: listed so that nothing is "
-              "dropped unseen. A site that also writes a path under `.aew` is a record there too.", ""]
+              "Write sites whose destination this reading follows to a place outside `.aew`: each is a record, "
+              "`outside:<module>:<symbol>:<primitive>`, with its root, so that nothing is dropped unseen. A site "
+              "that also writes a path under `.aew` is a record there too.", ""]
     for reason, sites in analysis.outside.items():
         lines.append(f"- {reason}: " + ", ".join(f"{_anchor(m, s)} ({p})" for m, s, p in sites))
     if analysis.root_sites:
@@ -770,9 +822,11 @@ def build(ctx: C.Context) -> C.Built:
     trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
     kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
     program = F.Program.of(trees)
-    analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
+    with F.measuring() as peaks:
+        analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
     records = records_of(analysis)
     problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)
     if problems:
-        raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(problems[:20]))
-    return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL)})
+        raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(C.shown(problems)))
+    caps = (*F.caps(peaks), *ROLES.caps())
+    return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL, caps)})

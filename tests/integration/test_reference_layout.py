@@ -72,6 +72,16 @@ def test_the_two_readers_find_the_same_read_primitive_calls_in_every_module():
     assert sum(sum(c.values()) for c in ast_counts.values()) > 250, "the readings found almost nothing"
 
 
+def test_doubling_every_cap_of_the_value_flow_changes_no_layout_record_and_nothing_on_the_page(monkeypatch):
+    """The reads are placed by the writers family's value flow, so its caps bound them too (the writers tree test holds
+    the same for the writers' records): a read lost to a cap would show here."""
+    for name in ("VALUES", "DEPTH", "CALLERS", "TYPING_DEPTH"):
+        monkeypatch.setattr(F, name, getattr(F, name) * 2)
+    doubled = LY.build(CTX)
+    assert {r.id: r.as_json() for r in doubled.records} == {r.id: r.as_json() for r in BUILT.records}
+    assert doubled.pages == BUILT.pages
+
+
 def test_no_module_reads_at_import_time_so_every_read_has_a_function_to_anchor_to():
     for name, mod in PROGRAM.modules.items():
         assert [c for c in mod.module_calls if L.read_of(mod, c, None) is not None] == [], name

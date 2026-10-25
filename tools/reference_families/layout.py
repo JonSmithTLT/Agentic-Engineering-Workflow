@@ -266,5 +266,5 @@ def build(ctx: C.Context) -> C.Built:
     records = records_of(inp)
     bad = problems({r.id: r.as_json() for r in records})
     if bad:
-        raise C.ReferenceError("the layout records break their own rules:\n  " + "\n  ".join(bad[:20]))
+        raise C.ReferenceError("the layout records break their own rules:\n  " + "\n  ".join(C.shown(bad)))
     return C.Built(records=records, pages={"layout.md": page(records, placed)})

@@ -732,7 +732,9 @@ class EvidenceCommands:
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
-                           "containment": "os_readonly_roots" if layout is not None else "workdir_separation_only"},
+                           "containment": "os_readonly_roots" if layout is not None else "workdir_separation_only",
+                           # the check's effective network (F28 §3.8), where it ran in a sandbox
+                           **({"network": run["network"]} if run.get("network") else {})},
                 "claim": f"check {check_id} passes on the evaluated snapshot",
                 "result": result,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],

@@ -598,8 +598,9 @@ def test_every_register_write_path_refuses_with_the_typed_reason(reg, monkeypatc
     under = blocked / "register"  # a file stands where the register's directory would be
     pinned = {"sha256": "0" * 64}
 
-    def erofs(*_a: Any, **_k: Any) -> None:
-        raise OSError(errno_.EROFS, "Read-only file system")
+    def erofs(*_a: Any, ignore_errors: bool = False, **_k: Any) -> None:  # as a read-only file system answers
+        if not ignore_errors:
+            raise OSError(errno_.EROFS, "Read-only file system")
 
     real = reg["tmp"] / "real"
     P.install("fake", "fake", pinned, b"x", real)

@@ -102,12 +102,12 @@ def test_an_aew_a_test_starts_writes_the_sessions_register_never_the_hosts(tmp_p
     import conftest
 
     assert conftest.CHILD_DATA_BASE is not None
+    res = run_aew("-C", str(tmp_path), "capability", "check", "--offline", "--json")  # first: it writes somewhere
+    assert res.returncode == 0, res.stderr
+    assert (conftest.CHILD_DATA_BASE / "aew" / "capability" / store.REGISTER).is_file()
     name = store.base_variable()
     assert conftest.clean_env()[name] == str(conftest.CHILD_DATA_BASE)
     assert conftest.clean_env({name: str(tmp_path)})[name] == str(tmp_path)  # a test's own base stays its own
-    res = run_aew("-C", str(tmp_path), "capability", "check", "--offline", "--json")
-    assert res.returncode == 0, res.stderr
-    assert (conftest.CHILD_DATA_BASE / "aew" / "capability" / store.REGISTER).is_file()
 
 
 def test_the_check_refuses_in_a_lead_sessions_environment_naming_it():

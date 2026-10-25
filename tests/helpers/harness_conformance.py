@@ -181,8 +181,11 @@ class FakeOpenCodeDriver(Driver):
 
     def create_lab(self, tmp_path: Path) -> HarnessLab:
         policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"]}
+        upstream = fake_opencode.ProviderUpstream()  # the provider the run's relay reaches (F28, Linux)
         lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy,
-                                extra_env={"OPENAI_API_KEY": PROVIDER_SECRET})
+                                extra_env={"OPENAI_API_KEY": PROVIDER_SECRET}, provider_upstream=upstream.url)
+        lab.closers.append(upstream.close)
+        lab.provider = upstream
         scripts = Path(lab.env[SCRIPTS_ENV])  # a root contained runs can see (the sandbox's /tmp is private)
         launcher = fake_opencode.write_launcher(scripts / "fake-opencode", scripts)
         lab.env["AEW_OPENCODE_BIN"] = str(launcher)

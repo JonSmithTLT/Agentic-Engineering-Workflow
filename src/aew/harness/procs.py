@@ -14,6 +14,9 @@ The run supervisor starts every harness process through a :class:`ProcessTree`:
   inside that bubblewrap sandbox, in its own PID namespace. The recorded pid is bubblewrap's host pid, which leads
   the process group; killing it ends the namespace, including a descendant that called ``setsid``. A tree that
   requires a layout and has none refuses to spawn: there is no per-call way to start an uncontained process.
+* **Linux, a network of its own (F28; STG-05 CS-3b):** the tree also owns the run's network
+  (``containment.netns.RunNetwork``): a spawn that asks for it starts the harness under the in-sandbox shim, in the
+  same sandbox, and ``kill()`` closes the provider relay and the egress proxy too. Ending the run ends all of them.
 
 Also: detached spawning of the supervisor itself, liveness by pid, and process suspension (tests).
 """
@@ -132,13 +135,15 @@ class ProcessTree:
     (M4-B review: a check registered before its run ended must not start after). The supervisor's death also ends them.
 
     ``layout`` contains every process the tree starts (Linux). ``require_layout`` makes a tree without one refuse
-    to start anything (fail closed until the run's containment is decided)."""
+    to start anything (fail closed until the run's containment is decided). ``network`` is the run's network, which
+    the tree closes when it is killed."""
 
-    def __init__(self, layout: Any = None, *, require_layout: bool = False) -> None:
+    def __init__(self, layout: Any = None, *, require_layout: bool = False, network: Any = None) -> None:
         if layout is not None and sys.platform == "win32":  # pragma: windows-only
             raise ValueError("filesystem containment layouts are Linux-only")
         self.layout = layout
         self.require_layout = require_layout
+        self.network = network
         self.pids: list[int] = []
         self.closed = False
         self._mu = threading.Lock()  # spawn and kill are atomic with respect to each other
@@ -156,10 +161,15 @@ class ProcessTree:
                 raise _winerr("SetInformationJobObject")
             self._job = job
 
-    def spawn(self, argv: list[str], **kwargs: Any) -> subprocess.Popen[Any]:
+    def spawn(self, argv: list[str], *, network_shim: bool = False, **kwargs: Any) -> subprocess.Popen[Any]:
+        """Start ``argv`` in the tree. ``network_shim``: under the run's network shim, which gives a harness that
+        serves on its loopback (or calls its provider) the legs its network names; without a network of its own the
+        harness starts as it is."""
         with self._mu:
             if self.closed:
                 raise OSError("this process tree was killed and starts nothing more")
+            if network_shim and self.network is not None:
+                argv = self.network.shim_argv(list(argv))
             return self._spawn(argv, **kwargs)
 
     def _spawn(self, argv: list[str], **kwargs: Any) -> subprocess.Popen[Any]:
@@ -211,7 +221,11 @@ class ProcessTree:
     def kill(self) -> None:
         with self._mu:
             self.closed = True
-            self._kill()
+            try:
+                self._kill()
+            finally:
+                if self.network is not None:  # the relay and the egress proxy end with the run's processes
+                    self.network.close()
 
     def _kill(self) -> None:
         if sys.platform == "win32":  # pragma: windows-only
@@ -245,6 +259,8 @@ class ProcessTree:
             if self._sentinel.stdin and not self._sentinel.stdin.closed:
                 self._sentinel.stdin.close()
             self._sentinel.wait(timeout_s)
+        if self.network is not None:
+            self.network.close()
         return left
 
 

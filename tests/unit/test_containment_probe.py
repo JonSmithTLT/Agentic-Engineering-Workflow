@@ -14,6 +14,7 @@ import os
 import stat
 import sys
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -364,18 +365,67 @@ def test_the_probe_finds_in_a_masked_tree_exactly_what_the_layout_did_not_put_th
     ([{"name": "@ISCSIADM_ABSTRACT_NAMESPACE", "class": "reported"}], "PASS"),
 ])
 def test_doctor_warns_of_each_failing_class_of_abstract_socket_on_the_shared_network(monkeypatch, abstract, status):
-    """D-CS2-5: a passing sandbox with an abstract socket of a failing class is a WARN naming its class and that
-    CS-3's network namespace closes it; a reported one is not."""
+    """D-CS2-5: on the host's network (containment.network.mode: shared), a passing sandbox with an abstract socket of
+    a failing class is a WARN naming its class and that the default network mode closes it; a reported one is not."""
     monkeypatch.setattr(C, "supported", lambda: True)
     monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
     monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {"ok": True, "reason": None, "rows": {
         "2": {"abstract": {"network": "shared", "sockets": abstract}}}})
     monkeypatch.setattr(probe, "mechanism", lambda _layout: "bubblewrap 0.4.0")
-    got, detail = C.doctor(None, "unsupported")
+    got, detail = C.doctor({"containment": {"network": {"mode": "shared"}}}, "unsupported")
     assert got == status
     if status == "WARN":
-        assert detail.endswith("; abstract credential socket on the shared network; CS-3's network namespace closes "
-                               "it; abstract display socket on the shared network; CS-3's network namespace closes it")
+        assert detail.endswith("; abstract credential socket on the shared network; the default network mode "
+                               "(proxy_only) closes it; abstract display socket on the shared network; the default "
+                               "network mode (proxy_only) closes it")
+
+
+@pytest.mark.parametrize(("tools", "ok", "lines"), [
+    ({"rg": "/usr/bin/rg"}, True, [("ripgrep", "PASS")]),
+    ({"rg": None}, True, [("ripgrep", "WARN")]),
+    ({"rg": None}, False, []),  # the sandbox failed its self-test: the containment line says so, and runs differ
+    ({}, True, []),             # a sandbox that reported no tools
+])
+def test_doctor_reports_whether_a_contained_run_finds_ripgrep_from_the_same_sandbox(monkeypatch, tools, ok, lines):
+    """The designer's RG-1: one sandbox, the containment line's, also says whether a contained run finds ``rg``; and a
+    WARN names the host's own ``rg`` that the sandbox does not see (#257's quick check, Q3)."""
+    which = C.shutil.which
+
+    def host_has_rg(name: str, *args: Any, **kwargs: Any) -> str | None:
+        return "/opt/hidden/rg" if name == "rg" else which(name, *args, **kwargs)
+
+    monkeypatch.setattr(C.shutil, "which", host_has_rg)
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
+    monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {
+        "ok": ok, "reason": None if ok else "row 3 (terminal): failed", "tools": tools,
+        "rows": {"2": {"abstract": {"network": "shared", "sockets": []}}}})
+    monkeypatch.setattr(probe, "mechanism", lambda _layout: "bubblewrap 0.4.0")
+    policy = {"containment": {"mode": "allow_weaker", "network": {"mode": "shared"}}}
+    got = C.doctor_checks(policy, "unsupported")
+    assert got[0][0] == "containment" and [(name, status) for name, status, _ in got[1:]] == lines
+    if lines == [("ripgrep", "WARN")]:
+        assert "this host's /opt/hidden/rg is on the PATH but in a directory runs cannot see" in got[1][2]
+    assert C.doctor(policy, "unsupported") == got[0][1:]
+
+
+def test_the_ripgrep_line_names_where_a_run_finds_it_or_the_failing_tools_the_cause_and_the_fix():
+    """RG-1: a WARN names the tools that fail (glob, grep), why (OpenCode would download ripgrep, which a run on its
+    own network cannot, nor one offline), and the fix: CAP-1, and until then an ``rg`` runs can see, naming the
+    host's when the sandbox cannot see it (the operator's decision of 2026-10-24)."""
+    assert C.ripgrep_check("/usr/bin/rg", "proxy_only") == (
+        "PASS", "a contained run finds ripgrep at /usr/bin/rg, for OpenCode's glob and grep tools")
+    status, detail = C.ripgrep_check(None, "proxy_only")
+    assert status == "WARN" and detail == (
+        "a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: OpenCode then "
+        "downloads it, which a run on a network of its own (containment.network.mode: proxy_only) cannot. Fix: CAP-1 "
+        "(AEW bringing its own tools) will put a pinned ripgrep in every contained run; until then, install ripgrep "
+        "(`rg`) on this host, on the PATH")
+    assert "for each run, which an offline host cannot" in C.ripgrep_check(None, "shared")[1]
+    status, detail = C.ripgrep_check(None, "isolated", host="/tmp/tools/rg")
+    assert status == "WARN" and detail.endswith(
+        "until then, this host's /tmp/tools/rg is on the PATH but in a directory runs cannot see, so install ripgrep "
+        "elsewhere (runs see neither /tmp, /run nor the masked secret directories)")
 
 
 @pytest.mark.parametrize(("change", "says"), [
@@ -403,3 +453,77 @@ def test_row_4_records_whether_the_process_leads_its_session_and_does_not_requir
 def test_row_3_fails_closed(change, says):
     row = probe._row3({**GOOD, **change})
     assert row["ok"] is False and says in row["reason"]
+
+
+# ------------------------------------------------------------------------------- row 1: the run's own network (CS-3b)
+NET = {"relay": True, "egress": True, "abstract": "aew-probe-0011", "token": "t0k", "secret": "s3c",
+       "seen": ["Bearer s3c"], "server": "echoed", "inside": {"bridge": "/tmp/aew-bridge-x/b.sock"}}
+INSIDE = {"netns": "net:[4026532900]", "direct": "ENETUNREACH", "direct_udp": "ENETUNREACH",
+          "direct6": "ENETUNREACH", "host_port": "ECONNREFUSED", "host_abstract": "ECONNREFUSED", "abstract": [],
+          "listening": [["tcp", 4100], ["tcp", 4101], ["tcp", 4102]], "server": "echoed",
+          "relay": {"status": "HTTP/1.1 200 OK", "body": "t0k"}, "egress": {"status": "HTTP/1.1 403 Forbidden"},
+          "bridge": "connected"}
+PRIVATE = L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=(),
+                   network=L.PROXY_ONLY, net_dir="/tmp/aew-net-x")
+
+
+def row1(monkeypatch, inside=None, **net):
+    monkeypatch.setattr(probe, "_netns", lambda pid="self": "net:[4026531840]")  # the launcher's, and PID 1's
+    return probe._row1(PRIVATE, {"network": INSIDE if inside is None else inside}, {**NET, **net})
+
+
+def test_row_1_passes_on_a_network_of_the_runs_own_and_records_what_it_checked(monkeypatch):
+    row = row1(monkeypatch)
+    assert row["ok"] is True and row["mode"] == L.PROXY_ONLY
+    assert row["netns"] == {"inside": "net:[4026532900]", "launcher": "net:[4026531840]"}
+    assert row["checks"]["host_abstract"] == "ECONNREFUSED" and row["listening"] == INSIDE["listening"]
+
+
+@pytest.mark.parametrize(("change", "says"), [
+    ({"netns": "net:[4026531840]"}, "is the host's"),
+    ({"netns": None}, "is the host's"),
+    ({"direct": "connected"}, "direct TCP connection"),
+    ({"direct_udp": "sent"}, "direct UDP connection"),
+    ({"direct6": "connected"}, "direct IPv6 TCP connection"),
+    ({"host_port": "connected"}, "a loopback port the host holds is reachable inside"),
+    ({"host_abstract": "connected"}, "an abstract socket the host holds is reachable inside"),
+    ({"abstract": ["@aew-probe-0011"]}, "an abstract socket the host holds is reachable inside"),
+    ({"listening": [["tcp", 4100], ["tcp", 8080]]}, "ports listen inside beyond the shim's"),
+    ({"listening": [["tcp", 4100], ["udp", 5353]]}, "ports listen inside beyond the shim's"),
+    ({"relay": {"status": "HTTP/1.1 502 Bad Gateway", "body": ""}}, "did not reach its upstream"),
+    ({"egress": {"status": "HTTP/1.1 200 Connection Established"}}, "did not refuse aew-probe.invalid:443"),
+    ({"bridge": "ENOENT"}, "the bridge does not answer inside"),
+])
+def test_row_1_fails_closed_on_each_protection_taken_out(monkeypatch, change, says):
+    row = row1(monkeypatch, {**INSIDE, **change})
+    assert row["ok"] is False and says in row["reason"], row["reason"]
+
+
+def test_row_1_fails_when_the_relay_did_not_swap_the_sentinel_or_the_supervisor_cannot_reach_the_server(monkeypatch):
+    assert "did not put the credential in place" in row1(monkeypatch, seen=["Bearer aew-relay-x"])["reason"]
+    assert "could not reach the sandbox's loopback" in row1(monkeypatch, server="no_answer")["reason"]
+    assert row1(monkeypatch, {})["reason"] == "the probe did not report its network"
+
+
+def test_row_1_on_a_network_without_routes_fails_on_any_route_that_answers(monkeypatch):
+    quiet = {**INSIDE, "listening": [["tcp", 4100]], "relay": {"error": "ECONNREFUSED"},
+             "egress": {"error": "ECONNREFUSED"}}
+    assert row1(monkeypatch, quiet, relay=False, egress=False)["ok"] is True
+    assert "a provider route answers" in row1(monkeypatch, {**quiet, "relay": INSIDE["relay"]}, relay=False,
+                                              egress=False)["reason"]
+
+
+def test_row_1_on_the_hosts_network_claims_nothing():
+    row = probe._row1(L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=()), {},
+                      None)
+    assert row == {"name": "network", "ok": True, "reason": None, "mode": "shared",
+                   "claim": "none: the run shares the host's network"}
+
+
+def test_row_2_on_a_network_of_the_runs_own_fails_on_a_host_abstract_socket_listed_inside_and_ignores_row_1s_own():
+    held = [{"name": "@/tmp/.X11-unix/X0", "class": sockets.DISPLAY}, {"name": "@aew-probe-0011", "class": "reported"}]
+    seen = {**GOOD, "inventory": {**INVENTORY, "abstract": held}, "network": {"abstract": ["@/tmp/.X11-unix/X0"]}}
+    row = probe._row2(PRIVATE, seen, NET)
+    assert row["ok"] is False and "an abstract display socket the host holds is listed inside" in row["reason"]
+    assert row["abstract"]["sockets"] == held[:1] and row["abstract"]["visible_inside"] == held[:1]
+    assert probe._row2(PRIVATE, {**seen, "network": {"abstract": []}}, NET)["abstract"]["visible_inside"] == []

@@ -248,23 +248,47 @@ def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
 
 
 def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
-    """EW-U05.g holds for a promotion too: the promoted unit keeps every obligation its ancestors give it, or the
-    promotion is refused and nothing is created."""
-    p = sample_project(tmp_path)
+    """EW-U05.g holds for a promotion too: a Ticket promoted out of a Story with its own floor or non-waivable gate
+    keeps every obligation, checked over the moved subtree through the owners as for a move, or the promotion is
+    refused, naming what it would lose, and nothing is created. Class 1 Tickets are validated by checks here, so only
+    the Story's floor makes the mutating one's a verifier."""
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["post_integration"]["validation"] = {"by_class": {"1": "checks"}, "default": "verifier"}
+    p = sample_project(tmp_path, gates=gates)
+    floor = ("--min-descendant-class", "2", "--rationale", "money moves")
     epic = create_unit(p, "epic", "Initiative")
-    gated = create_unit(p, "story", "Payments", parent=epic, extra=(
-        "--min-descendant-class", "2", "--rationale", "money moves", "--mandatory-gate", "review_security"))
-    t = create_investigation(p, tmp_path, parent=gated)
-    rev, before = p.rev(), inherited(p, t)
-    out = err(p, "work", "promote", t, "--to", "story", "--title", "Payments, wider", "--reason", "three components")
-    assert out["code"] == "OBLIGATIONS_DROPPED"
-    assert out["details"]["dropped"] == {t: {"effective_class": {"before": 2, "after": 1},
-                                            "non_waivable_gates": ["review_security"]}}
-    assert p.rev() == rev and show(p, t)["parent"] == gated and inherited(p, t) == before  # no Story was created
-    # A promotion that skips no ancestor's obligations is admitted as before.
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=(*floor, "--mandatory-gate", "review_security"))
+    floored = create_unit(p, "story", "Ledger", parent=epic, extra=floor)
+    change = create_unit(p, "ticket", "Charge the card", parent=gated)
+    look = create_investigation(p, tmp_path, parent=gated)
+    posting = create_unit(p, "ticket", "Post the entry", parent=floored)
+
+    def promote(wid):
+        return p.lead("work", "promote", wid, "--to", "story", "--title", f"{wid}, wider", "--reason", "scope grew")[
+            "promoted_to"]
+
+    def refused(wid, parent, losses):
+        rev, before = p.rev(), inherited(p, wid)
+        out = err(p, "work", "promote", wid, "--to", "story", "--title", "Wider", "--reason", "three components")
+        assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "move_lowers_obligations"
+        assert {w: set(d) for w, d in out["details"]["dropped"].items()} == {wid: losses}
+        assert out["details"]["dropped"][wid]["effective_class"] == {"before": 2, "after": 1}
+        assert p.rev() == rev and show(p, wid)["parent"] == parent and inherited(p, wid) == before  # nothing created
+
+    refused(change, gated, {"effective_class", "non_waivable_gates", "integration_verifier"})
+    refused(look, gated, {"effective_class", "non_waivable_gates"})
+    refused(posting, floored, {"effective_class", "integration_verifier"})
+    # The remedy for a floor: the Ticket meets it with its own class first; the promotion then lowers nothing.
+    p.lead("work", "reclassify", posting, "--class", "2", "--reason", "meet the floor before the promotion")
+    before = inherited(p, posting)
+    story = promote(posting)
+    assert show(p, story)["parent"] == epic and show(p, posting)["parent"] == story
+    assert lowered(before, inherited(p, story)) == []
+    # A promotion that skips no ancestor's obligations is admitted as before, and lowers nothing.
     plain = create_investigation(p, tmp_path, parent=epic, title="Plain look")
-    assert show(p, p.lead("work", "promote", plain, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
-        "promoted_to"])["parent"] == epic
+    before = inherited(p, plain)
+    story = promote(plain)
+    assert show(p, story)["parent"] == epic and lowered(before, inherited(p, story)) == []
     assert_control_invariants(p)
 
 

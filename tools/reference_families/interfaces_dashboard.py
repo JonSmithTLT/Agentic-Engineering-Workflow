@@ -12,14 +12,20 @@ detectors (``interfaces_dashboard_text.py`` the second): the functions that name
 :data:`REFERENCES`; the one call out of a table is that expression (:func:`dispatch_calls`); and every read of the
 request path (``url.path``, ``h.path``) in ``_handle`` and ``_respond`` is one of the declared reads, by its form (the
 path, a slice of it, a ``startswith`` on it) and what consumes it (:data:`PATH_READS`, a count of each). A route served
-by a hand-written branch, an early return, a test on the raw target or a third table would have to read the request
-path or name a table in one of those two functions, so it is a difference.
+by a hand-written branch, an early return, a test on ``h.path`` or a third table would have to read the request path
+(``url.path`` or ``h.path``) or name a table in one of those two functions, so it is a difference.
 
-**The limit of that.** A test of the path inside a function that ``_handle`` or ``_respond`` calls (``_admit``,
-``_conditional``, ``_exchange``, ``_static``, ``match_route``) is not read. A read is counted by its form and consumer:
-one replaced by another of the same form and consumer (``in CONDITIONAL_ROUTES`` for ``in EXTRA``) is not seen. A table
-reached through ``getattr`` or ``vars`` is not seen either. The pins that show these are in
-``tests/unit/test_reference_interface_controls.py``, one probe each.
+**The limit of that.** The reading is of two spellings of the path in two methods, and sees nothing else:
+
+* a test of the path inside a function that ``_handle`` or ``_respond`` calls (``_admit``, ``_conditional``,
+  ``_exchange``, ``_static``, ``match_route``, or one added later);
+* the path read under another spelling (``raw_target(h)``, ``h.requestline``, ``url[2]``, ``url.geturl()``, an alias, an
+  unpacking, ``getattr(url, "path")``);
+* a branch before ``_handle`` is reached (the nested handler's ``do_GET``, ``DashboardServer.handle``);
+* a read replaced by another of the same form and consumer (a quote-style change of ``startswith('/api/')``);
+* a route table reached through ``getattr`` or ``vars``.
+
+The pins that show these are in ``tests/unit/test_reference_interface_controls.py``, one probe each.
 
 **What is not an API route.** ``DashboardServer._handle`` tests the path before it reaches the API: a path under the
 session prefix is the one-time URL exchange, and any path outside ``/api/`` is the static frontend (with its

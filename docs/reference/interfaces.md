@@ -4,19 +4,19 @@ What the product exposes, each read from its owner: the dashboard's routes, the 
 
 ## Dashboard routes
 
-The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dashboard.server`; the server also answers two paths that are not the API, read from `_handle`. Every route answers `GET`, `HEAD`; any other method is refused with 405.
+The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dashboard.server`; the server also answers two paths that are not the API, read from `_handle`. Every route answers `GET`, `HEAD`. The reading counts every read of the request path in `_handle` and `_respond`, so a route served by a branch of its own is a difference; a test of the path inside a function they call is not read. A route's limit bounds are what the server normalises its limit parameter with: its own, or the server's default.
 
-| Route | Conditional | Query parameters | Repeatable | Limit |
+| Route | Conditional | Query parameters | Repeatable | Limit bounds |
 |---|---|---|---|---|
-| `/activity` | no | `cursor`, `limit` | - | - |
-| `/attention` | no | `cursor`, `limit` | - | - |
+| `/activity` | no | `cursor`, `limit` | - | 100 to 250 (server default) |
+| `/attention` | no | `cursor`, `limit` | - | 100 to 250 (server default) |
 | `/capabilities` | no | - | - | - |
-| `/evidence` | no | `cursor`, `limit`, `work` | - | - |
+| `/evidence` | no | `cursor`, `limit`, `work` | - | 100 to 250 (server default) |
 | `/evidence/{id}` | no | - | - | - |
-| `/history` | no | `cursor`, `kind`, `limit`, `since`, `until` | - | - |
+| `/history` | no | `cursor`, `kind`, `limit`, `since`, `until` | - | 100 to 250 (server default) |
 | `/history/integrity` | no | - | - | - |
-| `/history/{id}` | no | `annotations_cursor`, `annotations_limit` | - | - |
-| `/knowledge` | no | `cursor`, `limit` | - | - |
+| `/history/{id}` | no | `annotations_cursor`, `annotations_limit` | - | 100 to 250 (server default) |
+| `/knowledge` | no | `cursor`, `limit` | - | 100 to 250 (server default) |
 | `/knowledge/{id}` | no | - | - | - |
 | `/maps` | no | `against` | - | - |
 | `/maps/diff` | no | `a`, `b` | - | - |
@@ -25,16 +25,16 @@ The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dash
 | `/maps/structural/{root}/inputs` | no | `cursor`, `limit` | - | 100 to 250 |
 | `/overview` | no | - | - | - |
 | `/project` | no | - | - | - |
-| `/runs` | no | `cursor`, `limit` | - | - |
+| `/runs` | no | `cursor`, `limit` | - | 100 to 250 (server default) |
 | `/runs/{id}` | no | - | - | - |
-| `/work` | no | `cursor`, `kind`, `limit`, `parent`, `state` | - | - |
+| `/work` | no | `cursor`, `kind`, `limit`, `parent`, `state` | - | 100 to 250 (server default) |
 | `/work/{id}` | no | - | - | - |
-| `/history/search` | yes | `kind`, `limit`, `since`, `term`, `until` | `kind`, `term` | - |
+| `/history/search` | yes | `kind`, `limit`, `since`, `term`, `until` | `kind`, `term` | 100 to 250 (server default) |
 
 Outside the API:
 
-- `/session/{rest}`: handled by `_exchange`, under `/session/`.
-- `/{file}`: handled by `_static`, outside `/api/`, `/session/`.
+- `/session/{rest}`: handled by `_exchange`, under `/session/`; answered only while the server has `sessions`.
+- `/{file}`: handled by `_static`, outside `/api/`, `/session/`; answered only while the server has `static_root`.
 
 ## Tools
 
@@ -59,7 +59,7 @@ Outside the API:
 
 ## Schemas
 
-Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an `additionalProperties` schema. The paths and their types are in `index.json`.
+Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an `additionalProperties` schema. The paths and their types are in `index.json`; a path with no type is a key the schema requires and gives no type.
 
 | Schema | File | Paths | Required |
 |---|---|---|---|
@@ -73,7 +73,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 128 | 46 |
 | `execution` | `execution.schema.json` | 50 | 7 |
-| `gates` | `gates.schema.json` | 57 | 21 |
+| `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
 | `history` | `history.schema.json` | 12 | 9 |
 | `map-registry` | `map-registry.schema.json` | 15 | 13 |
@@ -96,7 +96,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 
 ## SQLite tables
 
-Created from the DDL the product holds, executed in memory and read back. `transient` is a table the product builds in memory to match text, never a store.
+Created from the DDL the product holds, executed in memory and read back. `transient` is a table the product builds in memory to match text, never a store. DDL built at run time is not found.
 
 | Module | Table | Kind | Scope | Columns | Indexes |
 |---|---|---|---|---|---|

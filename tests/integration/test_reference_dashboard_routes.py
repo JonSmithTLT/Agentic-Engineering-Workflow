@@ -19,6 +19,9 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from aew.dashboard import projections as P
 from aew.dashboard import server
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,13 +63,31 @@ def test_the_route_records_are_the_server_tables_both_ways():
                 "query": sorted(server.QUERY_PARAMETERS.get(route, ()))}
         if route in server.REPEATABLE_PARAMETERS:
             want["repeatable"] = sorted(server.REPEATABLE_PARAMETERS[route])
-        if route in server.ROUTE_LIMITS:
-            want["limit"] = dict(zip(("default", "max"), server.ROUTE_LIMITS[route], strict=True))
+        if set(want["query"]) & set(server.LIMIT_PARAMETERS):  # every route with a limit parameter has bounds
+            default, maximum = server.ROUTE_LIMITS.get(route, (P.LIMIT_DEFAULT, P.LIMIT_MAX))
+            want["limit"] = {"default": default, "max": maximum,
+                             "source": "route" if route in server.ROUTE_LIMITS else "server default"}
         assert r["fact"] == want, route
         assert r["coverage"]["label"] == "complete-by-construction" and r["basis"] == "enumerated"
         assert (r["anchor"]["module"], r["anchor"]["symbol"]) == (
             "aew.dashboard.server", "CONDITIONAL_HANDLERS" if want["conditional"] else "ROUTES")
         assert set(r["fact_coverage"]) == {k for k, v in want.items() if isinstance(v, list)}
+
+
+def test_a_limit_the_record_states_is_the_one_the_server_normalises_with():
+    """The bounds are observed, not re-derived: the server's own normaliser answers the default with no value, accepts
+    the maximum, and refuses one above it."""
+    for route, r in records().items():
+        limit = r["fact"].get("limit")
+        if not r["fact"].get("api", True):
+            continue
+        keys = sorted(set(r["fact"]["query"]) & set(server.LIMIT_PARAMETERS))
+        assert (limit is not None) == bool(keys), route
+        for key in keys:
+            assert server.DashboardServer._normalized({key: None}, route) == {key: limit["default"]}, route
+            assert server.DashboardServer._normalized({key: str(limit["max"])}, route) == {key: limit["max"]}, route
+            with pytest.raises(P.InvalidRequest):
+                server.DashboardServer._normalized({key: str(limit["max"] + 1)}, route)
 
 
 def test_the_records_outside_the_api_are_the_branches_of_the_request_handler():
@@ -77,6 +98,17 @@ def test_the_records_outside_the_api_are_the_branches_of_the_request_handler():
     assert static["handler"] == "_static" and static["outside"] == sorted({"/api/", server.SESSION_PREFIX})
     for r in others.values():
         assert r["basis"] == "static" and r["coverage"] == {"label": "lower-bound", "unresolved": []}
+
+
+def test_a_path_outside_the_api_that_needs_a_part_of_the_server_says_which():
+    """``/session/`` is no route while the server has no session table, and the static frontend is answered only while
+    it has a static root (the server's own guards, which the record names)."""
+    others = {k: r["fact"] for k, r in records().items() if r["fact"].get("api") is False}
+    assert (others["/session/{rest}"]["conditional"], others["/session/{rest}"]["needs"]) == (True, "sessions")
+    assert (others["/{file}"]["conditional"], others["/{file}"]["needs"]) == (True, "static_root")
+    text = (ROOT / "src" / "aew" / "dashboard" / "server.py").read_text(encoding="utf-8")
+    assert "if self.sessions is None:" in text and "if self.static_root is None:" in text
+    assert hasattr(server.DashboardServer, "_exchange") and hasattr(server.DashboardServer, "_static")
 
 
 def tree() -> ast.Module:
@@ -99,6 +131,20 @@ def test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are(
                       and isinstance(node.func.value, ast.Name) and node.func.value.id in D.TABLES)]
     assert len(calls) == 1, [ast.unparse(c) for c in calls]
     assert ast.unparse(calls[0].func) == "ROUTES.get(route) or CONDITIONAL_HANDLERS[route]"
+    assert D.dispatch_calls(tree()) == [ast.unparse(calls[0].func)]  # the generator's own finder says the same
+
+
+def test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one():
+    """A route reaches a handler by the dispatch, the branches of ``_handle`` or a read of the request path that is
+    neither, so every read of ``url.path`` and ``h.path`` in those two methods is held to :data:`PATH_READS`, in both
+    directions and by count. The other reading (``re`` on the text) finds the same reads."""
+    src = CTX.sources()[D.SERVER]
+    assert src.tree is not None
+    reading = D.read(src.tree, CONSTANTS)
+    assert D.path_read_problems(reading) == []
+    assert sorted(reading.path_reads) == sorted(D.PATH_READS)
+    assert sorted(T.read(src.text, CONSTANTS).path_reads) == sorted(D.PATH_READS)
+    assert {s for s, *_ in reading.path_reads} == {f"{D.OWNER_CLASS}.{name}" for name in D.CHECKED}
 
 
 def test_a_planted_second_dispatch_is_a_reference_the_declared_set_does_not_have():
@@ -121,9 +167,35 @@ def test_a_detector_made_blind_makes_the_agreement_test_fail(monkeypatch):
     src = CTX.sources()[D.SERVER]
     assert src.tree is not None
     assert D.read(src.tree, CONSTANTS) == T.read(src.text, CONSTANTS)
-    blind = D.Reading([], None, [], [])
+    blind = D.Reading([], None, [], [], [])
     monkeypatch.setattr(D, "read", lambda tree, constants: blind)
     assert D.read(src.tree, CONSTANTS) != T.read(src.text, CONSTANTS)
     monkeypatch.undo()
     monkeypatch.setattr(T, "read", lambda text, constants, **kw: blind)
     assert D.read(src.tree, CONSTANTS) != T.read(src.text, CONSTANTS)
+
+
+def test_a_stray_read_of_the_request_path_or_a_second_dispatch_makes_the_api_routes_lower_bound(monkeypatch):
+    """The end of the proof: the label is earned only while the reads and the dispatch are the declared ones. Plant a
+    read the declaration does not have, then a second call out of a table, and the API records stop being
+    complete-by-construction and say why; the records outside the API are unaffected."""
+    def api():
+        return [r for r in D.build(CTX) if r.fact.get("api", True)]
+
+    assert {r.coverage["label"] for r in api()} == {"complete-by-construction"}
+    real = D.read
+
+    def with_stray_read(tree, constants):
+        reading = real(tree, constants)
+        return reading._replace(path_reads=[*reading.path_reads,
+                                            ("DashboardServer._respond", "url.path", "bare", "compare:Eq:'/health'")])
+
+    monkeypatch.setattr(D, "read", with_stray_read)
+    planted = api()
+    assert {r.coverage["label"] for r in planted} == {"lower-bound"}
+    assert any("'/health'" in i["why"] for i in planted[0].coverage["unresolved"])
+    monkeypatch.undo()
+    monkeypatch.setattr(D, "dispatch_calls", lambda tree: ["ROUTES.get(route)", "ROUTES['/x']"])
+    planted = api()
+    assert {r.coverage["label"] for r in planted} == {"lower-bound"}
+    assert any("2 calls out of a route table" in i["why"] for i in planted[0].coverage["unresolved"])

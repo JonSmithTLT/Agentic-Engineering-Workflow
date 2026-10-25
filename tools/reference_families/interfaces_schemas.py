@@ -12,19 +12,23 @@ state's ``last_transition``), and a path is spelled ``a.b`` for a property, ``a[
 contributes its paths at the node's own path (``if`` and ``not`` only constrain, and name no path). A path reached
 twice has the union of its types. A path is *required* when an enclosing object requires it unconditionally:
 ``required`` under ``oneOf``, ``anyOf`` or ``if`` is not listed. A required key that nothing declares under
-``properties`` is still a path (with no type).
+``properties`` is still a path: it has the type of the object's ``additionalProperties`` schema or of the
+``patternProperties`` schema its name matches, and none (the type ``""``) only when the schema gives it none.
 
 The properties and the required list are what a reading found, so each carries its own coverage (``fact_coverage``).
-They are lower-bound for a schema that uses a keyword that defines paths this reading does not walk
-(``dependentSchemas``, ``unevaluatedProperties``, ``unevaluatedItems``, ``additionalItems``, ``contentSchema``, a
-dynamic ``$ref``), for a ``$ref`` that does not resolve and for a ``$ref`` that recurses (the recursion is cut at the
-second visit): each is an unresolved item of the schema, by name. The record set is complete-by-construction over the
-registry.
+Every keyword of a schema node is classified: walked (it names paths), constraint-only (it constrains and names none: a
+``type``, a ``pattern``, ``not``, ``if``, ``propertyNames``), an annotation (``title``, ``x-...``), or unwalked. They
+are lower-bound for a schema that uses an unwalked keyword (``contains``, ``dependentSchemas``,
+``unevaluatedProperties``, ``unevaluatedItems``, ``additionalItems``, ``contentSchema``, a dynamic ``$ref``, array-form
+``items``), a keyword this reading has not classified, a ``$ref`` that does not resolve, or a ``$ref`` that recurses
+(the recursion is cut at the second visit): each is an unresolved item of the schema, by name. The record set is
+complete-by-construction over the registry.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -39,8 +43,18 @@ OWNER = "aew.schemas"
 REGISTRY = f"{OWNER}:SCHEMAS"
 # Data kept beside the schemas, not a schema: the directory holds it and the registry does not.
 DATA_FILES = ("ticket-field-registry.v1.json",)
-UNWALKED = ("dependentSchemas", "unevaluatedProperties", "unevaluatedItems", "additionalItems", "contentSchema",
-            "$dynamicRef", "$recursiveRef")
+# The keywords of a schema node, each classified (a keyword in none of these is an unresolved item, so a new one is
+# seen).
+WALKED = frozenset({"properties", "patternProperties", "additionalProperties", "items", "prefixItems", "allOf", "oneOf",
+                    "anyOf", "then", "else", "$ref", "required", "$defs", "definitions"})
+CONSTRAINTS = frozenset({"type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+                         "multipleOf", "minLength", "maxLength", "pattern", "format", "minItems", "maxItems",
+                         "uniqueItems", "minProperties", "maxProperties", "propertyNames", "not", "if",
+                         "dependentRequired", "minContains", "maxContains", "contentMediaType", "contentEncoding"})
+ANNOTATIONS = frozenset({"title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly",
+                         "$schema", "$id", "$comment", "$anchor"})  # and every ``x-...`` keyword
+UNWALKED = frozenset({"contains", "dependentSchemas", "dependencies", "unevaluatedProperties", "unevaluatedItems",
+                      "additionalItems", "contentSchema", "$dynamicRef", "$recursiveRef", "$dynamicAnchor"})
 _TESTS = "tests/integration/test_reference_interfaces.py"
 TESTS = (
     f"{_TESTS}::test_the_schema_records_are_the_registry_and_the_directory_both_ways",
@@ -49,7 +63,9 @@ TESTS = (
 
 
 class Flat(NamedTuple):
-    properties: dict[str, str]  # path -> its types, ``|``-joined and sorted ("" when the schema names none)
+    # path -> its types, ``|``-joined and sorted; "" when the schema gives the path none (it is neither under
+    # ``properties`` nor typed by an ``additionalProperties`` or matching ``patternProperties`` schema)
+    properties: dict[str, str]
     required: list[str]
     unresolved: list[str]  # why, one per distinct item
 
@@ -81,9 +97,14 @@ class _Walk:
     def visit(self, node: Any, path: str, resolver: Any, stack: list[Any], conditional: bool) -> None:
         if not isinstance(node, dict):
             return  # a boolean schema names no path
-        for key in UNWALKED:
-            if key in node:
-                self.unresolved.add(f"{key} is used at {path or 'the root'} and this reading does not walk it")
+        where = path or "the root"
+        for key in node:
+            if key in UNWALKED:
+                self.unresolved.add(f"{key} is used at {where} and this reading does not walk it")
+            elif key not in WALKED | CONSTRAINTS | ANNOTATIONS and not key.startswith("x-"):
+                self.unresolved.add(f"the keyword {key} at {where} is not one this reading has classified")
+        if isinstance(node.get("items"), list):
+            self.unresolved.add(f"items is a list at {where}, which this reading does not walk")
         if "$ref" in node:
             try:
                 resolved = resolver.lookup(node["$ref"])
@@ -108,7 +129,11 @@ class _Walk:
             self.visit(sub, _join(path, f"<{key}>"), resolver, stack, conditional)
         if isinstance(node.get("additionalProperties"), dict):
             self.visit(node["additionalProperties"], _join(path, "*"), resolver, stack, conditional)
-        if "items" in node:
+        if not conditional:  # a required key nothing declares takes the type its object's schemas give any such key
+            declared = node.get("properties") or {}
+            for key in (k for k in node.get("required", []) if isinstance(k, str) and k not in declared):
+                self.type_undeclared(node, _join(path, key), key, resolver, stack)
+        if isinstance(node.get("items"), dict):
             self.visit(node["items"], f"{path}[]", resolver, stack, conditional)
         for i, sub in enumerate(node.get("prefixItems") or []):
             self.visit(sub, f"{path}[{i}]", resolver, stack, conditional)
@@ -121,6 +146,22 @@ class _Walk:
         for key in ("then", "else"):
             if key in node:
                 self.visit(node[key], path, resolver, stack, True)
+
+    def type_undeclared(self, node: dict[str, Any], child: str, key: str, resolver: Any, stack: list[Any]) -> None:
+        """Type a required key that ``properties`` does not declare, as a validator would: by each ``patternProperties``
+        schema whose pattern the key matches, else by the ``additionalProperties`` schema."""
+        matched = False
+        for pattern, sub in (node.get("patternProperties") or {}).items():
+            try:
+                hit = re.search(pattern, key) is not None
+            except re.error:
+                self.unresolved.add(f"the pattern {pattern} at {child} cannot be read")
+                continue
+            if hit:
+                matched = True
+                self.visit(sub, child, resolver, stack, False)
+        if not matched and isinstance(node.get("additionalProperties"), dict):
+            self.visit(node["additionalProperties"], child, resolver, stack, False)
 
 
 def flatten(schema: dict[str, Any], registry: Registry, name: str = "schema") -> Flat:

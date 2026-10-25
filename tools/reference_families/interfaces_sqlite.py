@@ -9,10 +9,12 @@ builds to match text, never a store. A full-text table's shadow tables (``<table
 and are not records.
 
 The reading is lower-bound: DDL built any other way (a name held in a variable, a string assembled at run time) is in
-no constant and no literal, so it is not found. Two things bound that, and both are items of the records: a module
-that imports ``sqlite3`` and holds no DDL (it opens a database another module created) is named, and a statement that
-cannot be executed here is named. ``interfaces_sqlite_text.py`` is the second, independently written detector: it
-reads the table names from the source text, and the two agree on the tree
+no constant and no literal, so it is not found, whether or not the module imports ``sqlite3`` (a module handed a
+connection needs no import). That is not bounded, only sampled by two items of the records: a module that imports
+``sqlite3`` and holds no DDL is named (what the reading knows is that it cannot show that the module creates no table;
+the three modules found open a database ``aew.history.index`` creates and import ``sqlite3`` to name its errors), and a
+statement that cannot be executed here is named. ``interfaces_sqlite_text.py`` is the second, independently written
+detector: it reads the table names from the source text, and the two agree on the tree
 (``tests/integration/test_reference_interfaces.py``).
 """
 
@@ -198,8 +200,8 @@ def tables_of(ctx: C.Context) -> tuple[list[Table], list[dict[str, Any]]]:
             found_here = True
             tables += [Table(name, symbol, n, kind, "transient", cols, idx) for n, kind, cols, idx in rows]
         if not found_here and imports_sqlite(ctx.index(name)):
-            unresolved.append(C.unresolved_item(name, None, "imports sqlite3 and holds no DDL: it opens a database "
-                                                "another module creates"))
+            unresolved.append(C.unresolved_item(name, None, "imports sqlite3 and holds no DDL: this reading cannot "
+                                                "show that it creates no table"))
     return sorted(tables, key=lambda t: (t.module, t.name, t.symbol)), unresolved
 
 

@@ -17,9 +17,9 @@ Unresolved items: **72**.
 
 ## sqlite-tables (3)
 
-- `aew.dashboard.projections`: imports sqlite3 and holds no DDL: it opens a database another module creates
-- `aew.engine.history_ops`: imports sqlite3 and holds no DDL: it opens a database another module creates
-- `aew.engine.migrate_ops`: imports sqlite3 and holds no DDL: it opens a database another module creates
+- `aew.dashboard.projections`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
+- `aew.engine.history_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
+- `aew.engine.migrate_ops`: imports sqlite3 and holds no DDL: this reading cannot show that it creates no table
 
 ## writers (64)
 

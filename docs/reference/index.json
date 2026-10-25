@@ -41,7 +41,7 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:4534536fe4685e34cd164c788d6b1ef92175c53819331f8f2af0c436579baef2",
+    "digest": "sha256:d8b4e2ab091c8f71c521f65435c2137ad7f43f64efa5449d8ecc267fa70cb652",
     "records": 530,
     "unresolved": 72
   },
@@ -80,19 +80,19 @@
       "family": "sqlite-tables",
       "module": "aew.dashboard.projections",
       "symbol": null,
-      "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+      "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
     },
     {
       "family": "sqlite-tables",
       "module": "aew.engine.history_ops",
       "symbol": null,
-      "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+      "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
     },
     {
       "family": "sqlite-tables",
       "module": "aew.engine.migrate_ops",
       "symbol": null,
-      "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+      "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
     },
     {
       "family": "writers",
@@ -488,7 +488,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -512,7 +513,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -536,7 +538,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -560,7 +563,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -584,7 +588,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -608,7 +613,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -632,7 +638,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -656,7 +663,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -680,7 +688,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -704,7 +713,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -728,7 +738,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -752,7 +763,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -776,7 +788,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -800,7 +813,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -824,7 +838,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -848,7 +863,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -872,7 +888,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -896,7 +913,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -920,7 +938,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -944,7 +963,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -968,7 +988,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -992,7 +1013,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1016,7 +1038,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1040,7 +1063,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1064,7 +1088,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1088,7 +1113,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1112,7 +1138,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1136,7 +1163,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1160,7 +1188,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1184,7 +1213,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1208,7 +1238,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1232,7 +1263,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1256,7 +1288,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1280,7 +1313,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1304,7 +1338,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1328,7 +1363,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1352,7 +1388,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1376,7 +1413,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1400,7 +1438,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1424,7 +1463,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1448,7 +1488,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1472,7 +1513,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1496,7 +1538,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1520,7 +1563,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1544,7 +1588,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1568,7 +1613,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1592,7 +1638,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1616,7 +1663,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1640,7 +1688,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1664,7 +1713,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1688,7 +1738,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1712,7 +1763,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1736,7 +1788,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1760,7 +1813,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1784,7 +1838,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1808,7 +1863,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1832,7 +1888,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1856,7 +1913,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1880,7 +1938,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1904,7 +1963,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1928,7 +1988,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1952,7 +2013,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -1976,7 +2038,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2000,7 +2063,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2024,7 +2088,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2048,7 +2113,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2072,7 +2138,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2096,7 +2163,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2120,7 +2188,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2144,7 +2213,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2168,7 +2238,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2192,7 +2263,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2216,7 +2288,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2240,7 +2313,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2264,7 +2338,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2288,7 +2363,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2312,7 +2388,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2336,7 +2413,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2360,7 +2438,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2384,7 +2463,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2408,7 +2488,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2432,7 +2513,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2456,7 +2538,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2480,7 +2563,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2504,7 +2588,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2528,7 +2613,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2552,7 +2638,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2576,7 +2663,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2600,7 +2688,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2624,7 +2713,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2648,7 +2738,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2672,7 +2763,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2696,7 +2788,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2720,7 +2813,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2744,7 +2838,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2768,7 +2863,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2792,7 +2888,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2816,7 +2913,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2840,7 +2938,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2864,7 +2963,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2888,7 +2988,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2912,7 +3013,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2936,7 +3038,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2960,7 +3063,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -2984,7 +3088,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -3008,7 +3113,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -3032,7 +3138,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -3056,7 +3163,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -3080,7 +3188,8 @@
       "basis": "declared",
       "coverage": {
         "check": [
-          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back"
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
         ],
         "label": "complete-by-construction",
         "registry": "docs/implementation/surface-map.yaml#commands"
@@ -3104,6 +3213,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3113,6 +3224,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3132,6 +3248,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3150,6 +3268,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3159,6 +3279,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3178,6 +3303,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3196,6 +3323,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3221,6 +3350,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3239,6 +3370,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3248,6 +3381,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3268,6 +3406,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3286,6 +3426,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3311,6 +3453,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3329,6 +3473,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3338,6 +3484,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3360,6 +3511,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3378,6 +3531,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3403,6 +3558,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3421,6 +3578,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3430,6 +3589,11 @@
       },
       "fact": {
         "conditional": true,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3456,6 +3620,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3465,6 +3631,8 @@
         },
         "repeatable": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3483,6 +3651,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3492,6 +3662,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3511,6 +3686,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3529,6 +3706,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3538,6 +3717,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3557,6 +3741,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3575,6 +3761,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3600,6 +3788,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3618,6 +3808,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3645,6 +3837,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3663,6 +3857,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3691,6 +3887,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3709,6 +3907,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3720,7 +3920,8 @@
         "conditional": false,
         "limit": {
           "default": 20,
-          "max": 50
+          "max": 50,
+          "source": "route"
         },
         "methods": [
           "GET",
@@ -3742,6 +3943,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3760,6 +3963,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3788,6 +3993,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3806,6 +4013,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3817,7 +4026,8 @@
         "conditional": false,
         "limit": {
           "default": 100,
-          "max": 250
+          "max": 250,
+          "source": "route"
         },
         "methods": [
           "GET",
@@ -3838,6 +4048,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3856,6 +4068,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3881,6 +4095,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3899,6 +4115,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3924,6 +4142,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3942,6 +4162,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3951,6 +4173,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -3970,6 +4197,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -3988,6 +4217,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4013,6 +4244,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4035,11 +4268,13 @@
       },
       "fact": {
         "api": false,
+        "conditional": true,
         "handler": "_exchange",
         "methods": [
           "GET",
           "HEAD"
         ],
+        "needs": "sessions",
         "path": "/session/{rest}",
         "route": "/session/{rest}",
         "under": "/session/"
@@ -4060,6 +4295,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4069,6 +4306,11 @@
       },
       "fact": {
         "conditional": false,
+        "limit": {
+          "default": 100,
+          "max": 250,
+          "source": "server default"
+        },
         "methods": [
           "GET",
           "HEAD"
@@ -4091,6 +4333,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4109,6 +4353,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+          "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
           "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
           "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4134,6 +4380,8 @@
         },
         "query": {
           "check": [
+            "tests/integration/test_reference_dashboard_routes.py::test_a_limit_the_record_states_is_the_one_the_server_normalises_with",
+            "tests/integration/test_reference_dashboard_routes.py::test_every_read_of_the_request_path_in_the_handler_and_the_dispatch_is_a_declared_one",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_records_are_the_server_tables_both_ways",
             "tests/integration/test_reference_dashboard_routes.py::test_the_route_tables_are_named_only_where_the_dispatch_and_the_matcher_are",
             "tests/integration/test_reference_dashboard_routes.py::test_the_two_dashboard_detectors_agree_on_the_server"
@@ -4156,11 +4404,13 @@
       },
       "fact": {
         "api": false,
+        "conditional": true,
         "handler": "_static",
         "methods": [
           "GET",
           "HEAD"
         ],
+        "needs": "static_root",
         "outside": [
           "/api/",
           "/session/"
@@ -10270,19 +10520,29 @@
           "non_mutating_paths": "object",
           "non_mutating_paths.*": "array",
           "non_mutating_paths.*[]": "string",
-          "non_mutating_paths.0": "",
-          "non_mutating_paths.1": "",
-          "non_mutating_paths.2": "",
-          "non_mutating_paths.3": "",
-          "non_mutating_paths.4": "",
+          "non_mutating_paths.0": "array",
+          "non_mutating_paths.0[]": "string",
+          "non_mutating_paths.1": "array",
+          "non_mutating_paths.1[]": "string",
+          "non_mutating_paths.2": "array",
+          "non_mutating_paths.2[]": "string",
+          "non_mutating_paths.3": "array",
+          "non_mutating_paths.3[]": "string",
+          "non_mutating_paths.4": "array",
+          "non_mutating_paths.4[]": "string",
           "parent_paths": "object",
           "parent_paths.*": "array",
           "parent_paths.*[]": "string",
-          "parent_paths.0": "",
-          "parent_paths.1": "",
-          "parent_paths.2": "",
-          "parent_paths.3": "",
-          "parent_paths.4": "",
+          "parent_paths.0": "array",
+          "parent_paths.0[]": "string",
+          "parent_paths.1": "array",
+          "parent_paths.1[]": "string",
+          "parent_paths.2": "array",
+          "parent_paths.2[]": "string",
+          "parent_paths.3": "array",
+          "parent_paths.3[]": "string",
+          "parent_paths.4": "array",
+          "parent_paths.4[]": "string",
           "post_integration": "object",
           "post_integration.checks": "array",
           "post_integration.checks[]": "string",
@@ -10301,11 +10561,16 @@
           "risk_paths": "object",
           "risk_paths.*": "array",
           "risk_paths.*[]": "string",
-          "risk_paths.0": "",
-          "risk_paths.1": "",
-          "risk_paths.2": "",
-          "risk_paths.3": "",
-          "risk_paths.4": "",
+          "risk_paths.0": "array",
+          "risk_paths.0[]": "string",
+          "risk_paths.1": "array",
+          "risk_paths.1[]": "string",
+          "risk_paths.2": "array",
+          "risk_paths.2[]": "string",
+          "risk_paths.3": "array",
+          "risk_paths.3[]": "string",
+          "risk_paths.4": "array",
+          "risk_paths.4[]": "string",
           "schema": "const",
           "waivable_finding_severities": "array",
           "waivable_finding_severities[]": "enum",
@@ -10803,9 +11068,9 @@
           "knowledge.*": "null|string",
           "policy": "object",
           "policy.*": "string",
-          "policy.checks": "",
-          "policy.gates": "",
-          "policy.guardrails": "",
+          "policy.checks": "string",
+          "policy.gates": "string",
+          "policy.guardrails": "string",
           "project": "object",
           "project.id": "string",
           "project.name": "string",
@@ -12236,17 +12501,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12298,17 +12563,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12424,17 +12689,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12486,17 +12751,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12555,17 +12820,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12731,17 +12996,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12836,17 +13101,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12905,17 +13170,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -12974,17 +13239,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },
@@ -13085,17 +13350,17 @@
           {
             "module": "aew.dashboard.projections",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.history_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
             "module": "aew.engine.migrate_ops",
             "symbol": null,
-            "why": "imports sqlite3 and holds no DDL: it opens a database another module creates"
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           }
         ]
       },

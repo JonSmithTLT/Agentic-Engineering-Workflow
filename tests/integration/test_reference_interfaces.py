@@ -91,23 +91,16 @@ def contract_tree() -> ast.Module:
 
 def test_the_catalog_is_built_only_by_its_one_constructor():
     """``TOOLS`` is assigned once, from ``_catalog(...)``, and a ``Tool`` is constructed only as an argument of that
-    call (the owner's constructor refuses a duplicate or an unknown value); no other module constructs a ``Tool``,
-    found by where the callee was imported from."""
-    tree = contract_tree()
-    assigns = [n for n in tree.body if isinstance(n, ast.AnnAssign | ast.Assign)
-               and ast.unparse(n.target if isinstance(n, ast.AnnAssign) else n.targets[0]) == "TOOLS"]
-    assert len(assigns) == 1 and isinstance(assigns[0].value, ast.Call)
-    assert ast.unparse(assigns[0].value.func) == "_catalog"
-    inside = {(n.lineno, n.col_offset) for n in ast.walk(assigns[0].value) if isinstance(n, ast.expr)}
-    constructions = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and ast.unparse(n.func) == "Tool"]
-    assert constructions and all((n.lineno, n.col_offset) in inside for n in constructions)
-    others = []
-    for name, src in CTX.sources().items():
-        if name == "aew.surface.contract" or src.tree is None:
-            continue
-        index = CTX.index(name)
-        others += [name for call, _ in index.calls if index.aliases.resolve(call.func) == "aew.surface.contract.Tool"]
-    assert others == [], others
+    call (the owner's constructor refuses a duplicate or an unknown value); no other module calls ``Tool``, found by
+    where the callee was imported from. The finders are the generator's (:func:`catalog_problems`); their planted
+    controls are in ``tests/unit/test_reference_interface_controls.py``. What they do not see is in the module's
+    docstring: a ``Tool`` made by ``_replace`` or ``_make``, an alias, a second catalog."""
+    others = {name: CTX.index(name) for name, src in CTX.sources().items()
+              if name != "aew.surface.contract" and src.tree is not None}
+    assert IFACE.catalog_problems(contract_tree(), others) == []
+    shape = IFACE.catalog_shape(contract_tree())
+    assert (shape.assignments, shape.from_catalog) == (1, 1) and shape.outside == []
+    assert len(shape.inside) == len(contract.TOOLS)  # one construction for each tool the catalog holds
 
 
 def test_the_catalog_refuses_a_duplicate_and_an_unknown_kind():
@@ -230,10 +223,52 @@ def test_every_surface_map_command_links_to_a_live_command_and_back():
 def test_a_command_without_an_entry_and_an_entry_without_a_command_are_named_not_dropped(monkeypatch):
     live = CLI.live_commands()
     real = CLI.entries(CTX)
-    monkeypatch.setattr(CLI, "live_commands", lambda: {**live, "planted-command": None})
+    monkeypatch.setattr(CLI, "live_commands", lambda: {**live, "planted-command": CLI.PARSER})
     monkeypatch.setattr(CLI, "entries", lambda ctx: [*real, "planted-entry"])
     built = {r.key: r for r in CLI.build(CTX)}
-    assert "no entry in the surface map" in built["planted-command"].coverage["unresolved"][0]["why"]
+    assert [i["why"] for i in built["planted-command"].coverage["unresolved"]] == [
+        "planted-command is a command of the parser and has no entry in the surface map"]
     assert built["planted-command"].fact["surface_map"] is None and built["planted-command"].fact["live"] is True
-    assert "not a command of the parser" in built["planted-entry"].coverage["unresolved"][0]["why"]
+    assert [i["why"] for i in built["planted-entry"].coverage["unresolved"]] == [
+        "planted-entry has an entry in the surface map and is not a command of the parser"]
     assert built["planted-entry"].fact["live"] is False
+
+
+def test_a_live_command_with_no_anchorable_handler_is_named_not_anchored_at_the_parser(monkeypatch):
+    live = CLI.live_commands()
+    real = CLI.entries(CTX)
+    monkeypatch.setattr(CLI, "live_commands", lambda: {**live, "planted-bare": None})
+    monkeypatch.setattr(CLI, "entries", lambda ctx: [*real, "planted-bare"])
+    built = {r.key: r for r in CLI.build(CTX)}
+    bare = built["planted-bare"]
+    assert [i["why"] for i in bare.coverage["unresolved"]] == [
+        "planted-bare has no handler this reading can anchor (it is not a function with a module and a name)"]
+    assert bare.coverage["label"] == "lower-bound" and bare.fact["live"] is True
+    assert built[next(iter(live))].coverage["label"] == "complete-by-construction"  # a real command is unaffected
+
+
+def test_the_parser_is_built_with_every_switch_it_takes():
+    """``live_commands`` builds the parser with both switches on. A third parameter would leave its commands out of the
+    walk, so the parameters are pinned here and the reference fails loudly when one is added."""
+    import inspect
+
+    from aew.cli.main import build_parser
+
+    assert set(inspect.signature(build_parser).parameters) == {"recall_search", "coordination_reads"}
+
+
+# ------------------------------------------------------------------------------------------------------- the page
+
+def test_the_page_states_the_limit_bounds_and_the_conditions_and_restates_no_refusal():
+    """A route with a limit parameter shows its bounds (its own, or the server's default, so that ``-`` never reads as
+    "no limit"); the two paths outside the API say what they are answered only while; and the page does not restate the
+    status the server answers an unsupported method with (the server owns it)."""
+    page = IFACE.build(CTX).pages["interfaces.md"]
+    rows = {line.split("|")[1].strip(" `"): [c.strip() for c in line.split("|")[2:-1]]
+            for line in page.splitlines() if line.startswith("| `/")}
+    assert rows["/activity"][-1] == "100 to 250 (server default)"
+    assert rows["/history/search"][-1] == "100 to 250 (server default)"
+    assert rows["/maps/structural"][-1] == "20 to 50"  # the route's own bounds
+    assert rows["/overview"][-1] == "-"  # a route with no limit parameter
+    assert "answered only while the server has `sessions`" in page and "`static_root`" in page
+    assert "405" not in page and "refused" not in page

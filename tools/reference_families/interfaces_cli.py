@@ -27,7 +27,10 @@ SECTION = "commands"
 REGISTRY = f"{SURFACE_MAP}#{SECTION}"
 PARSER = ("aew.cli.main", "build_parser")
 _TESTS = "tests/integration/test_reference_interfaces.py"
-TESTS = (f"{_TESTS}::test_every_surface_map_command_links_to_a_live_command_and_back",)
+TESTS = (
+    f"{_TESTS}::test_every_surface_map_command_links_to_a_live_command_and_back",
+    f"{_TESTS}::test_the_parser_is_built_with_every_switch_it_takes",
+)
 
 
 def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()) -> Any:
@@ -83,6 +86,10 @@ def build(ctx: C.Context) -> list[C.Record]:
             problems.append(C.unresolved_item(PARSER[0], PARSER[1],
                                               f"{name} has an entry in the surface map and is not a command of the "
                                               "parser"))
+        if name in live and live[name] is None:
+            problems.append(C.unresolved_item(PARSER[0], PARSER[1],
+                                              f"{name} has no handler this reading can anchor (it is not a function "
+                                              "with a module and a name)"))
         module, symbol = live.get(name) or PARSER
         link = {"file": SURFACE_MAP, "section": SECTION, "name": name} if name in mapped else None
         records.append(C.Record(FAMILY, name, module, symbol, "declared",

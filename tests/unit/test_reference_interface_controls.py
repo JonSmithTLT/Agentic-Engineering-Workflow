@@ -25,6 +25,8 @@ def _tools():
     sys.path.insert(0, here)
     try:
         from reference_families import (
+            common,
+            interfaces,
             interfaces_cli,
             interfaces_dashboard,
             interfaces_dashboard_text,
@@ -34,11 +36,11 @@ def _tools():
         )
     finally:
         sys.path.remove(here)
-    return (interfaces_cli, interfaces_dashboard, interfaces_dashboard_text, interfaces_schemas, interfaces_sqlite,
-            interfaces_sqlite_text)
+    return (common, interfaces, interfaces_cli, interfaces_dashboard, interfaces_dashboard_text, interfaces_schemas,
+            interfaces_sqlite, interfaces_sqlite_text)
 
 
-CLI, DASH, DASH_TEXT, SCHEMAS, SQL, SQL_TEXT = _tools()
+C, IFACE, CLI, DASH, DASH_TEXT, SCHEMAS, SQL, SQL_TEXT = _tools()
 
 # ------------------------------------------------------------------------------------------ the dashboard server
 
@@ -91,7 +93,8 @@ def both(source: str, constants: dict[str, str] | None = None):
 def test_both_readings_find_the_branches_the_fall_through_the_methods_and_the_references():
     ours, theirs = both(SERVER)
     assert ours == theirs
-    assert ours.branches == [DASH.Branch("/session/", False, "_exchange"), DASH.Branch("/api/", True, "_static")]
+    assert ours.branches == [DASH.Branch("/session/", False, "_exchange", "sessions"),
+                             DASH.Branch("/api/", True, "_static", None)]
     assert ours.fallthrough == "_respond" and ours.methods == ["GET", "HEAD"]
     assert ours.references == [("CONDITIONAL_HANDLERS", "DashboardServer._respond"),
                                ("ROUTES", "DashboardServer._respond"), ("ROUTES", "pending_routes")]
@@ -100,7 +103,7 @@ def test_both_readings_find_the_branches_the_fall_through_the_methods_and_the_re
 def test_a_branch_testing_a_prefix_the_reading_cannot_resolve_is_reported_not_dropped():
     ours, theirs = both(SERVER, constants={})  # SESSION_PREFIX is unknown
     assert ours == theirs
-    assert ours.branches[0] == DASH.Branch(None, False, "_exchange")
+    assert ours.branches[0] == DASH.Branch(None, False, "_exchange", "sessions")
 
 
 def test_a_function_that_names_a_route_table_is_a_reference_in_both_readings():
@@ -139,6 +142,206 @@ def test_a_source_without_the_handler_has_no_branches_and_no_fall_through():
 def test_a_definition_at_the_start_of_a_line_is_not_a_use_but_a_use_in_a_function_is():
     ours, theirs = both("ROUTES = {}\nCONDITIONAL_HANDLERS = {}\n\n\ndef f():\n    return CONDITIONAL_HANDLERS\n")
     assert ours == theirs and ours.references == [("CONDITIONAL_HANDLERS", "f")]
+
+
+def test_a_branch_records_the_attribute_of_the_server_it_is_answered_only_while_set():
+    ours, theirs = both(SERVER)
+    assert ours == theirs and [b.needs for b in ours.branches] == ["sessions", None]
+    # the need may be in the handler the branch calls rather than in the branch
+    moved = SERVER.replace("                if self.sessions is None:\n                    raise Refusal()\n", "") \
+        + "\n\nclass Other:\n    pass\n"
+    moved = moved.replace("    def _respond(self, h, url):",
+                          "    def _exchange(self, h, path, *, head):\n        if self.sessions is None:\n"
+                          "            raise Refusal()\n\n    def _respond(self, h, url):")
+    ours, theirs = both(moved)
+    assert ours == theirs and ours.branches[0].needs == "sessions"
+    gone = SERVER.replace("                if self.sessions is None:\n                    raise Refusal()\n", "")
+    ours, theirs = both(gone)
+    assert ours == theirs and ours.branches[0].needs is None  # missing: no guard, no need
+
+
+# --- the reads of the request path
+
+RESPOND = "    def _respond(self, h, url):\n"
+
+
+def reads_of(source: str):
+    ours, theirs = both(source)
+    assert ours == theirs, (ours.path_reads, theirs.path_reads)  # the two readings agree on every planted case
+    return ours
+
+
+def declared_of(source: str = SERVER):
+    return tuple(reads_of(source).path_reads)
+
+
+def test_the_reads_of_the_request_path_are_classified_by_form_and_consumer_in_both_readings():
+    assert declared_of() == (
+        ("DashboardServer._handle", "h.path", "bare", "call:urlsplit"),
+        ("DashboardServer._handle", "url.path", "bare", "call:self._exchange"),
+        ("DashboardServer._handle", "url.path", "bare", "call:self._static"),
+        ("DashboardServer._handle", "url.path", "startswith", "'/api/'"),
+        ("DashboardServer._handle", "url.path", "startswith", "SESSION_PREFIX"))
+    assert DASH.path_read_problems(reads_of(SERVER), declared_of()) == []  # right: the declared reads are the reads
+
+
+@pytest.mark.parametrize(("name", "old", "new", "read"), [
+    ("an equality branch in the handler", "            status, body, tag = self._respond(h, url)\n",
+     "            if url.path == '/health':\n                self._health(h)\n                return\n"
+     "            status, body, tag = self._respond(h, url)\n",
+     ("DashboardServer._handle", "url.path", "bare", "compare:Eq:'/health'")),
+    ("an early return in the dispatch", RESPOND, RESPOND + "        if url.path == '/x':\n            return 1\n",
+     ("DashboardServer._respond", "url.path", "bare", "compare:Eq:'/x'")),
+    ("a branch on the raw target", "            self._admit(h, url)\n",
+     "            self._admit(h, url)\n            if h.path == '/raw':\n                self._raw(h)\n"
+     "                return\n",
+     ("DashboardServer._handle", "h.path", "bare", "compare:Eq:'/raw'")),
+    ("a third table consulted in the dispatch", RESPOND,
+     RESPOND + "        if url.path in EXTRA:\n            return EXTRA[url.path](1, 2, 3)\n",
+     ("DashboardServer._respond", "url.path", "bare", "compare:In:EXTRA")),
+    ("a lookup keyed by the path", RESPOND, RESPOND + "        return EXTRA[url.path]\n",
+     ("DashboardServer._respond", "url.path", "any", "other")),
+])
+def test_a_route_served_around_the_dispatch_is_a_read_of_the_request_path_nobody_declared(name, old, new, read):
+    declared = declared_of()
+    planted = reads_of(SERVER.replace(old, new, 1))
+    assert read in planted.path_reads, name
+    problems = DASH.path_read_problems(planted, declared)
+    assert problems and any(read[3] in p for p in problems), (name, problems)
+
+
+def test_a_declared_read_the_source_no_longer_has_is_named():
+    declared = declared_of()
+    branch = "            if url.path.startswith(SESSION_PREFIX):"
+    gone = reads_of(SERVER.replace(branch, "            if self.flag:", 1))
+    [problem] = DASH.path_read_problems(gone, declared)
+    assert "declared to read the request path" in problem and "SESSION_PREFIX" in problem and "reads it 0" in problem
+
+
+def test_two_reads_of_a_kind_are_counted_not_merged():
+    declared = declared_of()
+    admit = "            self._admit(h, url)\n"
+    twice = reads_of(SERVER.replace(RESPOND, RESPOND + "        a = h.path\n", 1).replace(
+        admit, admit + "            b = h.path\n            c = h.path\n", 1))
+    problems = DASH.path_read_problems(twice, declared)
+    assert any("2 time(s); 0 are declared" in p and "assign" in p for p in problems)
+
+
+def test_what_the_path_reads_do_not_see_is_pinned_one_probe_each():
+    declared = declared_of()
+    # a test of the path inside a function the two call is not read
+    helper = SERVER.replace(RESPOND, "    def _admit(self, h, url):\n        if url.path == '/sneaky':\n"
+                            "            raise Refusal()\n\n" + RESPOND, 1)
+    assert DASH.path_read_problems(reads_of(helper), declared) == []
+    # a read replaced by another of the same form and consumer is not seen
+    swapped = SERVER.replace('url.path.startswith("/api/")', "url.path.startswith('/api/')", 1)
+    assert DASH.path_read_problems(reads_of(swapped), declared) == []
+    # a read of the path in a method that is not checked is not seen
+    other = SERVER.replace(RESPOND, "    def _other(self, h, url):\n        return url.path == '/z'\n\n" + RESPOND, 1)
+    assert DASH.path_read_problems(reads_of(other), declared) == []
+
+
+def test_the_dispatch_is_the_one_call_out_of_a_route_table():
+    assert DASH.dispatch_calls(ast.parse(SERVER)) == ["ROUTES.get(url) or CONDITIONAL_HANDLERS[url]"]  # right
+    second = SERVER + "\n\ndef extra(p, q, m):\n    return ROUTES['/a'](p, q, m)\n"
+    assert len(DASH.dispatch_calls(ast.parse(second))) == 2  # wrong: a second call out of a table
+    assert DASH.dispatch_calls(ast.parse(SERVER.replace("(ROUTES.get(url) or CONDITIONAL_HANDLERS[url])(1, 2, 3)",
+                                                        "1"))) == []  # missing: none
+    reading = ast.parse(SERVER + "\n\ndef scan():\n    return [ROUTES.get('/a'), list(ROUTES.items()), "
+                        "CONDITIONAL_HANDLERS.keys()]\n")
+    assert len(DASH.dispatch_calls(reading)) == 1  # reading a table is not calling a route out of it
+
+
+def test_a_limit_is_the_routes_own_bounds_or_the_servers_default_and_none_without_a_limit_parameter():
+    from types import SimpleNamespace
+
+    server = SimpleNamespace(LIMIT_PARAMETERS=frozenset({"limit", "annotations_limit"}), ROUTE_LIMITS={"/own": (5, 50)})
+    from aew.dashboard import projections
+
+    default = {"default": projections.LIMIT_DEFAULT, "max": projections.LIMIT_MAX, "source": "server default"}
+    assert DASH.limit_bounds(server, "/own", ["limit"]) == {"default": 5, "max": 50, "source": "route"}
+    assert DASH.limit_bounds(server, "/other", ["limit"]) == default
+    assert DASH.limit_bounds(server, "/other", ["annotations_limit", "term"]) == default
+    assert DASH.limit_bounds(server, "/own", ["term"]) is None  # missing: a route with no limit parameter has none
+
+
+# ------------------------------------------------------------------------------------------ the tool catalog
+
+CONTRACT = '''
+from typing import NamedTuple
+
+
+class Tool(NamedTuple):
+    name: str
+
+
+def _catalog(*tools):
+    return {t.name: t for t in tools}
+
+
+TOOLS = _catalog(
+    Tool("a"),
+    Tool("b"),
+)
+'''
+
+
+def catalog(source: str, others: dict[str, str] | None = None) -> list[str]:
+    indexes = {name: C.index_of(ast.parse(text), name, False) for name, text in (others or {}).items()}
+    return IFACE.catalog_problems(ast.parse(source), indexes)
+
+
+def test_a_catalog_assigned_once_from_its_constructor_with_every_tool_inside_it_has_no_problem():
+    shape = IFACE.catalog_shape(ast.parse(CONTRACT))
+    assert (shape.assignments, shape.from_catalog, len(shape.inside), shape.outside) == (1, 1, 2, [])
+    assert catalog(CONTRACT) == []
+    assert catalog(CONTRACT, {"aew.other": "x = 1\n"}) == []  # a module that makes no Tool
+
+
+@pytest.mark.parametrize(("name", "source", "why"), [
+    ("a tool made beside the catalog", CONTRACT + '\nEXTRA = Tool("c")\n', "is not an argument of that call"),
+    ("a second assignment", CONTRACT + '\nTOOLS = _catalog(Tool("c"))\n', "assigned 2 time(s)"),
+    ("a table not made by the constructor", CONTRACT.replace("_catalog(\n    Tool", "dict(\n    Tool"),
+     "0 from a _catalog(...) call"),
+    ("a mutation by assignment of an annotated name", CONTRACT + '\nTOOLS: dict = {}\n', "assigned 2 time(s)"),
+])
+def test_a_table_not_built_once_by_the_constructor_is_a_problem(name, source, why):
+    assert any(why in p for p in catalog(source)), (name, catalog(source))
+
+
+def test_a_catalog_with_no_table_and_one_with_no_tool_are_problems_not_empty_results():
+    assert any("assigned 0 time(s)" in p for p in catalog(CONTRACT.replace("TOOLS = ", "OTHER = ")))
+    empty = CONTRACT.replace('    Tool("a"),\n    Tool("b"),\n', "")
+    assert any("holds no Tool(...) call" in p for p in catalog(empty))
+
+
+@pytest.mark.parametrize("source", [
+    'from aew.surface.contract import Tool\nx = Tool("z")\n',
+    'from aew.surface.contract import Tool as T\nx = T("z")\n',
+    'from aew.surface import contract\nx = contract.Tool("z")\n',
+    'import aew.surface.contract as c\nx = c.Tool("z")\n',
+])
+def test_a_tool_constructed_in_another_module_is_found_by_where_its_callee_was_imported_from(source):
+    assert catalog(CONTRACT, {"aew.other": source}) == ["aew.other constructs a Tool"]
+
+
+def test_a_class_of_the_same_name_that_is_not_the_contracts_is_not_its_tool():
+    assert catalog(CONTRACT, {"aew.other": 'class Tool:\n    pass\n\n\nx = Tool()\n'}) == []
+    assert catalog(CONTRACT, {"aew.other": 'from elsewhere import Tool\nx = Tool("z")\n'}) == []
+
+
+@pytest.mark.parametrize("source", [
+    'from aew.surface.contract import TOOLS\nx = TOOLS["a"]._replace(name="z")\n',  # made by ``_replace``
+    'from aew.surface.contract import Tool\nx = Tool._make(["z"])\n',  # made by ``_make``
+    'from aew.surface import contract\nx = getattr(contract, "Tool")("z")\n',  # reached through ``getattr``
+    'from aew.surface.contract import Tool\nAlias = Tool\nx = Alias("z")\n',  # an alias of ``Tool``
+    'from aew.surface.contract import TOOLS, _catalog\nMORE = _catalog(*TOOLS.values())\n',  # a second catalog
+    'from aew.surface.contract import TOOLS\nTOOLS["z"] = TOOLS["a"]\n',  # a mutation of ``TOOLS`` elsewhere
+])
+def test_what_the_catalog_pin_does_not_see_is_pinned_one_probe_each(source):
+    """The module's docstring says these are not seen; each probe would fail if one started to be, so the docstring and
+    the pin are changed together."""
+    assert catalog(CONTRACT, {"aew.other": source}) == []
 
 
 # ------------------------------------------------------------------------------------------ the schema flattener
@@ -209,11 +412,62 @@ def test_a_path_reached_twice_has_the_union_of_its_types():
     assert result.properties == {"v": "integer|string"}
 
 
-@pytest.mark.parametrize("keyword", ["dependentSchemas", "unevaluatedProperties", "unevaluatedItems", "additionalItems",
-                                     "contentSchema", "$dynamicRef", "$recursiveRef"])
+@pytest.mark.parametrize("keyword", ["contains", "dependentSchemas", "dependencies", "unevaluatedProperties",
+                                     "unevaluatedItems", "additionalItems", "contentSchema", "$dynamicRef",
+                                     "$recursiveRef", "$dynamicAnchor"])
 def test_a_keyword_that_defines_paths_and_is_not_walked_is_an_unresolved_item(keyword):
     result = flat({"properties": {"p": {keyword: {}}}})
     assert len(result.unresolved) == 1 and keyword in result.unresolved[0] and "p" in result.unresolved[0]
+
+
+@pytest.mark.parametrize("node", [
+    {"type": "string", "minLength": 1, "pattern": "^a", "format": "date-time"},
+    {"type": "object", "propertyNames": {"pattern": "^k"}, "minProperties": 1, "dependentRequired": {"a": ["b"]}},
+    {"title": "t", "description": "d", "default": 1, "examples": [1], "x-note": {"free": "form"}, "$comment": "c"},
+    {"not": {"type": "null"}, "if": {"type": "string"}, "then": {"minLength": 1}},
+])
+def test_a_keyword_that_constrains_or_annotates_and_names_no_path_is_not_an_unresolved_item(node):
+    result = flat({"properties": {"p": node}})
+    assert result.unresolved == [] and "p" in result.properties
+
+
+def test_a_keyword_this_reading_has_not_classified_is_an_unresolved_item_not_silence():
+    result = flat({"properties": {"p": {"type": "string", "futureKeyword": 1}}})
+    assert len(result.unresolved) == 1 and "futureKeyword" in result.unresolved[0] and "p" in result.unresolved[0]
+    assert "futureKeyword" in flat({"futureKeyword": 1}).unresolved[0]  # at the root too
+
+
+def test_array_form_items_are_an_unresolved_item_and_a_schema_form_is_walked():
+    listed = flat({"properties": {"p": {"type": "array", "items": [{"type": "string"}]}}})
+    assert len(listed.unresolved) == 1 and "items is a list" in listed.unresolved[0]
+    assert flat({"properties": {"p": {"type": "array", "items": {"type": "string"}}}}).unresolved == []
+
+
+def test_a_required_key_nothing_declares_is_typed_by_the_schema_that_would_validate_it():
+    by_additional = flat({"type": "object", "required": ["k"], "additionalProperties": {"type": "integer"}})
+    assert by_additional.properties == {"k": "integer", "*": "integer"} and by_additional.required == ["k"]
+    by_pattern = flat({"type": "object", "required": ["x1"], "patternProperties": {"^x": {"type": "boolean"}},
+                       "additionalProperties": {"type": "integer"}})
+    assert by_pattern.properties["x1"] == "boolean"  # a pattern that matches wins over additionalProperties
+    both_patterns = flat({"type": "object", "required": ["xa"], "patternProperties": {
+        "^x": {"type": "boolean"}, "a$": {"type": "string"}}})
+    assert both_patterns.properties["xa"] == "boolean|string"  # every pattern that matches types it
+    declared = flat({"type": "object", "required": ["k"], "properties": {"k": {"type": "string"}},
+                     "additionalProperties": {"type": "integer"}})
+    assert declared.properties["k"] == "string"  # a declared key keeps its own type
+
+
+def test_a_required_key_nothing_types_is_a_path_with_no_type_and_a_conditional_one_is_not_typed_here():
+    assert flat({"type": "object", "required": ["k"]}).properties == {"k": ""}  # missing: nothing to type it by
+    miss = flat({"type": "object", "required": ["k"], "patternProperties": {"^x": {"type": "boolean"}}})
+    assert miss.properties["k"] == ""  # a pattern the key does not match
+    conditional = flat({"type": "object", "oneOf": [{"required": ["k"]}], "additionalProperties": {"type": "integer"}})
+    assert "k" not in conditional.required  # a conditional requirement is not unconditional
+
+
+def test_a_pattern_the_flattener_cannot_read_is_an_unresolved_item():
+    result = flat({"type": "object", "required": ["k"], "patternProperties": {"(": {"type": "string"}}})
+    assert any("cannot be read" in why for why in result.unresolved)
 
 
 def test_a_schema_with_no_id_is_registered_under_a_name_so_its_local_references_resolve():

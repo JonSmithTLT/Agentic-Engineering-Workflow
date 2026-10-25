@@ -598,11 +598,11 @@ def role_of(path: tuple[str, ...]) -> str:
     return NAMED if tuple(path[:2]) == ("lead", "mcp") else GENERAL
 
 
-def cli_analysis(source: str = CLI) -> Any:
+def cli_analysis(source: str = CLI, extra_roots: dict[tuple[str, str], set[str]] | None = None) -> Any:
     prog = program({"aew.m": HEAD + source})
     roles = K.Roles(GENERAL, frozenset({NAMED}), WORKER)
     cli = ({CLI_ROOT}, roles, K.cut_of(prog, role_of))
-    return W.analyse(prog, TOP, {CLI_ROOT: {GENERAL, NAMED, WORKER}}, KINDS, cli)
+    return W.analyse(prog, TOP, {CLI_ROOT: {GENERAL, NAMED, WORKER}, **(extra_roots or {})}, KINDS, cli)
 
 
 def test_a_handler_is_reached_by_the_role_of_its_command_and_the_clis_own_calls_by_every_role():
@@ -664,7 +664,12 @@ def test_a_writer_a_cli_command_reaches_says_the_worker_role_is_given_nothing_by
     a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
                      "def cmd_local(a):\n    local_only(None)\n\n"
                      "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
-                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+                     "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n\n"
+                     # review of the layout pull request, N-7: the two clauses that say who does not carry it
+                     "def no_chain(aew_root):\n    (aew_root / 'state' / 'n').write_text('x')\n\n"
+                     "def sup_write(aew_root):\n    (aew_root / 'local' / 'sv').write_text('x')\n\n"
+                     "def sup_main(aew_root):\n    sup_write(aew_root)\n",
+                     {("aew.m", "sup_main"): {"aew.harness.supervisor"}})
     by_key = {r.key: r for r in W.records_of(a) if not r.key.startswith("unresolved")}
     gate = W.gate_item(a.roles)
     listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
@@ -672,6 +677,8 @@ def test_a_writer_a_cli_command_reaches_says_the_worker_role_is_given_nothing_by
     assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
     assert gate in listed["local/l"], "a writer only a non-aew command's handler reaches (addendum 5)"
     assert gate not in listed["state/c"], "the common path gives the worker role this one"
+    assert gate not in listed["state/n"], "a writer no root reaches has the no-chain item and not this one"
+    assert gate not in listed["local/sv"], "a writer only a process outside the CLI reaches is not a worker run's"
     assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}
     assert W.record_problems(records, KINDS, a.roles, a.undecided) == []

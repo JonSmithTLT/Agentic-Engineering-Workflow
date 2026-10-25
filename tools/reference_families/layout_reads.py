@@ -50,6 +50,9 @@ CANNOT_SEE: tuple[tuple[str, str], ...] = (
      "counted as a read"),
     ("unreadable-mode", "an `open` whose mode is not a literal this reading can read (the writers family lists it as "
      "an unresolved write)"),
+    ("directory-walk", "a directory walk, `os.walk`, and the reads by a primitive this reading does not name "
+     "(`os.fstat`, `os.access`, `os.readlink`, `os.path.lexists`, `os.path.realpath`); the tree has live ones under "
+     "`.aew` (the store's mode check walks `state`; `control_key` walks `policy`)"),
 )
 
 

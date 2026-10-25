@@ -4,8 +4,8 @@ Two key spaces. The **control** keys are the top-level properties of ``control.s
 validates every committed state against, so the set is complete by construction. The **unit** keys are those a Ticket,
 Story or Epic carries in ``work``: the schema's ``work_unit`` definition is open, so the inventory is the Ticket field
 registry's (``ticket_fields.load_registry()``: the keys it classifies as inputs, and the ones it lists as engine
-bookkeeping), joined with the schema's own properties; its completeness is the oracle's rule 50 over every step of every
-walk, which is a test and not a proof, so the unit records are lower-bound.
+bookkeeping), joined with the schema's own properties; its completeness is the oracle's ``ticket_field_violations`` over
+every step of every walk, which is a test and not a proof, so the unit records are lower-bound.
 
 A record is keyed by the key's own string (``control-keys:coordination_unseen``; ``control-keys:unit:coordination``) and
 anchored where the code defines it: the module-level constant named ``*_KEY`` whose value is the key
@@ -32,6 +32,7 @@ UNIT = "unit"  # the key space of a unit in `work`: the record key is `unit:<key
 SCHEMAS = ("aew.schemas", "SCHEMAS")  # the schema registry: where a control key without a name of its own is defined
 V2_ONLY = ("aew.engine.base", "V2_ONLY_KEYS")
 REGISTRY = ("aew.engine.ticket_fields", "load_registry")
+ORACLE_CHECK = "ticket_field_violations"  # the oracle's check that every unit key is classified (tests/helpers)
 CONSTANT_SUFFIX = "_KEY"  # the code's own naming of a state key: `UNSEEN_KEY`, `STORE_KEY`, `UNIT_KEY`
 _TESTS = "tests/integration/test_reference_control_keys.py::"
 CONTROL_CHECKS = (
@@ -39,8 +40,8 @@ CONTROL_CHECKS = (
     _TESTS + "test_every_load_and_commit_of_the_control_state_is_validated",
 )
 UNIT_OPEN = ("the control schema's unit definition is open and the registry's inventory is checked by the oracle's "
-             "rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified "
-             "only once a walk reaches it")
+             f"`{ORACLE_CHECK}` over every step of every walk, so a unit key written on a path no walk "
+             "exercises is classified only once a walk reaches it")
 
 
 @dataclass(frozen=True)
@@ -226,7 +227,8 @@ def problems(records: Mapping[str, Any]) -> list[str]:
             if key != f"{UNIT}:{fact.get('key')}":
                 out.append(f"{rid}: the key is not unit:{fact.get('key')}")
             if fact.get("classification") == "unclassified":
-                out.append(f"{rid}: a unit key the registry does not classify (the oracle's rule 50 refuses it)")
+                out.append(f"{rid}: a unit key the registry does not classify "
+                           f"(the oracle's `{ORACLE_CHECK}` refuses it)")
         else:
             out.append(f"{rid}: scope {scope!r} is neither control nor unit")
             continue

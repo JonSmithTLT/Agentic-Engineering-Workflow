@@ -16,6 +16,7 @@ The planted cases of each rule, with their right, wrong and missing cases, are i
 
 from __future__ import annotations
 
+import importlib
 import os
 import shutil
 import subprocess
@@ -189,6 +190,17 @@ def test_the_reading_agrees_with_a_hand_reading_of_the_readers_and_writers_that_
     writers = {(k, i["module"], i["symbol"]) for k, r in RECORDS.items() for i in r.fact["writers"]}
     assert KNOWN_READERS <= readers, sorted(KNOWN_READERS - readers)
     assert KNOWN_WRITERS <= writers, sorted(KNOWN_WRITERS - writers)
+
+
+def test_every_constant_that_names_an_entry_holds_that_entry_when_it_is_imported():
+    """Review of #261, N-11: `named_by` is found by `ast`; the second derivation imports each constant."""
+    seen = 0
+    for prefix, record in RECORDS.items():
+        for named in record.fact["named_by"]:
+            value = getattr(importlib.import_module(named["module"]), named["symbol"])
+            assert str(value).replace("\\", "/") == prefix, (prefix, named)
+            seen += 1
+    assert seen >= 15
 
 
 def test_an_entry_the_writers_family_has_as_a_constant_is_named_by_it_here_too():

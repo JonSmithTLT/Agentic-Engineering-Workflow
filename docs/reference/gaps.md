@@ -6,7 +6,7 @@ Unresolved items: **72**.
 
 ## control-keys (1)
 
-- `aew.engine.ticket_fields:load_registry`: the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it
+- `aew.engine.ticket_fields:load_registry`: the control schema's unit definition is open and the registry's inventory is checked by the oracle's `ticket_field_violations` over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it
 
 ## entry-points (2)
 
@@ -16,7 +16,7 @@ Unresolved items: **72**.
 ## layout (2)
 
 - `aew`: read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry
-- `aew`: write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
+- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
 
 ## modules (3)
 
@@ -26,7 +26,7 @@ Unresolved items: **72**.
 
 ## writers (64)
 
-- `aew`: write sites whose destination this reading could not place under `.aew` are records of this family keyed `unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
+- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path
 - `aew.engine.context_ops:ContextPacks.build_pack`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.coordination_ops:Coordination._ensure_marker`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.coordination_ops:Coordination._write`: no static call chain from any entry point's declaring function reaches this writer

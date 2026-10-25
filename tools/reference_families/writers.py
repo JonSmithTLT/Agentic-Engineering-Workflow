@@ -341,8 +341,10 @@ def destination(site: Site, top_level: frozenset[str]) -> Destination:
 UNRESOLVED_KEY = "unresolved"  # `writers:unresolved:<module>:<symbol>:<primitive>`: a write not placed under `.aew`
 POINTER_SYMBOL = None
 NO_CHAIN = "no static call chain from any entry point's declaring function reaches this writer"
-POINTER = ("write sites whose destination this reading could not place under `.aew` are records of this family keyed "
-           "`unresolved:<module>:<symbol>:<primitive>`; any of them may write this path")
+# Said by every family that lists the writes (the layout family points here too), so it names its own: review of the
+# layout pull request, N-2.
+POINTER = ("write sites whose destination this reading could not place under `.aew` are records of the writers family "
+           f"keyed `{FAMILY}:{UNRESOLVED_KEY}:<module>:<symbol>:<primitive>`; any of them may write this path")
 
 
 def why_unplaced(primitive: str, reason: str) -> str:

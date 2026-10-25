@@ -39,3 +39,6 @@ that all four of the CLI's roles reach it. Now each writer's `entry_points` is c
   their path's record; the figure of path records carrying the role item was 85, not 86.
 - **What a change to a CLI command does.** Adding or moving a `set_defaults(handler=...)` changes the page's counts:
   run `python tools/reference.py render` and commit `docs/reference/`.
+- **Amended by the layout pull request (addendum 5, N4).** The worker-run item is no longer limited to the general
+  handlers: it is on each path record any CLI command's handler reaches, whatever that command's own role (see that
+  pull request's note). The sentence above on the general handlers is the first version of the rule.

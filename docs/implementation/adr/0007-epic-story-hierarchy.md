@@ -90,3 +90,17 @@ A Story's or Epic's `state` is recomputed inside every Lead commit (`hierarchy.r
 
 - Plan-driven materialization of child Tickets from a parent plan.
 - Priority and milestone concepts (KC §28.10); backlog priorities stay in `external_refs` and the body.
+
+## Amendment 2026-10-25 — a reorganization keeps the obligations of the work it moves (EW-U05.g, register E84)
+
+- A move or a promotion is refused when a unit it moves that is still to be proven (not DONE or CANCELLED) would end
+  with a lower effective class, fewer inherited non-waivable gates or, for a mutating Ticket, without an integration
+  verifier an ancestor required. The refusal (`OBLIGATIONS_DROPPED`) names each unit and what it would lose, and
+  changes nothing. Each unit's obligations are read before and after the move from their owners,
+  `gates.effective_obligations` and `validation.obligation`.
+- Refused rather than carried: a unit's own `mandatory_gates` and floor apply to its descendants only (above), so a
+  move could not hand the moved unit itself what its old ancestors required without a second source of obligations.
+  The Lead moves the work under a parent that requires at least as much, creates the new parent with the floor and
+  gates, or raises a unit's own class first (`aew work reclassify`).
+- Finished units, hot or archived, are not compared: they prove nothing more, and their completion records hold what
+  they met.

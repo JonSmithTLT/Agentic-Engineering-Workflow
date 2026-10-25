@@ -18,7 +18,12 @@ from aewflow import (
     sample_project,
     submit_record,
 )
-from invariants import assert_control_invariants
+from invariants import assert_control_invariants, load_control
+
+from aew.engine import gates as G
+from aew.engine import hierarchy as H
+from aew.policy import validation as V
+from aew.util import load_yaml
 
 
 def show(p, wid):
@@ -151,6 +156,101 @@ def test_ticket_promotion_preserves_identity_and_evidence(tmp_path):
     assert (p.root / f".aew/evidence/{t}/{ev}.md").exists()  # evidence stays with the original identity
     decision = (p.root / f".aew/decisions/{res['decision']}.md").read_text(encoding="utf-8")
     assert "promotion" in decision and "three components" in decision
+    assert_control_invariants(p)
+
+
+def inherited(p, root_id):
+    """What every unit of ``root_id``'s subtree inherits, read from the owners: its effective class and non-waivable
+    gates (``gates.effective_obligations``), and for a mutating Ticket whether its integration needs a verifier
+    (``validation.obligation``)."""
+    state = load_control(p.root)
+    gates_policy = load_yaml((p.root / ".aew/policy/gates.yaml").read_text(encoding="utf-8"))
+    out = {}
+    for wid in [root_id, *H.descendants(state, root_id)]:
+        unit = state["work"][wid]
+        ob = G.effective_obligations(state, wid, {**gates_policy, "risk_paths": G.path_table(gates_policy, unit)})
+        verifier = unit["kind"] == "ticket" and unit["mutating"] and V.obligation(state, wid, gates_policy)[
+            "verifier_required"]
+        out[wid] = {"class": ob["effective_class"], "gates": set(ob["non_waivable"]), "verifier": verifier}
+    return out
+
+
+def lowered(before, after):
+    """The units of ``before`` whose obligations ``after`` lowers (the EW-U05.g invariant, over the whole subtree)."""
+    return sorted(w for w, was in before.items()
+                  if after[w]["class"] < was["class"] or not was["gates"] <= after[w]["gates"]
+                  or (was["verifier"] and not after[w]["verifier"]))
+
+
+def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
+    """EW-U05.g: a reorganization preserves the applicable proof obligations. Every unit the move takes keeps its
+    effective class, its inherited non-waivable gates and a required integration verifier, or the move is refused,
+    naming what each unit would lose, and nothing changes."""
+    p = sample_project(tmp_path)
+    floor, gate = ("--min-descendant-class", "3", "--rationale", "crosses the auth boundary"), \
+        ("--mandatory-gate", "review_security")
+    hardening = create_unit(p, "epic", "Hardening", extra=(*floor, *gate))
+    same = create_unit(p, "epic", "Hardening too", extra=(*floor, *gate))
+    floor_only = create_unit(p, "epic", "Floor only", extra=floor)
+    gate_only = create_unit(p, "epic", "Gate only", extra=gate)
+    plain = create_unit(p, "epic", "Plain")
+    more = create_unit(p, "epic", "More", extra=("--min-descendant-class", "4", "--rationale", "money moves", *gate,
+                                                 "--mandatory-gate", "post_integration_verifier"))
+    story = create_unit(p, "story", "Sessions", parent=hardening)
+    change = create_unit(p, "ticket", "Rotate the session key", parent=story)
+    look = create_unit(p, "ticket", "Survey session use", parent=story, extra=("--non-mutating",))
+    moved = {story, change, look}
+    before = inherited(p, story)
+    assert set(before) == moved and all(b["class"] == 3 and b["gates"] == {"review_security"} for b in before.values())
+    assert before[change]["verifier"]
+
+    def refused(*args):
+        rev = p.rev()
+        out = err(p, "work", "move", story, *args, "--reason", "reorganize")
+        assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "move_lowers_obligations"
+        assert p.rev() == rev and show(p, story)["parent"] == hardening and inherited(p, story) == before
+        return out["details"]["dropped"]
+
+    # Neither the floor nor the gate, and no parent at all (the missing case): every unit would lose both.
+    for target in (("--parent", plain), ("--parent", "none")):
+        dropped = refused(*target)
+        assert set(dropped) == moved
+        assert all(d["effective_class"] == {"before": 3, "after": 1} and d["non_waivable_gates"] == ["review_security"]
+                   for d in dropped.values())
+        assert {w for w, d in dropped.items() if "integration_verifier" in d} == {change}
+    # The floor kept, the gate dropped; the gate kept, the floor (and with it the floor's verifier) dropped.
+    assert refused("--parent", floor_only) == {w: {"non_waivable_gates": ["review_security"]} for w in moved}
+    dropped = refused("--parent", gate_only)
+    assert {w: set(d) for w, d in dropped.items()} == {story: {"effective_class"}, look: {"effective_class"},
+                                                       change: {"effective_class", "integration_verifier"}}
+    # Admitted: a parent that requires the same, then one that requires more. Nothing in the subtree is lowered.
+    p.lead("work", "move", story, "--parent", same, "--reason", "same obligations, new home")
+    after = inherited(p, story)
+    assert show(p, story)["parent"] == same and not lowered(before, after) and after == before
+    p.lead("work", "move", story, "--parent", more, "--reason", "stricter home")
+    after_more = inherited(p, story)
+    assert not lowered(after, after_more) and all(a["class"] == 4 for a in after_more.values())
+    assert_control_invariants(p)
+
+
+def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
+    """EW-U05.g holds for a promotion too: the promoted unit moves under the new parent, which sits under the nearest
+    ancestor that can hold it, and must not leave behind what a skipped ancestor required of it."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=(
+        "--min-descendant-class", "2", "--rationale", "money moves", "--mandatory-gate", "review_security"))
+    t = create_investigation(p, tmp_path, parent=gated)
+    rev, before = p.rev(), inherited(p, t)
+    out = err(p, "work", "promote", t, "--to", "story", "--title", "Payments, wider", "--reason", "three components")
+    assert out["code"] == "OBLIGATIONS_DROPPED"
+    assert out["details"]["dropped"] == {t: {"effective_class": {"before": 2, "after": 1},
+                                            "non_waivable_gates": ["review_security"]}}
+    assert p.rev() == rev and show(p, t)["parent"] == gated and inherited(p, t) == before  # no Story was created
+    # A promotion that skips no ancestor's obligations is admitted as before.
+    plain = create_investigation(p, tmp_path, parent=epic, title="Plain look")
+    assert show(p, p.lead("work", "promote", plain, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
+        "promoted_to"])["parent"] == epic
     assert_control_invariants(p)
 
 

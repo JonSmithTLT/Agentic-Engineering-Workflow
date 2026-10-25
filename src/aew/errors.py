@@ -116,6 +116,14 @@ class DependencyUnsatisfied(IllegalTransition):
     code = "DEPENDENCY_UNSATISFIED"
 
 
+class ObligationsDropped(IllegalTransition):
+    """A reorganization would lower what the work it moves still has to prove (EW-U05.g): a lower effective class, an
+    inherited non-waivable gate, or a required integration verifier. ``details["dropped"]`` names each unit and what
+    it would lose; nothing is changed."""
+
+    code = "OBLIGATIONS_DROPPED"
+
+
 class ConcurrencyLimit(IllegalTransition):
     code = "CONCURRENCY_LIMIT"
 

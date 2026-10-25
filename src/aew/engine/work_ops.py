@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew import profile
@@ -10,8 +11,9 @@ from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
+from aew.engine.dispatch import Blocker
 from aew.engine.guards import NotQueryable, checked, refusal, require
-from aew.engine.seams import GuardRegistration
+from aew.engine.seams import SOURCE, GuardRegistration
 from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
 from aew.util import glob_any, sha256_file, sha256_text, utc_now
@@ -26,6 +28,44 @@ RECORD_NAME = {"ticket": "ticket.md", "story": "story.md", "epic": "epic.md"}
 PARENT_KINDS = H.PARENT_KINDS
 # Ticket states in which a new accepted plan may be adopted (M1); parents accept plans in any non-terminal state.
 PLAN_ACCEPT_TICKET_STATES = {"BLOCKED", "READY", "REPLAN_REQUIRED"}
+
+# The reason codes (details["reason"]) of a refused entry into a phase through a hub: an escalation return or a
+# reconcile after an interruption (EW-U06.f).
+BEYOND_THE_PHASE_LEFT = "beyond_the_phase_left"  # later than the phase the unit left for the hub
+DIRECT_EDGE_GUARD_UNMET = "direct_edge_guard_unmet"  # the guard of the Lead's direct edge from that phase refuses
+ENTRY_GUARD_UNMET = "entry_guard_unmet"  # a gate guard of the Lead's own entries into the phase refuses
+ENTRY_GUARD_NOT_QUERYABLE = "entry_guard_not_queryable"  # that gate guard has no query form for the unit's kind
+ENTRY_GUARD_UNCLASSIFIED = "entry_guard_unclassified"  # an entry guard has no role, or several gate guards no rule
+_HUB_RULE = {"ESCALATED": "a return from escalation meets the gates of the phase it enters (EW-U06.f)",
+             "INTERRUPTED": "a reconcile after an interruption meets the gates of the phase it enters (EW-U06.f)"}
+_HUB_VERB = {"ESCALATED": "return it", "INTERRUPTED": "reconcile it"}
+
+
+def entry_refused(work_id: str, hub: str, to: str, reason: str, why: str, *, instead: list[dict[str, Any]],
+                  guard: str | None = None, refused: Blocker | None = None) -> GateUnsatisfied:
+    """A refused entry into ``to`` through ``hub``: what was refused and why (``why``, and the guard's own refusal,
+    ``refused``), and what the Lead may do instead, in the message and in ``details["instead"]``: meet what the guard
+    requires and try again, take another phase the hub admits now, or leave the hub (``WorkUnits.hub_alternatives``)."""
+    verb = _HUB_VERB[hub]
+    options = ([{"option": "meet_the_guard", "guard": guard}] if refused is not None else []) + instead
+
+    def text(o: dict[str, Any]) -> str:
+        if o["option"] == "meet_the_guard":
+            return f"meet what {o['guard']} requires, then {verb} to {to} again"
+        if o["option"] == "return_to":
+            return f"{verb} to {o['to']}" + (f", then take {o['to']} -> {o['then']}" if o.get("then") else "")
+        return f"move it to {' or '.join(o['to'])}"
+
+    texts = [text(o) for o in options]
+    message = why if reason == BEYOND_THE_PHASE_LEFT else f"{_HUB_RULE[hub]}: {why}"
+    if refused is not None:
+        message += f": {refused.message}"
+    details: dict[str, Any] = {"reason": reason, "to": to, "instead": options}
+    if guard is not None:
+        details["guard"] = guard
+    if refused is not None:
+        details["refused"] = {"code": refused.code, "message": refused.message, "details": refused.details}
+    return GateUnsatisfied(f"{message}. Instead: {'; or '.join(texts)}", **details)
 
 
 class WorkUnits:
@@ -173,12 +213,15 @@ class WorkUnits:
         return NotQueryable(rule.guard) if query is None else query(state, work_id, args)
 
     def guard_registrations(self) -> list[GuardRegistration]:
-        """The Lead-transition guards that do not depend on evidence gates, for every unit kind."""
+        """The Lead-transition guards that do not depend on evidence gates, for every unit kind. Each checks the edge
+        it guards (``SOURCE``): where the unit comes from, or a hub's own bound. (The return from escalation is
+        ``Gates``': it rechecks gates.)"""
         return [GuardRegistration("implementer_active", self._guard_implementer_active,
-                                  query=self._query_implementer_active),
-                GuardRegistration("findings_recorded", self._guard_findings_recorded),
-                GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation),
-                GuardRegistration("not_beyond_interrupted_phase", self._guard_not_beyond_interrupted_phase)]
+                                  query=self._query_implementer_active, role=SOURCE),
+                GuardRegistration("findings_recorded", self._guard_findings_recorded,
+                                  query=self._query_findings_recorded, role=SOURCE),
+                GuardRegistration("not_beyond_interrupted_phase", self._guard_not_beyond_interrupted_phase,
+                                  query=self._query_not_beyond_interrupted_phase, role=SOURCE)]
 
     @staticmethod
     def _query_implementer_active(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
@@ -192,25 +235,78 @@ class WorkUnits:
     def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
         require(self._query_implementer_active(ctx.state, work_id, {"to": to}))
 
-    def _guard_findings_recorded(self, ctx, work_id, unit, to) -> None:
-        # WC §8: REVIEW_FAILED -> RUNNING requires recorded findings (new ones, or earlier ones still open).
+    @staticmethod
+    def _query_findings_recorded(state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """REVIEW_FAILED -> RUNNING (its query form): WC §8, the rework round needs recorded findings (new ones, or
+        earlier ones still open)."""
+        unit = state["work"][work_id]
         reviews = [e for e in unit.get("evidence", []) if e["kind"] == "review"]
         still_open = [f for f in unit.get("findings", []) if f["required"] and f["status"] == "open"]
         if not still_open and not (reviews and reviews[-1].get("findings")):
-            raise GateUnsatisfied(f"{work_id}: REVIEW_FAILED -> RUNNING requires recorded review findings")
+            return refusal(GateUnsatisfied(f"{work_id}: REVIEW_FAILED -> RUNNING requires recorded review findings"))
+        return None
 
-    def _guard_returning_from_escalation(self, ctx, work_id, unit, to) -> None:
-        origin = unit.get("escalated_from")
+    def _guard_findings_recorded(self, ctx, work_id, unit, to) -> None:
+        require(self._query_findings_recorded(ctx.state, work_id, {"to": to}))
+
+    def direct_edge_query(self, state: dict[str, Any], work_id: str, origin: str | None, to: str,
+                          args: dict[str, Any]) -> Any:
+        """What the Lead's direct edge ``origin -> to`` requires of a unit that enters ``to`` through a hub (an
+        escalation return, a reconcile; EW-U06.f): None when the table has no such edge, or it has no guard; else that
+        guard's query, or ``NotQueryable`` where the guard has none for the unit's kind (its transaction then runs the
+        guard itself). It records the guard as ``found["direct_guard"]``."""
+        rule = transitions.direct_lead_edge(origin, to)
+        if rule is None or not rule.guard:
+            return None
+        args.setdefault("found", {})["direct_guard"] = rule.guard
+        query = self.guards.query_for(rule.guard, state["work"][work_id])
+        return NotQueryable(rule.guard) if query is None else query(state, work_id, args)
+
+    def hub_alternatives(self, state: dict[str, Any], work_id: str, hub: str, to: str,
+                         admitted: Callable[[str], Any]) -> list[dict[str, Any]]:
+        """What the Lead may do instead of taking ``hub -> to``: each other phase the hub returns to that ``admitted``
+        (the hub guard's query, asked without alternatives) admits now, then the hub's other exits (the Lead's
+        unguarded edges out of it), all read from the transition table."""
+        returns = [d for (s, d), r in transitions.RULES.items() if s == hub and r.guard and d != to]
+        exits = [d for (s, d), r in transitions.RULES.items() if s == hub and r.via == "transition" and not r.guard]
+        return [{"option": "return_to", "to": d} for d in returns if admitted(d) is None] + [
+            {"option": "leave_to", "to": exits}]
+
+    def _query_not_beyond_interrupted_phase(self, state: dict[str, Any], work_id: str, args: dict[str, Any], *,
+                                            alternatives: bool = True) -> Any:
+        """INTERRUPTED -> a phase (reconcile): no later than the phase the unit was interrupted in, and, where the Lead
+        has a direct edge from that phase, as that edge's guard admits (EW-U06.f). Its query form."""
+        unit = self.unit(state, work_id)
+        origin, to = unit.get("interrupted_from"), args["to"]
+
+        def instead() -> list[dict[str, Any]]:
+            def admitted(d: str) -> Any:
+                return self._query_not_beyond_interrupted_phase(state, work_id, {"to": d}, alternatives=False)
+
+            return self.hub_alternatives(state, work_id, "INTERRUPTED", to, admitted) if alternatives else []
+
         if origin is None or transitions.PHASE_ORDER.get(to, 99) > transitions.PHASE_ORDER.get(origin, -1):
-            raise GateUnsatisfied(f"{work_id} may return from escalation only to {origin} or an earlier phase")
+            return refusal(entry_refused(
+                work_id, "INTERRUPTED", to, BEYOND_THE_PHASE_LEFT,
+                f"{work_id} was interrupted in {origin}; reconciliation may not move it beyond that phase (success is "
+                "never inferred from a prior invocation)", instead=instead()))
+        found = self.direct_edge_query(state, work_id, origin, to, args)
+        if isinstance(found, Blocker):
+            guard = args["found"]["direct_guard"]
+            return refusal(entry_refused(
+                work_id, "INTERRUPTED", to, DIRECT_EDGE_GUARD_UNMET,
+                f"{work_id} was interrupted in {origin}, and the guard {guard} of the direct edge {origin} -> {to} "
+                "refuses it", guard=guard, refused=found, instead=instead()))
+        return found
 
     def _guard_not_beyond_interrupted_phase(self, ctx, work_id, unit, to) -> None:
-        origin = unit.get("interrupted_from")
-        if origin is None or transitions.PHASE_ORDER.get(to, 99) > transitions.PHASE_ORDER.get(origin, -1):
-            raise GateUnsatisfied(
-                f"{work_id} was interrupted in {origin}; reconciliation may not move it beyond that phase "
-                "(success is never inferred from a prior invocation)"
-            )
+        args: dict[str, Any] = {"to": to}
+        found = self._query_not_beyond_interrupted_phase(ctx.state, work_id, args)
+        if not isinstance(found, NotQueryable):
+            require(found)
+        direct = (args.get("found") or {}).get("direct_guard")
+        if direct:  # the direct edge's guard runs as that edge's transition runs it, its own effects included
+            self.check_guard(direct, ctx, work_id, unit, to)
 
     def check_parent(self, state: dict[str, Any], kind: str, parent: str) -> None:
         parent_unit = self.view(state, parent)  # a closed parent is archived: refused below as before

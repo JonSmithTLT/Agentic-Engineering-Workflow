@@ -128,3 +128,30 @@ AEW's deterministic machinery may produce check evidence under a custody invocat
 - **The custodian hosts the run, it does not perform it.** The IA invocation is where the checks ran, under which lease. It gains a counter of its validation runs, and nothing else: still no role, credential, execution profile or harness run (oracle rule 36).
 - **The transition.** In checks mode, a failed check moves the Ticket COMMIT_READY → VERIFICATION_FAILED through `integrate.validate`: the edge `verify.ingest` takes for a failed verifier, taken from the engine's own `check_result` evidence. No verifier or verification evidence is written, and `verify.ingest` is not called. The table's rule for that edge now names both operations; every other edge keeps exactly one.
 - **Gate evaluation.** Ticket-scope gates count only role evidence, so engine evidence never satisfies a Ticket gate. The inherited gate `post_integration_verifier` is an integration-scope obligation: the Ticket's own gates report it CURRENT, and `integrate validate` and `publish` enforce it (ADR-0004's third amendment of today).
+
+## Amendment 2026-10-25 — a return through a hub meets the gates of the phase it enters (EW-U06.f, register E85)
+
+A return from escalation, or a reconcile after an interruption, meets the gates of the phase it enters. The table is
+unchanged: no edge is added or removed.
+
+- **Through the Lead's direct edge.** Where the table has the Lead's own edge from the phase the unit left (the
+  `transition` rule from `escalated_from`, or from `interrupted_from`) to the phase it enters, the return or reconcile
+  meets that edge's guard, for instance `findings_recorded` from REVIEW_FAILED to RUNNING.
+- **Otherwise, as the phase is entered** (a return from escalation only: the R1 plan v4's option C, the designer's
+  ruling of 2026-10-25). The return meets the gate guards of the Lead's own entries into the phase, for the unit's
+  kind, through their query forms, against current state, and pins the evidence it relied on. VERIFY_PENDING's two
+  gate guards partition by whether a review gate applies (`review_current`, else
+  `ready_for_verification_without_review`). RUNNING's entry guards check where the unit comes from, so a restore to
+  RUNNING meets none. A gate guard with no query form for the unit's kind (a non-mutating Ticket's review and
+  verification entries) cannot be rechecked there, so that return is refused; returning to RUNNING and taking the
+  direct edge, which runs that guard, reaches the phase.
+- **Guard roles.** Each guard in the guard table is registered with its role: `gate` (it checks the gates a phase is
+  entered on) or `source` (it checks the edge it guards). A replacement for one unit kind keeps its name's role, and a
+  return refuses a guard with no role.
+- **Every refusal names a governed path.** Its `details` carry the reason (`direct_edge_guard_unmet`,
+  `entry_guard_unmet`, `entry_guard_not_queryable`, or `beyond_the_phase_left`), the guard and its own refusal, and
+  `instead`: meet what the guard requires, return to another phase the hub admits now, or leave the hub (its
+  unguarded exits, read from the table).
+- **Placement.** The return is `Gates.return_admitted` (`engine/evidence_ops.py`), not `WorkUnits`, because it reads
+  the gate context, VERIFY_PENDING's choice and the pinning, which `Gates` owns. `Gates` receives the guard table
+  through its constructor; the reconcile's recheck stays with `WorkUnits`.

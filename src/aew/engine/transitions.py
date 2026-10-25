@@ -115,13 +115,29 @@ for _src in STATES:
     if _src not in {"INTERRUPTED", "BLOCKED", "READY"}:
         RULES.setdefault((_src, "INTERRUPTED"), Rule("interrupt"))
 
-# Return from escalation (the escalation outcome is recorded by the Lead).
+# Return from escalation: `returning_from_escalation` admits it no later than the phase it left, and only as the phase
+# it enters is entered (EW-U06.f): through the Lead's direct edge from that phase, rechecked by its guard, or else by
+# the gate guards of the Lead's own entries into the phase (`Gates.return_admitted`).
 for _dst in ("RUNNING", "REVIEW_PENDING", "VERIFY_PENDING"):
     RULES[("ESCALATED", _dst)] = Rule("transition", reason_required=True, guard="returning_from_escalation")
 
-# INTERRUPTED -> reconcile to the recorded phase or an earlier one, after inspection.
+# INTERRUPTED -> reconcile to the recorded phase or an earlier one, after inspection, rechecking the guard of the Lead's
+# direct edge from that phase where it has one (EW-U06.f).
 for _dst in ("ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_PASSED", "VERIFY_PENDING", "VERIFIED", "COMMIT_READY"):
     RULES[("INTERRUPTED", _dst)] = Rule("reconcile", reason_required=True, guard="not_beyond_interrupted_phase")
+
+
+def direct_lead_edge(origin: str | None, to: str) -> Rule | None:
+    """The Lead's own edge from ``origin`` to ``to`` (a ``transition`` rule), if the table has one: what a unit that
+    left ``origin`` through a hub (ESCALATED, INTERRUPTED) must meet to enter ``to`` from it."""
+    rule = RULES.get((origin, to)) if origin else None
+    return rule if rule is not None and rule.via == "transition" else None
+
+
+def lead_entry_guards(to: str) -> list[str]:
+    """The guards of the Lead's own edges into ``to``, each once, in table order."""
+    return list(dict.fromkeys(r.guard for (_, dst), r in RULES.items()
+                              if dst == to and r.via == "transition" and r.guard))
 
 
 # The Lead command behind each operation, for refusals that say what applies instead (M3 audit X1).

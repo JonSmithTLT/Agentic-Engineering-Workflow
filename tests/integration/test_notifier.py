@@ -344,9 +344,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
     hold is in place, so the hold always comes first. With no hold, a hold under the lock timeout, and one past it but
     under `wedge_after_s`, the broker closes within `watchdog_wait_s`; a literal window of the lock timeout fails the
     third. A hold past that bound outlasts one timed-out read plus the next iteration's start. That is not a stale
-    broker: each timed-out read still ticks, so `judge` calls it live, and the swallowed `LockTimeout` is what hides
-    the supersession (review of #276, F1). The wait times out, and its message names the link, the watchdog's read in
-    `FileLock._wait`. Once the hold ends, the broker closes."""
+    broker: each timed-out read still ticks, so `judge` calls it live while each iteration stays inside
+    `wedge_after_s`, and the swallowed `LockTimeout` is what hides the supersession (review of #276, F1). The wait
+    times out, and its message names the link, the watchdog's read in `FileLock._wait`. Once the hold ends, the broker
+    closes."""
     poll = 0.25
     monkeypatch.setattr(lead_broker, "POLL_S", poll)
     root = project.root / ".aew"

@@ -373,9 +373,13 @@ MISSED = [  # what the scan does not see: no site, and no unknown
     'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 10 // 2, "x")',
     'engine.store.lock_timeout = 10.0\na, w = 1, 5\nuntil(lambda: ready(), w, "x")',  # a tuple unpacking
     'engine.store.lock_timeout = 10.0\nw = 5\nw = 5\nuntil(lambda: ready(), w, "x")',  # a name bound twice (R1)
-    # a conditional under `-` folds to the lenient branch: the window to 15, not the strict 5; T to 5, not 15
+    # a conditional under `-`, `/` or a unary minus folds to the lenient branch: a window to 15, 20 and 15, not the
+    # strict 5, 10 and 5; T to 5 and 5, not 15 and 20 (review of #278, P1)
     'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 20 - (15 if slow else 5), "x")',
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 20 / (2 if slow else 1), "x")',
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 20 + -(15 if slow else 5), "x")',
     'engine.store.lock_timeout = 20 - (15 if case else 5)\nuntil(lambda: ready(), 10, "x")',
+    'engine.store.lock_timeout = 40 / (2 if case else 8)\nuntil(lambda: ready(), 10, "x")',
     # POLL_S patched by a string target: the bound is taken as 12 s, not 14 s
     'engine.store.lock_timeout = 10.0\nmonkeypatch.setattr("aew.harness.lead_broker.POLL_S", 2.0)\n'
     'until(lambda: ready(), 13, "x")',

@@ -37,11 +37,22 @@ def _families() -> Any:
     if added:
         sys.path.insert(0, here)
     try:
-        from reference_families import common, entry_points, modules, pages, stg02, writers
+        from reference_families import (
+            common,
+            control_keys,
+            entry_points,
+            interfaces,
+            layout,
+            machines,
+            modules,
+            pages,
+            stg02,
+            writers,
+        )
     finally:
         if added:
             sys.path.remove(here)
-    return common, pages, (modules, entry_points, writers, stg02)
+    return common, pages, (modules, entry_points, writers, control_keys, layout, machines, interfaces, stg02)
 
 
 def _one_tree(common: Any, root: Path) -> None:
@@ -80,7 +91,8 @@ def render_files(root: Path = ROOT) -> dict[str, bytes]:
     for name, text in sorted(texts.items()):
         problems += common.text_problems(name, text)
     if problems:
-        raise common.ReferenceError("the generated reference breaks its own rules:\n  " + "\n  ".join(problems[:20]))
+        raise common.ReferenceError("the generated reference breaks its own rules:\n  "
+                                    + "\n  ".join(common.shown(problems)))
     return {name: text.encode("utf-8") for name, text in texts.items()}
 
 

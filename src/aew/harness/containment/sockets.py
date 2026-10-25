@@ -14,8 +14,8 @@ own: a table that does not list it is not this namespace's, and the launch fails
   same directory is listed under the name it was bound at, which is gone (OpenSSH's ControlMaster does this, in mux.c's
   ``muxserver_listen``): then every socket file in that directory is checked, each taking the worse of its own class
   and the listed one's.
-* **An abstract socket** has no file. It is listed with its class as a fact of the network, which is shared until CS-3
-  gives runs their own namespace (D-CS2-5).
+* **An abstract socket** has no file. It is listed with its class as a fact of the network (D-CS2-5): reachable on the
+  shared network, and on a run's own (CS-3b) only if the self-test sees it inside, which fails the launch closed.
 * **What it cannot see** is named on the label (:data:`NOT_COVERED`; D-CS2-3), with the instances the table shows: a
   path that does not resolve here (bound in another mount namespace), a relative bind (reported and counted), a path
   the launcher could not check, a socket no mount of whose filesystem is known (checked at its own paths only), and the

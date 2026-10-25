@@ -33,6 +33,7 @@ messages (non-authoritative telemetry that the supervisor compares with the pin)
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -50,6 +51,7 @@ from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed
 from aew.harness import agentenv, runlog
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
+from aew.harness.containment import netns
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
     CATALOG_TIMEOUT,
@@ -183,8 +185,22 @@ def new_message_id() -> str:
     return "msg_" + secrets.token_hex(12)
 
 
+def declared_only(model: dict[str, Any]) -> bool:
+    """Whether a catalog entry is one the server made from AEW's own configuration rather than one it offers: 2.0.18
+    lists any model its configuration names, made up from the provider's defaults (measured on the Rocky VM,
+    2026-10-24). Such an entry has no family and no release time, and its name is its id; an offered one has its
+    catalog's. So the pinned model, which ``projection.relayed`` names to point it at the relay, is still refused at
+    launch when the catalog does not offer it, as it was before the relay."""
+    return not model.get("family") and not (model.get("time") or {}).get("released") and model.get("name") == model.get(
+        "id")
+
+
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
+    # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
+    # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
+    PROVIDER_RELAY = True
+    EGRESS = ("models.opencode.ai:443",)
     # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
     # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixture
     # tests/fixtures/opencode/usage-2.0.18-openai.json.
@@ -230,6 +246,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self._monitor: threading.Thread | None = None
         self.meter: Meter | None = None
         self.meter_errors = 0
+        self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
         self._meter_thread: threading.Thread | None = None
@@ -245,20 +262,36 @@ class OpenCodeAdapter(HarnessAdapter):
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
+        network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
         config = projection.invocation_config(
             contract, private_dirs=projection.private_output_dirs(
                 os.path.realpath(self.state_dir), os.sep,
-                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""))
+                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
+            network=network.describe() if network is not None else None)  # the agent is told what it reaches
         self.skills = projection.skills(contract)
         rules = config["permissions"]
+        base = network.provider_base() if network is not None else None
+        self._relayed = base is not None
+        if base is not None:
+            config = projection.relayed(config, contract.execution_profile, base)
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
                                                              encoding="utf-8")
         command = binary_command()
         self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
         env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
                          config=config, password=secrets.token_urlsafe(32))
-        self.server = Server.start(self.tree.spawn, command, env=env, cwd=self.directory,
-                                   log_path=self.state_dir / "server.log")
+        if network is not None:  # the provider's variables are sentinels inside; the relay holds the values
+            env = network.harness_env(env)
+            leaked = network.leaks(*env.values(), json.dumps(config))
+            if leaked:  # F28 §3.6, row 6: never started with a provider secret in its reach
+                raise HarnessIncompatible(f"the value of {', '.join(leaked)} would reach the run's sandbox in the "
+                                          "harness's environment or configuration, so the harness was not started; "
+                                          "keep the provider's key out of every other variable and setting",
+                                          reason="provider_secret_in_sandbox", variables=leaked)
+        spawn = self.tree.spawn if network is None else functools.partial(self.tree.spawn, network_shim=True)
+        self.server = Server.start(spawn, command, env=env, cwd=self.directory, log_path=self.state_dir / "server.log",
+                                   **({"port": netns.SERVER_PORT, "unix": network.server_socket}
+                                      if network is not None else {}))
         del env
         self.client = self.server.client
         self._bind_meter()
@@ -313,7 +346,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def meter_client(self) -> Client:
         """The meter's own client: never the adapter's, so a slow 30 s request of ``_poll`` cannot delay a sample."""
         assert self.server is not None
-        return Client(self.server.url, self.server.password)
+        return Client(self.server.url, self.server.password, unix=self.server.unix)
 
     def _bind_meter(self) -> None:
         """Once the server answers, the meter polls it every second in every turn state, until ``terminate``."""
@@ -423,11 +456,16 @@ class OpenCodeAdapter(HarnessAdapter):
         t0 = time.monotonic()
         first_seen: float | None = None
         catalog: list[dict[str, Any]] = []
+        declared = False
         while True:
             catalog = (self.client.get("/api/model", location(self.directory)) or {}).get("data") or []
             match = next((m for m in catalog if m.get("providerID") == ref["providerID"] and m.get("id") == ref["id"]),
                          None)
             now = time.monotonic()
+            # Listed only because the relay projection names it: not offered, so wait for the catalog as if absent.
+            declared = match is not None and self._relayed and declared_only(match)
+            if declared:
+                match = None
             if match is not None:
                 variants = [v.get("id") for v in match.get("variants") or []]
                 if "variant" in ref and ref["variant"] not in variants:
@@ -444,8 +482,10 @@ class OpenCodeAdapter(HarnessAdapter):
                 providers = sorted({str(m.get("providerID")) for m in catalog})
                 raise HarnessIncompatible(
                     f"model {ref['providerID']}/{ref['id']} is not offered by this OpenCode "
-                    f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s); check the "
-                    "execution policy and the provider variables it names", model=ref,
+                    f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s"
+                    + ("; it is listed only because AEW names it in the server's configuration, to send it through "
+                       "the run's provider relay (F28 §3.5)" if declared else "")
+                    + "); check the execution policy and the provider variables it names", model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)

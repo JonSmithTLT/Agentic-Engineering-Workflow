@@ -10,8 +10,10 @@ import copy
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -104,8 +106,17 @@ def test_a_build_stage_is_an_id_in_exactly_one_form():
     """One row per build stage of the architecture map, named as the map names it (designer, D-CS1-12)."""
     assert all(register.ID_RE.match(i) for i in ("F2", "F15.5", "STG-05", "STG-12"))
     assert not any(register.ID_RE.match(i) for i in ("STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2"))
-    assert {"STG-05", "STG-12"} <= {r["id"] for r in register.rows(DATA)}
+    assert {"STG-03", "STG-05", "STG-12", "STG-13", "STG-15"} <= {r["id"] for r in register.rows(DATA)}
     assert all(r["target"] == "Stage" for r in register.rows(DATA) if (r["id"] or "").startswith("STG-"))
+
+
+def test_a_hold_group_is_an_id_in_exactly_one_form():
+    """One row per adopted position, named by its number (``HOLD-09`` for A-09): the register rebaseline, 2026-10-24."""
+    assert all(register.ID_RE.match(i) for i in ("HOLD-02", "HOLD-21"))
+    assert not any(register.ID_RE.match(i) for i in ("HOLD-2", "HOLD-002", "HOLD02", "hold-02", "HOLDS-02"))
+    assert register.id_key("F99") < register.id_key("HOLD-02") < register.id_key("HOLD-21") < register.id_key("O1")
+    groups = [r for r in register.rows(DATA) if (r["id"] or "").startswith("HOLD-")]
+    assert groups and all(r["target"] == "After the trace" for r in groups)
 
 
 def test_a_row_outside_the_gates_is_headed_by_its_id_or_a_labelled_one():
@@ -116,7 +127,8 @@ def test_a_row_outside_the_gates_is_headed_by_its_id_or_a_labelled_one():
     labelled = {"E33 (part)", "Q9 (decisions)", "Q9 (reconciliation)", "Gate"}
     heads = {next(iter(r.values())) for s in DATA["sections"] if s["number"] != 1 for r in s["rows"]}
     assert labelled <= heads and register.problems(DATA) == []
-    near_misses = ("STG-6", "STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2", "F2 ()", "Q9(x)", "Q9 (a) (b)")
+    near_misses = ("STG-6", "STG-5", "STG-005", "STG05", "STGX-05", "stg-05", "F-2", "F2 ()", "Q9(x)", "Q9 (a) (b)",
+                   "HOLD-2", "HOLD-002", "HOLD02", "hold-02")
     for number, closed in ((2, False), (None, True)):
         for head in near_misses:
             data = copy.deepcopy(DATA)
@@ -130,9 +142,9 @@ def test_a_row_outside_the_gates_is_headed_by_its_id_or_a_labelled_one():
 
 
 def test_a_target_is_read_as_the_longest_register_target_it_starts_with():
-    """``TARGET_RE`` is derived from ``TARGETS``, the longest name first and nothing ending a match: ``M4 candidate`` is
-    its own target, not ``M4``, and an M4 phase (``**M4-E.**``, in no list of targets) still reads as ``M4`` (review of
-    #240, m3)."""
+    """``TARGET_RE`` is derived from ``TARGETS``, the longest name first and nothing ending a match: a target that
+    starts another (``M4`` and ``M4 candidate`` before the rebaseline) is read as the longer one, and a target followed
+    by more bold text (``**V-01, I-6.**``) still reads as the target (review of #240, m3)."""
     def read(cell: str) -> str | None:
         m = register.TARGET_RE.match(cell)
         return m.group(1) if m else None
@@ -140,12 +152,15 @@ def test_a_target_is_read_as_the_longest_register_target_it_starts_with():
     named = [t for t in register.TARGETS if t != "Gate"]
     assert [read(f"**{t}.** x") for t in named] == named
     assert read("**Gate: before internal alpha** (§1)") == "Gate: before internal alpha"
-    assert read("**M4 candidate.** x") == "M4 candidate"
-    assert read("**M4-E.** x") == "M4" and read("**M4.** x") == "M4"
-    assert read("**Gate.** x") is None and read("M4. x") is None
-    candidates = sum(row[s["target_column"]].startswith("**M4 candidate") for s in DATA["sections"]
-                     if s.get("target_column") and not s["title"].startswith("Closed") for row in s["rows"])
-    assert candidates and sum(r["target"] == "M4 candidate" for r in register.rows(DATA)) == candidates
+    assert all(read(f"**{longer}.** x") == longer for longer in named for shorter in named
+               if longer != shorter and longer.startswith(shorter))
+    assert read("**V-01, I-6.** x") == "V-01" and read("**Now**: x") == "Now"
+    assert read("**Gate.** x") is None and read("Now. x") is None
+    assert read("**M4.** x") is None and read("**M4 candidate.** x") is None  # gone with the rebaseline
+    for target in named:  # the reader and a plain prefix test agree on every open row
+        starting = sum(row[s["target_column"]].startswith(f"**{target}") for s in DATA["sections"]
+                       if s.get("target_column") and not s["title"].startswith("Closed") for row in s["rows"])
+        assert starting == sum(r["target"] == target for r in register.rows(DATA)), target
 
 
 def test_the_preambles_target_table_names_the_register_targets():
@@ -214,26 +229,45 @@ def test_the_decisions_due_view_is_what_its_yaml_renders_and_is_current():
     assert register.due_problems(DATA, DUE) == []
 
 
+# The rebaseline left no open question (§4 is empty) and no row targeted **Designer**, so the rules about them are
+# proved on a copy of the register with one of each planted: Q99, a question, and E999, a Designer row.
+QUESTION, DESIGNER_ROW = "Q99", "E999"
+
+
+def _with_a_question_and_a_designer_row() -> dict[str, Any]:
+    data = copy.deepcopy(DATA)
+    questions = next(s for s in data["sections"] if s["number"] == 4)
+    questions["rows"].append({"#": QUESTION, "Question": "x", "Owner": "designer", "Source": "x"})
+    follow_ups = next(s for s in data["sections"] if s["number"] == 6)
+    follow_ups["rows"].append({"#": DESIGNER_ROW, "Work": "x", "Source": "x", "When": "**Designer**: x", "Notes": ""})
+    return register.normalize(data)
+
+
+def _item(row: str, **extra: Any) -> dict[str, Any]:
+    return {"row": row, "needs": "decision", "owner": "designer", "due": "Unscheduled", "what": "x"} | extra
+
+
 def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
     data = copy.deepcopy(DATA)
     closed = next(s for s in data["sections"] if s["title"].startswith("Closed"))
-    questions = next(s for s in data["sections"] if s["number"] == 4)
-    q11 = next(r for r in questions["rows"] if r["#"] == "Q11")
-    questions["rows"].remove(q11)
-    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "Q11"})
+    follow_ups = next(s for s in data["sections"] if s["number"] == 6)
+    e72 = next(r for r in follow_ups["rows"] if r["#"] == "E72")
+    follow_ups["rows"].remove(e72)
+    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "E72"})
     problems = register.due_problems(data, DUE)
-    assert any("Q11 is closed" in p for p in problems), problems
+    assert any("E72 is closed" in p for p in problems), problems
     due = copy.deepcopy(DUE)
     due["items"][0]["blocks"] = ["F2"]  # closed in M4-B
     assert any("blocks F2, which is closed" in p for p in register.due_problems(DATA, due))
 
 
 def test_every_open_question_and_designer_row_has_an_item():
-    due = copy.deepcopy(DUE)
-    due["items"] = [i for i in due["items"] if i["row"] not in {"Q14", "U10"}]
-    problems = register.due_problems(DATA, due)
-    assert any("Q14 is an open question with no item" in p for p in problems), problems
-    assert any("U10 waits for the designer" in p for p in problems), problems
+    data, due = _with_a_question_and_a_designer_row(), copy.deepcopy(DUE)
+    problems = register.due_problems(data, due)
+    assert any(f"{QUESTION} is an open question with no item" in p for p in problems), problems
+    assert any(f"{DESIGNER_ROW} waits for the designer" in p for p in problems), problems
+    due["items"] = register.normalize_due({"items": [*due["items"], _item(QUESTION), _item(DESIGNER_ROW)]})["items"]
+    assert register.due_problems(data, due) == []
 
 
 def test_an_item_names_a_known_due_point_owner_and_need():
@@ -253,13 +287,14 @@ def test_the_view_lists_the_soonest_first():
 
 def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_blocker():
     """PR #104 review, 1: an open question is covered only by its own item; a **Designer** row may instead be blocked by
-    one (F6 waits for Q4's decision)."""
-    due = copy.deepcopy(DUE)
-    q14 = next(i for i in due["items"] if i["row"] == "Q14")
-    due["items"].remove(q14)
-    next(i for i in due["items"] if i["row"] == "Q11")["blocks"].append("Q14")
-    assert any("Q14 is an open question with no item of its own" in p for p in register.due_problems(DATA, due))
-    assert not any("F6" in p for p in register.due_problems(DATA, DUE))  # blocked by Q4's item
+    one (F6 waited for Q4's decision)."""
+    data, due = _with_a_question_and_a_designer_row(), copy.deepcopy(DUE)
+    other = next(i for i in due["items"] if i["row"] == "E4")
+    other["blocks"] = [QUESTION]  # another item blocking the question is no item of the question's own
+    assert any(f"{QUESTION} is an open question with no item of its own" in p for p in register.due_problems(data, due))
+    other.pop("blocks")
+    due["items"] = register.normalize_due({"items": [*due["items"], _item(QUESTION, blocks=[DESIGNER_ROW])]})["items"]
+    assert register.due_problems(data, due) == []  # the Designer row is blocked by the question's item
 
 
 def test_a_malformed_item_is_named_never_a_crash():
@@ -281,17 +316,19 @@ def test_items_stay_in_order_and_one_row_has_one_item():
     assert any("not in (due, row) order" in p for p in problems), problems
     due = register.normalize_due(due)
     assert any(f"{due['items'][0]['row']} has 2 items" in p for p in register.due_problems(DATA, due))
-    assert register.DUE_ORDER.index("M4-D") < register.DUE_ORDER.index("Gate: before F15.2 ships") \
-        < register.DUE_ORDER.index("M4-E")  # docs/README.md's order (review, 3)
+    order = [register.DUE_ORDER.index(d) for d in ("Now", "Contained", "V-01", "Gate: before internal alpha",
+                                                   "Internal alpha", "After the trace", "Evaluation", "Unscheduled")]
+    assert order == list(range(len(register.DUE_ORDER)))  # future-work.md §1's order, then the open-ended targets
 
 
 def test_an_incomplete_item_still_counts_as_its_rows_item():
     """PR #104 re-review, B: the missing field is the one problem; the question is not also reported as uncovered."""
-    due = copy.deepcopy(DUE)
-    next(i for i in due["items"] if i["row"] == "Q11").pop("what")
-    problems = register.due_problems(DATA, due)
-    assert any("(Q11): missing what" in p for p in problems) and not any("Q11 is an open question" in p
-                                                                         for p in problems), problems
+    data, due = _with_a_question_and_a_designer_row(), copy.deepcopy(DUE)
+    due["items"] = register.normalize_due({"items": [*due["items"], _item(QUESTION), _item(DESIGNER_ROW)]})["items"]
+    next(i for i in due["items"] if i["row"] == QUESTION).pop("what")
+    problems = register.due_problems(data, due)
+    assert any(f"({QUESTION}): missing what" in p for p in problems) and not any(
+        f"{QUESTION} is an open question" in p for p in problems), problems
 
 
 def test_check_names_only_what_is_out_of_step(monkeypatch, capsys):
@@ -622,3 +659,211 @@ def test_the_register_reads_the_same_with_libyaml_and_the_pure_python_reader(whi
 
     assert tokens(register._SafeLoader) == tokens(yaml.SafeLoader)
     assert yaml.load(text, Loader=register._SafeLoader) == yaml.load(text, Loader=yaml.SafeLoader)  # noqa: S506
+
+
+# ------------------------------------------------------------------------------------------------------- the rebaseline
+# The register rebaseline (operator, 2026-10-24; the designer's record is in the design workspace at b598fdc) gave every
+# open row and every decisions-due item of the register at ``register_commit`` one disposition. The file is committed
+# beside the register, and these checks pin it to the register in both directions: nothing open at that commit lacks a
+# disposition, no disposition names a row that was not open, and the register carries out what each one says.
+
+DISPOSITIONS = register.YAML.with_name("register-rebaseline-dispositions.yaml")
+CITATION = "(register rebaseline, design workspace `b598fdc`)"
+REBASELINE_DAY = "2026-10-24"
+
+
+def _dispositions() -> dict[str, Any]:
+    return yaml.load(DISPOSITIONS.read_text(encoding="utf-8"), Loader=register._StrictLoader)  # noqa: S506 - a SafeLoader
+
+
+def _ids(data: dict[str, Any], *, open_only: bool) -> dict[str, str]:
+    """Every row with an id, to the title of the section it is in."""
+    titles = {s["number"]: s["title"] for s in data["sections"]}
+    return {r["id"]: titles[r["section"]] for r in register.rows(data, open_only=open_only)
+            if r["id"] and r["id"] != "Gate"}
+
+
+def base_problems(disp: dict[str, Any], base: dict[str, Any], base_due: dict[str, Any]) -> list[str]:
+    """What is wrong between the dispositions and the register as it was at ``register_commit``."""
+    out: list[str] = []
+    open_rows = _ids(base, open_only=True)
+    rows, groups, new_rows = disp["rows"], disp["groups"], disp["new_rows"]
+    out += [f"{rid} was open at the base and has no disposition" for rid in sorted(open_rows.keys() - rows.keys())]
+    out += [f"{rid} has a disposition but was not an open row at the base"
+            for rid in sorted(rows.keys() - open_rows.keys())]
+    for rid, d in rows.items():
+        if rid in open_rows and d.get("section") != open_rows[rid]:
+            out.append(f"{rid}: its disposition says {d.get('section')!r}, the base has it in {open_rows[rid]!r}")
+        kind = d.get("disposition")
+        if kind not in ("close", "absorb", "hold", "keep"):
+            out.append(f"{rid}: {kind!r} is not a disposition")
+        elif kind == "close" and not d.get("by"):
+            out.append(f"{rid}: a close with no `by`")
+        elif kind in ("absorb", "hold") and not d.get("into"):
+            out.append(f"{rid}: {kind} with no `into`")
+        elif kind == "keep" and d.get("target") not in register.TARGETS:
+            out.append(f"{rid}: keep with the target {d.get('target')!r}, which is not a register target")
+        if kind == "hold" and d.get("into") not in groups:
+            out.append(f"{rid}: held in {d.get('into')}, which the file does not define")
+        if kind == "absorb" and d.get("into") not in open_rows.keys() | new_rows.keys():
+            out.append(f"{rid}: absorbed into {d.get('into')}, which is neither an open row nor a new one")
+    held = [m for g in groups.values() for m in g["members"]]
+    out += [f"{m} is a member of two groups" for m in sorted({m for m in held if held.count(m) > 1})]
+    for g, info in groups.items():
+        if not register.ID_RE.match(g) or not g.startswith("HOLD-"):
+            out.append(f"{g} is not a hold group id")
+        listed = {m for m in info["members"] if rows.get(m, {}).get("disposition") == "hold"
+                  and rows[m].get("into") == g}
+        out += [f"{g} lists {m}, whose disposition does not hold it there"
+                for m in sorted(set(info["members"]) - listed)]
+    out += [f"{rid} is held in {d['into']}, which does not list it" for rid, d in rows.items()
+            if d.get("disposition") == "hold" and rid not in groups.get(d.get("into"), {}).get("members", [])]
+    out += [f"new row {rid} was already a row at the base" for rid in sorted(new_rows.keys() & open_rows.keys())]
+    due_rows = {item["row"] for item in base_due["items"]}
+    fates = disp["decisions_due"]
+    out += [f"the decisions-due item of {r} has no fate" for r in sorted(due_rows - fates.keys())]
+    out += [f"a fate for {r}, which had no decisions-due item at the base" for r in sorted(fates.keys() - due_rows)]
+    for r, fate in fates.items():
+        kept = str(fate.get("fate")).startswith("keep:")
+        if fate.get("fate") != "drop" and not (kept and fate["fate"].removeprefix("keep:") in register.DUE_ORDER
+                                                and rows.get(r, {}).get("disposition") == "keep"):
+            out.append(f"{r}: the fate {fate.get('fate')!r} is neither `drop` nor `keep:<due point>` on a kept row")
+    out += [f"the Now list names {n.get('row')}, which is not a row" for n in disp["now"]
+            if n.get("row") not in open_rows.keys() | new_rows.keys()]
+    return out
+
+
+def head_problems(disp: dict[str, Any], head: dict[str, Any]) -> list[str]:
+    """What is wrong between the dispositions and the register as it stands: each one carried out, and nothing closed in
+    the rebaseline's forms without one. A kept row may have changed since (it may even be closed), so it is only
+    required to exist."""
+    out: list[str] = []
+    every = _ids(head, open_only=False)
+    closed = {r["#"]: r for s in head["sections"] if s["title"].startswith("Closed") for r in s["rows"]}
+    rows = disp["rows"]
+    for rid, d in rows.items():
+        kind = d["disposition"]
+        if rid not in every:
+            out.append(f"{rid} (disposition {kind}) is not in the register")
+        elif kind != "keep":
+            row = closed.get(rid)
+            if row is None:
+                out.append(f"{rid}: {kind}, but the row is still open")
+                continue
+            by = row["By"]
+            if row["Closed"] != REBASELINE_DAY:
+                out.append(f"{rid}: closed on {row['Closed']}, not on the rebaseline's day")
+            if kind == "close" and not (by.startswith(d["by"]) and by.endswith(CITATION)
+                                        and (not d.get("note") or d["note"] in by)):
+                out.append(f"{rid}: its By is not the disposition's by, its note and the citation: {by[:80]!r}")
+            if kind == "absorb" and by != f"absorbed into {d['into']}":
+                out.append(f"{rid}: its By is {by[:80]!r}, not 'absorbed into {d['into']}'")
+            if kind == "hold" and by != f"held in {d['into']}":
+                out.append(f"{rid}: its By is {by[:80]!r}, not 'held in {d['into']}'")
+        if kind in ("absorb", "hold") and d["into"] not in every:
+            out.append(f"{rid}: {d['into']} is not in the register")
+    out += [f"{g} (a hold group) is not in the register" for g in disp["groups"] if g not in every]
+    out += [f"{r} (a new row) is not in the register" for r in disp["new_rows"] if r not in every]
+    out += [f"the Now list names {n['row']}, which is not in the register" for n in disp["now"]
+            if n["row"] not in every]
+    for rid, row in closed.items():
+        by = row["By"]
+        if rid not in rows and (by.startswith(("held in HOLD-", "absorbed into ")) or by.endswith(CITATION)):
+            out.append(f"{rid} was closed in the rebaseline's form but has no disposition")
+    return out
+
+
+@pytest.fixture(scope="module")
+def at_the_base() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """The dispositions with the register and decisions-due as they were at ``register_commit``. Like the frozen-tag
+    check of ``test_spec_pin``, it needs the history: CI's core jobs fetch it all, and a shallow clone skips."""
+    disp = _dispositions()
+    commit = disp["register_commit"]
+    if shutil.which("git") is None or not (register.ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    if register._git(register.ROOT, "cat-file", "-e", f"{commit}^{{commit}}").returncode:
+        pytest.skip(f"commit {commit[:8]} is not in this clone (a shallow clone)")
+    shown = [register._git(register.ROOT, "show", f"{commit}:{p.relative_to(register.ROOT).as_posix()}")
+             for p in (register.YAML, register.DUE_YAML)]
+    assert all(s.returncode == 0 for s in shown), [s.stderr for s in shown]
+    return disp, register._load(shown[0].stdout), register._load(shown[1].stdout)
+
+
+def test_every_open_row_at_the_rebaselines_base_has_one_disposition_and_every_disposition_names_one(at_the_base):
+    disp, base, base_due = at_the_base
+    assert base_problems(disp, base, base_due) == []
+
+
+def test_the_register_carries_out_every_disposition():
+    assert head_problems(_dispositions(), register.load()) == []
+
+
+def test_the_dispositions_are_the_designers_counts():
+    """SUMMARY.md of the record: 21 closed outright, 9 absorbed, 125 held in 16 groups, 38 kept; three stage rows;
+    24 decisions-due items, of which 3 stay."""
+    disp = _dispositions()
+    kinds = Counter(d["disposition"] for d in disp["rows"].values())
+    assert (kinds["close"], kinds["absorb"], kinds["hold"], kinds["keep"], len(disp["rows"])) == (21, 9, 125, 38, 193)
+    assert len(disp["groups"]) == 16 and sum(len(g["members"]) for g in disp["groups"].values()) == 125
+    assert sorted(disp["new_rows"]) == ["STG-03", "STG-13", "STG-15"]
+    fates = Counter(f["fate"] for f in disp["decisions_due"].values())
+    assert (fates["drop"], len(disp["decisions_due"])) == (21, 24)
+    assert {i["row"] for i in DUE["items"]} == {r for r, f in disp["decisions_due"].items()
+                                                 if f["fate"].startswith("keep:")}
+    assert disp["targets"] == list(register.TARGETS) and disp["due_order"] == list(register.DUE_ORDER)
+
+
+def test_the_now_list_on_the_page_is_the_dispositions_in_order():
+    """§1's table is the designer's prose and the file's `now` the same list as data: the same rows in the same order
+    (the first row id of each line)."""
+    intro = DATA["sections"][0]["intro"]
+    table = [line.split("|")[2].strip().split(",")[0] for line in intro.splitlines() if re.match(r"\| \d+ \|", line)]
+    assert table == [n["row"] for n in _dispositions()["now"]]
+
+
+def test_the_pin_names_a_missing_a_stray_and_an_undefined_disposition(at_the_base):
+    """The pin bites: a row left without a disposition, a disposition for a row that was never open, a hold in an
+    undefined group, a group that drops its member and an item left without a fate are each named."""
+    disp, base, base_due = at_the_base
+    follow_ups = "Engineering follow-ups (the M3 audits)"
+    mutations = {
+        "was open at the base and has no disposition": lambda d: d["rows"].pop("E3"),
+        "was not an open row at the base": lambda d: d["rows"].update(
+            {"E9999": {"section": follow_ups, "disposition": "keep", "target": "Unscheduled"}}),
+        "which the file does not define": lambda d: d["rows"]["D2"].update(into="HOLD-99"),
+        "which does not list it": lambda d: d["groups"]["HOLD-17"]["members"].remove("D2"),
+        "has no fate": lambda d: d["decisions_due"].pop("E72"),
+        "which had no decisions-due item": lambda d: d["decisions_due"].update({"F1": {"fate": "drop"}}),
+        "is not a register target": lambda d: d["rows"]["E3"].update(target="M4"),
+    }
+    for expected, mutate in mutations.items():
+        changed = copy.deepcopy(disp)
+        mutate(changed)
+        found = base_problems(changed, base, base_due)
+        assert any(expected in p for p in found), (expected, found)
+    assert base_problems(disp, base, base_due) == []
+
+
+def test_the_pin_names_a_disposition_the_register_does_not_carry_out():
+    """The register side bites too: a By that is not the disposition's, a closed row taken out, a row closed in the
+    rebaseline's form that has no disposition, and a row still open."""
+    disp, head = _dispositions(), register.load()
+
+    def closed_of(data: dict[str, Any]) -> dict[str, Any]:
+        return next(s for s in data["sections"] if s["title"].startswith("Closed"))
+
+    for rid, by, expected in (("F40", "something else", "its By is not"),
+                              ("F9", "held in HOLD-02", "not 'held in HOLD-09'"),
+                              ("D3", "absorbed into F12", "not 'absorbed into STG-15'")):
+        changed = copy.deepcopy(head)
+        next(r for r in closed_of(changed)["rows"] if r["#"] == rid)["By"] = by
+        assert any(expected in p for p in head_problems(disp, changed)), (rid, head_problems(disp, changed))
+    changed = copy.deepcopy(head)
+    closed_of(changed)["rows"].append({"#": "E9999", "Was": "x", "Closed": REBASELINE_DAY, "By": "held in HOLD-02"})
+    assert any("E9999 was closed in the rebaseline's form but has no disposition" in p
+               for p in head_problems(disp, changed))
+    changed = copy.deepcopy(head)
+    closed_of(changed)["rows"] = [r for r in closed_of(changed)["rows"] if r["#"] != "F40"]
+    assert any("F40 (disposition close) is not in the register" in p for p in head_problems(disp, changed))
+    still_open = {"rows": {"E3": {"disposition": "close", "by": "x"}}, "groups": {}, "new_rows": {}, "now": []}
+    assert "E3: close, but the row is still open" in head_problems(still_open, head)  # E3 is a kept row

@@ -1,0 +1,5 @@
+**Register rebaseline (2026-10-24, design workspace `b598fdc`):** CS-3b, the owner-only store (#256), then CS-4 beside the G3 service.
+
+**Register rebaseline (2026-10-24, design workspace `b598fdc`): what this row now carries.**
+- **F28**, Network containment on Linux (F-F): model-controlled runs, the Lead's included, in a private network namespace; provider traffic through a secretless in-sandbox shim to a supervisor-owned credentialing reverse relay with a fixed upstream, so the provider key never enters the sandbox; optional non-provider egress through a separate credentialless allowlist proxy; the supervisor reaches the harness server through the same shim; labels `proxy_only`, `isolated`, `shared`, `not_provided`; a self-test for egress denial, the bridge and server paths and secret absence; checks default to `isolated` and never widen past policy; a sanitized, checksum-pinned OpenCode catalog seed for air-gapped bundles; note: the network namespace is CS-3b (CB-02, A-33)
+- **F51**, The network-egress qualification gap: the vertical gate qualifies authenticated publication only; note: egress is CS-3b's (CB-02); M6 no longer exists

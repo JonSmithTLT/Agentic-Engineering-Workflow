@@ -543,16 +543,85 @@ def test_every_list_fact_a_detector_found_says_how_complete_it_is():
 
 def test_every_check_a_record_names_is_a_test_that_exists():
     """A coverage claim is only as good as the test it names: the file exists and defines the function."""
-    seen = 0
+    seen = fact_level = 0
     for rid, r in index_of(committed())["records"].items():
-        for node_id in r["coverage"].get("check", []):
-            path, _, name = node_id.partition("::")
-            file = ROOT / path
-            assert file.is_file(), f"{rid} names {node_id}, whose file does not exist"
-            tree = ast.parse(file.read_text(encoding="utf-8"))
-            assert any(isinstance(n, ast.FunctionDef) and n.name == name for n in ast.walk(tree)), f"{rid}: {node_id}"
-            seen += 1
-    assert seen
+        # a record's own coverage, and the coverage of each of its list facts (a lower-bound record can hold a list
+        # fact that is complete-by-construction, and then the test ids are only there)
+        claimed = [(r["coverage"], "")] + [(c, f" ({key})") for key, c in (r.get("fact_coverage") or {}).items()]
+        for coverage, label in claimed:
+            for node_id in coverage.get("check", []):
+                path, _, name = node_id.partition("::")
+                file = ROOT / path
+                assert file.is_file(), f"{rid}{label} names {node_id}, whose file does not exist"
+                tree = ast.parse(file.read_text(encoding="utf-8"))
+                assert any(isinstance(n, ast.FunctionDef) and n.name == name for n in ast.walk(tree)), \
+                    f"{rid}{label}: {node_id}"
+                seen += 1
+                fact_level += bool(label)
+    assert seen and fact_level
+
+
+# ------------------------------------------------------------------------------- every registry is a thing that exists
+
+def registry_problem(registry: str) -> str | None:
+    """Why a ``coverage.registry`` does not resolve, or None when it does. It names an object (``module:name``, the name
+    dotted into a class or function) that an import reaches, or a section of a YAML file in the repository
+    (``path#section``)."""
+    if "#" in registry:
+        rel, _, section = registry.partition("#")
+        file = ROOT / rel
+        if not file.is_file():
+            return f"{rel} is not a file of the repository"
+        import yaml
+
+        doc = yaml.safe_load(file.read_text(encoding="utf-8"))
+        return None if isinstance(doc, dict) and section in doc else f"{rel} has no section {section}"
+    module, _, path = registry.partition(":")
+    if not module or not path:
+        return f"{registry!r} is neither module:name nor path#section"
+    try:
+        found: Any = importlib.import_module(module)
+    except ImportError as exc:
+        return f"{module} cannot be imported ({exc})"
+    for part in path.split("."):
+        if not hasattr(found, part):
+            return f"{module} has no {path}"
+        found = getattr(found, part)
+    return None
+
+
+def test_every_registry_a_record_names_is_an_object_that_exists():
+    """A registry is the owner a record is read from, so a rename of it is a difference. The generator derives most of
+    these strings from the code and some it states (a module and a name): this resolves every one, of every
+    complete-by-construction record and of every list fact that says so, so a registry that nothing resolves cannot stay
+    green (review of #260, N3)."""
+    seen: set[str] = set()
+    for rid, r in index_of(committed())["records"].items():
+        coverages = [r["coverage"], *(r.get("fact_coverage") or {}).values()]
+        for cov in coverages:
+            if cov.get("label") == "complete-by-construction":
+                problem = registry_problem(cov["registry"])
+                assert problem is None, (rid, cov["registry"], problem)
+                seen.add(cov["registry"])
+    assert seen, "no complete-by-construction record names a registry"
+
+
+@pytest.mark.parametrize("registry", [
+    "aew.process_kind:ENTRY_POINTS", "aew.engine.transitions:RULES", "aew.engine.seams:GuardTable",
+    "aew.engine.recall:_Matcher.__init__"])
+def test_a_registry_that_names_an_object_resolves(registry):
+    assert registry_problem(registry) is None
+
+
+@pytest.mark.parametrize(("registry", "why"), [
+    ("aew.engine.seams:GuardTables", "has no GuardTables"),         # an object renamed
+    ("aew.engine.seams:GuardTable.nope", "has no GuardTable.nope"),  # a dotted name that stops short
+    ("aew.not_a_module:X", "cannot be imported"),                    # a module moved
+    ("aew.engine.seams", "neither module:name nor path#section"),    # no name at all
+    ("docs/not-a-file.yaml#commands", "is not a file of the repository"),
+])
+def test_a_registry_that_names_nothing_that_exists_is_a_problem(registry, why):
+    assert why in (registry_problem(registry) or "")
 
 
 # ------------------------------------------------------------------------------------------ the entry-points family

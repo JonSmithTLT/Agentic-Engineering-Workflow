@@ -265,3 +265,9 @@ def sites(text: str) -> Counter[str]:
         if label:
             found[label] += 1
     return found
+
+
+# The token helpers the read side's second detector (layout_reads_text) uses: one token reading of each side, the write
+# side's and the read side's, both independent of the AST reading.
+tokens, arguments, is_keyword, value, chain = _tokens, _arguments, _is_keyword, _value, _chain
+scopes, assignments, mode, flags = _scopes, _assignments, _mode, _flags

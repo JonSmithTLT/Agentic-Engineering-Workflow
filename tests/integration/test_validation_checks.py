@@ -585,6 +585,7 @@ def test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused(calc
     assert (Path(integ(calc, wid)["workspace"]) / "calc/core.py").read_text() != "tampered"
     ev = next(e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine")
     assert ev["method"]["containment"] == "os_readonly_roots"
+    assert ev["method"]["network"] == "isolated"  # F28 §3.8: a check's default, recorded with its evidence
     assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
     assert_control_invariants(calc)
 

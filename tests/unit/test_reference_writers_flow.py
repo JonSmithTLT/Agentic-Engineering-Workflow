@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -256,6 +257,41 @@ def test_a_sibling_with_a_fixed_name_is_a_file_of_its_own():
                                  "local/operator/endpoint.tmp", "local/operator/endpoint2.json"]
 
 
+def test_a_write_provably_outside_aew_is_a_record_with_its_root_and_a_site_in_both_places_is_two():
+    """Placement PR: the sites the page lists as outside `.aew` are records, so the trace need not take them as
+    unplaced."""
+    a = analysed("def f(aew_root):\n    d = tempfile.mkdtemp()\n    (Path(d) / 'x').write_text('x')\n"
+                 "    (aew_root / 'state' / 'y').write_text('y')\n\n"
+                 "def g():\n    open(os.devnull, 'w')\n")
+    by_key = {r.key: r for r in W.records_of(a)}
+    assert by_key["outside:aew.m:f:Path.write_text"].fact == {
+        "primitive": "Path.write_text", "mechanism": W.DIRECT, "root": "a temporary directory"}
+    assert by_key["outside:aew.m:g:open"].fact["root"] == "the null device"
+    assert [w.symbol for w in a.writers["state/y"]] == ["f"], "the same function is a path record too"
+    assert not any(k.startswith("unresolved") for k in by_key)
+
+
+def test_a_site_that_is_outside_in_two_places_names_both_roots():
+    """Found by ablation of the pull request: the root is every place the site can write, not the first."""
+    a = analysed("def f(flag):\n    p = Path(os.devnull) if flag else Path(tempfile.mkdtemp())\n"
+                 "    p.write_text('x')\n")
+    [record] = [r for r in W.records_of(a) if r.key.startswith("outside:")]
+    assert record.fact["root"] == "a temporary directory; the null device"  # type: ignore[index]
+
+
+def test_the_stores_apply_step_is_the_write_mechanism_and_not_a_writer():
+    """Placement PR: `ControlStore._apply` writes what a transaction staged (data from the redo record); the staging
+    sites are the writers. Another function of the store that writes a path of its own is a writer."""
+    store = ("def write_file(store, path, data):\n    pass\n\n"
+             "class ControlStore:\n    def _abs(self, rel):\n        return self.root / rel\n\n"
+             "    def _apply(self, staged):\n        for w in staged:\n"
+             "            write_file(self.store_dir, self._abs(w['path']), w['content'])\n\n"
+             "    def log(self, aew_root):\n        write_file(aew_root, aew_root / 'state' / 'log', 'x')\n")
+    a = analysed("pass\n", extra={"aew.engine.store": store})
+    assert sorted(a.writers) == ["state/log"] and a.unresolved == {}
+    assert [w.symbol for w in a.writers["state/log"]] == ["ControlStore.log"]
+
+
 def test_a_sibling_named_from_the_paths_own_name_suffix_or_stem_with_a_fixed_end_is_a_file_of_its_own():
     """Quick check of #254, P2: the f-string and `.suffix +` spellings of the forms the fixed-name rule already has."""
     a = analysed("def f(aew_root):\n"
@@ -314,6 +350,9 @@ def test_the_page_states_the_with_limit_and_names_its_live_case():
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
     assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
+    assert "The counts of writer functions reached below are lower bounds." in page, "review of #258, N5"
+    assert ("a write whose destination is not placed (the unresolved records) carries no role reach and is not "
+            "checked") in page, "the designer's stated limit: the unresolved records are not checked"
 
 
 def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
@@ -426,7 +465,133 @@ def chained(n):
 def test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed():
     assert sorted(analysed(chained(3)).writers) == ["local/d"]
     deep = analysed(chained(F.DEPTH + 2))
-    assert deep.writers == {} and any("resolution depth limit" in r for r in reasons(deep))
+    assert deep.writers == {} and any(f"resolution depth limit ({F.DEPTH} calls or parameters)" in r
+                                      for r in reasons(deep))
+
+
+# -------------------------------------------------------------------------------------------------------- the caps
+# The designer's rule (workspace e350605): past a cap the reading gives a marked item or fails the check, never silence,
+# with one planted case per kind of cap. The value, caller and depth caps mark the unresolved write; the typing depth
+# marks the writer that only it could reach; the parser reader's two caps mark the registration (the roles module's
+# tests). The keys of a mapping parameter read the first callers only until the cap was made to mark (review of the cap
+# sweep): the case below is that one.
+
+def keyed(n: int) -> str:
+    calls = "".join(f"def c{i}(aew_root):\n    put(aew_root, {{'local/a{i}': 'x'}})\n\n" for i in range(n))
+    put = ("def put(aew_root, files):\n    for rel, text in files.items():\n"
+           "        (aew_root / rel).write_text(text)\n\n")
+    return put + calls
+
+
+def test_the_keys_of_a_mapping_passed_from_more_call_sites_than_the_cap_are_unknown_and_not_the_first_few():
+    assert sorted(analysed(keyed(F.CALLERS)).writers) == sorted(f"local/a{i}" for i in range(F.CALLERS))  # at the cap
+    over = analysed(keyed(F.CALLERS + 1))
+    assert over.writers == {}, "a partial answer that looks complete is the silence the cap must not make"
+    assert [site for site in over.unresolved] == [("aew.m", "put", "Path.write_text")], "the site is marked"
+
+
+def callbacks(n: int) -> str:
+    """`run(aew_root, render)` writes a file for each key of what `render()` returns; `n` functions pass it `views`."""
+    calls = "".join(f"def c{i}(aew_root):\n    run(aew_root, views)\n\n" for i in range(n))
+    return ("def views():\n    return {'state/A.md': 'a'}\n\n"
+            "def run(aew_root, render):\n    for rel, text in render().items():\n"
+            "        (aew_root / rel).write_text(text)\n\n" + calls)
+
+
+def callback_chain(links: int) -> str:
+    """The callback is handed down `links` functions before `run` calls it."""
+    src = ("def views():\n    return {'state/A.md': 'a'}\n\n"
+           "def h0(aew_root, render):\n    for rel, text in render().items():\n"
+           "        (aew_root / rel).write_text(text)\n\n")
+    src += "".join(f"def h{k}(aew_root, render):\n    h{k - 1}(aew_root, render)\n\n" for k in range(1, links))
+    return src + f"def top(aew_root):\n    h{links - 1}(aew_root, views)\n"
+
+
+def test_the_callbacks_a_parameter_names_are_unknown_past_the_call_site_cap_and_past_the_depth_cap():
+    assert sorted(analysed(callbacks(F.CALLERS)).writers) == ["state/A.md"]
+    over = analysed(callbacks(F.CALLERS + 1))
+    assert over.writers == {} and list(over.unresolved) == [("aew.m", "run", "Path.write_text")], "the site is marked"
+    assert sorted(analysed(callback_chain(2)).writers) == ["state/A.md"]
+    deep = analysed(callback_chain(F.DEPTH + 2))
+    assert deep.writers == {} and list(deep.unresolved) == [("aew.m", "h0", "Path.write_text")], "the site is marked"
+    # a callback reached by a short route and by one past the depth cap: the short one alone would look complete
+    both = analysed(callback_chain(F.DEPTH + 2) + "def direct(aew_root):\n    h0(aew_root, views)\n")
+    assert both.writers == {} and list(both.unresolved) == [("aew.m", "h0", "Path.write_text")]
+
+
+def typed_chain(links: int) -> str:
+    """`L0().nxt().nxt()...put(aew_root)`: each link's class is known only by the previous link's result annotation."""
+    src = "".join(f"class L{k}:\n    def nxt(self) -> L{k + 1}:\n        return L{k + 1}()\n\n" for k in range(links))
+    src += f"class L{links}:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'end').write_text('x')\n\n"
+    return src + "def main(aew_root):\n    L0()" + ".nxt()" * links + ".put(aew_root)\n"
+
+
+def test_a_receiver_typed_through_more_receivers_than_the_cap_is_not_followed_and_its_writer_says_so():
+    short, long = F.TYPING_DEPTH - 1, F.TYPING_DEPTH
+    reached = analysed(typed_chain(short), roots={("aew.m", "main"): {"aew"}})
+    assert reached.reach[("aew.m", f"L{short}.put")] == {"aew"}
+    cut = analysed(typed_chain(long), roots={("aew.m", "main"): {"aew"}})
+    assert ("aew.m", f"L{long}.put") not in cut.reach
+    [record] = W.records_of(cut)
+    assert any(item["why"] == W.NO_CHAIN for item in record.fact_coverage["writers"]["unresolved"])  # type: ignore[index]
+
+
+def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():
+    values = ("def f(aew_root, n):\n"
+              + "".join(f"    if n == {i}:\n        p = aew_root / 'local' / 'v{i}'\n" for i in range(F.VALUES + 1))
+              + "    p.write_text('x')\n")
+    over = analysed(values)
+    assert over.writers == {}, "not the first VALUES of them: the set is unknown, and the site is an unresolved write"
+    named = f"more than {F.VALUES} possible values of one expression (the cap on values)"
+    assert any(named in r for r in reasons(over))
+
+
+def test_a_refusal_that_lists_problems_says_how_many_it_left_out():
+    assert C.shown(["a", "b"], 5) == ["a", "b"]
+    assert C.shown(["a", "b", "c"], 2) == ["a", "b", "... and 1 more"]
+    assert C.shown([f"p{i}" for i in range(25)]) == [*(f"p{i}" for i in range(20)), "... and 5 more"]
+
+
+def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past_it():
+    a = analysed("def f(aew_root):\n    (aew_root / 'local' / 'x').write_text('x')\n")
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert "## Caps of the reading" in page
+    for cap in (*F.caps(), *K.caps()):
+        assert f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it: {cap.past}." in page
+    measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps({"values": 7}))
+    assert "The largest in this tree: 7." in measured
+
+
+def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one_by_one():
+    """The sweep, made mechanical: a module-level integer named like a cap, and a slice cut at a number or a
+    constant, in `tools/reference_families` and `tools/reference.py`. Each is a cap of `caps()` (and so on the page,
+    with its source and what the reading does past it) or a slice named here with the reason it bounds nothing the
+    reading follows. A new one fails this test until it is decided."""
+    cap_names = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)")
+    constants: set[str] = set()
+    slices: set[str] = set()
+    for path in sorted([*(ROOT / "tools" / "reference_families").glob("*.py"), ROOT / "tools" / "reference.py"]):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and type(node.value.value) is int:
+                constants |= {f"{path.stem}.{t.id}" for t in node.targets
+                              if isinstance(t, ast.Name) and cap_names.search(t.id)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and node.slice.upper is not None:
+                upper = node.slice.upper
+                if (isinstance(upper, ast.Constant) and type(upper.value) is int) or (
+                        isinstance(upper, ast.Name) and upper.id.isupper()):
+                    slices.add(f"{path.stem}:{ast.unparse(node)}")
+    assert constants == {cap.name for cap in (*F.caps(), *K.caps())}
+    assert slices == set(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
+
+
+# A slice of the generator that bounds nothing it follows: what it shows (the text of an expression quoted in a reason,
+# the cut marked by `...`) or a position (the first parameter, `self` or `cls`). The refusals that list problems cut
+# through `common.shown`, which says how many it left out; its `limit` is a parameter, not a constant, so the sweep
+# does not see those cuts, and a raw `[:20]` written instead of it is seen.
+EXCUSED_SLICES = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`",
+                  "control_keys:target.params[:1]": "a position: the first parameter, `self` or `cls`"}
 
 
 def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():
@@ -533,6 +698,187 @@ def test_the_write_mechanism_is_not_a_writer_and_its_callers_are():
                  "    atomic_write(aew_root / 'local' / 'j', 'x')\n", extra=extra)
     assert sorted(a.writers) == ["local/j", "state/k"] and a.unresolved == {}
     assert {w.module for ws in a.writers.values() for w in ws} == {"aew.m"}
+
+
+# --------------------------------------------------------- values through destructuring, returns and the command line
+
+def test_a_tuple_assignment_binds_each_target_to_its_own_element():
+    """Placement PR: `a, b = x, y` is `a = x; b = y`, not both names to both values."""
+    a = analysed("def f(aew_root):\n    first, second = 'one', 'two'\n"
+                 "    (aew_root / 'state' / first).write_text('x')\n"
+                 "    (aew_root / 'local' / second).write_text('x')\n")
+    assert sorted(a.writers) == ["local/two", "state/one"] and a.unresolved == {}
+
+
+def test_a_tuple_assignment_to_self_attributes_is_what_the_class_assigns():
+    """`self.state_path, self.live_path = Path(state_path), Path(live_path) if ... else None` (the usage meter)."""
+    a = analysed("class M:\n    def __init__(self, state_path, live_path=None):\n"
+                 "        self.state_path, self.live_path = Path(state_path), live_path\n"
+                 "    def save(self):\n        atomic_write(self.state_path, 'x')\n\n"
+                 "def f(aew_root):\n    M(aew_root / 'local' / 'meter.json').save()\n")
+    assert sorted(a.writers) == ["local/meter.json"] and a.unresolved == {}
+
+
+def test_a_name_bound_by_a_starred_or_unreadable_destructuring_is_unknown_not_a_guess():
+    a = analysed("def f(aew_root, rows):\n    first, *rest = rows\n    (aew_root / 'state' / first).write_text('x')\n"
+                 "    one, two = mystery()\n    (aew_root / 'local' / two).write_text('x')\n")
+    assert sorted(a.writers) == ["local/{}", "state/{}"], "the unknown element is a computed segment, not a value"
+
+
+def test_the_element_of_a_tuple_a_call_returns_is_read_in_the_function_that_returns_it():
+    a = analysed("def mk(wid):\n    return wid, f'work/{wid}/record.md'\n\n"
+                 "def f(aew_root):\n    wid, rel = mk('W1')\n    (aew_root / rel).write_text('x')\n")
+    assert sorted(a.writers) == ["work/W1/record.md"] and a.unresolved == {}
+
+
+def test_a_function_that_returns_something_else_than_a_tuple_leaves_its_element_unknown():
+    a = analysed("def mk():\n    return 'state/x'\n\ndef f(aew_root):\n    first, second = mk()\n"
+                 "    (aew_root / second).write_text('x')\n")
+    assert a.writers == {} and any("first directory or file name is computed" in r for r in reasons(a))
+
+
+def test_a_function_with_one_return_that_is_a_tuple_and_one_that_is_not_leaves_the_site_marked_not_half_placed():
+    """Found by ablation of the pull request: with the unreadable return dropped, the tuple's element was placed and
+    nothing said the other return was not read."""
+    a = analysed("def pair(flag, p, other):\n    if flag:\n        return p, 'x'\n    return other\n\n"
+                 "def f(aew_root, flag, other):\n    first, second = pair(flag, aew_root / 'local' / 'a', other)\n"
+                 "    (first / 'f').write_text('x')\n")
+    assert sorted(a.writers) == ["local/a/f"]
+    assert any("returns something other than a tuple literal" in r for r in reasons(a)), "the other return is marked"
+
+
+def test_a_key_of_a_dict_a_call_returns_is_its_value_whether_the_dict_is_named_or_returned_in_a_tuple():
+    a = analysed("def draft(wid):\n    unit: dict = {'record': f'work/{wid}/record.md', 'other': 'state/o'}\n"
+                 "    return wid, unit, 'text'\n\n"
+                 "def solo():\n    return {'path': 'local/p'}\n\n"
+                 "def f(aew_root):\n    wid, unit, text = draft('W1')\n"
+                 "    (aew_root / unit['record']).write_text(text)\n"
+                 "    (aew_root / solo()['path']).write_text('x')\n")
+    assert sorted(a.writers) == ["local/p", "work/W1/record.md"] and a.unresolved == {}
+
+
+def test_a_computed_key_of_a_dict_constant_is_each_of_its_values():
+    a = analysed("NAMES = {'a': 'ticket.md', 'b': 'story.md'}\n\n"
+                 "def f(aew_root, kind):\n    (aew_root / 'work' / NAMES[kind]).write_text('x')\n")
+    assert sorted(a.writers) == ["work/story.md", "work/ticket.md"]
+
+
+def test_a_dict_from_a_parameter_is_not_read():
+    a = analysed("def f(aew_root, unit):\n    (aew_root / unit['record']).write_text('x')\n")
+    assert a.writers == {} and any("first directory or file name is computed" in r for r in reasons(a))
+
+
+def test_a_loop_over_literal_rows_takes_the_element_of_each_row_for_each_target():
+    a = analysed("def f(aew_root):\n    for name, text in (('a', '1'), ('b', '2')):\n"
+                 "        (aew_root / 'state' / name).write_text(text)\n")
+    assert sorted(a.writers) == ["state/a", "state/b"]
+
+
+def test_a_loop_over_rows_takes_the_element_at_the_targets_own_position_and_not_the_first():
+    """Found by ablation of the pull request: the second target of each row, not only the first."""
+    a = analysed("def f(aew_root):\n    for kind, name in (('x', 'a'), ('y', 'b')):\n"
+                 "        (aew_root / 'state' / name).write_text(kind)\n")
+    assert sorted(a.writers) == ["state/a", "state/b"]
+
+
+DROP ="def drop(paths):\n    for path in paths:\n        path.unlink()\n\n"
+
+
+def test_a_loop_over_a_list_passed_as_an_argument_takes_the_elements_the_caller_built():
+    """Placement PR: the signal files `finalize` collects and hands to `_unlink`: a conditional, a slice, `sorted` and a
+    glob on the way, and a local list built with `append`."""
+    a = analysed(DROP + "def f(aew_root):\n    spool = aew_root / 'local' / 'signals'\n    folded = []\n"
+                 "    for entry in sorted(spool.glob('*.json'))[:5] if spool.is_dir() else []:\n"
+                 "        folded.append(entry)\n    drop(folded)\n")
+    assert sorted(a.writers) == ["local/signals/{}"] and a.unresolved == {}
+
+
+def test_a_conditional_iterable_is_the_elements_of_either_arm():
+    a = analysed("def f(aew_root, cond):\n    for name in ('a', 'b') if cond else ('c',):\n"
+                 "        (aew_root / 'state' / name).write_text('x')\n")
+    assert sorted(a.writers) == ["state/a", "state/b", "state/c"]
+
+
+@pytest.mark.parametrize("calls", [
+    "",                                                     # nothing calls it
+    "def f():\n    drop(load())\n",                         # a list from a call this reading cannot read
+    "def f(aew_root):\n    drop(aew_root / 'local')\n",     # not a list at all
+])
+def test_a_list_argument_this_reading_cannot_read_leaves_the_loop_variable_unknown(calls):
+    a = analysed(DROP + calls)
+    assert a.writers == {} and a.unresolved
+
+
+STORE = ("class Store:\n    def __init__(self, root, renderer=None):\n        self.root = root\n"
+         "        self.renderer = renderer\n"
+         "    def commit(self):\n        for rel, text in self.renderer().items():\n"
+         "            (self.root / rel).write_text(text)\n\n"
+         "def views():\n    out = {'state/A.md': 'a'}\n    out['state/B.md'] = 'b'\n    return out\n\n")
+
+
+def test_the_keys_of_the_mapping_a_callback_returns_are_the_paths_it_names():
+    """Placement PR: the store's renderer is a callback a constructor stores; a path written for each key of what it
+    returns is each key (a dict literal and the keys added to it)."""
+    a = analysed(STORE + "def f(aew_root):\n    Store(aew_root, renderer=views).commit()\n")
+    assert sorted(a.writers) == ["state/A.md", "state/B.md"] and a.unresolved == {}
+
+
+def test_a_callback_that_is_a_bound_method_is_followed_too():
+    a = analysed(STORE + "class Kernel:\n    def render(self):\n        return views()\n\n"
+                 "    def start(self, aew_root):\n        Store(aew_root, renderer=self.render).commit()\n")
+    assert sorted(a.writers) == ["state/A.md", "state/B.md"] and a.unresolved == {}
+
+
+@pytest.mark.parametrize("start", [
+    "def f(aew_root):\n    Store(aew_root).commit()\n",                                   # no callback is ever passed
+    "def f(aew_root, cb):\n    Store(aew_root, renderer=cb).commit()\n",                  # a callback nothing names
+    "def f(aew_root):\n    Store(aew_root, renderer=lambda: {'state/L.md': 'l'}).commit()\n",  # a lambda
+])
+def test_a_callback_this_reading_cannot_name_leaves_the_keys_unknown(start):
+    a = analysed(STORE + start)
+    assert a.writers == {} and a.unresolved
+
+
+# A value on the command line: the supervisor reads `--run-dir`, and the start of it spells the value.
+SUPERVISOR = ("import argparse\nfrom pathlib import Path\n\n"
+              "def write_it(run_dir):\n    (run_dir / 'heartbeat').write_text('x')\n\n"
+              "def main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('--run-dir')\n"
+              "    args = parser.parse_args()\n    write_it(Path(args.run_dir))\n")
+START = ("import sys\n\ndef launch(aew_root):\n    directory = aew_root / 'local' / 'runs' / 'r'\n"
+         "    spawn([sys.executable, '-m', 'aew.sup', '--run-dir', str(directory)])\n")
+
+
+def test_a_value_on_the_command_line_is_what_the_start_of_that_process_spells():
+    a = analysed(START, extra={"aew.sup": SUPERVISOR})
+    assert sorted(a.writers) == ["local/runs/r/heartbeat"] and a.unresolved == {}
+    again = "\ndef again(aew_root):\n    spawn(['-m', 'aew.sup', '--run-dir', str(aew_root / 'local' / 's')])\n"
+    two = analysed(START + again, extra={"aew.sup": SUPERVISOR})
+    assert sorted(two.writers) == ["local/runs/r/heartbeat", "local/s/heartbeat"]
+
+
+STARTS = {
+    "another process": "spawn(['-m', 'aew.other', '--run-dir', str(aew_root / 'local' / 'r')])",
+    "another flag": "spawn(['-m', 'aew.sup', '--state-dir', str(aew_root / 'local' / 'r')])",
+    "no flag": "spawn(['-m', 'aew.sup'])",
+    "no start": "pass",
+}
+
+
+@pytest.mark.parametrize("start", [f"def launch(aew_root):\n    {body}\n" for body in STARTS.values()],
+                         ids=list(STARTS))
+def test_a_command_line_value_no_start_of_the_process_passes_is_named_by_its_starter_and_unresolved(start):
+    a = analysed(start, extra={"aew.sup": SUPERVISOR})
+    assert a.writers == {} and any("which no AEW start of it passes" in r for r in reasons(a))
+
+
+def test_an_attribute_of_something_that_is_not_parsed_arguments_is_not_a_command_line_value():
+    """`args` is a name like any other unless it is bound to what `parse_args` returns."""
+    for src in ("def f(args):\n    (Path(args.name) / 'x').write_text('x')\n",
+                "def f():\n    args = make()\n    (Path(args.name) / 'x').write_text('x')\n"):
+        a = analysed(src)
+        assert a.writers == {} and all("no AEW start" not in r for r in reasons(a)), src
+    b = analysed("def f():\n    args, rest = make().parse_known_args()\n    (Path(args.name) / 'x').write_text('x')\n")
+    assert any("which no AEW start of it passes" in r for r in reasons(b)), "parse_known_args returns parsed arguments"
 
 
 # ------------------------------------------------------------------------------------------------ the declared set
@@ -653,10 +999,11 @@ def test_a_store_transaction_write_under_local_that_a_non_writer_role_reaches_is
     assert ("aew.m", "txn_local") in store[NAMED] and ("aew.m", "txn_local") not in local[NAMED]
 
 
-def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
-    """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
-    item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever
-    the writer writes; a writer the named role reaches alone, and one the common path gives every role, do not."""
+def test_a_writer_a_cli_command_reaches_says_the_worker_role_is_given_nothing_by_the_call_graph():
+    """The call graph attributes nothing to the environment's role, so a writer any CLI command's handler reaches (the
+    named roles' too: every command runs as the worker run when the environment says so) carries one item that says its
+    absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever the writer writes;
+    one the common path gives every role, and one no CLI command reaches, do not (addendum 5)."""
     a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
                      "def cmd_local(a):\n    local_only(None)\n\n"
                      "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
@@ -666,7 +1013,7 @@ def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_
     listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
     assert gate in listed["state/s"], "a store write the general handlers reach"
     assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
-    assert gate not in listed["local/l"], "a writer only the named role reaches"
+    assert gate in listed["local/l"], "a writer only a non-aew command's handler reaches (addendum 5)"
     assert gate not in listed["state/c"], "the common path gives the worker role this one"
     assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}
@@ -698,6 +1045,36 @@ def test_a_handler_of_a_command_that_cannot_be_read_is_run_by_every_role_and_its
     cut["writers:local/l"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
     problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
     assert any("for a command this reading could not read" in p for p in problems), problems
+
+
+def test_a_root_that_is_not_the_clis_does_not_reach_the_handler_of_a_command_that_cannot_be_read():
+    """Review of #258, N2: the handlers of an unread command are run by every role the CLI declares, and by no other
+    entry point (a second, non-CLI root must not be given them)."""
+    prog = program({"aew.m": HEAD + UNREAD + "\ndef sup_main():\n    pass\n"})
+    roles = K.Roles(GENERAL, frozenset({NAMED}), WORKER)
+    cli = ({CLI_ROOT}, roles, K.cut_of(prog, role_of))
+    roots = {CLI_ROOT: {GENERAL, NAMED, WORKER}, ("aew.m", "sup_main"): {"aew.harness.supervisor"}}
+    a = W.analyse(prog, TOP, roots, KINDS, cli)
+    assert a.reach[("aew.m", "cmd_mcp")] == {GENERAL, NAMED, WORKER}
+    assert all("aew.harness.supervisor" not in keys for keys in a.reach.values() if keys != {"aew.harness.supervisor"})
+
+
+BOTH = ("def both(aew_root):\n    (aew_root / 'state' / 'b').write_text('x')\n"
+        "    (aew_root / 'local' / 'b').write_text('x')\n\n"
+        "def cmd_both(a):\n    both(None)\n\n"
+        "def more(sub):\n    lsub = sub.add_parser('lead').add_subparsers()\n"
+        "    lsub.add_parser('mcp').set_defaults(handler=cmd_both)\n\n"
+        "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+
+
+def test_a_function_that_writes_both_the_store_and_local_is_a_store_writer_only():
+    """Review of #258, N3: it counts once, as a store writer; it is not also listed as permitted."""
+    a = cli_analysis(CLI + "\n" + BOTH)
+    store, local = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "both") in store[NAMED] and ("aew.m", "both") not in local[NAMED]
+    lines = W.page(a, W.records_of(a), tuple(sorted(TOP))).splitlines()
+    permitted = next(line for line in lines if line.startswith("**Permitted:**"))
+    assert "`aew.m:both`" not in permitted
 
 
 BYNAME = ("class Eng:\n    def publish(self, aew_root):\n        (aew_root / 'state' / 'p').write_text('x')\n\n"
@@ -736,7 +1113,8 @@ def test_the_page_says_how_many_registrations_and_which_it_could_not_read():
 
 def real_records() -> dict[str, dict[str, Any]]:
     a = analysed("REL = 'state/x.yaml'\n\ndef f(aew_root):\n    atomic_write(aew_root / REL, 'x')\n\n"
-                 "def g(a):\n    open(a.p, 'w')\n", roots={("aew.m", "f"): {"aew"}})
+                 "def g(a):\n    open(a.p, 'w')\n\n"
+                 "def h():\n    (Path(tempfile.mkdtemp()) / 'x').write_text('x')\n", roots={("aew.m", "f"): {"aew"}})
     return {r.id: r.as_json() for r in W.records_of(a)}
 
 
@@ -757,6 +1135,7 @@ def mutate(records: dict[str, Any], rid: str, path: list[Any], value: Any) -> di
 
 
 PATH_ID, UNRESOLVED_ID = "writers:state/x.yaml", "writers:unresolved:aew.m:g:open"
+OUTSIDE_ID = "writers:outside:aew.m:h:Path.write_text"
 FAULTS = [
     ("a mechanism that is neither", PATH_ID, ["fact", "writers", 0, "mechanism"], "other", "has mechanism 'other'"),
     ("a writer without its entry kinds", PATH_ID, ["fact", "writers", 0, "entry_kinds"], Ellipsis, "is not ["),
@@ -780,6 +1159,17 @@ FAULTS = [
     ("an unresolved write whose key is not its anchor", UNRESOLVED_ID, ["anchor", "symbol"], "h", "the key is not"),
     ("an unresolved write that carries another reason", UNRESOLVED_ID, ["coverage", "unresolved", 0, "why"], "x",
      "does not carry its own reason"),
+    ("an outside write whose key is not its anchor", OUTSIDE_ID, ["anchor", "symbol"], "g", "the key is not"),
+    ("an outside write with an empty root", OUTSIDE_ID, ["fact", "root"], "", "all non-empty"),
+    ("an outside write with a mechanism that is neither", OUTSIDE_ID, ["fact", "mechanism"], "other",
+     "is not one of the two"),
+    ("an outside write that claims something unresolved", OUTSIDE_ID, ["coverage", "unresolved"],
+     [{"module": "aew", "symbol": None, "why": "x"}], "has nothing unresolved"),
+    # the designer: a root names a place, never a path of the machine the reference was made on
+    ("an outside write whose root is a drive path", OUTSIDE_ID, ["fact", "root"], "C:\\work\\tmp", "never a path"),
+    ("an outside write whose root is a home path", OUTSIDE_ID, ["fact", "root"], "~/work", "never a path"),
+    ("an outside write one of whose roots is a path", OUTSIDE_ID, ["fact", "root"],
+     "a temporary directory; /var/tmp", "never a path"),
 ]
 
 

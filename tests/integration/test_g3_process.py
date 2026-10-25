@@ -390,6 +390,32 @@ def test_a_body_of_max_body_bytes_is_read_and_one_byte_more_is_structural_and_ne
     assert (status, out["result"]) == (200, "CONSUMED")
 
 
+def test_a_declared_body_over_max_body_is_read_no_further_than_max_body_before_the_refusal(
+        in_process: tuple[G.Rig, Path]) -> None:
+    """The drain is bounded (quick check of #269, Q2 C2): a client declares four times MAX_BODY and sends one byte past
+    MAX_BODY, then waits. The service reads MAX_BODY bytes and refuses at once; reading the declared length would wait
+    for bytes that never come, until the request timeout."""
+    from aew_g3.server import MAX_BODY, REQUEST_TIMEOUT_S
+
+    _, run = in_process
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(REQUEST_TIMEOUT_S / 3)  # well inside the timeout, so only a bounded read answers in time
+    try:
+        s.connect(str(run / REQUEST_SOCK))
+        s.sendall(f"POST /g3/v1/consume HTTP/1.0\r\nContent-Length: {4 * MAX_BODY}\r\n\r\n".encode())
+        s.sendall(b" " * (MAX_BODY + 1))
+        out = b""
+        try:
+            while chunk := s.recv(65536):
+                out += chunk
+        except ConnectionResetError:  # the byte past MAX_BODY was never read
+            assert out, "the reply came first"
+    finally:
+        s.close()
+    head, _, body = out.partition(b"\r\n\r\n")
+    assert int(head.split()[1]) == 400 and json.loads(body)["code"] == "STRUCTURAL"
+
+
 def test_a_pin_that_is_not_utf8_and_a_body_nested_past_the_parser_are_structural_and_the_service_still_answers(
         in_process: tuple[G.Rig, Path]) -> None:
     """Both once killed the handler thread, so the client got no reply (review of #269, m2). A lone surrogate is a

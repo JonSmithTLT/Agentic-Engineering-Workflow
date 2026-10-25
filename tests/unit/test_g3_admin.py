@@ -147,6 +147,25 @@ def test_serve_refuses_to_start_with_no_machine_id_to_derive_its_issuer_from(
     assert not (tmp_path / "run").exists(), "it never listened"
 
 
+def test_a_reinstall_says_the_pin_is_kept_only_when_the_pin_record_exists(tmp_path: Path) -> None:
+    """install.sh's closing branch, run as the file has it, against a scratch record (quick check of #269, Q2 C1): a
+    record present says the PIN is kept; none sends root to set-pin, by the wrapper's full path."""
+    install = (ROOT / "install.sh").read_bytes().decode()
+    branch = install[install.index("# A reinstall never touches the service's state"):]
+    wrapper = next(ln.split("=", 1)[1] for ln in install.splitlines() if ln.startswith("WRAPPER="))
+    record = tmp_path / "pin.json"
+
+    def closing() -> str:
+        run = subprocess.run(["sh", "-c", branch], env={"PATH": os.environ["PATH"], "PIN_RECORD": str(record),
+                             "WRAPPER": wrapper}, capture_output=True, text=True, timeout=30, check=True)
+        return run.stdout.strip()
+
+    record.write_bytes(b'{"synthetic": true}')
+    assert closing() == "install.sh: installed. The PIN set before is kept."
+    record.unlink()
+    assert closing() == f"install.sh: installed. Set the PIN: sudo {COMMAND} set-pin"
+
+
 # ------------------------------------------------------------------------------------------------ G3-10 the peer
 def test_the_peers_uid_is_read_unsigned_so_an_operator_uid_of_2_31_or_more_is_still_the_operators() -> None:
     """struct ucred is (pid_t, uid_t, gid_t): only the pid is signed (review of #269, m6)."""

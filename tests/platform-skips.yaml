@@ -502,7 +502,6 @@ skipped:
       the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
       /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
       tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
-  linux:
     tests/integration/test_g3_process.py::test_a_refusal_waits_for_the_body_the_client_declared_so_the_client_always_receives_it: >-
       the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
       /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
@@ -546,6 +545,14 @@ skipped:
     tests/unit/test_g3_admin.py::test_a_socket_systemd_passes_that_is_not_a_filesystem_unix_socket_stops_the_service: >-
       aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
       Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/integration/test_g3_process.py::test_a_declared_body_over_max_body_is_read_no_further_than_max_body_before_the_refusal: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/unit/test_g3_admin.py::test_a_reinstall_says_the_pin_is_kept_only_when_the_pin_record_exists: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+  linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.
     tests/unit/test_store_read_committed.py::test_an_absent_file_is_absent_only_after_the_retries_on_windows: >-

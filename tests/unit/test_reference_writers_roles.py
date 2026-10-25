@@ -198,6 +198,31 @@ def test_a_chain_of_parsers_is_followed_to_the_guard_of_the_paths_and_no_further
     assert only(top(chain + f"    n{links}.add_parser('a').set_defaults(handler=h)\n"))[2] is unread
 
 
+def nested_choice(levels: int, leaf: str) -> str:
+    """`(leaf if c else (leaf if c else ... leaf))`, `levels` deep: each level costs the guard one. The leaf is no
+    name: a name absorbs an empty answer back into `{None}`, so only a recursion with no name in it shows what the guard
+    answers."""
+    text = leaf
+    for _ in range(levels):
+        text = f"({leaf} if c else {text})"
+    return text
+
+
+@pytest.mark.parametrize(("levels", "unread"), [(K.DEPTH - 3, False), (K.DEPTH - 2, True)])
+def test_a_choice_nested_past_the_guard_of_the_paths_is_marked_unread_and_never_a_dropped_answer(levels, unread):
+    """The guard answers `{None}`, not an empty set: a dropped answer would read as a complete registration (review of
+    #267, X-G5 and X-G6)."""
+    chain = (f"    q = {nested_choice(levels, 'argparse.ArgumentParser()')}\n"
+             "    q.add_parser('a').set_defaults(handler=h)\n")
+    assert only(top(chain)) == ((("a",),), (H,), unread)
+
+
+@pytest.mark.parametrize(("levels", "unread"), [(K.DEPTH - 2, False), (K.DEPTH - 1, True)])
+def test_a_choice_nested_past_the_guard_of_the_strings_is_marked_unread_and_never_a_dropped_answer(levels, unread):
+    chain = f"    sub.add_parser({nested_choice(levels, repr('a'))}).set_defaults(handler=h)\n"
+    assert only(top(chain)) == ((("a",),), (H,), unread)
+
+
 @pytest.mark.parametrize(("links", "unread"), [(WORD_READ, False), (WORD_READ + 1, True)])
 def test_a_chain_of_words_is_followed_to_the_guard_of_the_strings_and_no_further(links, unread):
     chain = "    w0 = 'a'\n" + "".join(f"    w{i} = w{i - 1}\n" for i in range(1, links + 1))

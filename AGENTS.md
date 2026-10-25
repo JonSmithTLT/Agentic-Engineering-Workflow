@@ -28,10 +28,11 @@ The operator owns this file and the review guide; a change to either is merged b
 Blockers and majors, and a security finding an agent can reach whatever its label (review guide §3, §10), are fixed
 in the pull request they were raised on, before merge. Minors and nits do not block a merge, and they are never
 dropped (operator, 2026-10-24):
-- while the author is changing the pull request anyway, it fixes them in the same pass;
+- while the author is changing the pull request anyway (other than to fix a trivial point, to record a follow-on, or
+  to merge `main` as a re-render), it fixes them in the same pass;
 - a trivial one, such as a docstring or a line of wording, is fixed before merge when that causes no large delay;
-- every other one is a tracked follow-on, recorded before merge: the next pull request of a series fixes it, or a
-  register note names it and the pull request meant to fix it (review guide §7).
+- every other one is a tracked follow-on, recorded before merge: the series' next pull request that has not merged
+  fixes it, or a register note names it and what is meant to fix it (review guide §7).
 
 A follow-up pull request is otherwise only for genuinely new scope. An author who disagrees with a finding answers it
 on the pull request, and the reviewer either withdraws it or the operator decides.
@@ -52,9 +53,10 @@ The author may merge its own pull request when all of these hold on the **curren
 
 - the latest review verdict is `Review: CLEAR` at that commit (a CLEAR may list minors and nits as follow-ons: §2,
   and review guide §7), or the latest verdict is at an earlier commit and the commits since it change only what that
-  review's points name, as trivial fixes or follow-on notes after a CLEAR or as the fixes that need no further check
-  after a quick check (review guide §7, §8), apart from a re-render (review guide §7), and the author's comment at
-  that commit lists how each was fixed or where it is tracked;
+  review's points name, as trivial fixes or follow-on notes or rows after a CLEAR or as the fixes that need no further
+  check after a quick check (review guide §7, §8), apart from a re-render (review guide §7);
+- where the latest verdict lists minors or nits, or commits follow it, the author's comment at that commit names, for
+  each point, the commit that fixed it or where it is tracked (review guide §7);
 - every required check is green (the `assurance` job);
 - no review conversation is unresolved, no point disputed under §2 is still open, and the pull request is not a
   draft.

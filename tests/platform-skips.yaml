@@ -457,6 +457,104 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_g3_process.py::test_the_real_service_runs_p1_over_its_two_sockets_and_every_response_carries_the_wire_header: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_publishes_its_keys_and_issuer_ref_and_keeps_its_state_to_itself: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_socket_activated_service_serves_on_the_sockets_systemd_passes: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_peer_whose_uid_is_not_the_operators_or_cannot_be_read_is_refused_on_every_route: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_or_missing[approval_expiry]: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_or_missing[consent_validity]: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_or_missing[pin_min_length]: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_or_missing[lockout_after]: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_or_missing[lockout_missing]: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_after_sigkill_the_ledger_keeps_records_consumed_members_proofs_and_the_lockout_and_loses_pending: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_one_member_is_consumed_once_when_many_clients_race_over_the_socket: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_planted_pin_never_appears_in_the_logs_the_state_the_runtime_directory_or_the_output: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_refusal_waits_for_the_body_the_client_declared_so_the_client_always_receives_it: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_client_that_declares_a_body_and_never_sends_it_holds_a_thread_only_until_the_request_timeout: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_body_of_max_body_bytes_is_read_and_one_byte_more_is_structural_and_never_parsed: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/integration/test_g3_process.py::test_a_pin_that_is_not_utf8_and_a_body_nested_past_the_parser_are_structural_and_the_service_still_answers: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/unit/test_g3_admin.py::test_set_pin_and_rotate_key_run_as_root_hand_everything_they_write_to_the_state_directorys_owner: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_as_any_other_caller_the_files_are_already_the_callers_and_nothing_is_chowned: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_the_administration_commands_refuse_a_caller_that_is_not_root_or_a_missing_state_directory: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_set_pin_refuses_two_different_pins_and_changes_nothing: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_serve_refuses_to_start_with_no_machine_id_to_derive_its_issuer_from[missing]: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_serve_refuses_to_start_with_no_machine_id_to_derive_its_issuer_from[malformed]: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_the_peers_uid_is_read_unsigned_so_an_operator_uid_of_2_31_or_more_is_still_the_operators: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_the_service_starts_only_on_both_sockets_owned_by_one_account_that_is_not_root: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/unit/test_g3_admin.py::test_a_socket_systemd_passes_that_is_not_a_filesystem_unix_socket_stops_the_service: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/integration/test_g3_process.py::test_a_declared_body_over_max_body_is_read_no_further_than_max_body_before_the_refusal: >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
+      /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
+      tests/unit/test_g3_rules.py and tests/unit/test_g3_facts.py.
+    tests/unit/test_g3_admin.py::test_a_reinstall_says_the_pin_is_kept_only_when_the_pin_record_exists: >-
+      aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
+      Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

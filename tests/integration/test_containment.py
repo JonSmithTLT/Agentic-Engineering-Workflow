@@ -962,6 +962,26 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     assert layout is None and label["self_test"]["rows"][row]["ok"] is False
 
 
+def test_a_kernel_that_allows_no_user_namespace_is_refused_naming_the_setting_and_the_fix(lab, monkeypatch, tmp_path):
+    """ST-27 fact 5 (STG-05 CS-4), mocked: bubblewrap that is not setuid cannot start where `user.max_user_namespaces`
+    is 0, and says only "Creating new namespace failed". The refusal names the setting and the fix; where the limit is
+    not 0, bubblewrap's own words stand alone. (The real case is run on the Rocky VM once the operator sets it.)"""
+    limit = tmp_path / "max_user_namespaces"
+    monkeypatch.setattr(probe, "USERNS_LIMIT", str(limit))
+    failing = [sys.executable, "-c", "import sys; sys.stderr.write('bwrap: Creating new namespace failed: No space "
+               "left on device\\n'); sys.exit(1)"]  # bubblewrap 0.4.0's words for ENOSPC from clone(CLONE_NEWUSER)
+    monkeypatch.setattr(probe, "bwrap_argv", lambda layout, cmd, **kw: failing)
+    for value, named in (("0\n", True), ("15000\n", False)):
+        limit.write_text(value)
+        with pytest.raises(C.ContainmentUnavailable) as refused:
+            establish(lab, monkeypatch)
+        message = refused.value.message
+        assert "Creating new namespace failed" in message
+        assert ("user.max_user_namespaces = 0" in message and "sysctl -w user.max_user_namespaces=" in message
+                and "containment.mode: allow_weaker" in message) is named, message
+        assert ("max_user_namespaces" in message) is named
+
+
 # A launcher with a controlling terminal: it leads a new session (start_new_session) and opens a pseudo-terminal the
 # test made, so that terminal becomes its own. It then runs the launch self-test in the run's layout, rebuilt from JSON
 # as eval's scoring child rebuilds one, and prints row 4. ``drop`` takes one word out of the sandbox's argv.

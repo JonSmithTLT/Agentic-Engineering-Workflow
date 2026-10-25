@@ -80,6 +80,9 @@ TIMEOUT_S = 30.0
 VERSION_TIMEOUT_S = 10.0
 BOUND_S = TIMEOUT_S + VERSION_TIMEOUT_S  # the self-test and the mechanism check, at a run's start
 CANARY = "aew-self-test"  # the value of each DISPLAY_ENV variable the probe is handed
+# The kernel's limit on user namespaces (user_namespaces(7)). bubblewrap that is not setuid (0.4.0 on Rocky 8) needs
+# one, and with the limit at 0 it says only "Creating new namespace failed" (STG-05 CS-4, ST-27 fact 5).
+USERNS_LIMIT = "/proc/sys/user/max_user_namespaces"
 # Row 2's words for a reachable socket of the launching user's whose holder cannot be identified (D-CS2-6), which
 # `aew doctor` shows with the row's reason
 UNIDENTIFIED_REMEDY = (" (its holder, a process of the launching user's, cannot be identified, so it counts as a "
@@ -667,7 +670,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
         if done.returncode != 0:
             err = (done.stderr or "").strip().splitlines()
             last = err[-1] if err else "no output"
-            result["reason"] = f"the sandbox could not start (exit {done.returncode}): {last}"
+            result["reason"] = f"the sandbox could not start (exit {done.returncode}): {last}{_start_hint()}"
             return result
         try:
             seen = json.loads(done.stdout.strip().splitlines()[-1])
@@ -936,6 +939,21 @@ def _markers(layout: Layout, name: str) -> list[Path]:
     for m in out:
         m.write_bytes(b"")
     return out
+
+
+def _start_hint() -> str:
+    """What to add to a sandbox that could not start when the kernel allows no user namespace: the setting by name,
+    and the fix, which is an administrator's (a sysctl), or the operator's own choice to run labelled weaker."""
+    try:
+        with open(USERNS_LIMIT, encoding="ascii") as f:
+            if f.read().strip() != "0":
+                return ""
+    except (OSError, ValueError):
+        return ""
+    return ("; this kernel allows no user namespace (user.max_user_namespaces = 0), and bubblewrap needs one. Ask "
+            "the machine's administrator to raise it (sysctl -w user.max_user_namespaces=<n>, and the same line in a "
+            "file under /etc/sysctl.d to keep it), or set containment.mode: allow_weaker to run labelled "
+            "workdir_separation_only")
 
 
 def mechanism(layout: Layout) -> str:

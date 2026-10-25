@@ -260,6 +260,18 @@ skipped:
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_servers_password_is_new_per_launch_and_never_written_outside_its_run_directory: >-
+      the agent reads the password from /proc/<parent>/environ (ST-38, STG-05 CS-4), which Windows has no equivalent
+      of. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_no_context_reaches_another_runs_server_socket_or_loopback_port: >-
+      a run's own network namespace and server socket, and the contained Lead, are Linux's (ST-38, STG-05 CS-4);
+      Windows has no containment and records workdir_separation_only. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_no_route_closing_control_is_a_harness_permission_rule: >-
+      the routes' closing controls (the sandbox, its network and the contained Lead) are Linux's (ST-38, STG-05 CS-4);
+      Windows has no containment and records workdir_separation_only. Covered on Linux.
+    tests/integration/test_containment.py::test_a_kernel_that_allows_no_user_namespace_is_refused_naming_the_setting_and_the_fix: >-
+      user namespaces and bubblewrap are Linux's (ST-27 fact 5, STG-05 CS-4); Windows has no containment. Covered on
+      Linux.
     tests/unit/test_operator_endpoint.py::test_the_peer_check_refuses_another_principal_before_any_challenge: >-
       the operator endpoint's peer check reads POSIX peer credentials (SO_PEERCRED); on Windows the named pipe's access
       list stands in and every record is labelled guarantee dev (M4-E plan v3 §2.1). Covered on Linux.

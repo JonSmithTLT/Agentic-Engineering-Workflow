@@ -482,7 +482,8 @@ def test_the_caps_on_callers_and_on_values_make_a_name_unknown_rather_than_slow_
                + "".join(f"def c{i}(aew_root):\n    put(aew_root / 'local' / 'f{i}')\n\n"
                          for i in range(F.CALLERS + 1)))
     a = analysed(callers)
-    assert a.writers == {} and any(f"more than {F.CALLERS} call sites" in r for r in reasons(a))
+    assert a.writers == {} and any(f"more than {F.CALLERS} call sites" in r and cap_text("CALLERS") in r
+                                   for r in reasons(a))
     values = ("def f(aew_root, n):\n"
               + "".join(f"    if n == {i}:\n        p = aew_root / 'local' / 'v{i}'\n" for i in range(F.VALUES + 1))
               + "    p.write_text('x')\n")
@@ -628,6 +629,13 @@ def test_a_site_both_capped_and_computed_states_the_cap_beside_the_computed_segm
     assert a.writers == {}
     [reason] = reasons(a)
     assert cap_text("VALUES") in reason and COMPUTED in reason
+
+
+def test_a_sibling_named_by_a_value_a_cap_stopped_states_the_cap_beside_the_sibling_it_cannot_place():
+    a = analysed(many("    p = aew_root / 'local' / 'a'\n    p.with_name(name).write_text('x')\n"))
+    assert a.writers == {}
+    [reason] = reasons(a)
+    assert cap_text("VALUES") in reason and "neither fixed nor made by the process" in reason
 
 
 def alternatives(n: int) -> str:

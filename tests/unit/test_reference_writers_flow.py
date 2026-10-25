@@ -580,6 +580,13 @@ def attribute_chain(hops: int) -> str:
     return src + f"class M:\n    def __init__(self):\n        self.a1 = {first}\n" + run
 
 
+def attribute_chain_from_a_local(hops: int) -> str:
+    """`m = M(); m.a1.a2...aN.take(root)`: the same chain, rooted at a local name instead of `self`."""
+    src = attribute_chain(hops).split("    def run(self, root):")[0]
+    path = "m.a1" + "".join(f".a{k}" for k in range(2, hops + 1))
+    return src + f"\ndef main(root):\n    m = M()\n    {path}.take(root)\n"
+
+
 def returned_chain(links: int) -> str:
     """`fN().put(aew_root)` where `fN` returns `fN-1()` ... returns `K()`: no annotation names the class."""
     src = "class K:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'k').write_text('x')\n\n"
@@ -626,15 +633,51 @@ def test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_rea
     assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} hops" in said
 
 
+def test_a_local_that_roots_a_chain_of_attributes_is_one_more_hop_and_past_the_cap_fails_the_reading(typing_cap):
+    """Review of #267, Q-2: the local name is a hop of its own (the `_level` of the Name branch of `receiver_class`)."""
+    assert ("aew.m", "T.take") in edges(attribute_chain_from_a_local(typing_cap - 1))
+    said = fails_naming_the_typing_cap(attribute_chain_from_a_local(typing_cap))
+    assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} hops" in said
+
+
 def test_a_class_a_function_returns_through_calls_to_the_cap_is_followed_and_one_more_fails_the_reading(typing_cap):
     assert ("aew.m", "K.put") in edges(returned_chain(typing_cap))
     assert cap_text("TYPING_DEPTH") in fails_naming_the_typing_cap(returned_chain(typing_cap + 1))
 
 
-def test_a_receiver_whose_typing_needs_itself_is_unknown_and_is_not_the_caps(typing_cap):
-    cycle = ("class L:\n    def nxt(self):\n        return L()\n\n"
-             "def main(aew_root):\n    a = a.nxt()\n    a.nxt()\n")
-    assert ("aew.m", "L.nxt") not in edges(cycle), "a cycle is not typed, and the reading does not fail for it"
+STEP = "class L:\n    def step(self):\n        return L()\n\n"
+
+
+def held(init: str) -> str:
+    """`M.run` calls `self.nxt.step()`; ``init`` is what `__init__` assigns."""
+    return (STEP + "class M:\n    def __init__(self):\n" + "".join(f"        {line}\n" for line in init.split(";"))
+            + "    def run(self):\n        self.nxt.step()\n")
+
+
+def locals_of(body: str) -> str:
+    return STEP + "def main(aew_root):\n" + "".join(f"    {line}\n" for line in body.split(";"))
+
+
+# Each cycle with the same code typed (the control: the call is an edge), so that a cycle that is not an edge is the
+# cycle's doing. A cycle is unknown, and it is not the cap's: three checks stop it (`_enter_typing` for a call receiver,
+# `receiver_class` for an attribute and for a local name), and every one is planted (review of #267, Q-2).
+TYPING_CYCLES = {
+    "an attribute assigned itself": (held("self.nxt = self.nxt"), held("self.nxt = L()")),
+    "two attributes assigned each other": (held("self.nxt = self.b;self.b = self.nxt"),
+                                           held("self.nxt = self.b;self.b = L()")),
+    "an attribute assigned the result of a call on itself": (held("self.nxt = L();self.nxt = self.nxt.step()"),
+                                                             held("self.nxt = L()")),
+    "a local used before it is assigned": (locals_of("a = a.step();a.step()"), locals_of("a = L();a.step()")),
+    "a local assigned a call on itself": (locals_of("cur = L();cur = cur.step();cur.step()"),
+                                          locals_of("cur = L();cur.step()")),
+}
+
+
+@pytest.mark.parametrize("name", sorted(TYPING_CYCLES))
+def test_a_receiver_whose_typing_needs_itself_is_unknown_and_is_not_the_caps(typing_cap, name):
+    cycle, typed = TYPING_CYCLES[name]
+    assert ("aew.m", "L.step") in edges(typed), "the same code typed is a call edge"
+    assert ("aew.m", "L.step") not in edges(cycle), "a cycle is not typed, and the reading does not fail for it"
 
 
 def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():

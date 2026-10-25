@@ -143,7 +143,7 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 | [`f4-ticket-revisions-plan.md`](implementation/f4-ticket-revisions-plan.md) | The F4 plan: Ticket revisions (E19-B v0.4), its cross-cutting designs (the field-group registry, admissibility, the lifecycle, confirmation, hierarchy changes), its decisions and readings, and slices S1 to S12 |
 | [`agent-effectiveness-implementation-delta-2026-10-09.md`](implementation/agent-effectiveness-implementation-delta-2026-10-09.md) | The planning pass of the agent-effectiveness adoption (2026-10-09): every item classified, the ordered delta D1 to D16 (owner row, dependency, new work, completion, probe, before M4-H or not), the implementation-local choices; no true design gap. Nothing in it is built |
 | [`testing-and-ci-strategy.md`](implementation/testing-and-ci-strategy.md) | Test lanes, the CI merge gate, static checks, the containment lane |
-| [`review-guide.md`](implementation/review-guide.md) | **Governing** (2026-10-24, A0; the operator owns it, `AGENTS.md` rule 5): how an independent review is done. The finding format, the labels, M1, CI at the exact head, nits after a CLEAR, one full round and a quick check, test-only proportion, and what counts as a security finding. Every review brief loads it |
+| [`review-guide.md`](implementation/review-guide.md) | **Governing** (2026-10-24, A0; the operator owns it, `AGENTS.md` rule 5): how an independent review is done. The finding format, the labels, M1, CI at the exact head, how minors and nits are fixed or followed on, one full round and a quick check, test-only proportion, and what counts as a security finding. Every review brief loads it |
 | [`harness-conformance.md`](implementation/harness-conformance.md) | The harness conformance suite: what every agent harness must pass |
 | [`vertical-uat.md`](implementation/vertical-uat.md) | The vertical UAT (in shadow): a fresh project to a published fix, its burden ledger and the thresholds the test pins |
 | [`surface-map.md`](implementation/surface-map.md) | Anti-drift guard G1: every `aew` command and typed Lead tool registered with one home, its users, journeys, `mutates`, the Lead's door and disposition, and its refusal codes; the standing rule for new surfaces; which checks are enforced and which only report until A1, A2 and A4 |
@@ -189,7 +189,7 @@ dashboard and more) has no guide yet: the M4 operator guide is register E71, wri
 
 **ADR-0017 D8's evidence** (the F9-A MS0 live-delivery probe of OpenCode 2.0.18, 2026-10-10; summaries only, sanitized): [what is there](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/README.md), [the results](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md), and the per-run tables for [Windows](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-windows.md) and [Rocky 8](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-rocky8.md).
 
-Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, before internal alpha) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21).
+Two amendments of 2026-10-05, whose implementation the register tracks: network containment (ADR-0009; F28, before internal alpha) is built for workers on Linux (STG-05 CS-3b, ADR-0009's amendment of 2026-10-24; its live lane passed that day), and the Lead's harness on it is CS-4's, so F28's row stays open; the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; built with M6b, F21) is designed, not built.
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.3, which adds the maps and raw-history search routes to 0.1.2 and changes nothing 0.1.2 returns; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
 
@@ -223,9 +223,11 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | File | What it is |
 |---|---|
 | [`README.md`](reference/README.md) | What the directory is, the files, how to read a record, and what to do when a change moves it |
+| [`control-keys.md`](reference/control-keys.md) | The keys of the control state, by the code's own name: the control schema's top-level keys and the keys of a unit in `work`, each anchored where the code defines it |
 | [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
 | [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |
 | [`index.json`](reference/index.json) | The machine index: every record by id, with its anchor, basis and coverage label, and the measured counts |
+| [`layout.md`](reference/layout.md) | The `.aew` directory tree: each entry's writers and readers, whether git keeps it, whether it is the store, and whether a contained process sees it; the reads the reading could not place |
 | [`state-machines.md`](reference/state-machines.md) | The Ticket state machine (`aew.engine.transitions`): every state, edge, guard and reason rule, which edges code that does not ask the table can take; the configuration and live-usage state sets |
 | [`writers.md`](reference/writers.md) | Every path under `.aew` that AEW code writes, the module and function that writes it, its mechanism and the entry points that reach it; the writes the reading could not place |
 

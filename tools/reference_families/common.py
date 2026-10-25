@@ -18,7 +18,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,11 @@ CHECK_COMMAND = "python tools/reference.py check"
 
 class ReferenceError(Exception):
     """The reference cannot be generated (an owner is unreadable or the output breaks a rule): never a silent result."""
+
+
+def shown(items: Sequence[str], limit: int = 20) -> list[str]:
+    """The first ``limit`` lines of a refusal's list, and how many were left out: a message cut short says so."""
+    return [*items[:limit], *([f"... and {len(items) - limit} more"] if len(items) > limit else [])]
 
 
 PACKAGE = "aew"
@@ -208,7 +213,7 @@ def build_index(records: Iterable[Record]) -> dict[str, Any]:
     ids = [r.id for r in recs]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
-        raise ReferenceError(f"record ids are not unique: {dup[:5]}")
+        raise ReferenceError(f"record ids are not unique: {shown(dup, 5)}")
     as_records = {r.id: r.as_json() for r in recs}
     gaps = gaps_of(as_records)
     totals = {**counts_of(((r.family, r.coverage["label"]) for r in recs), len(gaps)),

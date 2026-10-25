@@ -31,6 +31,8 @@ def definition_digest(cfg: dict[str, Any], *, guardrails: dict[str, Any] | None 
     else:
         basis = {"command": cfg.get("command"), "cwd": cfg.get("cwd", "."),
                  "timeout_s": cfg.get("timeout_s", DEFAULT_TIMEOUT_S)}
+        if cfg.get("network"):  # F28 §3.8; absent, the digest is what it was before checks could ask for a network
+            basis["network"] = cfg["network"]
     return hashlib.sha256(json.dumps(basis, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
@@ -67,14 +69,17 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
         trees: Any = None) -> dict[str, Any]:
     """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
     after-snapshot describes everything the check did (independent audit I2). With ``layout`` (a contained run's
-    sandbox) the tree starts the check inside it (M4-B). ``trees`` (a run's supervisor) holds the check's tree while it
-    runs, so the run ending ends the check."""
+    sandbox) the tree starts the check inside it (M4-B), with no network unless the check's ``network: shared`` and the
+    run's own network allow the host's (F28 §3.8; ``containment.for_check``); the result records which. ``trees`` (a
+    run's supervisor) holds the check's tree while it runs, so the run ending ends the check."""
+    from aew.harness.containment.layout import for_check
     from aew.harness.procs import ProcessTree
 
     command = [part.replace("{python}", sys.executable) for part in cfg["command"]]
     cwd = (workspace / cfg.get("cwd", ".")).resolve()
     timeout = cfg.get("timeout_s", DEFAULT_TIMEOUT_S)
     started = time.monotonic()
+    layout = for_check(layout, cfg.get("network")) if layout is not None else None
     tree = ProcessTree(layout=layout)
     if trees is not None:
         trees.add(tree)  # a run's CheckTrees: killed on arrival if the run has already ended
@@ -92,7 +97,8 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
                 exit_code = proc.returncode
-                log = f"$ {' '.join(command)}\n(cwd {cwd})\n\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+                log = f"$ {' '.join(command)}\n(cwd {cwd}){_network_line(layout)}\n\n--- stdout ---\n{stdout}\n" \
+                      f"--- stderr ---\n{stderr}"
             except subprocess.TimeoutExpired:
                 outcome = "timeout"
                 tree.kill()
@@ -107,4 +113,13 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
     # ``outcome`` tells a check that could not start (``spawn_failed``, with its errno) or ran out of time (``timeout``)
     # from one that ran: integration validation (M4-D5) treats the first as infrastructure, the second as inconclusive.
     return {"exit_code": exit_code, "duration_s": round(time.monotonic() - started, 3), "log": log,
-            "command": command, "outcome": outcome, "spawn_errno": spawn_errno}
+            "command": command, "outcome": outcome, "spawn_errno": spawn_errno,
+            "network": layout.network if layout is not None else None}
+
+
+def _network_line(layout: Any) -> str:
+    """The check's network, in its log, so a check that failed for want of one says so (F28 §3.8)."""
+    if layout is None or not layout.private_network:
+        return ""
+    return ("\n(network: none; a check that needs the network declares `network: shared`, which it gets when the run's "
+            "network mode is shared)")

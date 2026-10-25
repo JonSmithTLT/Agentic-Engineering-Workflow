@@ -1,10 +1,11 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 32,
-      "lower-bound": 454
+      "complete-by-construction": 33,
+      "lower-bound": 467
     },
     "by_family": {
+      "concurrency": 14,
       "control-keys": 92,
       "entry-points": 6,
       "layout": 53,
@@ -12,6 +13,10 @@
       "writers": 161
     },
     "by_family_and_coverage": {
+      "concurrency": {
+        "complete-by-construction": 1,
+        "lower-bound": 13
+      },
       "control-keys": {
         "complete-by-construction": 26,
         "lower-bound": 66
@@ -29,11 +34,41 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:7fe997a931fb1755f40d48e2eb7fbe7621dd049c6f99a33c2ced659ef7802a03",
-    "records": 486,
-    "unresolved": 72
+    "digest": "sha256:d42aedc6d1f2b0fa9c8da5556ea5081d102b0907c5dc114be637815357a25f5a",
+    "records": 500,
+    "unresolved": 77
   },
   "gaps": [
+    {
+      "family": "concurrency",
+      "module": "aew.dashboard.service",
+      "symbol": "Service._lock",
+      "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+    },
+    {
+      "family": "concurrency",
+      "module": "aew.engine.store",
+      "symbol": "ControlStore.control_lock",
+      "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+    },
+    {
+      "family": "concurrency",
+      "module": "aew.harness.operator_endpoint",
+      "symbol": "OperatorEndpoint._claim",
+      "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+    },
+    {
+      "family": "concurrency",
+      "module": "aew.maps.store",
+      "symbol": "select",
+      "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+    },
+    {
+      "family": "concurrency",
+      "module": "aew.process_kind",
+      "symbol": null,
+      "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+    },
     {
       "family": "control-keys",
       "module": "aew.engine.ticket_fields",
@@ -468,6 +503,1102 @@
     }
   ],
   "records": {
+    "concurrency:lock-free:aew.engine.configuration:read_committed": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "read_committed"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.configuration",
+        "observes": "The committed state and the manifest's bytes, without the control lock (``read_committed``) and without ``Kernel.manifest`` (which may take the lock to recover).",
+        "says": [
+          "The committed state and the manifest's bytes, without the control lock (``read_committed``) and without ``Kernel.manifest`` (which may take the lock to recover)."
+        ],
+        "says_in": "symbol",
+        "source": "process_kind",
+        "symbol": "read_committed",
+        "takes_no_lock": true,
+        "why": "named by aew.process_kind: `configuration.read_committed`"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.log_compact:_unlink": {
+      "anchor": {
+        "module": "aew.engine.log_compact",
+        "symbol": "_unlink"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.log_compact",
+        "observes": "Remove ``path`` if present; False when the OS still refuses after a short wait (Windows: a reader has it open).",
+        "says": [
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
+          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+        ],
+        "says_in": "module",
+        "source": "declared",
+        "symbol": "_unlink",
+        "takes_no_lock": true,
+        "why": "the compactor's prune of the unsealed files"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.log_compact:build_segment": {
+      "anchor": {
+        "module": "aew.engine.log_compact",
+        "symbol": "build_segment"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.log_compact",
+        "observes": "The canonical text of segment ``index`` from the unsealed files, verified before it is written.",
+        "says": [
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
+          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+        ],
+        "says_in": "module",
+        "source": "declared",
+        "symbol": "build_segment",
+        "takes_no_lock": true,
+        "why": "the compactor's build of a segment from the unsealed files"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.log_compact:verify_against_unsealed": {
+      "anchor": {
+        "module": "aew.engine.log_compact",
+        "symbol": "verify_against_unsealed"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.log_compact",
+        "observes": "A segment read back from disk, checked against everything around it before any unsealed file is removed: its link to the transition before it, and the equivalence of every unsealed copy still present.",
+        "says": [
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
+          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+        ],
+        "says_in": "module",
+        "source": "declared",
+        "symbol": "verify_against_unsealed",
+        "takes_no_lock": true,
+        "why": "the compactor's check of a segment against the unsealed files"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.outbox:LogView": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": "LogView"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.outbox",
+        "observes": "One lockless reader's view of the transition log: each revision resolves from its unsealed record, else from a refreshed view of its sealed segment; when both exist they must be equivalent; when neither resolves after a bounded retry the history is reported incomplete, never skipped.",
+        "says": [
+          "One lockless reader's view of the transition log: each revision resolves from its unsealed record, else from a refreshed view of its sealed segment; when both exist they must be equivalent; when neither resolves after a bounded retry the history is reported incomplete, never skipped."
+        ],
+        "says_in": "symbol",
+        "source": "process_kind",
+        "symbol": "LogView",
+        "takes_no_lock": true,
+        "why": "named by aew.process_kind: `outbox.LogView`"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.outbox:bump_wake": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": "bump_wake"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew",
+          "aew.harness.supervisor"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.outbox",
+        "observes": "Advisory: change ``local/wake``.",
+        "says": [],
+        "says_in": null,
+        "source": "declared",
+        "symbol": "bump_wake",
+        "takes_no_lock": true,
+        "why": "the wake mark's writer"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.outbox:read_transitions": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": "read_transitions"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.outbox",
+        "observes": "Logical transitions ``since + 1 .. through``, in order, each with its complete events and its chain checked.",
+        "says": [
+          "No control lock is taken: published log records and sealed segments are immutable, and sealing only removes an unsealed copy once its segment is durable and verified."
+        ],
+        "says_in": "symbol",
+        "source": "process_kind",
+        "symbol": "read_transitions",
+        "takes_no_lock": true,
+        "why": "named by aew.process_kind: `outbox.read_transitions`"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.outbox:wait_for": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": "wait_for"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.outbox",
+        "observes": "Block until ``check()`` returns something truthy or ``timeout`` passes: re-checks when the wake file changes, and every ``coarse`` seconds regardless.",
+        "says": [],
+        "says_in": null,
+        "source": "declared",
+        "symbol": "wait_for",
+        "takes_no_lock": true,
+        "why": "a waiter on the wake mark"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.outbox:wake_mark": {
+      "anchor": {
+        "module": "aew.engine.outbox",
+        "symbol": "wake_mark"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.outbox",
+        "observes": "What a waiter compares: the wake file's (mtime, file id, size).",
+        "says": [],
+        "says_in": null,
+        "source": "declared",
+        "symbol": "wake_mark",
+        "takes_no_lock": true,
+        "why": "the wake mark's reader"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock-free:aew.engine.store:ControlStore.read_committed": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": "ControlStore.read_committed"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.process_kind",
+            "symbol": null,
+            "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+          }
+        ]
+      },
+      "fact": {
+        "entry_kinds": [
+          "non_writer",
+          "store_writer"
+        ],
+        "entry_points": [
+          "aew",
+          "aew (worker run)",
+          "aew dashboard serve",
+          "aew lead mcp",
+          "aew.harness.supervisor"
+        ],
+        "lock_takers": [],
+        "module": "aew.engine.store",
+        "observes": "The committed state as the control file holds it, **without the control lock and without recovery**: a reader's view.",
+        "says": [
+          "The committed state as the control file holds it, **without the control lock and without recovery**: a reader's view.",
+          "What a lock-free reader may observe is a committed revision whose staged record files are not applied yet (the window recovery closes under the lock); such a reader treats a record that is missing or does not match its pin as a stale view to report, never as something to repair."
+        ],
+        "says_in": "symbol",
+        "source": "process_kind",
+        "symbol": "ControlStore.read_committed",
+        "takes_no_lock": true,
+        "why": "named by aew.process_kind: `ControlStore.read_committed`"
+      },
+      "fact_coverage": {
+        "entry_kinds": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "entry_points": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "lock_takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        },
+        "says": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.process_kind",
+              "symbol": null,
+              "why": "a function that works without the control lock and is neither named by `aew.process_kind` nor declared by this family is not listed; a call the call graph does not resolve is not followed"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock:local/control.lock": {
+      "anchor": {
+        "module": "aew.engine.store",
+        "symbol": "ControlStore.control_lock"
+      },
+      "basis": "static",
+      "coverage": {
+        "check": [
+          "tests/integration/test_non_writer_reads.py::test_nothing_but_the_store_names_the_control_locks_path",
+          "tests/integration/test_reference_concurrency.py::test_the_control_locks_only_opener_is_the_stores_and_its_takers_are_the_functions_that_call_it"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.store:ControlStore.control_lock"
+      },
+      "fact": {
+        "control": true,
+        "lock": "local/control.lock",
+        "openers": [
+          {
+            "module": "aew.engine.store",
+            "symbol": "ControlStore.control_lock"
+          }
+        ],
+        "refused_in_non_writer": true,
+        "takers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.engine.log_compact",
+            "operation": "history compact",
+            "symbol": "compact.control_lock"
+          },
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.engine.store",
+            "operation": "ControlStore.create",
+            "symbol": "ControlStore.create"
+          },
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.engine.store",
+            "operation": "ControlStore.read",
+            "symbol": "ControlStore.read"
+          },
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.engine.store",
+            "operation": "ControlStore.session",
+            "symbol": "ControlStore.session"
+          }
+        ],
+        "timeout": "self.lock_timeout"
+      },
+      "fact_coverage": {
+        "openers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.store",
+              "symbol": "ControlStore.control_lock",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        },
+        "takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.store",
+              "symbol": "ControlStore.control_lock",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock:local/dashboard/endpoint.lock": {
+      "anchor": {
+        "module": "aew.dashboard.service",
+        "symbol": "Service._lock"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.dashboard.service",
+            "symbol": "Service._lock",
+            "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+          }
+        ]
+      },
+      "fact": {
+        "control": false,
+        "lock": "local/dashboard/endpoint.lock",
+        "openers": [
+          {
+            "module": "aew.dashboard.service",
+            "symbol": "Service._lock"
+          }
+        ],
+        "refused_in_non_writer": false,
+        "takers": [
+          {
+            "entry_kinds": [
+              "non_writer"
+            ],
+            "entry_points": [
+              "aew dashboard serve"
+            ],
+            "module": "aew.dashboard.service",
+            "operation": null,
+            "symbol": "Service._remove_endpoint"
+          },
+          {
+            "entry_kinds": [
+              "non_writer"
+            ],
+            "entry_points": [
+              "aew dashboard serve"
+            ],
+            "module": "aew.dashboard.service",
+            "operation": null,
+            "symbol": "Service.start"
+          }
+        ],
+        "timeout": "LOCK_TIMEOUT_S"
+      },
+      "fact_coverage": {
+        "openers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.dashboard.service",
+              "symbol": "Service._lock",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        },
+        "takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.dashboard.service",
+              "symbol": "Service._lock",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock:local/maps/registry.lock": {
+      "anchor": {
+        "module": "aew.maps.store",
+        "symbol": "select"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.maps.store",
+            "symbol": "select",
+            "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+          }
+        ]
+      },
+      "fact": {
+        "control": false,
+        "lock": "local/maps/registry.lock",
+        "openers": [
+          {
+            "module": "aew.maps.store",
+            "symbol": "select"
+          }
+        ],
+        "refused_in_non_writer": false,
+        "takers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.maps.store",
+            "operation": null,
+            "symbol": "select"
+          }
+        ],
+        "timeout": "the class default"
+      },
+      "fact_coverage": {
+        "openers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.maps.store",
+              "symbol": "select",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        },
+        "takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.maps.store",
+              "symbol": "select",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock:local/operator/endpoint.lock": {
+      "anchor": {
+        "module": "aew.harness.operator_endpoint",
+        "symbol": "OperatorEndpoint._claim"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.operator_endpoint",
+            "symbol": "OperatorEndpoint._claim",
+            "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+          }
+        ]
+      },
+      "fact": {
+        "control": false,
+        "lock": "local/operator/endpoint.lock",
+        "openers": [
+          {
+            "module": "aew.harness.operator_endpoint",
+            "symbol": "OperatorEndpoint._claim"
+          }
+        ],
+        "refused_in_non_writer": false,
+        "takers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.harness.operator_endpoint",
+            "operation": null,
+            "symbol": "OperatorEndpoint._claim"
+          }
+        ],
+        "timeout": "CLAIM_TIMEOUT_S"
+      },
+      "fact_coverage": {
+        "openers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.operator_endpoint",
+              "symbol": "OperatorEndpoint._claim",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        },
+        "takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.operator_endpoint",
+              "symbol": "OperatorEndpoint._claim",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
     "control-keys:anomalies": {
       "anchor": {
         "module": "aew.engine.base",

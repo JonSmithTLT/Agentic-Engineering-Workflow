@@ -223,6 +223,7 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | File | What it is |
 |---|---|
 | [`README.md`](reference/README.md) | What the directory is, the files, how to read a record, and what to do when a change moves it |
+| [`concurrency.md`](reference/concurrency.md) | The locks the code takes (`FileLock`): each lock file's opener, its takers with the operation they pass and the entry points that reach them, and whether a non-writer is refused; the functions that work without the control lock and what their docstrings say they may observe |
 | [`control-keys.md`](reference/control-keys.md) | The keys of the control state, by the code's own name: the control schema's top-level keys and the keys of a unit in `work`, each anchored where the code defines it |
 | [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
 | [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |

@@ -337,6 +337,36 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
       tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_tui_exits]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_tui_crashes]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_sandbox_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_broker_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_reaper_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_terminal_hangs_up]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_relay_passes_bytes_unfiltered: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_window_size_follows_the_operators_terminal: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_relay_refuses_a_session_without_a_terminal_and_starts_nothing: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_containment.py::test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_its_own_input: >-
+      Linux bubblewrap containment of the Lead with its terminal relay (STG-05 CS-4); the Windows Lead runs labelled
+      not contained. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.

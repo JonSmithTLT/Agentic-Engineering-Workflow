@@ -7,11 +7,15 @@ lives outside ``/tmp`` (the sandbox has a private ``/tmp``), so each attempt mee
 
 from __future__ import annotations
 
+import json
 import os
+import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -27,6 +31,7 @@ from aew.harness.containment import layout as L
 pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
                                 reason="Linux bubblewrap containment (Windows: the Lead runs labelled not contained)")
 
+SRC = str(Path(procs.__file__).resolve().parents[2])
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
            "GIT_COMMITTER_EMAIL": "t@example.invalid"}
 
@@ -196,6 +201,97 @@ def test_row_4_for_the_lead_fails_closed_without_the_shims_controlling_terminal_
     with pytest.raises(ContainmentUnavailable, match="row 4 ") as refused:
         lead_establish(lead_lab, monkeypatch, network=L.SHARED)
     assert "is not the relay's pseudo-terminal" in refused.value.details["self_test"]["rows"]["4"]["reason"]
+
+
+# ------------------------------------------------------------------------------------------------ outcome 4
+
+# The operator's side: a broker whose controlling terminal is the test's pseudo-terminal runs the session through the
+# terminal relay (tests/integration/test_terminal_relay.py has the relay's endings and bytes).
+BROKER = textwrap.dedent("""
+    import fcntl, json, os, sys, termios
+    os.setsid()
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    from aew.harness import procs
+    out = procs.run_session_tree(json.loads(sys.argv[1]), env=dict(os.environ), cwd=sys.argv[2], relay=True)
+    with open(sys.argv[3], "w") as f:
+        json.dump(out, f)
+""")
+
+# The TUI's stand-in, in the sandbox under the shim's ctty step: every terminal open in the sandbox's processes (its
+# own PID namespace: bubblewrap's, the shim's, its own), its controlling terminal, and a TIOCSTI on standard input and
+# on /dev/tty, read back from its own input.
+INSIDE = textwrap.dedent("""
+    import fcntl, json, os, select, stat, sys, termios, tty
+    def dev(path):
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        major = os.major(st.st_rdev)
+        terminal = stat.S_ISCHR(st.st_mode) and (major in (4, 5) or 136 <= major <= 143)   # terminals, /dev/tty, ptmx
+        return [major, os.minor(st.st_rdev)] if terminal else None
+    with open("/proc/self/stat", "rb") as f:
+        nr = int(f.read().rsplit(b")", 1)[1].split()[4])
+    terminals, unreadable = {}, []
+    for pid in sorted(p for p in os.listdir("/proc") if p.isdigit()):
+        try:
+            fds = os.listdir(f"/proc/{pid}/fd")
+        except OSError:
+            unreadable.append(pid)
+            continue
+        for fd in fds:
+            if (d := dev(f"/proc/{pid}/fd/{fd}")) is not None:
+                terminals[f"{pid}/{fd}"] = d
+    tty.setraw(0)
+    fcntl.ioctl(0, termios.TIOCSTI, b"Z")
+    t = os.open("/dev/tty", os.O_RDWR)
+    fcntl.ioctl(t, termios.TIOCSTI, b"Y")
+    os.close(t)
+    got = b""
+    while len(got) < 2 and select.select([0], [], [], 5)[0]:
+        got += os.read(0, 2 - len(got))
+    with open(sys.argv[1], "w") as f:
+        json.dump({"inner": dev("/proc/self/fd/0"), "tty_nr": nr, "terminals": terminals, "unreadable": unreadable,
+                   "got": got.decode()}, f)
+""")
+
+
+def test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_its_own_input(lead_lab):
+    """CS-4 outcome 4 (CB-05): in the Lead's sandbox the TUI's controlling terminal is the relay's pseudo-terminal,
+    no process in the sandbox has the operator's terminal (or any other) open, and a TIOCSTI, on standard input or on
+    /dev/tty, lands in the TUI's own input: there is no route to type into the operator's shell."""
+    import pty
+
+    lab = lead_lab
+    inside, result = lab.repo / "inside.json", lab.root / "result.json"
+    harness = C.bwrap_argv(lab.layout(), netns.shim_argv({"in": [], "out": [], "ctty": True},
+                                                         [sys.executable, "-I", "-c", INSIDE, str(inside)]),
+                           cwd=str(lab.repo))
+    master, slave = pty.openpty()
+    operator = os.fstat(slave).st_rdev
+    broker = subprocess.Popen([sys.executable, "-c", BROKER, json.dumps(harness), str(lab.repo), str(result)],
+                              stdin=slave, stdout=slave, stderr=slave, env={**os.environ, "PYTHONPATH": SRC})
+    try:
+        shown = bytearray()
+        deadline = time.monotonic() + 60
+        while broker.poll() is None and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.05)[0]:
+                shown += os.read(master, 65536)
+        assert broker.poll() == 0, bytes(shown)[-500:]
+    finally:
+        if broker.poll() is None:
+            broker.kill()
+        os.close(master)
+        os.close(slave)
+    assert json.loads(result.read_text()) == [0, "clean"]
+    seen = json.loads(inside.read_text())
+    print(f"inside the Lead's sandbox: {seen}")  # its processes' terminals, on CI and on the Rocky VM (`-s`)
+    inner = seen["inner"]
+    assert inner is not None and inner != [os.major(operator), os.minor(operator)]
+    assert seen["tty_nr"] == probe.tty_nr(*inner)
+    assert seen["terminals"] and set(map(tuple, seen["terminals"].values())) == {tuple(inner)}, seen
+    assert seen["unreadable"] == [], seen
+    assert seen["got"] == "ZY"
 
 
 def test_a_lead_that_falls_back_to_allow_weaker_is_labelled_so(lead_lab, monkeypatch):

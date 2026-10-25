@@ -24,7 +24,7 @@ The reference gains five families, on one page ([`docs/reference/interfaces.md`]
   `Tool` made by `_replace` or `_make`, an alias of `Tool`, a mutation of `TOOLS` from another module or a second
   catalog (one probe each). The finders are functions of the generator with planted right, wrong and missing controls.
 - **`schemas`** (30): one record per entry of `aew.schemas.SCHEMAS`, held equal to the directory's `*.schema.json` files
-  in both directions, each flattened by path with its types and unconditional requirements (1,591 paths). A `$ref` is
+  in both directions, each flattened by path with its types and unconditional requirements (1,598 paths). A `$ref` is
   resolved through the registry the validator itself uses, so a reference to another schema by `$id` is followed. A
   required key that `properties` does not declare is typed as a validator would type it, by the matching
   `patternProperties` schema or else the `additionalProperties` schema; 25 paths in four schemas (`codebase-map`,

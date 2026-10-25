@@ -70,8 +70,9 @@ def seed(p, mutate) -> None:
 
 
 def test_a_return_from_escalation_never_skips_the_findings_a_rework_round_needs(tmp_path):
-    """The claim's case: a failed review with no recorded findings, escalated, cannot return to RUNNING; its direct
-    edge would need the findings. The named path, taken: back to review, where a review records them, then rework."""
+    """A rework round needs the review's findings: a unit escalated from a failed review returns to RUNNING only as
+    the Lead's direct edge from that phase admits it, which requires them. The named path, taken: back to review, where
+    a review records them, then rework."""
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     implement(assign(p, wid))

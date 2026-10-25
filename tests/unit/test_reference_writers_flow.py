@@ -1200,7 +1200,7 @@ EXCUSED_SLICES: dict[str, tuple[int, str]] = {
     "control_keys:target.params[:1]": (1, "a position: the first parameter, `self` or `cls`"),
     "common:module.split('.')[:-1]": (1, "a position: the package of a module, its name without the last word"),
     "concurrency:kept[:-1]": (1, "a position: a sentence without its closing colon"),
-    "modules:name.split('.')[:2]": (1, "a position: the second-level package of a module, the first two words of its name"),
+    "modules:name.split('.')[:2]": (1, "a position: the second-level package of a module, the first two words"),
     "writers:primitive[:-1]": (1, "a position: a primitive label without its closing `?` mark"),
 }
 # A number in a comparison or a default that bounds nothing the reading follows: the arity a syntactic form needs, a

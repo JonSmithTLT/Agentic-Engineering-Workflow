@@ -7,6 +7,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total, and carries a `digest` of every record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its family (nothing lives only there). Schema `aew/reference-index/v1`.
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
+- [interfaces.md](interfaces.md): Interfaces
 - [writers.md](writers.md): Writers
 
 ## A record

@@ -224,8 +224,8 @@ def page(records: list[C.Record], placed: L.Placed) -> str:
         "primitives listed at the end; a read through an API is the API function's, not its callers'.", "",
         "Both lists are lower bounds. The writes the writers family could not place, and the reads this page could not "
         f"(below), may touch any entry. Read sites found: {placed.sites}; placed under `.aew`: "
-        f"{placed.placed_sites}; provably outside it or the directory itself: {placed.outside_sites}; not placed: "
-        f"{placed.unplaced_sites}.", ""]
+        f"{placed.placed_sites}; followed to a place outside it or the directory itself: {placed.outside_sites}; "
+        f"not placed: {placed.unplaced_sites}.", ""]
     for top in (r for r in records if "/" not in r.key):
         lines += [f"## `{top.key}`", ""]
         for r in (x for x in records if x.key == top.key or x.key.startswith(top.key + "/")):
@@ -237,8 +237,8 @@ def page(records: list[C.Record], placed: L.Placed) -> str:
                          f"{_fns(f['writers'])}; read by {_fns(f['readers'])}")
         lines.append("")
     lines += ["## Reads this reading could not place", "",
-              "Read sites whose path is not provably under `.aew` or provably outside it, listed so that nothing is "
-              "dropped unseen. Any of them may read any entry above.", ""]
+              "Read sites whose path is not followed to a path under `.aew` or to a place outside it, listed so that "
+              "nothing is dropped unseen. Any of them may read any entry above.", ""]
     by_module: dict[str, list[str]] = {}
     for module, symbol, primitive in placed.unplaced:
         by_module.setdefault(module, []).append(f"`{symbol}` ({primitive})")

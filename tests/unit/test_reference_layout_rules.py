@@ -525,7 +525,7 @@ def test_the_page_lists_each_entry_under_its_top_level_with_what_holds_of_it_and
     assert "- `state/log` (store)" in page and "- `work` (kept in git)" in page
     assert "read by `m.d`: `read_two`" in page
     assert "- `m.z`: `reader` (Path.read_text), `other` (open)" in page
-    assert ("Read sites found: 6; placed under `.aew`: 2; provably outside it or the directory itself: 1; "
+    assert ("Read sites found: 6; placed under `.aew`: 2; followed to a place outside it or the directory itself: 1; "
             "not placed: 3.") in page
 
 

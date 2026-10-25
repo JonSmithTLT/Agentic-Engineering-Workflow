@@ -145,7 +145,7 @@ The targets set at the post-M3 cleanup (2026-10-01) are proposals until M4's pla
 
 **Work:** The capability register: CAP-1 (ripgrep), then the rest of the base bundle; MCP servers later, imported from SPT
 
-**Source (governing):** the operator's decision of 2026-10-24 (AEW brings its own base tools); the register rebaseline (design workspace, `b598fdc`)
+**Source (governing):** A-38, the capability register position (revision 2.1, adopted by the operator on 2026-10-24; design workspace, `7fde841`); the operator's decision of 2026-10-24 (AEW brings its own base tools); the register rebaseline (design workspace, `b598fdc`)
 
 **Belongs to or gated by:** **Stage.** STG-15; CAP-1 first, then the rest of the base bundle
 

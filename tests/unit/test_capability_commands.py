@@ -19,7 +19,7 @@ from conftest import run_aew
 
 from aew import errors, operator
 from aew.capability import records, status, store
-from aew.cli.capability_commands import refuse_lead_session
+from aew.cli.capability_commands import lead_session_refusal, refuse_lead_session
 from aew.cli.main import build_parser, main
 from aew.engine.api import Engine
 from aew.engine.custody_ops import LEAD_SESSION, LEAD_SESSION_VARS
@@ -75,8 +75,10 @@ def test_the_register_changes_are_refused_by_the_lead_broker_and_its_recovery_es
             lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
         assert "capability register" in exc.value.message and "operator endpoint" in exc.value.message, argv
         assert "aew capability list" in exc.value.message, argv
-    with pytest.raises(errors.PermissionDenied):
+    with pytest.raises(errors.PermissionDenied) as exc:  # its own keep-out text (#272's quick check, QC3)
         lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel="lead_broker")
+    assert exc.value.message == lead_session_refusal("check") and exc.value.details["reason"] == LEAD_SESSION
+    assert "run this one directly" not in exc.value.message
     parser = build_parser()
     for argv in (["capability", "list"], ["capability", "check"]):  # no authority: not operator-only
         assert lead_broker.refuses_locally(parser.parse_args(argv)) is None, argv

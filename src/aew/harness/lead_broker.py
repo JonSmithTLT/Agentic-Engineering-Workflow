@@ -405,6 +405,12 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     refusal = refuses_locally(ns)
     if refusal:
         raise errors.PermissionDenied(refusal)
+    from aew.cli import capability_commands
+    from aew.engine.custody_ops import LEAD_SESSION
+
+    if command_path(ns) in capability_commands.LEAD_KEPT_OUT:  # its own keep-out, not "run this one directly" (QC3)
+        raise errors.PermissionDenied(capability_commands.lead_session_refusal(command_name(ns).split()[-1]),
+                                      reason=LEAD_SESSION)
     if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
         raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
                                       "directly", command=sorted(command_path(ns)))

@@ -128,10 +128,63 @@ def test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces(e
             os.chmod(path, mode)
 
 
+CLOSED_PROXY = "http://127.0.0.1:9"  # the discard port, which nothing serves: a fetch fails at once, offline
+
+
 def worker_env(root: Path) -> dict[str, str]:
-    """A worker run's environment: a bridge address of the platform's kind that nothing serves."""
+    """A worker run's environment: a bridge address of the platform's kind that nothing serves, and a proxy nothing
+    serves, so a command that fetches (`aew capability check`, online) reaches no network (#272's quick check, QC1)."""
     endpoint = r"\\.\pipe\aew-no-such-bridge-cb09" if sys.platform == "win32" else str(root / "no-bridge")
-    return {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32}
+    proxy = {"HTTPS_PROXY": CLOSED_PROXY, "HTTP_PROXY": CLOSED_PROXY, "NO_PROXY": ""}
+    if sys.platform != "win32":  # POSIX names are case-sensitive, and urllib prefers the lower-case ones
+        proxy.update({k.lower(): v for k, v in proxy.items()})
+    return {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32, **proxy}
+
+
+def test_a_sweeps_child_that_fetches_reaches_no_network(tmp_path, monkeypatch):
+    """#272's quick check, QC1: the sweep runs `aew capability check` online, as a worker's agent could. With the
+    sweep's environment the fetch goes to the closed proxy and fails, so nothing is downloaded and no payload is
+    installed; the failure is recorded in the child's own register (its base is this test's). The host's own route
+    out is a listener here, which records any connection: the child never takes it."""
+    import socket
+    import threading
+
+    from aew.capability import records, store
+
+    listener = socket.create_server(("127.0.0.1", 0))
+    listener.settimeout(0.2)
+    reached: list[str] = []
+    stop = threading.Event()
+
+    def record() -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except OSError:  # the accept's timeout: look at stop again
+                continue
+            reached.append("connected")
+            conn.close()
+
+    recorder = threading.Thread(target=record, daemon=True)
+    recorder.start()
+    route = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    for name in ("HTTPS_PROXY", "HTTP_PROXY") if sys.platform == "win32" else ("HTTPS_PROXY", "HTTP_PROXY",
+                                                                                "https_proxy", "http_proxy"):
+        monkeypatch.setenv(name, route)
+    base = tmp_path / "base"
+    try:
+        res = run_aew("-C", str(tmp_path), "capability", "check", "--json",
+                      env={**worker_env(tmp_path), store.base_variable(): str(base)})
+    finally:
+        stop.set()
+        recorder.join()
+        listener.close()
+    assert reached == []  # the sweep's environment, not the host's route
+    assert res.returncode == 0, res.stderr
+    register = base / "aew" / "capability"
+    state = json.loads((register / store.REGISTER).read_text(encoding="utf-8"))
+    assert sorted(state["fetch_failures"]) == [f"ripgrep:{records.platform_key()}"], state["fetch_failures"]
+    assert not (register / store.PAYLOADS).exists()
 
 
 def refusal_reason(stderr: str) -> str | None:

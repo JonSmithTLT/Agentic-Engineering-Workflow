@@ -38,8 +38,8 @@ final counts are the counts of #266's merge.
     the Name branch's cycle check, which could not be reached, is removed; its `_level` is held by a chain of
     attributes rooted at a local.
   - **Q-3** (`27b4effb`): a sentence that introduces a list is cut at the last comma outside brackets and code spans.
-  - **Q-4** (`358525c9`): the concurrency page and its cannot-see list name a receiver whose typing needs itself, with a
-    probe and a planted member.
+  - **Q-4** (`358525c9`, and the assertion that holds the page's two sentences in `eea759d8`): the concurrency page and
+    its cannot-see list name a receiver whose typing needs itself, with a probe and a planted member.
   - **Q-5** (`772e268c`): one doubling test over the whole render.
   - **N-1** (`15dca05e`): a `setattr` with a computed name is named beside a computed key, with its probe.
 - **Open, not for this slice:** an operator or designer decision whether the data-flow map's bridge and network

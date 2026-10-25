@@ -73,7 +73,7 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     constructions = sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for src in CTX.sources().values())
     sites = CO.lock_sites(PROGRAM, F.Evaluator(PROGRAM))
     placed = sum(len(r.fact["openers"]) for r in BUILT.records if r.key.startswith("lock:"))
-    assert constructions == len(sites) == placed == 4, (constructions, len(sites), placed)
+    assert constructions == len(sites) == placed == 5, (constructions, len(sites), placed)  # 5: CAP-1's register
 
 
 def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
@@ -140,10 +140,12 @@ KNOWN_LOCKS = {
     "local/operator/endpoint.lock": ("aew.harness.operator_endpoint", "OperatorEndpoint._claim",
                                      {"OperatorEndpoint._claim"}),
     "local/maps/registry.lock": ("aew.maps.store", "select", {"select"}),
+    # the host's capability register (STG-15, CAP-1): outside `.aew`, so unplaced, keyed by its opener
+    "unplaced:aew.capability.store:locked": ("aew.capability.store", "locked", {"locked"}),
 }
 
 
-def test_the_locks_are_the_four_the_code_was_read_to_take():
+def test_the_locks_are_the_five_the_code_was_read_to_take():
     paths = sorted(k.removeprefix("lock:") for k in RECORDS if k.startswith("lock:"))
     assert paths == sorted(["local/control.lock", *KNOWN_LOCKS])
     for path, (module, symbol, takers) in KNOWN_LOCKS.items():
@@ -152,6 +154,22 @@ def test_the_locks_are_the_four_the_code_was_read_to_take():
         assert {t["symbol"] for t in fact["takers"]} == takers and all(t["module"] == module for t in fact["takers"])
         assert fact["control"] is False and fact["refused_in_non_writer"] is False, path
         assert RECORDS[f"lock:{path}"].coverage["label"] == C.LOWER
+
+
+def test_the_capability_registers_lock_is_its_stores_own_and_a_second_taker_waits_its_timeout(tmp_path, monkeypatch):
+    """CAP-1 review F3: the host register's lock, read where the code takes it (outside every project, so unplaced,
+    keyed by its opener, with the store's own timeout constant), and held against a second taker as it says."""
+    from aew.capability import store
+
+    fact = RECORDS["lock:unplaced:aew.capability.store:locked"].fact
+    assert fact["timeout"] == "LOCK_TIMEOUT_S"
+    assert {e for t in fact["takers"] for e in t["entry_points"]} == {"aew"}
+    assert sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for name, src in CTX.sources().items()
+               if name.startswith("aew.capability.")) == 1  # the register's one construction
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 0.2)
+    with store.locked(tmp_path), pytest.raises(LockTimeout), store.locked(tmp_path):
+        pass
+    assert (tmp_path / store.LOCK).exists()
 
 
 def test_the_dashboards_lock_is_taken_only_from_the_dashboard_server_and_the_control_lock_only_in_a_writer():

@@ -1,0 +1,6 @@
+{
+ "approval_expiry_minutes": 10,
+ "consent_validity_minutes": 15,
+ "pin_min_length": 6,
+ "lockout_after": 5
+}

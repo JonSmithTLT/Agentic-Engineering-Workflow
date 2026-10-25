@@ -1,0 +1,15 @@
+# AEW G3 (A-37 G3-10): both sockets are filesystem sockets under /run/aew-g3/, owned by the operator, mode 0600.
+# install.sh writes the operator's account name in place of @OPERATOR@.
+[Unit]
+Description=AEW G3 approval service sockets
+
+[Socket]
+ListenStream=/run/aew-g3/request.sock
+ListenStream=/run/aew-g3/confirm.sock
+SocketUser=@OPERATOR@
+SocketMode=0600
+DirectoryMode=0755
+Service=aew-g3.service
+
+[Install]
+WantedBy=sockets.target

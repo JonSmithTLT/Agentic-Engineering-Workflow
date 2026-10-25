@@ -24,7 +24,7 @@ LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
-OPERATIONS = ("ping", "mode_raise")
+OPERATIONS = ("ping", "mode_raise", "capability_change")  # capability_change: CAP-1, the designer's ruling 1
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
 RESIDUALS = (
@@ -147,25 +147,54 @@ def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None
     try:
         _send(conn, "mode_raise", {"mode": mode, "requester": who})
         shown = _reply(conn)
-        try:
-            answer = read(raise_prompt(shown["bound"], who))
+        return _answer(conn, lambda: read(raise_prompt(shown["bound"], who)))
+    finally:
+        conn.close()
+
+
+def _answer(conn: Any, read: Callable[[], str]) -> dict[str, Any]:
+    """Read the code the operator types at this terminal (``read``) and send it; the endpoint's reply is the result."""
+    try:
+        answer = read()
+    except errors.AEWError:
+        try:  # void the code at the endpoint, and let it finish refusing
+            conn.send_bytes(json.dumps({"op": "answer", "args": {"code": ""}}).encode("utf-8"))
+            _reply(conn)
         except errors.AEWError:
-            try:  # void the code at the endpoint, and let it finish refusing
-                conn.send_bytes(json.dumps({"op": "answer", "args": {"code": ""}}).encode("utf-8"))
-                _reply(conn)
-            except errors.AEWError:
-                pass
-            raise
+            pass
+        raise
+    try:
+        conn.send_bytes(json.dumps({"op": "answer", "args": {"code": answer.strip()}}).encode("utf-8"))
+    except (OSError, EOFError):
         try:
-            conn.send_bytes(json.dumps({"op": "answer", "args": {"code": answer.strip()}}).encode("utf-8"))
-        except (OSError, EOFError):
-            try:
-                _reply(conn)
-            except errors.NotFound:
-                pass
-            raise errors.PermissionDenied("operator authorization timed out: the endpoint closed the request before "
-                                          "the code arrived") from None
-        return _reply(conn)
+            _reply(conn)
+        except errors.NotFound:
+            pass
+        raise errors.PermissionDenied("operator authorization timed out: the endpoint closed the request before "
+                                      "the code arrived") from None
+    return _reply(conn)
+
+
+def capability_prompt(shown: dict[str, Any], requester: str) -> str:
+    return operator.challenge(
+        "", "CHANGE this host's capability register:\n" + "\n".join(shown["change"]), requested_by=requester,
+        destination="the capability register (no credential is issued)",
+        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
+                    "and press Enter; anything else refuses.") + "> "
+
+
+def request_capability_change(aew_root: Path, change: str, args: dict[str, Any], *,
+                              ask: Callable[[str], str] | None = None, requester: str | None = None) -> dict[str, Any]:
+    """``aew capability import``, ``add``, ``remove`` and ``host-copies`` (CAP-1; the designer's ruling 1): ask the
+    endpoint, which shows the exact change and its code on its console, read the code typed at **this** terminal, and
+    send it. The endpoint applies the change it showed; this side holds no authority."""
+    who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
+    read = ask if ask is not None else (lambda prompt: operator.ask(prompt))
+    conn = _connect(aew_root)
+    try:
+        _send(conn, "capability_change", {"change": change, "args": args, "requester": who})
+        shown = _reply(conn)
+        return _answer(conn, lambda: read(capability_prompt(shown, who)))
     finally:
         conn.close()
 

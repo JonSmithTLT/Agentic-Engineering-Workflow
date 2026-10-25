@@ -1,0 +1,573 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "aew:g3-wire:g3-0.6.1-candidate",
+ "title": "AEW G3 trusted operator origin wire (PROPOSED, g3-0.6.1-candidate, revision 6.1). Rules in G3-PROFILE.md.",
+ "$defs": {
+  "Ref": {
+   "type": "string",
+   "pattern": "^[A-Za-z][A-Za-z0-9:._/-]{2,127}$"
+  },
+  "Digest": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "Time": {
+   "type": "string",
+   "format": "date-time"
+  },
+  "Wire": {
+   "const": "g3-0.6.1-candidate"
+  },
+  "ApprovalRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "wire_version",
+    "command_set"
+   ],
+   "properties": {
+    "wire_version": {
+     "$ref": "#/$defs/Wire"
+    },
+    "command_set": {
+     "type": "object",
+     "description": "An O-01 0.2 CommandSet whose consent_set_ref is null and every member of which already carries its client-made origin_proof_ref (a Proof); the service validates it against o01-extended-command.schema.json (G3-02)."
+    }
+   }
+  },
+  "RenderingLine": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "template_id",
+    "values",
+    "source"
+   ],
+   "properties": {
+    "template_id": {
+     "$ref": "#/$defs/Ref"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "type": [
+       "string",
+       "integer",
+       "boolean",
+       "null"
+      ]
+     }
+    },
+    "source": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind"
+     ],
+     "properties": {
+      "kind": {
+       "enum": [
+        "TEMPLATE",
+        "TYPED_FIELD",
+        "OWNER_FACT"
+       ]
+      },
+      "field_path": {
+       "type": "string",
+       "pattern": "^(request_set_ref|recipient_ref|installation_ref|intents\\[[0-7]\\](\\.[A-Za-z_][A-Za-z0-9_]{0,63}|\\[[0-9]{1,3}\\]){1,12})$",
+       "description": "A leaf the SW-02 set digest covers (G3-03)."
+      },
+      "owner": {
+       "enum": [
+        "ADC",
+        "AEV",
+        "CNI",
+        "HEB",
+        "IF10",
+        "IF12",
+        "IF13",
+        "R01",
+        "WIS"
+       ]
+      },
+      "fact_ref": {
+       "$ref": "#/$defs/Ref"
+      },
+      "observed_at": {
+       "$ref": "#/$defs/Time"
+      },
+      "observation_state": {
+       "enum": [
+        "present_current",
+        "historical",
+        "stale",
+        "unknown",
+        "unavailable",
+        "unsupported"
+       ]
+      }
+     },
+     "allOf": [
+      {
+       "if": {
+        "properties": {
+         "kind": {
+          "const": "TYPED_FIELD"
+         }
+        }
+       },
+       "then": {
+        "required": [
+         "field_path"
+        ]
+       }
+      },
+      {
+       "if": {
+        "properties": {
+         "kind": {
+          "const": "OWNER_FACT"
+         }
+        }
+       },
+       "then": {
+        "required": [
+         "owner",
+         "fact_ref",
+         "observed_at",
+         "observation_state"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  },
+  "PendingApproval": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "wire_version",
+    "approval_ref",
+    "state",
+    "set_digest",
+    "rendering",
+    "rendering_digest",
+    "expires_at"
+   ],
+   "properties": {
+    "wire_version": {
+     "$ref": "#/$defs/Wire"
+    },
+    "approval_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "state": {
+     "enum": [
+      "PENDING",
+      "APPROVED",
+      "DECLINED",
+      "EXPIRED"
+     ]
+    },
+    "set_digest": {
+     "$ref": "#/$defs/Digest"
+    },
+    "rendering": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 243,
+     "description": "3 set-level lines plus 8 members (O-01 CommandSet.intents.maxItems) of at most 30 lines each (ISSUE_STANDING_POLICY: 1 template, 14 common intent leaves, 14 target leaves, 1 owner fact). Derived from the sealed O-01 schema by verify_g3.py, which fails if this number differs (R2-1).",
+     "items": {
+      "$ref": "#/$defs/RenderingLine"
+     }
+    },
+    "rendering_digest": {
+     "$ref": "#/$defs/Digest"
+    },
+    "expires_at": {
+     "$ref": "#/$defs/Time"
+    },
+    "consent_record": {
+     "$ref": "#/$defs/ConsentRecord"
+    }
+   }
+  },
+  "ApprovalDecision": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "decision"
+   ],
+   "properties": {
+    "decision": {
+     "enum": [
+      "APPROVE",
+      "DECLINE"
+     ]
+    },
+    "pin": {
+     "type": "string",
+     "minLength": 6,
+     "maxLength": 128,
+     "description": "The operator's PIN, sent once by the confirmer to approve (G3-05); never stored, logged or returned."
+    }
+   },
+   "if": {
+    "properties": {
+     "decision": {
+      "const": "APPROVE"
+     }
+    }
+   },
+   "then": {
+    "required": [
+     "pin"
+    ]
+   }
+  },
+  "ConsentRecord": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "consent_set_ref",
+    "issuer_ref",
+    "qualified",
+    "set_digest",
+    "rendering_digest",
+    "recipient_ref",
+    "installation_ref",
+    "intent_refs",
+    "member_proofs",
+    "valid_from",
+    "valid_until",
+    "approval_ref",
+    "issued_at",
+    "key_id",
+    "signature"
+   ],
+   "properties": {
+    "consent_set_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "issuer_ref": {
+     "type": "string",
+     "pattern": "^g3:[A-Za-z][A-Za-z0-9:._/-]{2,123}$"
+    },
+    "qualified": {
+     "type": "boolean",
+     "description": "A claim only (G3-13); origin is a G3-08 CONSUMED result under G3-12."
+    },
+    "set_digest": {
+     "$ref": "#/$defs/Digest"
+    },
+    "rendering_digest": {
+     "$ref": "#/$defs/Digest"
+    },
+    "recipient_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "installation_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "intent_refs": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 8,
+     "items": {
+      "$ref": "#/$defs/Ref"
+     }
+    },
+    "member_proofs": {
+     "type": "object",
+     "minProperties": 1,
+     "maxProperties": 8,
+     "additionalProperties": {
+      "$ref": "#/$defs/Proof"
+     },
+     "description": "Keys are exactly intent_refs (G3-06); a record otherwise is CONSENT_ISSUER_UNVERIFIED at consume (G3-08)."
+    },
+    "valid_from": {
+     "$ref": "#/$defs/Time"
+    },
+    "valid_until": {
+     "$ref": "#/$defs/Time"
+    },
+    "approval_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "issued_at": {
+     "$ref": "#/$defs/Time"
+    },
+    "key_id": {
+     "$ref": "#/$defs/Digest"
+    },
+    "signature": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9_-]{43,200}$",
+     "description": "base64url over the canonical JSON of every other field (G3-06)."
+    }
+   }
+  },
+  "ConsumeRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "wire_version",
+    "consent_set_ref",
+    "intent_ref",
+    "origin_proof_ref",
+    "set_digest",
+    "recipient_ref",
+    "installation_ref",
+    "owner",
+    "operation_ref"
+   ],
+   "properties": {
+    "wire_version": {
+     "$ref": "#/$defs/Wire"
+    },
+    "consent_set_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "intent_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "origin_proof_ref": {
+     "$ref": "#/$defs/Proof"
+    },
+    "set_digest": {
+     "$ref": "#/$defs/Digest",
+     "description": "The SW-02 digest of the command set the owner received (G3-08)."
+    },
+    "recipient_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "installation_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "owner": {
+     "enum": [
+      "ADC",
+      "HEB",
+      "IF13",
+      "RESOURCE_POLICY_ISSUER"
+     ]
+    },
+    "operation_ref": {
+     "$ref": "#/$defs/Ref"
+    }
+   }
+  },
+  "ConsumeResult": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "wire_version",
+    "result"
+   ],
+   "properties": {
+    "wire_version": {
+     "$ref": "#/$defs/Wire"
+    },
+    "result": {
+     "enum": [
+      "CONSUMED",
+      "ORIGIN_NOT_ESTABLISHED",
+      "CONSENT_ISSUER_UNVERIFIED",
+      "CONSENT_EXPIRED",
+      "CONSENT_SCOPE_MISMATCH",
+      "CONSENT_ALREADY_USED"
+     ]
+    },
+    "consumed_at": {
+     "$ref": "#/$defs/Time"
+    }
+   },
+   "if": {
+    "properties": {
+     "result": {
+      "const": "CONSUMED"
+     }
+    }
+   },
+   "then": {
+    "required": [
+     "consumed_at"
+    ]
+   }
+  },
+  "QualificationRecord": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "service_build_sha256",
+    "host_ref",
+    "environment",
+    "qualifier_ref",
+    "builder_ref",
+    "qualified_at",
+    "valid_until",
+    "checks"
+   ],
+   "properties": {
+    "service_build_sha256": {
+     "$ref": "#/$defs/Digest",
+     "description": "SHA-256 of the install manifest of G3-14."
+    },
+    "host_ref": {
+     "type": "string",
+     "pattern": "^host:[0-9a-f]{32}$",
+     "description": "host: + the first 32 hex of SHA-256(/etc/machine-id) (G3-12)."
+    },
+    "qualifier_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "builder_ref": {
+     "$ref": "#/$defs/Ref"
+    },
+    "qualified_at": {
+     "$ref": "#/$defs/Time"
+    },
+    "checks": {
+     "type": "array",
+     "minItems": 11,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "result",
+       "evidence_ref"
+      ],
+      "properties": {
+       "id": {
+        "type": "string",
+        "pattern": "^G3-Q[0-9]{2}$"
+       },
+       "result": {
+        "enum": [
+         "PASS",
+         "FAIL"
+        ]
+       },
+       "evidence_ref": {
+        "$ref": "#/$defs/Ref"
+       }
+      }
+     }
+    },
+    "environment": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kernel_release",
+      "bubblewrap_version",
+      "sandbox_profile_sha256",
+      "display_stack_sha256",
+      "lead_containment_sha256",
+      "host_environment_sha256",
+      "mac_policy"
+     ],
+     "properties": {
+      "kernel_release": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 128
+      },
+      "bubblewrap_version": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 32
+      },
+      "sandbox_profile_sha256": {
+       "$ref": "#/$defs/Digest"
+      },
+      "display_stack_sha256": {
+       "$ref": "#/$defs/Digest",
+       "description": "The display stack G3-Q01 tested, as owners recompute it by G3-12's one determinate derivation over the deployment file's names (review R3-3, R4-3)."
+      },
+      "host_environment_sha256": {
+       "$ref": "#/$defs/Digest",
+       "description": "SHA-256 over every file the deployment file names as host environment, a directory by relative path, as owners recompute it (G3-12, G3-14; the targeted check of revision 6, item A)."
+      },
+      "mac_policy": {
+       "type": [
+        "object",
+        "null"
+       ],
+       "additionalProperties": false,
+       "required": [
+        "module_sha256",
+        "permissive"
+       ],
+       "properties": {
+        "module_sha256": {
+         "$ref": "#/$defs/Digest"
+        },
+        "permissive": {
+         "type": "boolean"
+        }
+       },
+       "description": "Where the host runs SELinux: the service's loaded policy module and whether its domain is permissive (G3-12, Parts; review R4-N1). null where the host runs none."
+      },
+      "lead_containment_sha256": {
+       "$ref": "#/$defs/Digest",
+       "description": "SHA-256 of the Lead's containment profile that G3-Q01 to G3-Q04 tested from the Lead's run context (G3-00)."
+      }
+     },
+     "description": "What owners recompute and compare; any change requires re-qualification (G3-12)."
+    },
+    "valid_until": {
+     "$ref": "#/$defs/Time",
+     "description": "At most 90 days after qualified_at: a tripwire the deployment file may only shorten (G3-12)."
+    }
+   }
+  },
+  "Problem": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "wire_version",
+    "status",
+    "code"
+   ],
+   "properties": {
+    "wire_version": {
+     "$ref": "#/$defs/Wire"
+    },
+    "status": {
+     "enum": [
+      400,
+      403,
+      404,
+      409,
+      422,
+      423,
+      503
+     ]
+    },
+    "code": {
+     "enum": [
+      "APPROVAL_EXPIRED",
+      "G3_UNAVAILABLE",
+      "MEMBER_PROOF_INVALID",
+      "MIXED_AUTHORITY_SET_UNSELECTED",
+      "NOT_FOUND",
+      "PEER_NOT_PERMITTED",
+      "PIN_INCORRECT",
+      "PIN_LOCKED",
+      "RENDERING_INCOMPLETE",
+      "RENDERING_UNDERIVED",
+      "STRUCTURAL"
+     ]
+    }
+   }
+  },
+  "Proof": {
+   "type": "string",
+   "pattern": "^proof:[0-9a-f]{32,64}$",
+   "description": "A member origin proof, made by the client before the approval request (G3-02)."
+  }
+ }
+}

@@ -1415,8 +1415,8 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
 
 ## Amendment 2026-10-25 — the Lead contained (STG-05 CS-4; F28 decision 2)
 
-The designer's CS-4 hand-off and its addendum 1 (design workspace `8b4bd05`, `146f204`), with the rulings R-2, R-7
-and ST-38. On Linux, `aew opencode` runs the Lead's OpenCode TUI contained, and the session still works as the
+The designer's CS-4 hand-off and its addenda 1 and 2 (design workspace `8b4bd05`, `146f204`, `655930b`), with the
+rulings R-2, R-7 and ST-38. On Linux, `aew opencode` runs the Lead's OpenCode TUI contained, and the session still works as the
 operator's own did: the TUI at their terminal, their stored provider logins, Lead commands through the broker.
 
 ### The session (`opencode/lead.py`, `lead_broker.run_session`)
@@ -1463,13 +1463,26 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   Lead's own login store holds a row for it whose access token is the relay's sentinel and whose expiry is a year
   off, so the TUI uses it as it would the operator's and never tries to refresh it; OpenCode makes that database
   itself the first time (`session list`, offline, in the sandbox).
-- **Not relayed, and said at the start:** opencode's own key (its models carry their own catalog address, so a
-  provider-level `baseURL` does not reach them; its free models still work through the egress proxy), a provider
-  AEW has no upstream for, and a refreshing login whose requests AEW has not measured.
+- **Close to expiry** (addendum 2, ruling 1): the operator's measured token lasts about 240 h, so no session
+  outlasts it, and option (a) stands; but their own OpenCode refreshes a login only in its last 5 minutes, so while
+  they work contained it can lapse. When a login the relay serves has `containment.lead.login_warning_h` hours or
+  fewer left (default 24, one working day's session), the launch names the provider, the time left and the same
+  step; an expired one is named as expired. It only warns, and holds no token.
+- **Not relayed, and said at the start:** opencode's own key (addendum 2, ruling 2: its models carry their own
+  catalog address, so a provider-level `baseURL` does not reach them). It fails closed: the key, stored or in the
+  environment, never goes inside, and without it OpenCode 2.0.18 offers only the free opencode models (it turns off
+  every model with an input cost; read in the pinned bundle), which work through the egress proxy; the start line
+  says it is not served yet. Also a provider AEW has no upstream for, a refreshing login whose requests AEW has not
+  measured, and a stored login in a shape AEW does not know (below).
 - **`--provider-env NAME`** feeds that provider's relay on the host instead of the stored login, and never the Lead's
   shell; a name no relayed provider reads is refused. Where the Lead runs not contained it keeps its old meaning.
 - **The stored login** is read on the host, in memory only: SQLite's read-only mode with a busy timeout, never
-  `immutable` (addendum 1). Nothing of it is written anywhere.
+  `immutable` (addendum 1). Nothing of it is written anywhere. The operator's own OpenCode wrote it, maybe a newer
+  one than AEW's pin (the measured login was written by 2.0.22): each provider's deciding row (its active one, else
+  its newest) must be one of OpenCode 2.0.18's two shapes, an API key or a refreshing login with its access token
+  and expiry. Any other shape is refused, at the start and on a request, naming the provider, saying the shape is
+  unknown and what serves the provider instead (`--provider-env`); AEW never guesses at it and never falls back to
+  an older row (addendum 2, ruling 1).
 
 ### The Lead's own OpenCode state (addendum 1, items 2 and 3)
 - Per project, under `.aew/local/harness/lead`, kept between sessions: its database, sessions, prompt history and
@@ -1496,7 +1509,10 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 ### Messages (outcome 7)
 - The start lines name each stored login and whether it is relayed (and if not, why), what `--provider-env` feeds,
   and the MCP servers of the operator's configuration that are left out (names only: their configuration is not
-  loaded).
+  loaded). A provider variable AEW knows that is set in the operator's environment and not fed is named too, with
+  `--provider-env` as the way to feed it (opencode's: not served). With no provider relayed, they say only
+  OpenCode's free models work, and name the operator's own step: `opencode auth login` at their terminal, outside
+  AEW, or `--provider-env`, then a new start.
 - The Lead's system text carries one line from the session's label: what the session reaches, that `.aew` and the
   git metadata are read-only so a commit fails while reads and Lead commands work, that the rest is refused by
   design, and to tell the operator what it needed rather than work around a refusal.
@@ -1515,10 +1531,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - `tests/integration/test_lead_contained_session.py` (Linux): the session at a terminal the test holds, through the
   broker from the sandbox, with rows 1 to 6, the environment, the label, the system-text line and the terminal given
   back, the operator's preferences without their plugins and their recent models without their prompt history;
-  each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode not
-  relayed; the ChatGPT login relayed as stored, expired then refreshed twice by the operator's own OpenCode within
-  one session, the account header the stored one, nothing of the login inside and nothing of the operator's
-  written; a failing self-test refused under `required` and labelled under `allow_weaker`.
+  each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode's key
+  not served and not inside; the ChatGPT login relayed as stored, named as expired at the launch, then refreshed
+  twice by the operator's own OpenCode within one session, the account header the stored one, nothing of the login
+  inside and nothing of the operator's written; a failing self-test refused under `required` and labelled under
+  `allow_weaker`.
 - `tests/unit/test_provider_relay.py`: a resolved credential read on each request with its headers, and an unusable
   one answered 401 with the resolver's message and nothing connected. `tests/unit/test_containment_netns.py`
   (Linux): a refreshing login's own upstream, its sentinel for the login store and never a variable.
@@ -1538,5 +1555,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - `tests/integration/test_non_writer_reads.py`: the CLI inside the contained Lead reads lock-free and refuses a
   lock-taking command before the lock. `tests/unit/test_lead_contained.py`: the start lines, `--provider-env`, the
   logins read, the refusal that frees the seat, the read-only store's typed refusal; the stored login re-read on
-  each request, expired within the margin, gone or changed kind, and never written; the Lead's own login row; the
-  preferences without their plugins; the recent models seeded once, never the prompt history.
+  each request, expired within the margin, gone or changed kind, and never written; a row in a shape AEW does not
+  know, unread and never passed over for an older one, refused and named at the start and on a request; the launch's
+  warning within the policy's hours, and the key that sets them; the provider variables in the environment and the
+  start with no provider; the Lead's own login row; the preferences without their plugins; the recent models seeded
+  once, never the prompt history.

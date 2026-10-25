@@ -105,8 +105,9 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
 def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_holds_only_sentinels(tmp_path):
     """Each provider of the operator's stored login whose key OpenCode reads from a known variable gets its own relay
     on the host: from inside, a call to the baseURL its configuration names, with the variable its SDK reads, reaches
-    that provider's upstream with the real key, while the sandbox holds only a sentinel. opencode's key is not relayed
-    (its models carry their own catalog address) and is not inside at all. `--provider-env` feeds google's relay."""
+    that provider's upstream with the real key, while the sandbox holds only a sentinel. opencode's key is not served
+    (its models carry their own catalog address; addendum 2, ruling 2): the start line says so, and the key is not
+    inside at all. `--provider-env` feeds google's relay."""
     ups = {p: Upstream() for p in ("openai", "anthropic", "google")}
     try:
         lab, tui = make_lab(tmp_path, upstreams={p: u.url for p, u in ups.items()})
@@ -136,7 +137,9 @@ def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_ho
             # empty under the mask, or absent where the home is under /tmp, private inside (the mask itself:
             # tests/integration/test_lead_containment.py, whose home is not)
             assert all(seen in ([], False) for seen in inside["visible"].values()), inside["visible"]
-            assert "opencode (key): not relayed" in done["stderr"]
+            # addendum 2, ruling 2: the stored opencode key fails closed, said at the start
+            assert "opencode (key): not served yet: OpenCode's catalog gives each opencode/* model an address of its " \
+                   "own" in done["stderr"]
             assert "--provider-env GOOGLE_GENERATIVE_AI_API_KEY feeds the google relay on the host" in done["stderr"]
         finally:
             lab.cleanup()
@@ -186,6 +189,9 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
             refresher.join(10)
             assert done["code"] == 0, done["stderr"][-3000:]
             assert "openai (oauth): relayed as stored, expired now" in done["stderr"]
+            # addendum 2, ruling 1: the launch names it, and goes on
+            assert "aew opencode: your stored openai login has expired. Run `opencode auth list` at your own " \
+                   "terminal" in done["stderr"]
             assert done["result"]["containment"]["network"]["provider_relays"] == {"openai": up.url}
             inside = json.loads((tui / "inside.json").read_text())
             status, body = inside["calls"]["openai"]

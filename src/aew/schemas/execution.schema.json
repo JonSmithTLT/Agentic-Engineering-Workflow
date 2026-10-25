@@ -46,6 +46,14 @@
         "writable": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
         "hide": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
         "trusted_git_drivers": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "pattern": "^[^\\s=]+$"}, "uniqueItems": true},
+        "lead": {
+          "type": "object",
+          "description": "The contained Lead (`aew opencode` on Linux, STG-05 CS-4). login_warning_h: a stored login its relay serves as stored (the ChatGPT login) is named at the Lead's launch, with its time left and the step that refreshes it, once this many hours or fewer are left (default 24, one working day's session; 0 names only an expired one). It warns and blocks nothing.",
+          "additionalProperties": false,
+          "properties": {
+            "login_warning_h": {"x-aew-class": "operational", "type": "integer", "minimum": 0}
+          }
+        },
         "network": {
           "type": "object",
           "description": "A contained run's network (F28, network containment design v0.2). mode proxy_only (the default on Linux) gives each run a network namespace of its own, without the host's loopback ports or abstract sockets, whose only routes out are its provider relay and its egress proxy: the relay holds the provider's credential (every variable provider_env names is a sentinel inside the sandbox, and an HTTP proxy named there is the relay's) and sends to one fixed upstream; the credentialless egress proxy reaches exactly the host:port entries of egress_allow and those the harness itself needs (OpenCode's model catalog). isolated gives a run no route out; shared gives it the host's network, labelled shared. upstreams names a provider's API base URL, by the profile's provider, where AEW does not know it (it knows openai and opencode).",

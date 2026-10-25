@@ -44,6 +44,14 @@ def store(home: Path, rows: list[tuple[str, str, int, dict[str, Any], int]], pat
     return path
 
 
+def rewrite(db: Path, value: dict[str, Any]) -> None:
+    """Every row's value, as the operator's own OpenCode would write it."""
+    con = sqlite3.connect(db)
+    con.execute("UPDATE credential SET value = ?", (json.dumps(value),))
+    con.commit()
+    con.close()
+
+
 def key_rows() -> list[tuple[str, str, int, dict[str, Any], int]]:
     return [(p, "api", 1, {"type": "key", "key": k}, 1) for p, k in KEYS.items()]
 
@@ -52,15 +60,14 @@ def key_rows() -> list[tuple[str, str, int, dict[str, Any], int]]:
 
 def test_the_stored_login_is_read_read_only_one_row_per_provider_the_active_one_first(tmp_path):
     """Each provider's login, its active row where it has several (else its newest); an OAuth row's access token and
-    expiry; a row that is not a login is passed over. The database is unchanged, and no value is in a login's repr."""
+    expiry. The database is unchanged, and no value is in a login's repr."""
     db = store(tmp_path, [
         ("openai", "api", 0, {"type": "key", "key": "sk-old"}, 5),
         ("openai", "api", 1, {"type": "key", "key": KEYS["openai"]}, 1),
         ("anthropic", "api", None, {"type": "key", "key": "sk-older"}, 1),  # type: ignore[list-item]
         ("anthropic", "api", None, {"type": "key", "key": KEYS["anthropic"]}, 2),  # type: ignore[list-item]
         ("xai", "oauth", 1, {"type": "oauth", "methodID": "browser", "refresh": "r", "access": "acc", "expires": 9,
-                             "metadata": {"accountID": "acct"}}, 1),
-        ("broken", "api", 1, {"type": "key"}, 1)])
+                             "metadata": {"accountID": "acct"}}, 1)])
     before = db.read_bytes()
     logins, why = login.stored({"HOME": str(tmp_path)})
     assert why is None and db.read_bytes() == before
@@ -68,6 +75,25 @@ def test_the_stored_login_is_read_read_only_one_row_per_provider_the_active_one_
         ("anthropic", "key", KEYS["anthropic"]), ("openai", "key", KEYS["openai"]), ("xai", "oauth", "acc")]
     assert logins[2].expires == 9 and logins[2].method == "browser" and logins[2].metadata == {"accountID": "acct"}
     assert all(e.secret not in repr(e) for e in logins)
+
+
+@pytest.mark.parametrize("value", [
+    {"type": "key"},                                                                # no key
+    {"type": "oauth", "access": "synthetic-access-new"},                            # no expiry
+    {"type": "oauth", "access": "synthetic-access-new", "expires": True},           # not a time
+    {"type": "oauth", "access": "synthetic-access-new", "expires": 9, "metadata": ["synthetic"]},
+    {"type": "oauth2", "token": "synthetic-access-new", "expires": 9},              # a type AEW does not know
+    "synthetic-not-an-object"])
+def test_a_providers_row_in_a_shape_aew_does_not_know_is_its_login_unread_and_never_passed_over(tmp_path, value):
+    """Addendum 2, ruling 1: the operator's own OpenCode wrote the store, maybe newer than AEW's pin. A provider's
+    deciding row (its active one) in a shape other than OpenCode 2.0.18's two is that provider's login, of kind
+    unknown, with nothing of it read out; an older row of that provider in a known shape is never used instead."""
+    store(tmp_path, [("openai", "chatgpt-browser", 1, value, 1),  # type: ignore[list-item]
+                     ("openai", "chatgpt-browser", 0, chatgpt("synthetic-access-older", time.time() + 3600), 9)])
+    logins, why = login.stored({"HOME": str(tmp_path)})
+    assert why is None
+    assert [(e.integration, e.kind, e.secret, e.expires, dict(e.metadata)) for e in logins] == [
+        ("openai", login.UNKNOWN, "", None, {})]
 
 
 def test_the_login_database_is_where_opencode_keeps_it(tmp_path):
@@ -95,8 +121,10 @@ def at_a_terminal(monkeypatch):
     monkeypatch.setattr(lead, "_launching_terminal", lambda: [136, 1])
 
 
-def contained(tmp_path: Path, provider_env: list[str] = (), **env: str) -> lead.ContainedLead:  # type: ignore[assignment]
-    return lead.ContainedLead(object(), argv=["opencode", "--standalone"], provider_env=list(provider_env),
+def contained(tmp_path: Path, provider_env: list[str] = (), policy: dict[str, Any] | None = None,  # type: ignore[assignment]
+              **env: str) -> lead.ContainedLead:
+    engine = SimpleNamespace(execution_policy=lambda: (policy, None))
+    return lead.ContainedLead(engine, argv=["opencode", "--standalone"], provider_env=list(provider_env),
                               guide="", base={"HOME": str(tmp_path), "PATH": "/usr/bin", **env})
 
 
@@ -115,7 +143,9 @@ def test_each_api_key_login_of_a_known_provider_is_relayed_and_the_others_say_wh
     session.announce(out)
     text = out.getvalue()
     assert "anthropic (key): relayed" in text
-    assert "opencode (key): not relayed; OpenCode's catalog gives each opencode/* model an address of its own" in text
+    assert "opencode (key): not served yet: OpenCode's catalog gives each opencode/* model an address of its own, so " \
+           "no relay can carry its key, and the key stays out of the Lead; without it OpenCode offers only the free " \
+           "opencode models, which work through the egress proxy" in text
     assert "mystery (key): not relayed; AEW does not know which variable" in text
     assert "openai (oauth): relayed as stored, 2 h left; AEW never refreshes it: when it expires, `opencode auth " \
            "list` at your own terminal refreshes it, and the Lead's next request works" in text
@@ -175,6 +205,73 @@ def test_an_expired_login_says_what_refreshes_it_and_that_the_next_request_works
         "the Lead's next request then works, with no restart.")
 
 
+def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and_on_a_request(tmp_path,
+                                                                                               at_a_terminal):
+    """Addendum 2, ruling 1: refused with a message that names the provider, says the shape is unknown and what serves
+    the provider instead, at the launch (not relayed) and on a request (the operator's OpenCode rewrote the row since).
+    Never guessed, and no value in either message."""
+    from aew.harness.containment import relay
+
+    unknown = ("in a shape AEW does not know (AEW reads OpenCode 2.0.18's, and never guesses at another), so the "
+               "contained Lead does not use it; to serve openai with an API key instead, start `aew opencode "
+               "--provider-env OPENAI_API_KEY`")
+    db = store(tmp_path, [("openai", "chatgpt-browser", 1, {"type": "oauth2", "token": "synthetic-new-shape"}, 1)])
+    session = contained(tmp_path)
+    assert session.refreshing == {} and session.keys == {}
+    out = io.StringIO()
+    session.announce(out)
+    assert f"openai: not relayed; its stored login is {unknown}" in out.getvalue()
+    assert "synthetic" not in out.getvalue()
+    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    rewrite(db, chatgpt("synthetic-access-1", time.time() + 3600))
+    assert resolve()[0] == "synthetic-access-1"
+    rewrite(db, {"type": "oauth", "access": "synthetic-access-2", "expires": "tomorrow"})
+    with pytest.raises(relay.Unavailable) as refused:
+        resolve()
+    assert str(refused.value) == f"AEW: your stored openai login is now {unknown}."
+
+
+def test_a_relayed_login_close_to_expiry_is_named_at_launch_with_the_refresh_step_and_blocks_nothing(tmp_path,
+                                                                                                      at_a_terminal):
+    """Addendum 2, ruling 1: at the launch, a login the relay serves as stored that expires within 24 hours (the
+    default; the operator's containment.lead.login_warning_h changes it) gets one line that names the provider, the
+    time left and the step the expiry message gives; an expired one says so. It only warns: the login is relayed all
+    the same. No token in it."""
+    def warned(expires_s: float, policy: dict[str, Any] | None = None) -> list[str]:
+        db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access", expires_s), 1)])
+        session = contained(tmp_path, policy=policy)
+        assert sorted(session.refreshing) == ["openai"]
+        out = io.StringIO()
+        session.announce(out)
+        db.unlink()
+        assert "synthetic" not in out.getvalue()
+        return [ln for ln in out.getvalue().splitlines() if ln.startswith("aew opencode: your stored openai login")]
+
+    step = ("`opencode auth list` at your own terminal: your OpenCode refreshes it there, and the Lead's next request "
+            "then works, with no restart.")
+    assert warned(time.time() + 5 * 3600 + 60) == [
+        "aew opencode: your stored openai login expires in 5 h (named when 24 h or less is left: "
+        f"containment.lead.login_warning_h). When it has expired, run {step}"]
+    assert warned(time.time() + 48 * 3600 + 60) == []
+    assert warned(time.time() + 48 * 3600 + 60, {"containment": {"lead": {"login_warning_h": 72}}}) == [
+        "aew opencode: your stored openai login expires in 48 h (named when 72 h or less is left: "
+        f"containment.lead.login_warning_h). When it has expired, run {step}"]
+    assert warned(time.time() - 60) == [f"aew opencode: your stored openai login has expired. Run {step}"]
+
+
+def test_the_login_warning_hours_come_from_the_execution_policy_else_24():
+    from aew import schemas
+
+    assert lead.login_warning_h(None) == lead.LOGIN_WARNING_H == 24
+    assert lead.login_warning_h({"containment": {"lead": {"login_warning_h": 0}}}) == 0
+    for bad in (-1, True, "12", 1.5):
+        policy = {"containment": {"lead": {"login_warning_h": bad}}}
+        assert lead.login_warning_h(policy) == 24
+        assert [e for e in schemas.iter_errors("execution", policy) if list(e.absolute_path)[:1] == ["containment"]]
+    assert not [e for e in schemas.iter_errors("execution", {"containment": {"lead": {"login_warning_h": 8}}})
+                if list(e.absolute_path)[:1] == ["containment"]]
+
+
 def test_the_leads_own_login_row_holds_the_relays_sentinel_and_never_the_operators_login(tmp_path, at_a_terminal):
     """The Lead's own login store (in its state, never the operator's) gets one AEW row per relayed refreshing login:
     the relay's sentinel as its access token, a refresh token and account id that are placeholders, an expiry a year
@@ -232,10 +329,43 @@ def test_the_contained_lead_needs_a_terminal_and_a_passable_provider_variable(tm
         contained(tmp_path, ["OPENAI_API_KEY"])  # unset
 
 
-def test_no_login_database_is_said_so_in_the_start_line(tmp_path, at_a_terminal):
+def test_with_no_login_and_no_key_the_start_lines_say_only_free_models_work_and_name_the_operators_step(
+        tmp_path, at_a_terminal):
+    """The Lead's check: where the operator has no OpenCode login (no database, or none in it), the start lines say so,
+    and that no provider is relayed, so only OpenCode's free models work; and they name the operator's own step: log in
+    with their own OpenCode outside AEW, or feed a key, then start again. A relayed provider needs no such line."""
+    nothing = ("aew opencode: no provider is relayed to the Lead, so only OpenCode's free models work. Log in with "
+               "your own OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key with "
+               "`--provider-env NAME`; then start `aew opencode` again.")
     out = io.StringIO()
     contained(tmp_path).announce(out)
-    assert "Your OpenCode logins: none (no OpenCode login database at" in out.getvalue()
+    assert "Your OpenCode logins: none (no OpenCode login database at" in out.getvalue() and nothing in out.getvalue()
+    store(tmp_path, [])
+    out = io.StringIO()
+    contained(tmp_path).announce(out)
+    assert "Your OpenCode logins: none." in out.getvalue() and nothing in out.getvalue()
+    out = io.StringIO()
+    contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="sk-synthetic-fed").announce(out)
+    assert "no provider is relayed" not in out.getvalue()
+
+
+def test_provider_variables_in_the_environment_are_named_with_whether_the_lead_serves_them(tmp_path, at_a_terminal):
+    """The Lead's check: a provider key in the operator's environment, rather than stored, is never silent. One whose
+    provider has a relay is named as not given to the Lead, with `--provider-env` as the way to feed it; opencode's is
+    named as not served (addendum 2, ruling 2). A fed one is not named again. Names only."""
+    env = {"ANTHROPIC_API_KEY": "sk-ant-synthetic-env", "OPENAI_API_KEY": "sk-synthetic-env",
+           "OPENCODE_API_KEY": "synthetic-oc-env"}
+    out = io.StringIO()
+    contained(tmp_path, **env).announce(out)
+    text = out.getvalue()
+    assert "aew opencode: ANTHROPIC_API_KEY, OPENAI_API_KEY are set in your environment and not given to the Lead; " \
+           "`aew opencode --provider-env NAME` feeds one to its provider's relay on the host." in text
+    assert "aew opencode: OPENCODE_API_KEY is set in your environment: not served yet: OpenCode's catalog gives each " \
+           "opencode/* model an address of its own" in text
+    assert not any(v in text for v in env.values())
+    out = io.StringIO()
+    contained(tmp_path, ["ANTHROPIC_API_KEY"], **env).announce(out)
+    assert "aew opencode: OPENAI_API_KEY is set in your environment and not given to the Lead" in out.getvalue()
 
 
 # ------------------------------------------------------------------------------------ the operator's MCP servers

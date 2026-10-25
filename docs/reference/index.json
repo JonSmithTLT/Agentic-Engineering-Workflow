@@ -92,7 +92,7 @@
         "lower-bound": 235
       }
     },
-    "digest": "sha256:d432e5fade98b199ce02d18377f6679750b77928b1e325f7819d14a1bd59f4e5",
+    "digest": "sha256:3cc483ab498c5135041578b8a6b1d9760fb7b86716dc28dc475693248c1ef0f0",
     "records": 1080,
     "unresolved": 87
   },
@@ -24383,6 +24383,8 @@
           "containment": "object",
           "containment.hide": "array",
           "containment.hide[]": "string",
+          "containment.lead": "object",
+          "containment.lead.login_warning_h": "integer",
           "containment.mode": "enum",
           "containment.network": "object",
           "containment.network.egress_allow": "array",

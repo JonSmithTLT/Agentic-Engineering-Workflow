@@ -64,6 +64,12 @@ EXPIRY_MARGIN_S = 60.0
 # The cheapest use of the operator's own OpenCode that resolves, and so refreshes, a stored login: `opencode auth list`
 # went to the provider's token endpoint with no model call (measured on the Rocky VM, 2026-10-25).
 REFRESH_COMMAND = "opencode auth list"
+# What the operator runs when a relayed login has expired: the expiry message and the launch's warning both give it.
+REFRESH_STEP = (f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refreshes it there, and the Lead's next "
+                "request then works, with no restart")
+# A relayed login that expires within this many hours is named at the Lead's launch (the designer's addendum 2,
+# ruling 1: one working day's session). The operator's execution policy changes it: containment.lead.login_warning_h.
+LOGIN_WARNING_H = 24
 # Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
 # values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
 LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
@@ -259,6 +265,32 @@ def _launching_terminal() -> list[int]:
     return [os.major(rdev), os.minor(rdev)]
 
 
+def login_warning_h(policy: Mapping[str, Any] | None) -> int:
+    """The execution policy's ``containment.lead.login_warning_h``, else :data:`LOGIN_WARNING_H`."""
+    found = (((policy or {}).get("containment") or {}).get("lead") or {}).get("login_warning_h")
+    return found if isinstance(found, int) and not isinstance(found, bool) and found >= 0 else LOGIN_WARNING_H
+
+
+def _unknown(provider: str) -> str:
+    """Why a stored login in a shape AEW does not know is not used, and what serves its provider instead."""
+    from aew.harness.containment import netns
+
+    variable = netns.PROVIDER_KEY_ENV.get(provider)
+    return (f"in a shape AEW does not know (AEW reads OpenCode {', '.join(capabilities.TESTED_VERSIONS)}'s, and never "
+            "guesses at another), so the contained Lead does not use it"
+            + (f"; to serve {provider} with an API key instead, start `aew opencode --provider-env {variable}`"
+               if variable and provider not in netns.CATALOG_ADDRESSED else ""))
+
+
+def _not_served(provider: str) -> str:
+    """Why a provider whose models carry their own catalogue address gets no relay (the designer's addendum 2, ruling
+    2): its key, stored or in the environment, never goes inside, and OpenCode 2.0.18 offers only the provider's free
+    models without one (it turns off every model with an input cost, read in the pinned bundle)."""
+    return (f"not served yet: OpenCode's catalog gives each {provider}/* model an address of its own, so no relay can "
+            f"carry its key, and the key stays out of the Lead; without it OpenCode offers only the free {provider} "
+            "models, which work through the egress proxy")
+
+
 def _left(entry: login.Login) -> str:
     """How long a refreshing login's access token has left, for the start line."""
     if entry.expires is None:
@@ -273,8 +305,8 @@ class StoredLogin:
     """A refreshing login the contained Lead's relay serves as stored (the designer's addendum 1, option a): the
     operator's login store is read on each request, read-only (``login.stored``), so a refresh by the operator's own
     OpenCode is used from the next request on. AEW never refreshes it and never writes it. Raises
-    ``relay.Unavailable`` with what to do when the login is gone, has changed kind or has expired: the TUI shows that
-    message as the request's error."""
+    ``relay.Unavailable`` with what to do when the login is gone, is in a shape AEW does not know, has changed kind or
+    has expired: the TUI shows that message as the request's error."""
 
     def __init__(self, integration: str, base: Mapping[str, str]) -> None:
         self.integration, self.base = integration, dict(base)
@@ -284,19 +316,19 @@ class StoredLogin:
 
         logins, why = login.stored(self.base)
         entry = next((e for e in logins if e.integration == self.integration), None)
-        again = "the Lead's next request then works, with no restart."
         if entry is None:
             raise relay.Unavailable(f"AEW: your stored {self.integration} login could not be read "
                                     f"({why or 'it is no longer there'}). Log in with your own OpenCode "
-                                    f"(`opencode auth login`); {again}")
+                                    "(`opencode auth login`); the Lead's next request then works, with no restart.")
+        if entry.kind == login.UNKNOWN:
+            raise relay.Unavailable(f"AEW: your stored {self.integration} login is now {_unknown(self.integration)}.")
         if entry.kind != "oauth":
             raise relay.Unavailable(f"AEW: your stored {self.integration} login is now an API key, which this Lead "
                                     "session's relay was not set up for. Restart `aew opencode` to use it.")
         if entry.expires is None or entry.expires / 1000 - EXPIRY_MARGIN_S <= time.time():
             raise relay.Unavailable(f"AEW: your stored {self.integration} login has expired, and the contained Lead "
-                                    "never refreshes it (that would write your OpenCode's own login). Run "
-                                    f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refreshes it there, and "
-                                    f"{again}")
+                                    "never refreshes it (that would write your OpenCode's own login). "
+                                    f"Run {REFRESH_STEP}.")
         meta = entry.metadata
         return entry.secret, {h: str(meta[k]) for h, k in LOGIN_HEADERS.get(self.integration, {}).items()
                               if meta.get(k)}
@@ -321,6 +353,7 @@ class ContainedLead:
             raise UsageError(f"--provider-env {name}: {why}", variable=name)
         self.terminal = _launching_terminal()
         self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
+        self.warning_h = login_warning_h(engine.execution_policy()[0])
         self.provider_env = [str(n) for n in provider_env]
         by_variable = {v: p for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED}
         self.keys: dict[str, str] = {}
@@ -341,10 +374,11 @@ class ContainedLead:
         for entry in self.logins:
             if entry.integration in self.keys:
                 self.lines.append(f"{entry.integration} ({entry.kind}): fed by --provider-env instead")
+            elif entry.kind == login.UNKNOWN:
+                self.lines.append(f"{entry.integration}: not relayed; its stored login is "
+                                  f"{_unknown(entry.integration)}")
             elif entry.integration in netns.CATALOG_ADDRESSED:
-                self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; OpenCode's catalog gives each "
-                                  f"{entry.integration}/* model an address of its own, so its key cannot reach a "
-                                  "relay. Its free models still work, through the egress proxy")
+                self.lines.append(f"{entry.integration} ({entry.kind}): {_not_served(entry.integration)}")
             elif entry.kind != "key" and entry.integration in netns.REFRESHING_UPSTREAMS:
                 self.refreshing[entry.integration] = entry
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed as stored, {_left(entry)}; AEW never "
@@ -360,6 +394,11 @@ class ContainedLead:
             else:
                 self.keys[entry.integration] = entry.secret
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed")
+        # the provider variables AEW knows that are set in the operator's environment and not fed: names only
+        unfed = sorted({v: p for p, v in netns.PROVIDER_KEY_ENV.items()
+                        if v not in self.fed and agentenv.lookup(base, v)}.items())
+        self.unfed = [v for v, p in unfed if v in by_variable]
+        self.unserved = [(v, p) for v, p in unfed if v not in by_variable]
         self.mcp, self.unread = operator_mcp_servers(base)
         self.preferences, self.plugins, self.unread_preferences = operator_preferences(base)
 
@@ -370,6 +409,24 @@ class ContainedLead:
         for name, provider in self.fed.items():
             out.write(f"aew opencode: --provider-env {name} feeds the {provider} relay on the host; the Lead's shell "
                       "sees only a placeholder.\n")
+        if self.unfed:
+            out.write(f"aew opencode: {', '.join(self.unfed)} {'is' if len(self.unfed) == 1 else 'are'} set in your "
+                      "environment and not given to the Lead; `aew opencode --provider-env NAME` feeds one to its "
+                      "provider's relay on the host.\n")
+        for name, provider in self.unserved:
+            out.write(f"aew opencode: {name} is set in your environment: {_not_served(provider)}.\n")
+        if not self.keys and not self.refreshing:
+            out.write("aew opencode: no provider is relayed to the Lead, so only OpenCode's free models work. Log in "
+                      "with your own OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key "
+                      "with `--provider-env NAME`; then start `aew opencode` again.\n")
+        for entry in self.refreshing.values():  # addendum 2, ruling 1: it warns, and blocks nothing
+            hours = (entry.expires / 1000 - time.time()) / 3600 if entry.expires is not None else 0.0
+            if hours <= 0:
+                out.write(f"aew opencode: your stored {entry.integration} login has expired. Run {REFRESH_STEP}.\n")
+            elif hours <= self.warning_h:
+                out.write(f"aew opencode: your stored {entry.integration} login expires in "
+                          f"{_left(entry).removesuffix(' left')} (named when {self.warning_h} h or less is left: "
+                          f"containment.lead.login_warning_h). When it has expired, run {REFRESH_STEP}.\n")
         if self.mcp:
             out.write(f"aew opencode: your OpenCode configuration is not loaded in the contained Lead; its MCP servers "
                       f"are left out: {', '.join(self.mcp)}.\n")

@@ -624,6 +624,18 @@ def test_a_registry_that_names_nothing_that_exists_is_a_problem(registry, why):
     assert why in (registry_problem(registry) or "")
 
 
+def test_a_registry_that_names_a_section_of_a_yaml_file_resolves_or_names_what_it_lacks(monkeypatch, tmp_path):
+    """The ``path#section`` branch, in a tree of its own: a section the file has resolves (the right case), one it lacks
+    and a file that is not a mapping name the section, and a missing file is named."""
+    (tmp_path / "map.yaml").write_text("commands:\n  - name: a\nother: 1\n", encoding="utf-8")
+    (tmp_path / "list.yaml").write_text("- a\n- b\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    assert registry_problem("map.yaml#commands") is None
+    assert "has no section nope" in (registry_problem("map.yaml#nope") or "")
+    assert "has no section commands" in (registry_problem("list.yaml#commands") or "")
+    assert "is not a file of the repository" in (registry_problem("gone.yaml#commands") or "")
+
+
 # ------------------------------------------------------------------------------------------ the entry-points family
 
 def test_the_entry_point_records_are_the_registry_both_ways():

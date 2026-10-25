@@ -58,7 +58,7 @@ def test_install_sh_and_both_desktop_entries_launch_the_same_confirmer_from_the_
         text = entry.read_bytes().decode()
         assert re.findall(r"^Exec=(.*)$", text, re.M) == [exec_line], entry.name
         assert set(re.findall(r"^(\w[\w-]*)=", text, re.M)) <= {
-            "Type", "Name", "Comment", "Exec", "Terminal", "Categories", "NoDisplay", "X-GNOME-Autostart-enabled"}
+            "Type", "Name", "Comment", "Exec", "Terminal", "Categories", "X-GNOME-Autostart-enabled"}
     assert _install_value(install, "DESKTOP") == "/usr/share/applications/" + menu.name
     assert _install_value(install, "AUTOSTART") == "/etc/xdg/autostart/" + login.name
     assert 'cp "$HERE/desktop/autostart/' + login.name + '" "$AUTOSTART"' in install

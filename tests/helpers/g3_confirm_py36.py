@@ -8,8 +8,9 @@ copy, with its own state directory (never the installed service, and never the o
 ``tests/fixtures/g3/g3-cases.json``. Without ``--pin`` it makes no PIN attempt: it lists, shows, declines and checks
 the refusals that need none. With ``--pin``, the throwaway service's synthetic PIN, it also approves, sends a wrong
 PIN and retries. It imports the window module too, so GTK's import on this Python is part of the proof. With
-``GDK_BACKEND=broadway`` and a private ``broadwayd`` (never a desktop's display), it also drives the real window: it
-lists, selects, shows every row and declines through it, and with ``--pin`` approves through its PIN field.
+``GDK_BACKEND=broadway`` and a private ``broadwayd``, or ``GDK_BACKEND=x11`` and a private ``Xvnc`` (never a desktop's
+display), it also drives the real window: it lists, selects, shows every row and declines through it, and with
+``--pin`` approves through its PIN field. Under ``dbus-run-session`` it also drives the notifications (addendum 4).
 """
 
 import json
@@ -65,7 +66,7 @@ def main(argv):
         assert core.decide(ref, pin, confirm) == core.APPROVED
         assert core.decide(ref, pin, confirm) == "NOT_FOUND"
         done.append("wrong PIN, approve, retry NOT_FOUND")
-    if os.environ.get("GDK_BACKEND") == "broadway":  # a private broadwayd: the window is built, never on a screen
+    if os.environ.get("GDK_BACKEND") in ("broadway", "x11"):  # a private broadwayd or Xvnc, never a screen
         done += drive_window(window, core, confirm, ask, pin)
         if os.environ.get("DBUS_SESSION_BUS_ADDRESS", "").startswith("unix:"):  # a private bus from dbus-run-session
             done += drive_app(window, core, g3_dir, confirm, ask)

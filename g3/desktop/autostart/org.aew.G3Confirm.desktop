@@ -4,5 +4,4 @@ Name=AEW approvals
 Comment=Notifies you when an AEW approval is waiting; you approve or decline it in the window
 Exec=/opt/aew-g3/bin/aew-g3-confirm --at-login
 Terminal=false
-NoDisplay=true
 X-GNOME-Autostart-enabled=true

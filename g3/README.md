@@ -66,7 +66,9 @@ fixed text, never text the service sent.
 - **It degrades quietly:** with no notification service, or the G3 service down, nothing fails and no dialog appears.
 - **On another account's login** the entry runs too. That account cannot use `confirm.sock`, so the confirmer exits
   at once, silently.
-- **The operator can turn it off** for themselves in their desktop's startup settings; the menu still works.
+- **The operator can turn it off** for themselves: a file `~/.config/autostart/org.aew.G3Confirm.desktop` holding
+  `[Desktop Entry]` and `Hidden=true` overrides the system's entry (the XDG autostart rule), or their desktop's startup
+  settings where it has them. The menu still works.
 - **The service** logs a successful pending read no more, so the polling does not bury the journal. A refused or failed
   read is logged, as is every other request.
 

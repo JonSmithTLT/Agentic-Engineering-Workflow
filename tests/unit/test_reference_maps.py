@@ -222,7 +222,7 @@ def test_two_names_that_make_one_diagram_id_are_refused_and_not_merged():
 
 
 WORKER = ("aew.process_kind", "require_writer", "the role `aew (worker run)` is chosen by an environment variable")
-HIDDEN = ("m.hidden", "stash", "no static call chain reaches this writer")
+HIDDEN = ("aew.engine.hidden", "stash", "no static call chain reaches this writer")
 UNPLACED = ("aew", None, "read sites whose path this reading could not place")
 UNLISTED = ("aew.process_kind", None, "a function that works without the control lock is not listed")
 
@@ -258,8 +258,8 @@ def test_the_page_lists_what_the_joined_records_say_they_could_not_resolve_with_
     writes = section.split("### Writes\n", 1)[1].split("### ", 1)[0]
     assert "- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable " \
            "(2 records)" in writes
-    assert "- `m.hidden:stash`: no static call chain reaches this writer (1 record)" in writes
-    assert writes.index("require_writer") < writes.index("m.hidden:stash"), "the item most records carry comes first"
+    assert "- `aew.engine.hidden:stash`: no static call chain reaches this writer (1 record)" in writes
+    assert writes.index("require_writer") < writes.index("hidden:stash"), "the item most records carry comes first"
     readers = section.split("### Readers of an entry\n", 1)[1].split("### ", 1)[0]
     assert "- `aew`: read sites whose path this reading could not place (4 records)" in readers
     members = section.split("### Entry points of a lock-free member\n", 1)[1].split("### ", 1)[0]
@@ -288,7 +288,8 @@ def test_no_item_means_none_and_the_records_without_a_fact_coverage_are_read():
 
 def test_a_process_with_no_edge_is_said_not_to_be_shown_doing_nothing():
     text = P.data_flow_page(planted())
-    assert "**Every edge is a lower bound**, and a process or an entry with no edge is not shown to do nothing" in text
+    said = "**Every edge is a lower bound**, and a process or an entry with no edge is not shown to do nothing"
+    assert said + ": see [Not drawn](#not-drawn)." in text
 
 
 def test_the_two_counts_that_are_drawn_apart_say_they_are_not_drawn_by_entry_point_and_not_not_drawn():

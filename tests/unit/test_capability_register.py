@@ -135,6 +135,25 @@ def test_q01_an_archive_with_one_byte_changed_is_refused_at_import(reg):
     assert not (reg["root"] / store.PAYLOADS).exists() or not any((reg["root"] / store.PAYLOADS).rglob("fake*"))
 
 
+def test_a_refused_import_never_makes_a_good_installed_payload_read_refused(reg, monkeypatch):
+    """Review F4: a good import, then a bundle whose archive is refused, then `check`: the installed payload matches
+    its pin, so it reads FUNCTIONAL_ONLY before the check and after it, which clears the earlier refusal; the host's
+    unpinned copy never serves in its place."""
+    _import(reg)
+    _plant_host_copy(reg, monkeypatch)
+    tampered = bytearray(reg["archive"])
+    tampered[len(tampered) // 2] ^= 1
+    out = _import(reg, data=bytes(tampered))
+    assert out["imported"] == [] and out["refused"]
+    assert store.read()["refused"]  # the refused import is recorded
+    cap = _cap()
+    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and cap["copy"] == status.AEW_COPY
+    ops.check("fake", offline=True)
+    cap = _cap()
+    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and cap["copy"] == status.AEW_COPY
+    assert store.read()["refused"] == {}
+
+
 def test_q01_an_installed_payload_with_one_byte_changed_is_refused_at_the_next_check(reg, monkeypatch):
     """...and removed, so a later check fetches it again: online, the pinned archive comes back FUNCTIONAL_ONLY."""
     _import(reg)
@@ -235,7 +254,26 @@ def test_q04_a_host_change_reads_stale_naming_it(reg, monkeypatch, fact):
     assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
     monkeypatch.setattr(status, "host_facts", lambda: {**then, fact: "changed"})
     cap = _cap()
-    assert cap["observed_status"] == status.STALE and f"the {fact} changed" in cap["cause"]
+    said = "the harness this process would launch" if fact == "harness" else f"the {fact}"
+    assert cap["observed_status"] == status.STALE and f"{said} changed" in cap["cause"]
+
+
+def test_the_harness_fact_is_the_one_this_process_would_launch_and_its_staleness_says_so(reg, monkeypatch, tmp_path):
+    """Review F9's stated limit: the harness fact follows the reading process's environment, so a reader that would
+    launch another harness reads the check STALE, saying it is the harness this process would launch."""
+    from aew.harness.opencode.adapter import BIN_ENV
+
+    harness = tmp_path / "opencode-cli"
+    harness.write_bytes(b"a stand-in, never run")
+    monkeypatch.setenv(BIN_ENV, str(harness))
+    _import(reg)
+    assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
+    monkeypatch.setenv(BIN_ENV, str(tmp_path / "no-such-opencode"))
+    cap = _cap()
+    assert cap["observed_status"] == status.STALE
+    assert f"the harness this process would launch changed ({harness.resolve()}" in cap["cause"]
+    monkeypatch.setenv(BIN_ENV, str(harness))
+    assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
 
 
 def test_no_payload_for_the_platform_reads_unsupported(reg, monkeypatch):
@@ -255,6 +293,24 @@ def test_an_invalid_operator_record_is_refused_never_served(reg):
         store.write(state, root)
     cap = _cap()
     assert cap["observed_status"] == status.REFUSED and "host placement" in cap["cause"]
+
+
+def test_a_refused_operator_record_of_its_own_keeps_its_capabilities_in_the_listing_as_refused(reg):
+    """Review F11: an operator record no shipped record backs (``mine``, serving ``MINE_SEARCH``), refused on a read,
+    keeps its well-formed capability in the listing and in doctor, REFUSED with its cause; a malformed ID is not."""
+    _import(reg)
+    state = store.read()
+    bad = copy.deepcopy(reg["shipped"]["fake"])
+    bad.update(placement="host", capabilities=["MINE_SEARCH", "not an id"])
+    state["operator_records"]["mine"] = {"record": bad, "base_digest": None}
+    with store.locked() as root:
+        store.write(state, root)
+    listing = ops.listing()
+    assert [c["id"] for c in listing["capabilities"]] == ["FAKE_SEARCH", "MINE_SEARCH"]
+    cap = _cap("MINE_SEARCH")
+    assert cap["observed_status"] == status.REFUSED and cap["provider"] == "mine"
+    assert "its record is refused" in cap["cause"] and "not an id" in cap["cause"]
+    assert ("capability:MINE_SEARCH", "WARN") in [(n, s) for n, s, _ in ops.doctor_checks()]
 
 
 def test_an_unreadable_register_refuses_every_capability_with_its_cause(reg):
@@ -390,6 +446,29 @@ def test_remove_takes_only_operator_records_and_the_shipped_record_serves_again(
     assert provider["layer"] == "shipped"
 
 
+def test_a_change_shown_before_another_lands_is_refused_never_applied_on_what_was_not_shown(reg):
+    """Review F10: two projects' endpoints change one host's register. A change is applied only on the basis it was
+    shown against (the operator's records and the host-copies setting); a check in between changes neither."""
+    def text(record: dict[str, Any]) -> str:
+        return json.dumps({"schema": records.SCHEMA, "providers": {"fake": record}})
+
+    shown = ops.preview(ops.ADD, {"text": text(_record(reg["body"], reg["archive"], description="A's")),
+                                  "source": "A", "bundle": str(_bundle(reg))})
+    _add(reg, _record(reg["body"], reg["archive"], description="B's"), bundle=str(_bundle(reg)))  # lands between
+    with pytest.raises(errors.ValidationFailed) as exc:
+        ops.apply(_principal(), shown)
+    assert exc.value.details["reason"] == "register_changed" and "nothing changed" in exc.value.message
+    assert store.read()["operator_records"]["fake"]["record"]["description"] == "B's"
+    off = ops.preview(ops.HOST_COPIES, {"on": False})
+    ops.apply(_principal(), ops.preview(ops.HOST_COPIES, {"on": False}))
+    with pytest.raises(errors.ValidationFailed, match="changed since this change was shown"):
+        ops.apply(_principal(), off)
+    on = ops.preview(ops.HOST_COPIES, {"on": True})
+    ops.check(offline=True)  # writes only checks: no authority, so the shown change still applies
+    ops.apply(_principal(), on)
+    assert store.read()["host_copies"] is True
+
+
 def test_apply_is_refused_without_the_endpoints_principal(reg):
     change = ops.preview(ops.HOST_COPIES, {"on": False})
     for forged in (None, {"uid": 0, "method": "peer_credentials"}, "operator"):
@@ -505,3 +584,208 @@ def test_a_register_that_cannot_be_written_refuses_the_change_with_its_own_reaso
         ops.check(offline=True)
     assert exc.value.details["reason"] == "register_not_writable" and exc.value.details["errno"]
     assert "Read-only file system" not in exc.value.message and "Permission denied" not in exc.value.message
+
+
+def test_every_register_write_path_refuses_with_the_typed_reason(reg, monkeypatch):
+    """Review F1's class: the state, the change log, a payload's install and discard, and the lock's own file each
+    refuse an unwritable register with ``register_not_writable``, saying where `check` runs, never with an OSError."""
+    import errno as errno_
+
+    from aew.engine.lock import FileLock
+
+    blocked = reg["tmp"] / "a-file"
+    blocked.write_text("x", encoding="utf-8")
+    under = blocked / "register"  # a file stands where the register's directory would be
+    pinned = {"sha256": "0" * 64}
+
+    def erofs(*_a: Any, **_k: Any) -> None:
+        raise OSError(errno_.EROFS, "Read-only file system")
+
+    real = reg["tmp"] / "real"
+    P.install("fake", "fake", pinned, b"x", real)
+    calls = {
+        "write": lambda: store.write(store.empty(), under),
+        "record_change": lambda: store.record_change("x", {}, None, under),
+        "install": lambda: P.install("fake", "fake", pinned, b"x", under),
+        "locked": lambda: store.locked(under).__enter__(),
+    }
+    for name, call in calls.items():
+        with pytest.raises(errors.PermissionDenied) as exc:
+            call()
+        assert exc.value.details["reason"] == store.NOT_WRITABLE, name
+        assert "`aew capability check` at the operator's own terminal" in exc.value.message, name
+    with monkeypatch.context() as m, pytest.raises(errors.PermissionDenied) as exc:
+        m.setattr(P.shutil, "rmtree", erofs)
+        P.discard("fake", pinned, real)
+    assert exc.value.details == {"path": str(real), "errno": "EROFS", "reason": store.NOT_WRITABLE}
+    assert P.path_of("fake", "fake", pinned, real).exists()  # left in place, and said so
+    with monkeypatch.context() as m, pytest.raises(errors.PermissionDenied) as exc:
+        m.setattr(FileLock, "__exit__", erofs)
+        with store.locked(real):
+            pass
+    assert exc.value.details["reason"] == store.NOT_WRITABLE
+
+
+def test_the_seven_statuses_are_the_adopted_d01_schemas_and_each_name_is_one_of_them():
+    """Review F5: the statuses' owner is the adopted D-01 read schema (CapabilityData.observed_status, S01-04); the
+    names the register uses are exactly its values."""
+    names = {status.QUALIFIED, status.FUNCTIONAL_ONLY, status.NOT_ESTABLISHED, status.UNSUPPORTED,
+             status.UNAVAILABLE, status.STALE, status.REFUSED}
+    assert set(status.STATUSES) == names and len(status.STATUSES) == 7
+    assert status.USABLE <= names and status.NOT_SERVING <= names
+
+
+# ---------------------------------------------------------------------------------------------- the payload's guards
+# Review F6: each guard the payload claims, proved by a plant that only that guard stops. Each plant is pinned by its
+# own archive's digest and size (as an operator's record pinning it would be), so it reaches `member()`.
+
+GOOD = b"#!/bin/sh\necho good\n" * 8
+
+
+def _pin_for(data: bytes, kind: str, body: bytes = GOOD) -> dict[str, Any]:
+    return {"source": f"https://example.invalid/fake-1.0.{kind}", "archive_sha256": _sha(data),
+            "archive_size": len(data), "member": MEMBER, "sha256": _sha(body), "size": len(body)}
+
+
+def _tgz(*entries: tuple[str, str, bytes, str]) -> bytes:
+    """(name, kind, data, link name), kind one of file, sym, hard."""
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as t:
+        for name, kind, data, link in entries:
+            info = tarfile.TarInfo(name)
+            info.mode = 0o755
+            if kind == "file":
+                info.size = len(data)
+                t.addfile(info, io.BytesIO(data))
+            else:
+                info.type, info.linkname = {"sym": tarfile.SYMTYPE, "hard": tarfile.LNKTYPE}[kind], link
+                t.addfile(info)
+    return out.getvalue()
+
+
+def _zip(data: bytes, *, symlink: bool = False) -> bytes:
+    import zipfile
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        info = zipfile.ZipInfo(MEMBER)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        if symlink:
+            info.external_attr, info.create_system = 0o120777 << 16, 3
+        z.writestr(info, data)
+    return out.getvalue()
+
+
+class _Bounded:
+    """A reader that fails an unbounded read, or one past ``limit``: a guard's bound is then what a test sees."""
+
+    def __init__(self, fh: Any, limit: int) -> None:
+        self.fh, self.limit = fh, limit
+
+    def read(self, n: int | None = -1) -> bytes:
+        assert n is not None and 0 <= n <= self.limit, f"read({n}) past the bound {self.limit}"
+        return self.fh.read(n)
+
+    def __enter__(self) -> _Bounded:
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        close = getattr(self.fh, "close", None)
+        if close is not None:
+            close()
+
+
+def test_a_fetch_never_reads_past_the_pinned_archive_size(monkeypatch, reg):
+    pinned = reg["shipped"]["fake"]["payloads"][KEY]
+    limit = pinned["archive_size"] + 1
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda url, timeout: _Bounded(io.BytesIO(reg["archive"] + b"x" * (1 << 20)), limit))
+    with pytest.raises(P.PinMismatch) as exc:
+        P.fetch(pinned)
+    assert exc.value.details["reason"] == "archive_size"
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(io.BytesIO(reg["archive"]), limit))
+    assert P.fetch(pinned) == reg["archive"]
+
+
+def test_an_oversized_member_is_read_only_to_its_pinned_size_in_a_tar_and_a_zip(monkeypatch):
+    import zipfile
+
+    big = GOOD + bytes(1 << 20)
+    oversized = (("tar.gz", _tgz((MEMBER, "file", big, ""))), ("zip", _zip(big)))
+    controls = (("tar.gz", _tgz((MEMBER, "file", GOOD, ""))), ("zip", _zip(GOOD)))
+    limit = len(GOOD) + 1
+    real_extract, real_open = tarfile.TarFile.extractfile, zipfile.ZipFile.open
+    monkeypatch.setattr(tarfile.TarFile, "extractfile", lambda self, m: _Bounded(real_extract(self, m), limit))
+    monkeypatch.setattr(zipfile.ZipFile, "open", lambda self, m, *a, **k: _Bounded(real_open(self, m, *a, **k), limit))
+    for kind, data in oversized:
+        with pytest.raises(P.PinMismatch) as exc:
+            P.member(data, _pin_for(data, kind))
+        assert exc.value.details["reason"] == "payload_pin", kind
+    for kind, data in controls:
+        assert P.member(data, _pin_for(data, kind)) == GOOD, kind
+
+
+def test_a_link_at_the_members_name_is_refused_even_when_it_leads_to_the_pinned_bytes():
+    """Only a regular file is the member: a tar symlink or hard link to an in-archive file that matches the pin, and
+    a zip entry with symlink attributes whose bytes match it, are each refused as no regular file."""
+    real = "fake-1.0/real"
+    plants = {
+        "tar symlink": ("tar.gz", _tgz((real, "file", GOOD, ""), (MEMBER, "sym", b"", "real"))),
+        "tar hard link": ("tar.gz", _tgz((real, "file", GOOD, ""), (MEMBER, "hard", b"", real))),
+        "zip symlink": ("zip", _zip(GOOD, symlink=True)),
+    }
+    for label, (kind, data) in plants.items():
+        with pytest.raises(P.PinMismatch) as exc:
+            P.member(data, _pin_for(data, kind))
+        assert exc.value.details["reason"] == "member_missing", label
+
+
+def test_an_oversized_bundle_file_named_like_the_pin_is_read_bounded_and_said_larger(reg, monkeypatch):
+    """Review F6 and F13: the import reads a file named like a pinned archive only to the pin's size, and its
+    refusal gives the file's own size and says it is larger than its pin."""
+    import builtins
+
+    pinned = reg["shipped"]["fake"]["payloads"][KEY]
+    bundle = _bundle(reg, data=reg["archive"] + bytes(1 << 20))
+    size = (bundle / "fake-1.0.tar.gz").stat().st_size
+    monkeypatch.setattr(ops, "open", lambda f, mode="r", *a, **k: _Bounded(builtins.open(f, mode, *a, **k),
+                                                                            pinned["archive_size"] + 1),
+                        raising=False)
+    change = ops.preview(ops.IMPORT, {"path": str(bundle)})
+    refuse = [line for line in change.lines if "REFUSE" in line]
+    assert len(refuse) == 1 and "is larger than its pin" in refuse[0], change.lines
+    assert f"({size} bytes; pinned {pinned['archive_size']} bytes)" in refuse[0]
+    assert "sha256" not in refuse[0]  # the prefix's digest is not the file's
+
+
+def test_an_encrypted_unsupported_or_damaged_zip_entry_is_refused_as_unreadable():
+    """Review F7: the three zip read errors that are not BadZipFile are refused like it, so an add's rollback runs."""
+    import struct
+
+    good = _zip(GOOD)
+
+    def patched(fn: Any) -> bytes:
+        b = bytearray(good)
+        fn(b)
+        return bytes(b)
+
+    def encrypted(b: bytearray) -> None:
+        for sig, off in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+            i = b.find(sig)
+            struct.pack_into("<H", b, i + off, struct.unpack_from("<H", b, i + off)[0] | 0x1)
+
+    def shrink(b: bytearray) -> None:
+        for sig, off in ((b"PK\x03\x04", 8), (b"PK\x01\x02", 10)):
+            struct.pack_into("<H", b, b.find(sig) + off, 1)
+
+    def corrupt(b: bytearray) -> None:
+        i = b.find(b"PK\x03\x04")
+        n, extra = struct.unpack_from("<HH", b, i + 26)
+        for j in range(i + 30 + n + extra, i + 38 + n + extra):
+            b[j] ^= 0xFF
+
+    for label, fn in (("encrypted", encrypted), ("unsupported method", shrink), ("damaged deflate", corrupt)):
+        data = patched(fn)
+        with pytest.raises(P.PinMismatch) as exc:
+            P.member(data, _pin_for(data, "zip"))
+        assert exc.value.details["reason"] == "archive_unreadable", label

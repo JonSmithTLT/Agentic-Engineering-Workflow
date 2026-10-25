@@ -53,8 +53,9 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 DEPTH = 32
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 # Distinct values one expression may take before it is UNK, so a set that grows toward the cap is a decision and not a
-# record silently lost. 64 since CAP-1 (STG-15): its schema made `aew.schemas.SCHEMAS`' file names the largest set,
-# 31, and the tree test holds the cap to twice that.
+# record silently lost. 64 since CAP-1 (STG-15): its schema made the largest set the file names of `SCHEMAS`
+# (src/aew/schemas/__init__.py), 31 (docs/reference/writers.md, "The largest in this render"), and the tree test holds
+# the cap to at least twice that.
 VALUES = 64
 PLACEHOLDER = "{}"
 # Receivers typed through receivers (`self.a.b.run()`, `Class().m().n()`): a call edge past it would be dropped as if

@@ -6,7 +6,7 @@
 * `import`, `add`, `remove` and `host-copies` change what every contained context gets, so they are the operator's:
   each sends one request to the project's operator endpoint (`aew operator serve --dev`), whose console shows the
   exact change and a code the operator types here. The endpoint applies the change it showed. They are on no agent's
-  surface: the Lead broker refuses them (``lead_broker.OPERATOR_ENDPOINT``), no typed tool runs them, and the worker
+  surface: the Lead broker refuses them (``lead_broker.OPERATOR_REGISTER``), no typed tool runs them, and the worker
   bridge offers no such operation.
 """
 
@@ -88,11 +88,15 @@ def _check(a: argparse.Namespace) -> Any:
 
 
 def _add(a: argparse.Namespace) -> Any:
+    from aew.capability import ops
+
     path = Path(a.record_file)
     try:
-        text = path.read_text(encoding="utf-8")
+        with open(path, "rb") as fh:
+            text = fh.read(ops.MAX_RECORD_TEXT + 1).decode("utf-8")  # one past the limit is enough to refuse it
     except (OSError, UnicodeDecodeError) as exc:
         raise UsageError(f"cannot read the record file {a.record_file}: {exc}", path=a.record_file) from None
+    ops.check_record_size(text, str(path))  # before anything is sent: the endpoint's request is bounded (F12)
     return _change(a, "add", {"text": text, "source": str(path),
                               "bundle": os.path.abspath(a.bundle) if a.bundle else None})
 

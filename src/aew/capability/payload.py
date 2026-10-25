@@ -9,13 +9,13 @@ written anywhere.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import io
 import os
 import shutil
 import tarfile
 import zipfile
+import zlib
 from pathlib import Path
 from typing import IO, Any
 
@@ -48,14 +48,6 @@ def fetch(payload: dict[str, Any]) -> bytes:
         raise Unavailable(f"the pinned payload could not be fetched from {source}: {exc}", source=source,
                           reason="fetch_failed") from None
     check_archive(data, payload, what=source)
-    return data
-
-
-def read_archive(path: Path, payload: dict[str, Any]) -> bytes:
-    """An archive the operator brought (an offline bundle's file), read to at most its pinned size and checked."""
-    with open(path, "rb") as fh:
-        data = _read_bounded(fh, payload["archive_size"], what=str(path))
-    check_archive(data, payload, what=str(path))
     return data
 
 
@@ -96,7 +88,8 @@ def member(data: bytes, payload: dict[str, Any]) -> bytes:
     except KeyError:
         raise PinMismatch(f"the pinned archive holds no regular file {name}", reason="member_missing",
                           member=name) from None
-    except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError) as exc:
+    except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError, zlib.error, RuntimeError,
+            NotImplementedError) as exc:  # the last three: an encrypted entry, an unknown method, damaged data (F7)
         raise PinMismatch(f"the pinned archive cannot be read ({exc})", reason="archive_unreadable") from None
     got = hashlib.sha256(body).hexdigest()
     if got != payload["sha256"] or len(body) != payload["size"]:
@@ -108,17 +101,18 @@ def member(data: bytes, payload: dict[str, Any]) -> bytes:
 def install(name: str, command: str, payload: dict[str, Any], body: bytes, directory: Path | None = None) -> Path:
     """Write a checked executable into its own directory, read-only and executable, replacing any copy there."""
     target_dir = store.payload_dir(name, payload["sha256"], directory)
-    target_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     target = target_dir / store.executable_name(command)
-    tmp = write_temp(target_dir, body, prefix=f".{target.name}.")
-    try:
-        os.chmod(tmp, 0o500)  # the operator's own, as a contained run is: read and run, never written
-        if target.exists():
-            os.chmod(target, 0o700)  # Windows refuses to replace a read-only file
-        os.replace(tmp, target)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    with store.writing(directory or store.root()):
+        target_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        tmp = write_temp(target_dir, body, prefix=f".{target.name}.")
+        try:
+            os.chmod(tmp, 0o500)  # the operator's own, as a contained run is: read and run, never written
+            if target.exists():
+                os.chmod(target, 0o700)  # Windows refuses to replace a read-only file
+            os.replace(tmp, target)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
     return target
 
 
@@ -142,8 +136,10 @@ def verify(path: Path, payload: dict[str, Any]) -> str | None:
 def discard(name: str, payload: dict[str, Any], directory: Path | None = None) -> None:
     """Remove a refused payload, so the next fetch or import can replace it."""
     target = store.payload_dir(name, payload["sha256"], directory)
-    if target.is_dir():
+    if not target.is_dir():
+        return
+    # A payload left behind is refused again at every read: say so, never ignore it
+    with store.writing(directory or store.root()):
         for child in target.iterdir():  # Windows will not remove a read-only file
-            with contextlib.suppress(OSError):
-                os.chmod(child, 0o700)
-    shutil.rmtree(target, ignore_errors=True)
+            os.chmod(child, 0o700)
+        shutil.rmtree(target)

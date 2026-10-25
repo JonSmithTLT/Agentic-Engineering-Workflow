@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -57,8 +58,11 @@ def listing(directory: Path | None = None) -> dict[str, Any]:
 
 
 def _capabilities_of(name: str, entry: dict[str, Any]) -> list[str]:
-    record = entry["record"] or records.shipped().get(name) or {}
-    return [c for c in record.get("capabilities") or [] if isinstance(c, str)]
+    if entry["record"] is not None:
+        return list(entry["record"]["capabilities"])
+    # A refused record still names what it serves: the shipped record's capabilities and its own (review F11)
+    named = records.capability_ids(records.shipped().get(name)) + records.capability_ids(entry.get("held"))
+    return list(dict.fromkeys(named))
 
 
 def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: dict[str, str | None],
@@ -196,6 +200,8 @@ def _check_one(name: str, entry: dict[str, Any], state: dict[str, Any], facts: d
             P.discard(name, pinned, directory)
             said.append(f"refused its installed payload ({wrong})")
             refused_now = True
+        elif path.exists():  # it matches its pin: an earlier refusal (a refused import or fetch) no longer holds (F4)
+            _installed(state, name, key)
         if not path.exists() and not offline and not refused_now:
             said.append(_fetch(name, record, pinned, state, key, directory))
         if path.exists():
@@ -265,25 +271,38 @@ class Change:
 
 def preview(kind: str, args: dict[str, Any], *, directory: Path | None = None) -> Change:
     """The change ``kind`` would make, read and validated, changing nothing. Refused here, before the operator is
-    asked, when it cannot be applied."""
+    asked, when it cannot be applied. It carries the register's basis as it was read before the change was (so a
+    change that lands in between is refused at :func:`apply`, never applied on what the operator was not shown)."""
+    basis = _basis(store.read(directory))
     if kind == IMPORT:
-        return _preview_import(str(args.get("path") or ""), directory)
-    if kind == ADD:
-        return _preview_add(str(args.get("text") or ""), str(args.get("source") or "the record file"),
-                            args.get("bundle"), directory)
-    if kind == REMOVE:
-        return _preview_remove(str(args.get("name") or ""), directory)
-    if kind == HOST_COPIES:
+        change = _preview_import(str(args.get("path") or ""), directory)
+    elif kind == ADD:
+        change = _preview_add(str(args.get("text") or ""), str(args.get("source") or "the record file"),
+                              args.get("bundle"), directory)
+    elif kind == REMOVE:
+        change = _preview_remove(str(args.get("name") or ""), directory)
+    elif kind == HOST_COPIES:
         if not isinstance(args.get("on"), bool):
             raise UsageError("host-copies takes on or off")
-        return _preview_host_copies(bool(args["on"]), directory)
-    raise UsageError(f"no capability register change {kind!r}; the changes are {', '.join(CHANGES)}")
+        change = _preview_host_copies(bool(args["on"]), directory)
+    else:
+        raise UsageError(f"no capability register change {kind!r}; the changes are {', '.join(CHANGES)}")
+    change.data["basis"] = basis
+    return change
+
+
+def _basis(state: dict[str, Any]) -> str:
+    """What an operator change is shown against, and applied only on: the operator's records and the host-copies
+    setting (review F10). The health checks' results are not part of it: a check changes no authority."""
+    return sha256_text(json.dumps({"operator_records": state.get("operator_records") or {},
+                                   "host_copies": state.get("host_copies")}, sort_keys=True))
 
 
 def apply(principal: Any, change: Change, *, directory: Path | None = None) -> dict[str, Any]:
     """Apply a previewed change under the register's lock, as the operator endpoint does once the operator approved
-    it. Refused without the endpoint's ``OperatorPrincipal``. Re-validated against the register as it is now: what
-    changed since the preview is refused, never applied on a stale view."""
+    it. Refused without the endpoint's ``OperatorPrincipal``. Re-validated against the register as it is now: a
+    change since the preview to the operator's records or the host-copies setting is refused (its basis), never
+    applied on a stale view."""
     from aew.engine.steering import OperatorPrincipal
 
     if not isinstance(principal, OperatorPrincipal):
@@ -292,6 +311,10 @@ def apply(principal: Any, change: Change, *, directory: Path | None = None) -> d
                                reason="operator_principal_required")
     with store.locked(directory) as root:
         state = store.read(root)
+        if change.data.get("basis") != _basis(state):
+            raise ValidationFailed("the capability register's operator records or host-copies setting changed since "
+                                   "this change was shown, so it was not applied, and nothing changed: ask for it "
+                                   "again to see it against the register as it is now", reason="register_changed")
         what = {IMPORT: _apply_import, ADD: _apply_add, REMOVE: _apply_remove,
                 HOST_COPIES: _apply_host_copies}[change.kind](change, state, root)
         store.write(state, root)
@@ -339,10 +362,13 @@ def _match_bundle(files: list[Path], eff: dict[str, dict[str, Any]], key: str) -
         if not hits:
             for n, k, p in candidates:
                 if Path(p["source"]).name == f.name and k == key:
-                    refused.append({"name": n, "file": str(f), "payload": p,
-                                    "reason": f"the bundle's {f.name} does not match its pin (sha256 {sha}, "
-                                              f"{len(data)} bytes; pinned {p['archive_sha256']}, "
-                                              f"{p['archive_size']} bytes)"})
+                    # A file larger than its pin is read only to the pin's size, so its own digest is not known: its
+                    # size is what is said (review F13)
+                    reason = (f"the bundle's {f.name} is larger than its pin ({size} bytes; pinned "
+                              f"{p['archive_size']} bytes)" if size > p["archive_size"] else
+                              f"the bundle's {f.name} does not match its pin (sha256 {sha}, {len(data)} bytes; "
+                              f"pinned {p['archive_sha256']}, {p['archive_size']} bytes)")
+                    refused.append({"name": n, "file": str(f), "payload": p, "reason": reason})
             if not any(r["file"] == str(f) for r in refused):
                 other.append(f"{f.name}: matches no pinned archive")
     return held, refused, other
@@ -392,10 +418,16 @@ def _apply_import(change: Change, state: dict[str, Any], root: Path) -> dict[str
     return {"imported": imported, "refused": refused, "skipped": skipped}
 
 
-def _preview_add(text: str, source: str, bundle: Any, directory: Path | None) -> Change:
+def check_record_size(text: str, source: str) -> None:
+    """Refuse a record text one operator endpoint request cannot carry: at the requesting terminal before it is sent,
+    and at the endpoint (review F12)."""
     if len(text.encode("utf-8")) > MAX_RECORD_TEXT:
         raise UsageError(f"{source} is larger than {MAX_RECORD_TEXT} bytes, the most one operator endpoint request "
-                         "carries; one record is far smaller")
+                         "carries; one record is far smaller", path=source, limit=MAX_RECORD_TEXT)
+
+
+def _preview_add(text: str, source: str, bundle: Any, directory: Path | None) -> Change:
+    check_record_size(text, source)
     try:
         added = records.validate(load_yaml(text, source=source), source=source)
     except AEWError as exc:

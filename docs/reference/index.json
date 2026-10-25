@@ -92,7 +92,7 @@
         "lower-bound": 228
       }
     },
-    "digest": "sha256:2678b8b10ba44df121fca630358ea7bb01312f006ba2bbc2541deb3930ab2a8a",
+    "digest": "sha256:7ffe3a6d00227cc2e7d3c527d40db2d7aafa0a3313ea1d8681b1aac1afbab4c2",
     "records": 1073,
     "unresolved": 92
   },
@@ -17020,7 +17020,8 @@
         "aew.capability.store",
         "aew.errors",
         "aew.harness.agentenv",
-        "aew.harness.opencode.adapter"
+        "aew.harness.opencode.adapter",
+        "aew.stg02.adopted"
       ]
     },
     "modules:aew.capability.store": {

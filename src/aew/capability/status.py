@@ -4,7 +4,8 @@ The status is derived on every read from the records, the register's state and t
 as a verdict, so ``aew capability list``, ``aew doctor`` and (later) the agents' catalogs and D-01's capabilities read
 all say the same (S01-21). AEW's copy of a provider is, in order:
 
-* ``REFUSED``: its record fails validation, its payload does not match its pin, or its last fetch or import was;
+* ``REFUSED``: its record fails validation, its payload does not match its pin, or, while no payload is installed,
+  its last fetch or import was;
 * ``UNSUPPORTED``: its record has no payload for this host's platform;
 * ``UNAVAILABLE``: its payload is not here (never fetched, or the fetch failed), or its last check failed;
 * ``NOT_ESTABLISHED``: its payload is here and was never checked;
@@ -33,10 +34,13 @@ from typing import Any
 from aew.capability import payload as P
 from aew.capability import records, store
 from aew.errors import AEWError, ValidationFailed
+from aew.stg02 import adopted
 
+D01_SCHEMA = "aew-d01-read-v0.3.4-FULL.schema.json"
 QUALIFIED, FUNCTIONAL_ONLY, NOT_ESTABLISHED = "QUALIFIED", "FUNCTIONAL_ONLY", "NOT_ESTABLISHED"
 UNSUPPORTED, UNAVAILABLE, STALE, REFUSED = "UNSUPPORTED", "UNAVAILABLE", "STALE", "REFUSED"
-STATUSES = (QUALIFIED, FUNCTIONAL_ONLY, NOT_ESTABLISHED, UNSUPPORTED, UNAVAILABLE, STALE, REFUSED)  # S01-04
+# S01-04's seven, from their owner, the adopted D-01 read schema; each name above is one of them (review F5)
+STATUSES = tuple(adopted.load(D01_SCHEMA)["$defs"]["CapabilityData"]["properties"]["observed_status"]["enum"])
 USABLE = frozenset({QUALIFIED, FUNCTIONAL_ONLY})  # "usable means checked" (CAPR-03, AEW-FR-34.b)
 NOT_SERVING = frozenset({UNAVAILABLE, REFUSED, UNSUPPORTED})  # AEW's copy cannot serve: a host copy may
 AEW_COPY, HOST_COPY = "aew", "host"
@@ -76,7 +80,11 @@ def host_facts() -> dict[str, str | None]:
 def harness_identity() -> str | None:
     """The harness binary a launch from this environment would run, by its path, size and modification time (a new
     harness version is a new binary); None where there is none. Not its ``--version``: every read of a status would
-    start it."""
+    start it.
+
+    The limit (review F9): this follows the reading process's environment (the adapter's ``AEW_OPENCODE_BIN``), not a
+    host fact with one owner, so a process that would launch another harness than the check's reads it STALE, and the
+    cause says it is the harness this process would launch."""
     from aew.harness.opencode.adapter import binary_command
 
     try:
@@ -88,18 +96,21 @@ def harness_identity() -> str | None:
 
 
 def _changed(then: dict[str, Any], now: dict[str, str | None]) -> list[str]:
-    return [f"the {k} changed ({then.get(k)} -> {now[k]})" for k in ("kernel", "libc", "harness")
+    said = {"harness": "the harness this process would launch"}
+    return [f"{said.get(k, 'the ' + k)} changed ({then.get(k)} -> {now[k]})" for k in ("kernel", "libc", "harness")
             if then.get(k) != now[k]]
 
 
 def effective(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Every provider in force: AEW's shipped records under the operator's, which override by name (CAPR-04). Each is
-    ``{record, layer, problem, upgrade}``: ``problem`` is why an operator record is refused (its record is then None);
-    ``upgrade`` lists where the shipped record now differs from the one the override was made over."""
+    ``{record, layer, problem, upgrade}``: ``problem`` is why an operator record is refused (its record is then None,
+    and ``held`` is the record as the register holds it); ``upgrade`` lists where the shipped record now differs from
+    the one the override was made over."""
     out = {name: {"record": rec, "layer": "shipped", "problem": None, "upgrade": []}
            for name, rec in records.shipped().items()}
     for name, held in sorted((state.get("operator_records") or {}).items()):
-        entry: dict[str, Any] = {"record": None, "layer": "operator", "problem": None, "upgrade": []}
+        entry: dict[str, Any] = {"record": None, "layer": "operator", "problem": None, "upgrade": [],
+                                 "held": held.get("record")}
         try:
             entry["record"] = records.validate({"schema": records.SCHEMA, "providers": {name: held.get("record")}},
                                                source=f"the operator's record {name}")[name]
@@ -127,7 +138,9 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
                     "operator record with a payload for this platform (`aew capability add`)")
     path = P.path_of(name, record["command"], pinned, directory)
     refused = (state.get("refused") or {}).get(f"{name}:{key}")
-    if refused and refused.get("sha256") == pinned["sha256"]:
+    if refused and refused.get("sha256") == pinned["sha256"] and not path.exists():
+        # Only while no payload is installed: one that is installed is judged by its own pin, just below, so a
+        # refused import or fetch never makes a payload that matches its pin read REFUSED (review F4)
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
                     f"`{CHECK}` fetches the pinned payload again (online), or `{IMPORT}` imports, from the "
                     "operator's bundle, one that matches its pin (offline)", str(path))

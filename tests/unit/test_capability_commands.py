@@ -67,12 +67,17 @@ def _run(capsys, *argv: str) -> tuple[int, Any, Any]:
 
 
 def test_the_register_changes_are_refused_by_the_lead_broker_and_its_recovery_escape():
-    """The broker's one reachability check (the `aew` client applies it before relaying, the broker before it runs
-    anything, the recovery profile's `cli` escape included) refuses the four changes, saying whose they are."""
-    parser = build_parser()
+    """The broker's `run_cli` (where the relay of `lead.cli` and the typed surface's `cli` escape, the recovery
+    profile's included, both end) refuses the four changes with the register's own refusal, saying whose they are and
+    what to do, not the generic "run this one directly" (review F8); `check` is refused there too."""
     for argv in CHANGES:
-        refusal = lead_broker.refuses_locally(parser.parse_args(argv))
-        assert refusal and "capability register" in refusal and "operator endpoint" in refusal, argv
+        with pytest.raises(errors.PermissionDenied) as exc:
+            lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
+        assert "capability register" in exc.value.message and "operator endpoint" in exc.value.message, argv
+        assert "aew capability list" in exc.value.message, argv
+    with pytest.raises(errors.PermissionDenied):
+        lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel="lead_broker")
+    parser = build_parser()
     for argv in (["capability", "list"], ["capability", "check"]):  # no authority: not operator-only
         assert lead_broker.refuses_locally(parser.parse_args(argv)) is None, argv
 
@@ -89,6 +94,20 @@ def test_a_lead_session_is_refused_every_register_change_and_the_check(project):
         error = json.loads(res.stderr)["error"]
         assert res.returncode != 0 and "Lead session" in error["message"], (argv, res.stderr)
         assert error["code"] in ("USAGE", "PERMISSION_DENIED"), error  # the client's refusal, or the command's own
+
+
+def test_an_aew_a_test_starts_writes_the_sessions_register_never_the_hosts(tmp_path):
+    """Review F2: a child `aew` gets the session's own register base (conftest's ``clean_env``), so its check writes
+    there; the session's end checks the host's register is as the session found it."""
+    import conftest
+
+    assert conftest.CHILD_DATA_BASE is not None
+    name = store.base_variable()
+    assert conftest.clean_env()[name] == str(conftest.CHILD_DATA_BASE)
+    assert conftest.clean_env({name: str(tmp_path)})[name] == str(tmp_path)  # a test's own base stays its own
+    res = run_aew("-C", str(tmp_path), "capability", "check", "--offline", "--json")
+    assert res.returncode == 0, res.stderr
+    assert (conftest.CHILD_DATA_BASE / "aew" / "capability" / store.REGISTER).is_file()
 
 
 def test_the_check_refuses_in_a_lead_sessions_environment_naming_it():
@@ -126,6 +145,24 @@ def test_a_change_without_a_terminal_is_refused_before_the_endpoint_is_asked(pro
     assert code != 0 and err["error"]["code"] == "OPERATOR_AUTHORIZATION_REQUIRED"
     assert "aew operator serve --dev" in err["error"]["message"]
     assert store.read()["host_copies"] is True
+
+
+def test_an_add_of_a_record_too_large_for_the_endpoint_is_refused_before_anything_is_sent(project, reg, monkeypatch,
+                                                                                          capsys, tmp_path):
+    """Review F12: a record file over the endpoint request's bound is refused at the requesting terminal, typed, with
+    the limit, and the endpoint is never asked (over 16 KiB it was an untyped `bad message length`)."""
+    from aew.capability import ops
+
+    asked: list[Any] = []
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator_client, "request_capability_change", lambda *a, **k: asked.append(a))
+    for size in (ops.MAX_RECORD_TEXT + 1, 20 * 1024):
+        record = tmp_path / f"record-{size}.yaml"
+        record.write_bytes(b"#" * size)
+        code, _, err = _run(capsys, "-C", str(project.root), "capability", "add", str(record))
+        assert code != 0 and err["error"]["code"] == "USAGE", err
+        assert err["error"]["details"]["limit"] == ops.MAX_RECORD_TEXT and str(record) in err["error"]["message"]
+    assert asked == []
 
 
 def test_a_change_with_no_endpoint_running_says_how_the_operator_authorizes_it(project, reg, monkeypatch, capsys):

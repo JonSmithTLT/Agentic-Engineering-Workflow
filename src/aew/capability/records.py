@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import sys
 from functools import cache
 from typing import Any
@@ -100,6 +101,15 @@ def validate(doc: Any, *, source: str) -> dict[str, dict[str, Any]]:
         raise ValidationFailed(f"{source}: the records are refused: {'; '.join(problems)}", violations=problems,
                                reason="record_refused")
     return dict(doc["providers"])
+
+
+def capability_ids(record: Any) -> list[str]:
+    """The well-formed capability IDs a record names, by the schema's own pattern, even where the record as a whole is
+    refused: its capabilities then read REFUSED with its cause, and never drop out of the listing (review F11)."""
+    item = schemas.schema("capability-records")["$defs"]["provider"]["properties"]["capabilities"]["items"]
+    named = record.get("capabilities") if isinstance(record, dict) else None
+    return [c for c in named if isinstance(c, str) and len(c) <= item["maxLength"]
+            and re.fullmatch(item["pattern"], c)] if isinstance(named, list) else []
 
 
 def record_problems(record: dict[str, Any]) -> list[str]:

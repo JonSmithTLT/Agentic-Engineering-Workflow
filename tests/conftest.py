@@ -80,10 +80,22 @@ class CLIResult:
         return json.loads(self.stderr)["error"]
 
 
+HOST_ENV = dict(os.environ)  # as the session found it: the base the host's own capability register lives under
+CHILD_DATA_BASE: Path | None = None  # the session's base for the register of every `aew` a test starts (CAP-1 F2)
+
+
 def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(os.environ)
     for key in ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_FAULT", "AEW_FAULT_MODE"):
         env.pop(key, None)
+    if CHILD_DATA_BASE is not None:
+        # A child `aew` never reaches the host's capability register: its base is the session's own directory, unless
+        # the test already pointed it somewhere else (the sentinel below checks the host's stayed as it was)
+        from aew.capability.store import base_variable
+
+        name = base_variable()
+        if env.get(name) == HOST_ENV.get(name):
+            env[name] = str(CHILD_DATA_BASE)
     if extra:
         env.update(extra)
     return env
@@ -206,18 +218,36 @@ def policy_pins(root: Path) -> dict[str, str | None]:
     return {rel: sha256_file(aew / rel) if (aew / rel).is_file() else None for rel in policy_files(load_manifest(aew))}
 
 
+def _register_files(path: Path) -> dict[str, tuple[int, int]]:
+    if not path.exists():
+        return {}
+    return {p.relative_to(path).as_posix(): (p.stat().st_size, p.stat().st_mtime_ns)
+            for p in sorted(path.rglob("*")) if p.is_file()}
+
+
 @pytest.fixture(scope="session")
 def capability_register_dir(tmp_path_factory) -> Path:
-    return tmp_path_factory.mktemp("capability-register")
+    """The session's register, and the sentinel on the host's (CAP-1 review F2): every `aew` a test starts gets the
+    session's own base (``clean_env``), and at the session's end the host's register is as the session found it."""
+    global CHILD_DATA_BASE
+    from aew.capability import store
+
+    host = store.root()  # no override yet, and the environment as the session found it
+    before = _register_files(host)
+    CHILD_DATA_BASE = tmp_path_factory.mktemp("child-data-base")
+    yield tmp_path_factory.mktemp("capability-register")
+    CHILD_DATA_BASE = None
+    after = _register_files(host)
+    assert after == before, (f"the session changed the host's own capability register at {host}: "
+                             f"{sorted(set(after.items()) ^ set(before.items()))}")
 
 
 @pytest.fixture(autouse=True)
 def capability_register(capability_register_dir):
-    """No test reads or writes this host's own capability register in process (STG-15, CAP-1): the register is the
-    session's own directory, and a test that needs an empty one sets ``aew.capability.store.ROOT_OVERRIDE`` itself.
-    An `aew` a test starts as a process reads the host's, which only `aew capability` changes. (Not through
-    ``monkeypatch``: an autouse fixture that takes it would undo every test's ``setenv`` after ``process_isolation``
-    looks.)"""
+    """No test reads or writes this host's own capability register (STG-15, CAP-1): in process the register is the
+    session's own directory, and a test that needs an empty one sets ``aew.capability.store.ROOT_OVERRIDE`` itself;
+    an `aew` a test starts gets the session's own base. (Not through ``monkeypatch``: an autouse fixture that takes
+    it would undo every test's ``setenv`` after ``process_isolation`` looks.)"""
     from aew.capability import store
 
     saved = store.ROOT_OVERRIDE

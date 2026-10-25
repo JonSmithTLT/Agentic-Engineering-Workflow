@@ -156,6 +156,22 @@ def test_the_locks_are_the_five_the_code_was_read_to_take():
         assert RECORDS[f"lock:{path}"].coverage["label"] == C.LOWER
 
 
+def test_the_capability_registers_lock_is_its_stores_own_and_a_second_taker_waits_its_timeout(tmp_path, monkeypatch):
+    """CAP-1 review F3: the host register's lock, read where the code takes it (outside every project, so unplaced,
+    keyed by its opener, with the store's own timeout constant), and held against a second taker as it says."""
+    from aew.capability import store
+
+    fact = RECORDS["lock:unplaced:aew.capability.store:locked"].fact
+    assert fact["timeout"] == "LOCK_TIMEOUT_S"
+    assert {e for t in fact["takers"] for e in t["entry_points"]} == {"aew"}
+    assert sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for name, src in CTX.sources().items()
+               if name.startswith("aew.capability.")) == 1  # the register's one construction
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 0.2)
+    with store.locked(tmp_path), pytest.raises(LockTimeout), store.locked(tmp_path):
+        pass
+    assert (tmp_path / store.LOCK).exists()
+
+
 def test_the_dashboards_lock_is_taken_only_from_the_dashboard_server_and_the_control_lock_only_in_a_writer():
     dashboard = RECORDS["lock:local/dashboard/endpoint.lock"].fact["takers"]
     assert {e for t in dashboard for e in t["entry_points"]} == {"aew dashboard serve"}

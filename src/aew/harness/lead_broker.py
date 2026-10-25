@@ -400,12 +400,14 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
             ns = parser.parse_args(argv)
     except SystemExit:
         raise errors.UsageError(f"invalid command: {noise.getvalue().strip()[-400:]}") from None
-    if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
-        raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
-                                      "directly", command=sorted(command_path(ns)))
+    # The operator-only refusal first: it says why and what to do, which "run this one directly" does not (CAP-1
+    # review F8: the capability register's changes take no token)
     refusal = refuses_locally(ns)
     if refusal:
         raise errors.PermissionDenied(refusal)
+    if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
+        raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
+                                      "directly", command=sorted(command_path(ns)))
     path = command_path(ns)
     if path in NOT_RELAYED:
         raise errors.PermissionDenied(f"`aew {command_name(ns)}` is a transport of the typed Lead surface; it "

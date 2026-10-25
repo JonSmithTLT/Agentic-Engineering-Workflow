@@ -77,17 +77,17 @@ TUI = textwrap.dedent("""
 class Session:
     """The operator's terminal (a pseudo-terminal whose master the test holds), the broker on it, and the TUI."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, scratch: Path) -> None:
         self.master, self.slave = pty.openpty()
         fcntl.ioctl(self.master, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
         self.original = termios.tcgetattr(self.slave)
-        self.log, self.result = root / "tui.log", root / "result.json"
+        self.log, self.result = scratch / "tui.log", scratch / "result.json"
         self.out = bytearray()
         self._stop = threading.Event()
         self.paused = threading.Event()  # the operator's terminal reads nothing: what is written to it waits
         argv = [sys.executable, "-I", "-c", TUI, str(self.log)]
         self.broker = subprocess.Popen([sys.executable, "-c", BROKER, json.dumps(argv), str(self.result)],
-                                       stdin=self.slave, stdout=self.slave, stderr=self.slave, cwd=root,
+                                       stdin=self.slave, stdout=self.slave, stderr=self.slave, cwd=scratch,
                                        env={**os.environ, "PYTHONPATH": SRC, "PYTHONDONTWRITEBYTECODE": "1"})
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()

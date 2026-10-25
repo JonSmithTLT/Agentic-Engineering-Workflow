@@ -1420,9 +1420,10 @@ with the rulings R-2, R-7 and ST-38. On Linux, `aew opencode` runs the Lead's Op
 operator's own did: the TUI at their terminal, their stored provider logins, Lead commands through the broker.
 
 ### The session (`opencode/lead.py`, `lead_broker.run_session`)
-- **Before the seat is taken:** the terminal is checked (standard input must be one: the TUI runs on a relay of it),
-  `--provider-env` is checked against the providers AEW relays, and the operator's stored logins are read. A refusal
-  here takes nothing.
+- **Before the seat is taken:** a missing Lead credential is refused first, as for any Lead session
+  (`lead_broker.require_credential`); then the terminal is checked (standard input must be one: the TUI runs on a
+  relay of it), `--provider-env` is checked against the providers AEW relays, and the operator's stored logins are
+  read. A refusal here takes nothing.
 - **The sandbox:** `containment.establish` for role `lead`, scope `project`, mode `required` unless the policy says
   `allow_weaker`, with rows 1 to 6 of the self-test (row 4 in the Lead's form, below). Under `required` a failing
   row refuses the session (`CONTAINMENT_UNAVAILABLE`), saying what failed and what fixes it; under `allow_weaker`

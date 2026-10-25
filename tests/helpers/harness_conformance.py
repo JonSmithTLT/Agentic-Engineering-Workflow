@@ -67,12 +67,22 @@ class LeadSession:
 
     proc: subprocess.Popen[str]
     transcript: Path
+    relayed: bool = False  # on a terminal AEW relays (the contained Lead): the TUI's screen comes before the result
 
     def result(self, timeout: float = 900) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
         """Wait for the session to end: the command's result (what the operator's terminal shows) and the steps
         the Lead's model took."""
         out, err = self.proc.communicate(timeout=timeout)
+        if self.relayed:  # what the TUI drew, its leave sequence, then the result line
+            screen, _, out = out.rpartition(procs.TERMINAL_LEAVE.decode())
+            assert not contains_credential(screen), "the operator's terminal showed a credential"
         return CLIResult(self.proc.returncode, out, err), transcript_steps(self.transcript)
+
+
+# `aew <args>` at a pseudo-terminal the test holds, made its controlling terminal as at the operator's shell (the
+# child already leads a session of its own: NO_WINDOW).
+AT_A_TERMINAL = ("import fcntl, os, sys, termios\nfcntl.ioctl(0, termios.TIOCSCTTY, 0)\n"
+                 "os.execv(sys.executable, [sys.executable, '-m', 'aew', *sys.argv[1:]])\n")
 
 
 class Driver:
@@ -220,6 +230,40 @@ class FakeOpenCodeDriver(Driver):
         transcript = scripts / fake_opencode.TUI_TRANSCRIPT
         transcript.unlink(missing_ok=True)
         return ["opencode", *(["--acquire", "--session-label", name] if acquire else [])], transcript
+
+    def start_lead(self, lab, name, steps, *, acquire=False):
+        """On Linux the Lead runs contained (STG-05 CS-4), on a terminal AEW relays, so ``aew opencode`` runs at a
+        pseudo-terminal the test holds, as at the operator's shell; elsewhere as any driver's does. Its OpenCode
+        directories are empty ones, so the launch reads no OpenCode login or configuration of the machine's."""
+        if not sys.platform.startswith("linux"):
+            return super().start_lead(lab, name, steps, acquire=acquire)
+        import pty
+        import threading
+
+        argv, transcript = self.lead_command(lab, name, steps, acquire)
+        own = lab.tmp / "lead-opencode"
+        dirs = {f"XDG_{k.upper()}_HOME": str(own / k) for k in ("data", "config", "state")}
+        for path in dirs.values():
+            Path(path).mkdir(parents=True, exist_ok=True)
+        env = {**lab.env, **({} if acquire else {"AEW_LEAD_TOKEN": lab.project.token}), **dirs}
+        master, slave = pty.openpty()
+        proc = subprocess.Popen([sys.executable, "-c", AT_A_TERMINAL, "-C", str(lab.root), *argv], env=clean_env(env),
+                                stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", **NO_WINDOW)
+        os.close(slave)
+
+        def drain() -> None:  # what reaches the terminal itself, until the session lets it go
+            try:
+                while os.read(master, 65536):
+                    pass
+            except OSError:
+                pass
+            finally:
+                os.close(master)
+
+        threading.Thread(target=drain, daemon=True).start()
+        lab.sessions.append(proc)
+        return LeadSession(proc, transcript, relayed=True)
 
 
 class OpenCodeDriver(Driver):

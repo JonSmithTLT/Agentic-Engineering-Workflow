@@ -945,10 +945,10 @@ def _start_hint() -> str:
     """What to add to a sandbox that could not start when the kernel allows no user namespace: the setting by name,
     and the fix, which is an administrator's (a sysctl), or the operator's own choice to run labelled weaker."""
     try:
-        with open(USERNS_LIMIT, encoding="ascii") as f:
-            if f.read().strip() != "0":
+        with open(USERNS_LIMIT, "rb") as f:  # src reads /proc as bytes (tests/unit/test_process_identity.py)
+            if f.read().strip() != b"0":
                 return ""
-    except (OSError, ValueError):
+    except OSError:
         return ""
     return ("; this kernel allows no user namespace (user.max_user_namespaces = 0), and bubblewrap needs one. Ask "
             "the machine's administrator to raise it (sysctl -w user.max_user_namespaces=<n>, and the same line in a "

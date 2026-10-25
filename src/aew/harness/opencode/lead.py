@@ -176,7 +176,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     argv = command(engine, extra_args)
     if contained_here():
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
-        # would stay held).
+        # would stay held), a missing credential first.
+        lead_broker.require_credential(acquire)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
         lead.announce(sys.stderr)

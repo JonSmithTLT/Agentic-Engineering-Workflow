@@ -504,6 +504,15 @@ class Harness:
     close: Callable[[], None]
 
 
+def require_credential(acquire: bool) -> None:
+    """A Lead session needs the Lead credential, from the operator's shell or a vacant seat (``--acquire``): refused
+    before anything starts. ``aew opencode`` asks this before its contained Lead's own checks (U29)."""
+    if not acquire and not os.environ.get("AEW_LEAD_TOKEN"):
+        raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
+                                "(it is removed from the session's environment), or take a vacant seat with "
+                                "--acquire (the credential then exists only inside this session)")
+
+
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, env: dict[str, str] | None = None,
                 contained: Callable[[str | None, dict[str, str]], Harness] | None = None) -> dict[str, Any]:
@@ -523,15 +532,12 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     if not command:
         raise errors.UsageError("name the Lead's harness command after `--`, e.g. `aew lead session -- opencode-cli`")
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
+    require_credential(acquire)
     held = os.environ.pop("AEW_LEAD_TOKEN", "")  # in memory only: never inherited by git, hooks or any child
     if acquire:
         token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:
         token = held
-        if not token:
-            raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
-                                    "(it is removed from the session's environment), or take a vacant seat with "
-                                    "--acquire (the credential then exists only inside this session)")
     broker = LeadBroker(engine, token)
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).

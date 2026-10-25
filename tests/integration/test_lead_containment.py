@@ -221,7 +221,7 @@ BROKER = textwrap.dedent("""
 # own PID namespace: bubblewrap's, the shim's, its own), its controlling terminal, and a TIOCSTI on standard input and
 # on /dev/tty, read back from its own input.
 INSIDE = textwrap.dedent("""
-    import fcntl, json, os, select, stat, sys, termios, tty
+    import errno, fcntl, json, os, select, stat, sys, termios, tty
     def dev(path):
         try:
             st = os.stat(path)
@@ -242,24 +242,35 @@ INSIDE = textwrap.dedent("""
         for fd in fds:
             if (d := dev(f"/proc/{pid}/fd/{fd}")) is not None:
                 terminals[f"{pid}/{fd}"] = d
+    def sti(fd, char):  # None when the kernel took it, else its errno's name
+        try:
+            fcntl.ioctl(fd, termios.TIOCSTI, char)
+        except OSError as exc:
+            return errno.errorcode.get(exc.errno, str(exc.errno))
+        return None
     tty.setraw(0)
-    fcntl.ioctl(0, termios.TIOCSTI, b"Z")
+    refused = [sti(0, b"Z")]
     t = os.open("/dev/tty", os.O_RDWR)
-    fcntl.ioctl(t, termios.TIOCSTI, b"Y")
+    refused.append(sti(t, b"Y"))
     os.close(t)
+    want = refused.count(None)
     got = b""
-    while len(got) < 2 and select.select([0], [], [], 5)[0]:
-        got += os.read(0, 2 - len(got))
+    while len(got) < want and select.select([0], [], [], 5)[0]:
+        got += os.read(0, want - len(got))
     with open(sys.argv[1], "w") as f:
         json.dump({"inner": dev("/proc/self/fd/0"), "tty_nr": nr, "terminals": terminals, "unreadable": unreadable,
-                   "got": got.decode()}, f)
+                   "refused": refused, "got": got.decode()}, f)
 """)
+# Linux 6.2 and later refuse TIOCSTI to a process without CAP_SYS_ADMIN in the initial namespace when this is 0 (the
+# CONFIG_LEGACY_TIOCSTI default of newer distributions, CI's runners among them); the Rocky VM's 4.18 has no setting.
+LEGACY_TIOCSTI = Path("/proc/sys/dev/tty/legacy_tiocsti")
 
 
 def test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_its_own_input(lead_lab):
     """CS-4 outcome 4 (CB-05): in the Lead's sandbox the TUI's controlling terminal is the relay's pseudo-terminal,
     no process in the sandbox has the operator's terminal (or any other) open, and a TIOCSTI, on standard input or on
-    /dev/tty, lands in the TUI's own input: there is no route to type into the operator's shell."""
+    /dev/tty, lands in the TUI's own input: there is no route to type into the operator's shell. On a kernel that
+    refuses TIOCSTI to unprivileged processes (legacy_tiocsti 0), it lands nowhere, refused with EIO."""
     import pty
 
     lab = lead_lab
@@ -291,7 +302,11 @@ def test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_it
     assert seen["tty_nr"] == probe.tty_nr(*inner)
     assert seen["terminals"] and set(map(tuple, seen["terminals"].values())) == {tuple(inner)}, seen
     assert seen["unreadable"] == [], seen
-    assert seen["got"] == "ZY"
+    legacy = LEGACY_TIOCSTI.read_bytes().strip() if LEGACY_TIOCSTI.exists() else b"1"
+    if legacy == b"0":
+        assert (seen["refused"], seen["got"]) == (["EIO", "EIO"], ""), seen
+    else:
+        assert (seen["refused"], seen["got"]) == ([None, None], "ZY"), seen
 
 
 def test_a_lead_that_falls_back_to_allow_weaker_is_labelled_so(lead_lab, monkeypatch):

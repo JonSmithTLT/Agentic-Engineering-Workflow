@@ -160,7 +160,7 @@ PROBES = {
     "positional-open-mode": "def f(p, req):\n    OPENER.open(req, timeout=3)",
     "metadata-calls": "os.utime(p)\nos.chmod(p, 0o700)\nfsync_dir(d)",
 }
-THE_REST = {"cross-function-path", "handler-by-name"}  # about a destination or a handler: probed below
+THE_REST = {"cross-function-path", "handler-by-name", "list-and-dict-edits"}  # about a destination or a handler
 
 
 def test_the_cannot_see_list_has_a_probe_for_each_class_and_nothing_else():
@@ -183,6 +183,33 @@ def test_a_path_written_where_it_was_not_built_is_an_unresolved_record_not_a_mis
 
 
 def test_the_page_says_each_class_of_what_it_cannot_see_and_names_the_primitives_it_reads():
+EDITS = {
+    "a list extended": "    names = ['a']\n    names.extend(['b'])\n",
+    "a list grown with +=": "    names = ['a']\n    names += ['b']\n",
+    "a list with an insert": "    names = ['a']\n    names.insert(0, 'b')\n",
+}
+
+
+@pytest.mark.parametrize("edit", EDITS.values(), ids=list(EDITS))
+def test_a_local_list_grown_by_extend_plus_equals_or_insert_is_read_as_its_literal_and_pinned_as_such(edit):
+    """Review of the placement pull request, F7: the limit is stated on the page (`list-and-dict-edits`) and pinned: the
+    elements added that way are not read, and nothing marks the site."""
+    a = analysed("def f(aew_root):\n" + edit
+                 + "    for n in names:\n        (aew_root / 'state' / n).write_text('x')\n")
+    assert sorted(a.writers) == ["state/a"] and not reasons(a)
+
+
+def test_a_list_argument_a_caller_grows_and_a_dict_key_reassigned_after_its_literal_are_read_as_the_literal():
+    grown = analysed("def drop(paths):\n    for p in paths:\n        p.unlink()\n\n"
+                     "def f(aew_root):\n    xs = [aew_root / 'state' / 'a']\n"
+                     "    xs.extend([aew_root / 'local' / 'b'])\n    drop(xs)\n")
+    assert sorted(grown.writers) == ["state/a"] and not reasons(grown)
+    for edit in ("unit['record'] = 'work/b.md'", "unit.update(record='work/b.md')"):
+        a = analysed("def f(aew_root):\n    unit = {'record': 'work/a.md'}\n    " + edit + "\n"
+                     "    (aew_root / unit['record']).write_text('x')\n")
+        assert sorted(a.writers) == ["work/a.md"] and not reasons(a), edit
+
+
     a = analysed("REL = 'state/x.yaml'\n\ndef f(aew_root):\n    atomic_write(aew_root / REL, 'x')\n")
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert all(text in page for _, text in W.CANNOT_SEE)
@@ -1186,3 +1213,7 @@ def test_each_planted_fault_in_a_family_record_is_refused_by_its_own_rule(what, 
     assert W.record_problems(records, KINDS) == []
     problems = W.record_problems(mutate(records, rid, path, value), KINDS)
     assert problems and any(fragment in p for p in problems), (what, problems)
+    # each alternative of PATH_LIKE alone (review of the placement pull request, F8): a drive, a home, a separator
+    ("an outside write whose root is a drive and nothing else", OUTSIDE_ID, ["fact", "root"], "C:", "never a path"),
+    ("an outside write whose root is a home and nothing else", OUTSIDE_ID, ["fact", "root"], "~", "never a path"),
+    ("an outside write whose root has only a separator", OUTSIDE_ID, ["fact", "root"], "a/b", "never a path"),

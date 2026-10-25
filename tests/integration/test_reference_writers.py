@@ -165,6 +165,30 @@ def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
         assert names & set(W.CALL_PRIMITIVES), (module, qual)
 
 
+def test_the_store_stages_a_file_in_two_places_and_the_page_says_the_one_that_is_no_session_write():
+    """Review of the placement pull request, F1: the apply step is not a writer because the staging sites are, and that
+    holds for every path but the events sidecar `_commit_unprofiled` stages itself. If a third place stages a file, or
+    the sidecar gets a writer, the claim on the page is out of date and this fails."""
+
+    class Stagers(C.Scoped):
+        def __init__(self) -> None:
+            super().__init__()
+            self.where: list[str] = []
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Name) and node.func.id == "PendingWrite":
+                self.where.append(self.symbol or "")
+            self.generic_visit(node)
+
+    visitor = Stagers()
+    visitor.visit(PROGRAM.modules[W.STORE].tree)
+    assert sorted(visitor.where) == ["ControlStore._commit_unprofiled", "Session.write"]
+    sidecar = [w for w in ANALYSIS.writers.get("state/log/{}.events.yaml", [])]
+    assert sidecar and all(w.module != W.STORE for w in sidecar), "the page says nothing here names what creates it"
+    page = W.build(CTX).pages["writers.md"]
+    assert "the events sidecar `state/log/{}.events.yaml`" in page and "has no staging site among the writers" in page
+
+
 # --------------------------------------------------------------------------------------- the owner's table, both ways
 
 def test_the_roots_the_reach_starts_from_are_the_owners_table_and_nothing_else():

@@ -441,6 +441,18 @@ def test_halving_the_depth_cap_changes_nothing_in_the_whole_render(monkeypatch):
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
 
 
+def test_doubling_every_cap_changes_nothing_in_the_whole_render_but_the_caps_own_section(monkeypatch):
+    """Review of #267, Q-5: the hold above is the writers family's alone, and the families that run the evaluator (the
+    concurrency, the machines, the interfaces and the layout) had none. Every file of the render, and every record in
+    it, is the same with every cap doubled."""
+    files = whole_render()[0]
+    for module, name in CAPS:
+        monkeypatch.setattr(module, name, getattr(module, name) * 2)
+    doubled = reference_tool()._render(ROOT)[0]
+    assert comparable(doubled) == comparable(files)
+    assert doubled["writers.md"] != files["writers.md"], "the caps' own section prints the doubled values"
+
+
 def test_a_cap_listed_later_is_doubled_too(monkeypatch):
     """Review of the placement pull request, F3 (its planted `NEWCAP_DEPTH`): the list the hold doubles is `caps()`'s,
     read when the test runs, so a cap added to either list is held without a second edit."""

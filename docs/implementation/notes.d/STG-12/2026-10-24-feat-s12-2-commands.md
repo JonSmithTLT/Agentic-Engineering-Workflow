@@ -28,8 +28,8 @@ the commands the code admits and the causes it can refuse with mechanically.
   a declared set held to the source both ways, in three spellings (a dict literal, a subscript store, a keyword argument).
   The string `"reason_code"` is also read wherever it occurs in the module, by symbol and by what the node is, and the
   occurrences, counted, are a declared set (`OCCURRENCES`) held to the source both ways: a `setdefault`, an annotated or
-  augmented store or a `setattr` is an occurrence nobody declared. A computed key and a `**` of a dict built elsewhere
-  hold no occurrence of the string and are not seen (pinned, one probe each). The causes the code spells
+  augmented store or a `setattr` is an occurrence nobody declared. A computed key, a `setattr` whose name is computed
+  and a `**` of a dict built elsewhere hold no occurrence of the string and are not seen (pinned, one probe each). The causes the code spells
   (literals given to `refusal`, and the returns of `_delegation` that `_member` hands it through a variable) are read both
   ways and each is a key of some table. A cause no table names, a refusal whose cause cannot be read (a keyword cause, a
   helper that returns something but a constant, a second different origin or action test in `_member`), or a builder

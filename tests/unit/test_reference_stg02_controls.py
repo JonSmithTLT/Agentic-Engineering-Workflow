@@ -358,11 +358,13 @@ def test_a_use_of_a_reason_code_that_makes_none_is_not_a_builder(extra):
 
 @pytest.mark.parametrize("extra", [
     "\n\ndef sneak(m, key, code):\n    m[key] = code\n",
+    "\n\ndef sneak(m, name, code):\n    setattr(m, name, code)\n",
     "\n\ndef sneak(base):\n    return {**base}\n",
 ])
 def test_what_the_builder_readings_do_not_see_is_pinned_one_probe_each(extra):
-    """A computed key and a ``**`` of a dict built elsewhere hold no occurrence of the string and are not seen (the
-    module says so): neither the builders nor the occurrences move."""
+    """A computed key, a ``setattr`` whose name is computed and a ``**`` of a dict built elsewhere hold no occurrence of
+    the string and are not seen (the module says so; review of #266, N-1): neither the builders nor the occurrences
+    move."""
     ours, theirs = both_commands(COMMANDS + extra)
     base = both_commands(COMMANDS)[0]
     assert ours == theirs and ours.builders == base.builders and ours.occurrences == base.occurrences

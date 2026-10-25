@@ -299,4 +299,6 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "`tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge "
         "conflict here, take either side and run `render`: the output is a function of the code, so the second change "
         "to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line "
-        "of `counts`, so a clean merge cannot leave the totals stale.", ""])
+        "of `counts`, so a clean merge cannot leave the totals stale. A pull request that adds a record names the "
+        "requirement IDs it serves in its description (`AGENTS.md`, section 7): IDs only, and never in these files.",
+        ""])

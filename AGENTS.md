@@ -79,3 +79,14 @@ comes before any other merge.
   request or a commit message.
 - Test lanes, the CI gate and the rules for adding tests are in
   [`docs/implementation/testing-and-ci-strategy.md`](docs/implementation/testing-and-ci-strategy.md).
+
+## 7. A reference record names the requirements it serves
+
+The generated reference (`docs/reference/`) states what the code is and holds no requirement; the trace from
+requirements to records belongs to the design side (operator, 2026-10-23).
+- **A pull request that adds a reference record names, in its description, the requirement IDs the record serves.**
+  IDs only, never requirement text. The IDs come from the hand-off the pull request builds, or from the designer when
+  the hand-off names none.
+- **A record that serves no adopted requirement says "none", with a line on why.** It is not refused: the next trace
+  flags it for the operator.
+- **The IDs never go in the generated reference.** `tests/unit/test_reference.py` fails on one in `docs/reference/`.

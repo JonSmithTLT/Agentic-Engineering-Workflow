@@ -40,8 +40,9 @@ the occurrences, counted, are a declared set (:data:`OCCURRENCES`) held to the s
 ``m.setdefault("reason_code", v)``, an annotated or an augmented store and ``setattr(m, "reason_code", v)`` are each an
 occurrence nobody declared, whatever the spelling. The places that make one are read as well, with the kind of the
 value (:data:`BUILDERS`): a dict literal, a subscript store and a keyword argument. Not seen, because they hold no
-occurrence of the string (pinned, one probe each): a computed key (``m[key] = v``) and a ``**`` of a dict built
-elsewhere (which is read where it is made). The causes
+occurrence of the string (pinned, one probe each): a computed key (``m[key] = v``), a ``setattr`` whose name is
+computed (``setattr(m, name, v)``) and a ``**`` of a dict built elsewhere (which is read where it is made); any name
+built at run time is the same kind of form, so no longer list would close the class. The causes
 the code spells, as literals in ``refusal`` calls and as the returns of ``_delegation`` (which ``_member`` hands to
 ``refusal`` through a variable), are read the same two ways, and each must be a key of some table. A literal cause no
 table names, a ``refusal`` call whose cause cannot be read, a table action the registry lacks, or a builder outside the

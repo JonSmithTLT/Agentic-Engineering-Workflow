@@ -651,8 +651,9 @@ class Program:
                 if expr.id in scope.annotations and expr.id not in scope.assigns:
                     return self.class_of(self.modules[scope.module], scope.annotations[expr.id])
                 if expr.id in scope.assigns:
-                    if id(expr) in self._typing_active:
-                        return None  # a local whose class needs itself: a cycle
+                    # No cycle check here: a local's class is read from the calls it is assigned, and every way back to
+                    # this node passes `_enter_typing` on one of those calls' callees, which stops the repeat (review of
+                    # #267, Q-2: the check was unreachable). The mark counts this hop in `_enter_typing`'s level.
                     self._level(depth, expr)
                     self._typing_active.add(id(expr))
                     try:

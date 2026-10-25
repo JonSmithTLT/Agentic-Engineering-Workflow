@@ -4,15 +4,19 @@ Pure: nothing starts bubblewrap, so it runs on every platform. The rows on a rea
 a protection is taken out, are in tests/integration/test_containment.py. Row 4 is judged here, and on a real sandbox
 by the pseudo-terminal launcher test there. Row 2's socket inventory (the designer's D-CS2-2 to D-CS2-5) is judged
 here on synthetic host inventories and synthetic probe output, and the probe's own matching on synthetic mount tables.
+Row 1's stand-ins on the host (``_network``) run for real on Linux, to show they leave nothing behind (register E75).
 """
 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import errno
 import os
+import socket
 import stat
 import sys
+import threading
 from types import SimpleNamespace
 from typing import Any
 
@@ -518,6 +522,67 @@ def test_row_1_on_the_hosts_network_claims_nothing():
                       None)
     assert row == {"name": "network", "ok": True, "reason": None, "mode": "shared",
                    "claim": "none: the run shares the host's network"}
+
+
+def socket_inodes() -> set[int]:
+    """The inode of every socket this process holds a descriptor for."""
+    held = set()
+    for fd in os.listdir("/proc/self/fd"):
+        with contextlib.suppress(OSError):
+            target = os.readlink(f"/proc/self/fd/{fd}")
+            if target.startswith("socket:["):
+                held.add(int(target[len("socket:["):-1]))
+    return held
+
+
+def tcp_listening() -> set[int]:
+    """The inode of every TCP socket in ``LISTEN`` (state ``0A``) in this network namespace, whoever holds it. A
+    socket the kernel keeps for a thread blocked in ``accept`` is listed here after its descriptor is closed."""
+    found = set()
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        with contextlib.suppress(FileNotFoundError), open(table, encoding="ascii") as f:
+            found |= {int(row[9]) for row in (line.split() for line in f.readlines()[1:]) if row[3] == "0A"}
+    return found
+
+
+def unix_names() -> set[str]:
+    """Every bound Unix socket's name in this network namespace, an abstract one as ``@name``."""
+    with open("/proc/net/unix", encoding="utf-8", errors="replace") as f:
+        return {row[7] for row in (line.split() for line in f.readlines()[1:]) if len(row) > 7}
+
+
+def relayed(path: str, sentinel: str) -> bytes:
+    """One request through the probe's relay, as the probe makes it inside: what came back."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:  # pyright: ignore[reportAttributeAccessIssue]
+        s.settimeout(10)
+        s.connect(path)
+        s.sendall(f"GET /aew-probe/check HTTP/1.1\r\nHost: probe\r\nAuthorization: Bearer {sentinel}\r\n\r\n".encode())
+        out = b""
+        while chunk := s.recv(4096):
+            out += chunk
+    return out
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="row 1's stand-ins exist only on Linux: _network yields None on "
+                                                    "win32")
+def test_the_probes_network_stand_ins_leave_no_listener_socket_or_thread_behind(tmp_path):
+    """Register E75: the upstream's port stayed in ``LISTEN`` after every run, its thread blocked in ``accept``, and
+    answered any local connection with the token (the dashboard tests' 32-byte replies on CI). Each of ``_network``'s
+    own sockets is found by its inode while it is open, so nothing another process does can pass or fail this. After
+    exit each is gone, closed or collected: a socket nothing closes is collected when ``_network``'s frame ends, so
+    this fails only when something keeps one alive, as the upstream's blocked ``accept`` did, and not for a dropped
+    ``close()`` alone (review of #271, m1; a ``ResourceWarning`` check is E75's follow-on)."""
+    before, threads = socket_inodes(), set(threading.enumerate())
+    with probe._network(dataclasses.replace(PRIVATE, net_dir=str(tmp_path)), egress_policy=None, bridge=None) as net:
+        assert net is not None
+        listeners = (socket_inodes() - before) & tcp_listening()
+        answer = relayed(str(tmp_path / probe.PROBE_RELAY), net["inside"]["sentinel"])
+        assert answer.endswith(net["token"].encode()) and net["seen"] == [f"Bearer {net['secret']}"], answer
+        assert f"@{net['abstract']}" in unix_names()
+    assert len(listeners) == 2, listeners  # the upstream and the port the host holds
+    assert listeners & tcp_listening() == set()
+    assert f"@{net['abstract']}" not in unix_names()
+    assert [t.name for t in threading.enumerate() if t not in threads] == []
 
 
 def test_row_2_on_a_network_of_the_runs_own_fails_on_a_host_abstract_socket_listed_inside_and_ignores_row_1s_own():

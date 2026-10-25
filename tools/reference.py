@@ -126,6 +126,8 @@ def _render(root: Path) -> tuple[dict[str, bytes], dict[str, int]]:
     index = common.build_index(records)
     problems = common.index_problems(index)
     page_text[pages.GAPS] = pages.gaps_page(index)
+    page_text[pages.DATA_FLOW] = pages.data_flow_page(index)
+    page_text[pages.STATE_MAPS] = pages.state_maps_page(index)
     page_text[pages.README] = pages.readme(index, page_text)
     texts = {INDEX: common.dumps(index), **page_text}
     for name, text in sorted(texts.items()):

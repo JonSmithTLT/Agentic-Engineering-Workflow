@@ -41,7 +41,6 @@ import argparse
 import json
 import logging
 import re
-import socket
 import sys
 import time
 import traceback
@@ -52,6 +51,7 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from aew.exclusive_server import ExclusiveServer
 from aew.stg02 import wire as W
 from aew.stg02.commands import Carrier, Refused
 from aew.stg02.ledger import Ledger, LedgerBusy
@@ -399,18 +399,6 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
     srv = ExclusiveServer((HOST, port), Handler)
     srv.daemon_threads = True
     return srv
-
-
-class ExclusiveServer(ThreadingHTTPServer):
-    """A port held by exactly one server: a second server on the same port fails to start instead of sharing it (a
-    stale slice server once answered part of a new one's requests)."""
-
-    allow_reuse_address = sys.platform != "win32"
-
-    def server_bind(self) -> None:
-        if sys.platform == "win32":  # pragma: windows-only
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
 
 
 def driver_config(s: Slice, bearer: str | None = None) -> dict[str, Any]:

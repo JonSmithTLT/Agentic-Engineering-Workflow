@@ -29,9 +29,16 @@ from reference_families import writers_flow as F
 
 Key = tuple[str, str]
 Path = tuple[str, ...]  # the words of a command: ("lead", "mcp")
-DEPTH = 40  # names and parameters followed: a parser passes about eight steps from `build_parser` to a command
+DEPTH = 40  # names and parameters followed from `build_parser` to a command; past it the command is unread (see caps)
 CONDITIONAL = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
 BRANCHING = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+
+def caps() -> tuple[F.Cap, ...]:
+    """The cap of the parser reader, beside the value flow's (the call-site cap is the value flow's own)."""
+    return (F.Cap("writers_roles.DEPTH", DEPTH, "the names and parameters followed from `build_parser` to a command",
+                  "chosen", "the registration's command is unread: it counts as run by every role, and the function "
+                  "that registers it is named"),)
 
 
 class Roles(NamedTuple):

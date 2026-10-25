@@ -25,6 +25,8 @@ under ``.aew`` only where the primitive's own meaning makes it one (the store tr
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -35,9 +37,20 @@ AEW_DIRECTORY = ".aew"
 ROOT_NAME = "aew_root"  # the repository's spelling of the .aew directory (checked by the family's convention test)
 REPO_NAME = "repo_root"  # the repository's working tree: a path under it is outside `.aew`
 WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a method of the kernel): outside `.aew`
-DEPTH = 6  # calls and parameters followed in a chain
+# The caps of the reading. Each bounds how far one thing is followed, and past it the reading says so: a value is UNK
+# with the cap in its reason (so the site is an unresolved write), a call is not followed (a writer reached only through
+# it carries the no-chain item), or the roles reader counts a registration as run by every role. `caps()` is the one
+# list, written on the page. A tree test doubles every cap and holds the generated reference unchanged (no record is
+# lost to a cap), and another finds every cap or slice of the generator that is not listed (the sweep).
+# Calls and parameters followed in a chain. Measured, not chosen: a tree test holds the generated reference unchanged
+# when it is halved, so it is at least twice what the tree needs (the longest chain is the run directory a supervisor is
+# handed through the harness).
+DEPTH = 14
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
-VALUES = 16  # distinct values one expression may take before it is UNK
+# Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
+# the largest set the tree makes (the page prints that size), so a set that grows toward it is a decision and not a
+# record silently lost.
+VALUES = 40
 PLACEHOLDER = "{}"
 TYPING_DEPTH = 3  # receivers typed through receivers
 UTIL_MODULE = "aew.util"
@@ -82,10 +95,72 @@ def one(kind: str, text: str = "") -> Values:
     return frozenset({Val(kind, text)})
 
 
+class Cut(Exception):
+    """A cap was reached where nothing can hold the mark (the functions an expression can be, not a value): whoever
+    asked turns it into an unknown value with this reason."""
+
+
+def depth_reason() -> str:
+    return f"resolution depth limit ({DEPTH} calls or parameters)"
+
+
+def depth_limit() -> Values:
+    return unk(depth_reason())
+
+
+_peak: dict[str, int] | None = None
+
+
+@contextmanager
+def measuring() -> Iterator[dict[str, int]]:
+    """Record, while the block runs, the size of the largest value set (the figure the page and a tree test report). A
+    block inside another records into the outer one."""
+    global _peak
+    if _peak is not None:
+        yield _peak
+        return
+    _peak = {"values": 0}
+    try:
+        yield _peak
+    finally:
+        _peak = None
+
+
 def capped(values: set[Val] | Values) -> Values:
+    if _peak is not None:
+        _peak["values"] = max(_peak["values"], len(values))
     if len(values) > VALUES:
-        return unk(f"more than {VALUES} possible values")
+        return unk(f"more than {VALUES} possible values of one expression (the cap on values)")
     return frozenset(values)
+
+
+class Cap(NamedTuple):
+    name: str  # the constant
+    value: int
+    bounds: str  # what it bounds
+    source: str  # where the number comes from
+    past: str  # what the reading does past it
+    measured: int | None = None  # the largest the tree reaches, where the reading measures it
+
+
+def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
+    """The caps of the value flow and the call graph, from the constants themselves."""
+    return (
+        Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through",
+            "measured, held to twice what the tree needs", "the value is unknown, with the reason `resolution depth "
+            "limit`; the keys of a mapping a callback returns are unknown with the same reason"),
+        Cap("writers_flow.CALLERS", CALLERS,
+            "the call sites of one function whose parameter, mapping keys or callback is read", "chosen",
+            "the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the "
+            "registration as run by every role)"),
+        Cap("writers_flow.VALUES", VALUES, "the distinct values one expression may take",
+            "measured, held to twice the largest", "the expression is unknown, with the reason `more than N possible "
+            "values`", None if peaks is None else peaks["values"]),
+        Cap("writers_flow.TYPING_DEPTH", TYPING_DEPTH,
+            "the receivers typed through receivers (`self.a.b.run()`)", "chosen",
+            "the call is not followed, as for any receiver whose class is not known, and a writer reached only "
+            "through it carries the no-chain item"),
+    )
 
 
 # ------------------------------------------------------------------------------------------------------ the program
@@ -131,6 +206,12 @@ class Module:
     handlers: dict[int, Func] = field(default_factory=dict)  # a `set_defaults(handler=lambda ...)`, by the lambda's id
     attrs: dict[tuple[str, str], list[tuple[Func | None, ast.expr]]] = field(default_factory=dict)
     module_calls: list[ast.Call] = field(default_factory=list)  # calls outside any function
+    argv_lists: list[tuple[Func | None, ast.List]] = field(default_factory=list)  # list literals holding a `--flag`
+
+
+def _is_flag(node: ast.expr) -> bool:
+    """A string literal that spells a command-line flag (``--run-dir``)."""
+    return isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("--")
 
 
 def _targets(node: ast.expr) -> list[ast.Name]:
@@ -212,9 +293,28 @@ class _Scan(ast.NodeVisitor):
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self.generic_visit(node)
 
+    def visit_List(self, node: ast.List) -> None:
+        if any(_is_flag(e) for e in node.elts):
+            self.mod.argv_lists.append((self.func, node))
+        self.generic_visit(node)
+
     # -- bindings
     def _bind(self, target: ast.expr, value: ast.expr | None) -> None:
         func = self.func
+        if (isinstance(target, (ast.Tuple, ast.List)) and value is not None
+                and not any(isinstance(t, ast.Starred) for t in target.elts)):
+            # `a, b = x, y` binds each target to its element; `a, b = f(...)` binds target i to `f(...)[i]`, which the
+            # evaluator reads from the returns of `f` (a node made here lives as long as the assignment it is in)
+            if (isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == len(target.elts)
+                    and not any(isinstance(v, ast.Starred) for v in value.elts)):
+                for t, v in zip(target.elts, value.elts, strict=True):
+                    self._bind(t, v)
+                return
+            if isinstance(value, ast.Call):
+                for i, t in enumerate(target.elts):
+                    self._bind(t, ast.copy_location(
+                        ast.Subscript(value=value, slice=ast.Constant(value=i), ctx=ast.Load()), value))
+                return
         if isinstance(target, ast.Name):
             if func is not None:
                 if value is None:
@@ -235,7 +335,8 @@ class _Scan(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name) and self.func is not None:
                 self.func.subkeys.setdefault(target.value.id, []).append(target.slice)
-            self._bind(target, node.value if isinstance(target, (ast.Name, ast.Attribute)) else None)
+            self._bind(target, node.value if isinstance(target, (ast.Name, ast.Attribute, ast.Tuple, ast.List))
+                       else None)
         if self.func is None and self.cls and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             self.mod.attrs.setdefault((self.cls[-1], node.targets[0].id), []).append((None, node.value))
         self.generic_visit(node)
@@ -573,6 +674,13 @@ class Program:
                 return found
         return None
 
+    def argv_lists_of(self, flag: str, module: str) -> list[tuple[Func | None, ast.List]]:
+        """The argument lists in the program that hold ``flag`` and ``module``'s dotted name: the starts of that process
+        (``-m`` names the module), with the function that builds each."""
+        return [(owner, lst) for mod in self.modules.values() for owner, lst in mod.argv_lists
+                if any(isinstance(x, ast.Constant) and x.value == flag for x in lst.elts)
+                and any(isinstance(x, ast.Constant) and x.value == module for x in lst.elts)]
+
     def _index_callers(self) -> None:
         for mod in self.modules.values():
             for func in mod.funcs.values():
@@ -683,23 +791,97 @@ class Evaluator:
         return unk(f"an expression this reading does not model, `{_src(e)}`")
 
     def _subscript(self, e: ast.Subscript, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
-        """``name["key"]`` where ``name`` is bound to a dict literal in the function: that key's value. Anything else
-        (a computed key, a dict from elsewhere) is UNK."""
-        func = self._func(env)
+        """``f(...)[i]`` (what a destructuring assignment of a call binds): the ``i``-th element of each tuple ``f``
+        returns. ``name["key"]``, ``f(...)["key"]``, ``f(...)[i]["key"]`` where the value is a dict literal (bound in
+        the function, a module constant, or returned by a call): that key's value; with a computed key, the values of
+        every key. Anything else is UNK."""
         key = e.slice
-        if (isinstance(e.value, ast.Name) and isinstance(key, ast.Constant) and isinstance(key.value, str)
-                and func is not None and e.value.id in func.assigns):
-            out: set[Val] = set()
-            for rhs in func.assigns[e.value.id]:
-                if isinstance(rhs, ast.Constant) and rhs.value is None:
-                    continue  # `x = None` before `x = {...}`
-                if not isinstance(rhs, ast.Dict):
-                    return unk(f"`{_src(e)}`, from a value that is not a dict literal")
-                for k, v in zip(rhs.keys, rhs.values, strict=True):
-                    if isinstance(k, ast.Constant) and k.value == key.value:
-                        out |= self._ev(v, env, depth, seen)
-            return capped(out)
-        return unk(f"a subscript, `{_src(e)}`")
+        if isinstance(e.value, ast.Call) and isinstance(key, ast.Constant) and isinstance(key.value, int):
+            return self._call_element(e.value, key.value, env, depth, seen)
+        sources = self._dict_sources(e.value, env, depth, seen)
+        if sources is None:
+            return unk(f"`{_src(e)}`, from a value that is not a dict literal")
+        out: set[Val] = set()
+        for mapping, inner in sources:
+            for k, v in zip(mapping.keys, mapping.values, strict=True):
+                if k is None:
+                    return unk(f"`{_src(e)}`, from a dict with a `**` unpacking")
+                if not (isinstance(key, ast.Constant) and isinstance(key.value, str)) or (
+                        isinstance(k, ast.Constant) and k.value == key.value):
+                    out |= self._ev(v, inner, depth, seen)
+        return capped(out)
+
+    def _call_element(self, call: ast.Call, index: int, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                      ) -> Values:
+        """The ``index``-th element of the tuple a call returns: of each ``return`` of the function it names, read in
+        that function with the call's arguments bound."""
+        if depth <= 0:
+            return depth_limit()
+        mod = self.p.modules[env.module]
+        target = self.p.target(mod, self._func(env), call.func)
+        if target is None:
+            return unk(f"element {index} of `{_src(call.func)}(...)`, a callee this reading cannot name")
+        args = self._bind_args(target, call, env, depth, seen)
+        inner = Env(target.module, target.key, tuple(sorted(args.items(), key=lambda kv: kv[0])))
+        out: set[Val] = set()
+        for ret in target.returns:
+            if (isinstance(ret, (ast.Tuple, ast.List)) and index < len(ret.elts)
+                    and not any(isinstance(x, ast.Starred) for x in ret.elts[: index + 1])):
+                out |= self._ev(ret.elts[index], inner, depth - 1, seen)
+            else:
+                out.add(Val(UNK, f"`{target.qual}` returns something other than a tuple literal"))
+        return capped(out) if target.returns else unk(f"`{target.qual}` returns no expression")
+
+    def _dict_sources(self, expr: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                      ) -> list[tuple[ast.Dict, Env]] | None:
+        """The dict literals ``expr`` can be, each with the environment to read its values in; None when any way it can
+        be bound is not one (a parameter, an attribute, an unknown call). A dict literal; a name bound in the function
+        to one (``x = None`` before is skipped); a module constant; a call, or the element of a call, whose function
+        returns one."""
+        if depth <= 0:
+            return None
+        if isinstance(expr, ast.Dict):
+            return [(expr, env)]
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        if isinstance(expr, ast.Name):
+            token = ("dict", env.module, str(env.func), expr.id)
+            if token in seen:
+                return []
+            found: list[tuple[ast.Dict, Env]] = []
+            if func is not None and expr.id in func.assigns:
+                for rhs in func.assigns[expr.id]:
+                    if isinstance(rhs, ast.Constant) and rhs.value is None:
+                        continue
+                    more = self._dict_sources(rhs, env, depth - 1, seen | {token})
+                    if more is None:
+                        return None
+                    found += more
+                return found
+            if func is None and expr.id in mod.consts or (func is not None and expr.id not in func.params
+                                                          and expr.id in mod.consts):
+                return self._dict_sources(mod.consts[expr.id], Env(mod.name, None), depth - 1, seen | {token})
+            return None
+        call = expr.value if isinstance(expr, ast.Subscript) and isinstance(expr.value, ast.Call) else expr
+        if isinstance(call, ast.Call):
+            target = self.p.target(mod, func, call.func)
+            if target is None or not target.returns:
+                return None
+            inner = Env(target.module, target.key)
+            index = expr.slice.value if (isinstance(expr, ast.Subscript) and isinstance(expr.slice, ast.Constant)
+                                         and isinstance(expr.slice.value, int)) else None
+            found = []
+            for ret in target.returns:
+                if index is not None:
+                    if not (isinstance(ret, (ast.Tuple, ast.List)) and index < len(ret.elts)):
+                        return None
+                    ret = ret.elts[index]
+                more = self._dict_sources(ret, inner, depth - 1, seen)
+                if more is None:
+                    return None
+                found += more
+            return found
+        return None
 
     def _constant(self, e: ast.Constant) -> Values:
         if e.value is None:
@@ -768,7 +950,7 @@ class Evaluator:
         while scope is not None:
             token = ("name", scope.module, scope.qual, name)
             if (name in scope.assigns or name in scope.opaque or name in scope.params or name in scope.loops
-                    or name in scope.withs or name in scope.key_loops):
+                    or name in scope.withs or name in scope.key_loops or name in scope.unpacks):
                 if token in seen:
                     return frozenset()
                 out: set[Val] = set()
@@ -781,7 +963,9 @@ class Evaluator:
                     out |= self._context(context, inner_env, name)
                 for mapping in scope.key_loops.get(name, []):
                     out |= self._keys(mapping, inner_env, depth, seen | {token})
-                if name in scope.opaque:
+                for index, rows in scope.unpacks.get(name, []):
+                    out |= self._row_elements(rows, index, inner_env, depth, seen | {token})
+                if name in scope.opaque and name not in scope.unpacks:
                     out.add(Val(UNK, f"`{name}` is bound by a `with`, an unpacking or an `except`"))
                 if name in scope.params:
                     out |= self._param(scope, name, depth, seen | {token})
@@ -829,6 +1013,9 @@ class Evaluator:
                 for ret in prop.returns:
                     out |= self._ev(ret, Env(prop.module, prop.key), depth, seen | {token})
             return capped(out)
+        parsed = self._command_line(e, env, depth, seen)
+        if parsed is not None:
+            return parsed
         instance = self._instance_attribute(e, env, depth, seen)
         if instance is not None:
             return instance
@@ -889,7 +1076,7 @@ class Evaluator:
             if method == "format" and isinstance(e.func.value, ast.Constant) and isinstance(e.func.value.value, str):
                 return one(STR, _format_template(e.func.value.value))
         if depth <= 0:
-            return unk("resolution depth limit")
+            return depth_limit()
         target = self.p.target(mod, func, e.func)
         if target is None:
             return unk(f"the result of `{_src(e.func)}(...)`, a callee this reading cannot name")
@@ -920,6 +1107,8 @@ class Evaluator:
             for key in mapping.keys:
                 out |= self._ev(key, env, depth, seen) if key is not None else unk("a `**` unpacking in a mapping")
             return capped(out)
+        if isinstance(mapping, ast.Call):  # the keys of the mapping a function returns, a callback included
+            return self._keys_of_call(mapping, env, depth, seen)
         if not isinstance(mapping, ast.Name):
             return unk(f"the keys of `{_src(mapping)}`, a mapping this reading cannot read")
         func = self._func(env)
@@ -927,14 +1116,18 @@ class Evaluator:
             return unk(f"the keys of `{mapping.id}`, a mapping this reading cannot read")
         token = ("keys", func.module, func.qual, mapping.id)
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
+            return frozenset() if token in seen else depth_limit()
         out = set()
         for rhs in func.assigns.get(mapping.id, []):
             out |= self._keys(rhs, env, depth, seen | {token})
         for key in func.subkeys.get(mapping.id, []):
             out |= self._ev(key, env, depth, seen | {token})
         if mapping.id in func.params:
-            for caller, caller_mod, call in self.p.callers.get(func.key, [])[:CALLERS]:
+            sites = self.p.callers.get(func.key, [])
+            if len(sites) > CALLERS:  # none is read: the first few would be a partial answer that looks complete
+                out.add(Val(UNK, f"the keys of `{mapping.id}`, which has more than {CALLERS} call sites"))
+                sites = []
+            for caller, caller_mod, call in sites:
                 arg = _argument(func, mapping.id, call)
                 if arg is not None:
                     out |= self._keys(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
@@ -942,6 +1135,60 @@ class Evaluator:
         if not out:
             out.add(Val(UNK, f"the keys of `{mapping.id}`, a mapping this reading cannot read"))
         return capped(out)
+
+    def _keys_of_call(self, call: ast.Call, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The keys of the mapping a call returns: those of each ``return`` of each function the call can name (see
+        :meth:`_callables`)."""
+        token = ("keys-call", env.module, str(env.func), str(id(call)))
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else depth_limit()
+        try:
+            targets = self._callables(call.func, env, depth - 1, seen | {token})
+        except Cut as cut:
+            return unk(f"the keys of `{_src(call)}`: {cut}")
+        out: set[Val] = set()
+        for target in targets:
+            for ret in target.returns:
+                out |= self._keys(ret, Env(target.module, target.key), depth - 1, seen | {token})
+        if not out:
+            out.add(Val(UNK, f"the keys of `{_src(call)}`, a mapping this reading cannot read"))
+        return capped(out)
+
+    def _callables(self, callee: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> list[Func]:
+        """The functions an expression can be when it is called: one a name, attribute or method statically resolves
+        to; or a callback, a parameter or a ``self`` attribute that a constructor stored, followed to the functions
+        its callers pass. (A value read, not an edge: the reach does not follow callbacks.) A cap reached on the way
+        is a :class:`Cut`: the functions found so far would be a partial answer that looks complete."""
+        if depth <= 0:
+            raise Cut(depth_reason())
+        mod = self.p.modules[env.module]
+        func = self._func(env)
+        static = self.p.target(mod, func, callee)
+        if static is not None:
+            return [static]
+        found: list[Func] = []
+        if isinstance(callee, ast.Name) and func is not None and callee.id in func.params:
+            token = ("callable", func.module, func.qual, callee.id)
+            if token in seen:
+                return []
+            sites = self.p.callers.get(func.key, [])
+            if len(sites) > CALLERS:
+                raise Cut(f"`{callee.id}` of `{func.qual}` has more than {CALLERS} call sites")
+            for caller, caller_mod, call in sites:
+                arg = _argument(func, callee.id, call)
+                if arg is not None:
+                    found += self._callables(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
+                                             seen | {token})
+        elif (isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name) and callee.value.id == "self"
+              and func is not None and func.cls):
+            token = ("callable-attr", env.module, func.cls, callee.attr)
+            if token in seen:
+                return []
+            for m, k in self.p.mro(mod, func.cls):
+                for owner, rhs in m.attrs.get((k, callee.attr), []):
+                    found += self._callables(rhs, Env(owner.module if owner else m.name, owner.key if owner else None),
+                                             depth - 1, seen | {token})
+        return found
 
     def _element(self, iterable: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         """What a ``for`` target takes from its iterable: a path under the receiver for ``glob``, ``rglob``,
@@ -958,6 +1205,11 @@ class Evaluator:
             return capped(out)
         if isinstance(iterable, ast.Name):
             return self._elements_of_name(iterable.id, env, depth, seen)
+        if isinstance(iterable, ast.IfExp):  # `xs if cond else []`: the elements of either arm
+            return capped(self._element(iterable.body, env, depth, seen)
+                          | self._element(iterable.orelse, env, depth, seen))
+        if isinstance(iterable, ast.Subscript) and isinstance(iterable.slice, ast.Slice):  # `xs[:n]`
+            return self._element(iterable.value, env, depth, seen)
         if isinstance(iterable, ast.Call):
             callee = mod.aliases.resolve(iterable.func)
             if callee in ("sorted", "list", "tuple", "set", "reversed", "filter") and iterable.args:
@@ -970,10 +1222,26 @@ class Evaluator:
                                for v in self._ev(iterable.func.value, env, depth, seen)})
         return unk(f"a loop variable over `{_src(iterable)}`")
 
+    def _row_elements(self, rows: ast.expr, index: int, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
+                      ) -> Values:
+        """``for a, b in ((x, y), (z, w))``: what the ``index``-th target takes, the ``index``-th element of each row
+        of a list or tuple literal. Anything else is UNK."""
+        if not isinstance(rows, (ast.List, ast.Tuple)):
+            return unk(f"a loop variable over `{_src(rows)}`, rows this reading cannot read")
+        out: set[Val] = set()
+        for row in rows.elts:
+            if isinstance(row, (ast.Tuple, ast.List)) and index < len(row.elts):
+                out |= self._ev(row.elts[index], env, depth, seen)
+            else:
+                out.add(Val(UNK, f"a row of `{_src(rows)}` that is not a tuple literal"))
+        return capped(out)
+
     def _elements_of_name(self, name: str, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         """The elements of a local list: those of every list, tuple or comprehension assigned to it, and every
         ``name.append(element)``. A list that comes from anywhere else (a parameter, a call) is UNK."""
         func = self._func(env)
+        if func is not None and name in func.params and name not in func.assigns:
+            return self._elements_of_param(func, name, depth, seen)
         if func is None or name not in func.assigns:
             return unk(f"a loop variable over `{name}`, a list this reading cannot read")
         token = ("elements", func.module, func.qual, name)
@@ -991,6 +1259,53 @@ class Evaluator:
             out |= self._ev(item, env, depth, seen | {token})
         return capped(out)
 
+    def _command_line(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values | None:
+        """``args.run_dir`` where ``args = parser.parse_args(...)`` in the function: the value some start of this
+        module's process spells after ``--run-dir`` in the argument list it builds (a list literal holding the flag and
+        the module's dotted name, as ``[python, "-m", "aew.harness.supervisor", "--run-dir", str(directory)]`` does).
+        None when the object is not parsed arguments. UNK when no start of the module passes the flag: it is named by
+        whoever starts the process."""
+        func = self._func(env)
+        if func is None or not isinstance(e.value, ast.Name) or e.value.id not in func.assigns:
+            return None
+
+        def parsed(rhs: ast.expr) -> bool:
+            call = rhs.value if isinstance(rhs, ast.Subscript) else rhs
+            return (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                    and call.func.attr in ("parse_args", "parse_known_args"))
+
+        if not all(parsed(rhs) for rhs in func.assigns[e.value.id]):
+            return None
+        flag, module = "--" + e.attr.replace("_", "-"), env.module
+        out: set[Val] = set()
+        for owner, lst in self.p.argv_lists_of(flag, module):
+            at = next(i for i, x in enumerate(lst.elts) if isinstance(x, ast.Constant) and x.value == flag)
+            if at + 1 < len(lst.elts):
+                out |= self._ev(lst.elts[at + 1], Env(owner.module if owner else module, owner.key if owner else None),
+                                depth - 1, seen)
+        return capped(out) if out else unk(
+            f"`{flag}` of `{module}`, which no AEW start of it passes: its starter names it")
+
+    def _elements_of_param(self, func: Func, name: str, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        """The elements of a list passed as an argument: those of the list every static call passes (a local list is
+        read as ``_elements_of_name`` reads it, in the caller). A function nothing calls, or called from more places
+        than the program reads, is UNK."""
+        token = ("elements", func.module, func.qual, name)
+        if token in seen or depth <= 0:
+            return frozenset() if token in seen else depth_limit()
+        sites = self.p.callers.get(func.key, [])
+        if not sites or len(sites) > CALLERS:
+            return unk(f"a loop variable over `{name}`, a list this reading cannot read")
+        out: set[Val] = set()
+        for caller, caller_mod, call in sites:
+            arg = _argument(func, name, call)
+            if arg is None:
+                out.add(Val(UNK, f"a loop variable over `{name}`, which a call leaves out"))
+            else:
+                out |= self._element(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
+                                     seen | {token})
+        return capped(out)
+
     def _typed_attribute(self, e: ast.Attribute, env: Env, depth: int, seen: frozenset[tuple[str, ...]]
                          ) -> Values | None:
         """``name.attr`` where ``name`` is a parameter annotated with an AEW class: that class's ``self.attr``, as every
@@ -1005,7 +1320,7 @@ class Evaluator:
         cmod, cls = owner
         token = ("typed", cmod.name, cls, e.attr)
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
+            return frozenset() if token in seen else depth_limit()
         sources = [(src, rhs) for m, k in self.p.mro(cmod, cls) for src, rhs in m.attrs.get((k, e.attr), [])]
         prop = self.p.prop(cmod, cls, e.attr)
         if not sources and prop is None:
@@ -1135,7 +1450,7 @@ class Evaluator:
     def _param(self, func: Func, name: str, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         """A parameter, read at the function's static call sites. A function nothing statically calls is UNK."""
         if depth <= 0:
-            return unk("resolution depth limit")
+            return depth_limit()
         if name == ROOT_NAME:
             return one(ROOT)
         sites = self.p.callers.get(func.key, [])

@@ -112,7 +112,14 @@ class WorkUnits:
 
     def set_state(self, unit: dict[str, Any], to: str, reason: str | None, *,
                   state: dict[str, Any]) -> dict[str, str]:
-        """The single place a work unit's state changes (so cross-state effects cannot be skipped).
+        """The one place a Lead decision or an event changes a Ticket's state, and the one that runs the state hooks
+        (``before`` may refuse the change, ``after`` applies its effects), so those effects cannot be skipped. It does
+        not ask the transition table: its callers call ``transitions.check``.
+
+        Three writers assign a state themselves, so the hooks do not act on the edges they take:
+        ``dependencies.recompute_readiness`` (BLOCKED and READY, the ``recompute`` rules),
+        ``Lead._interrupt_invocations`` (into INTERRUPTED, the ``interrupt`` rules) and
+        ``hierarchy.recompute_parents`` (a Story's or Epic's derived phase, a set of its own).
 
         ``state`` is the transaction's control state: cross-state effects may revoke credentials.
         """

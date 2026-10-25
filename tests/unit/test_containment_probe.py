@@ -1,4 +1,4 @@
-"""The launch self-test's judgement (STG-05 CB-12, rows 2 to 5), on synthetic probe output.
+"""The launch self-test's judgement (STG-05 CB-12, rows 1 to 6), on synthetic probe output.
 
 Pure: nothing starts bubblewrap, so it runs on every platform. The rows on a real sandbox, and each failing closed when
 a protection is taken out, are in tests/integration/test_containment.py. Row 4 is judged here, and on a real sandbox
@@ -592,3 +592,111 @@ def test_row_2_on_a_network_of_the_runs_own_fails_on_a_host_abstract_socket_list
     assert row["ok"] is False and "an abstract display socket the host holds is listed inside" in row["reason"]
     assert row["abstract"]["sockets"] == held[:1] and row["abstract"]["visible_inside"] == held[:1]
     assert probe._row2(PRIVATE, {**seen, "network": {"abstract": []}}, NET)["abstract"]["visible_inside"] == []
+
+
+# ------------------------------------------------------------------------- row 1 under the Lead's any-public (CS-4)
+def test_row_1s_planted_egress_target_is_off_the_allowlist_or_under_any_public_the_hosts_own_port():
+    """CS-4: the Lead's egress admits any public address and has no allowlist, so row 1 plants a host address
+    instead, which R-6 refuses before connecting; the workers' allowlist keeps its unlisted name."""
+    from aew.harness.containment import egress
+
+    assert probe.planted_egress(egress.AnyPublic(), 40123) == ("127.0.0.1:40123", "a host address (R-6)")
+    assert probe.planted_egress(egress.Allowlist(["models.opencode.ai:443"]), 40123) == (probe.UNLISTED,
+                                                                                        "on no allowlist")
+    assert probe.planted_egress(None, 40123) == (probe.UNLISTED, "on no allowlist")
+
+
+def test_row_1_under_any_public_names_the_host_address_the_proxy_did_not_refuse(monkeypatch):
+    planted = {"planted": "127.0.0.1:40123", "planted_why": "a host address (R-6)"}
+    assert row1(monkeypatch, **planted)["ok"] is True
+    assert row1(monkeypatch, **planted)["egress_refused"] == {"target": "127.0.0.1:40123",
+                                                              "why": "a host address (R-6)"}
+    row = row1(monkeypatch, {**INSIDE, "egress": {"status": "HTTP/1.1 200 Connection Established"}}, **planted)
+    assert row["ok"] is False and "did not refuse 127.0.0.1:40123, which is a host address (R-6)" in row["reason"]
+
+
+# ------------------------------------------------------------------- row 4, the Lead's relayed terminal (CS-4, R-7)
+RELAYED = {"expect": [136, 7], "forbid": [136, 1]}
+ON_RELAY = {"tty_nr": probe.tty_nr(136, 7), "dev_tty": "opened", "session_leader": True, "tty_fds": {"0": [136, 7]}}
+
+
+def test_the_tty_nr_encoding_is_the_kernels():
+    assert probe.tty_nr(136, 2) == 34818  # measured on the Rocky VM (4.18): /dev/pts/2
+    assert probe.tty_nr(4, 1) == 1025
+    assert probe.tty_nr(136, 300) == (300 & 0xFF) | (136 << 8) | ((300 & ~0xFF) << 12)
+
+
+def test_row_4_for_the_lead_passes_when_its_controlling_terminal_is_the_relays_and_no_other_is_open():
+    row = probe._row4({**GOOD, "terminal": ON_RELAY}, RELAYED)
+    assert row["ok"] is True and row["relayed"] is True and row["expect"] == [136, 7]
+
+
+@pytest.mark.parametrize(("terminal", "says"), [
+    ({**ON_RELAY, "tty_nr": 0, "dev_tty": "ENXIO"}, "is not the relay's pseudo-terminal"),
+    ({**ON_RELAY, "tty_nr": probe.tty_nr(136, 1)}, "is not the relay's pseudo-terminal"),
+    ({**ON_RELAY, "dev_tty": "ENXIO"}, "is not the relay's pseudo-terminal"),
+    ({**ON_RELAY, "tty_fds": {"0": [136, 7], "5": [136, 1]}}, "the launching terminal [136, 1] is open inside"),
+    ({**ON_RELAY, "tty_fds": {"0": [136, 7], "3": [4, 2]}}, "a terminal other than the relay's is open inside"),
+    ({k: v for k, v in ON_RELAY.items() if k != "tty_fds"}, "did not list its open terminals"),
+    ({}, "is not the relay's pseudo-terminal"),  # nothing reported: fails closed
+])
+def test_row_4_for_the_lead_fails_closed(terminal, says):
+    row = probe._row4({**GOOD, "terminal": terminal}, RELAYED)
+    assert row["ok"] is False and says in row["reason"], row["reason"]
+
+
+def test_a_workers_row_4_still_requires_no_controlling_terminal_at_all():
+    assert probe._row4({**GOOD, "terminal": ON_RELAY})["ok"] is False  # the Lead's shape is a failure for a worker
+
+
+# --------------------------------------------------------------------------- row 6, the store's path (CS-4, CB-07)
+STORE = "/p/.aew/state"
+LEAD_STORES = [{"store": STORE, "below": ["/p/.aew"]}]
+SHIELDED = [{"store": STORE, "cover": "/p/.aew", "readonly": True,
+             "below": {"/p/.aew": {"mount_point": True, "readonly": True}}}]
+
+
+def test_the_probe_reads_the_store_paths_shield_from_its_mount_table():
+    """The Lead's tree: the project writable, `.aew` re-bound read-only after it; the masks under `.aew/local` do not
+    cover the store. Read, never renamed."""
+    shield = payload()["shield"]
+    table = [("8:1", "/", "/", "xfs", True), ("8:1", "/p", "/p", "xfs", True), ("8:1", "/p", "/p", "xfs", False),
+             ("8:1", "/p/.aew", "/p/.aew", "xfs", True), ("0:60", "/", "/p/.aew/local", "tmpfs", True)]
+    assert shield(LEAD_STORES, table) == SHIELDED
+    assert shield(LEAD_STORES, table[:3]) == [{"store": STORE, "cover": "/p", "readonly": False,
+                                                "below": {"/p/.aew": {"mount_point": False, "readonly": False}}}]
+    assert payload()["covering"]("/q/x", table) == ("/", True)
+
+
+def test_row_6_passes_on_a_shielded_store_and_claims_nothing_without_one():
+    assert probe._row6({"store_shield": SHIELDED}, LEAD_STORES)["ok"] is True
+    worker = [{"store": STORE, "below": []}]
+    assert probe._row6({"store_shield": [{"store": STORE, "cover": "/p", "readonly": True, "below": {}}]},
+                       worker)["ok"] is True
+    assert probe._row6({}, []) == {"name": "store_path", "ok": True, "reason": None, "stores": [],
+                                   "claim": "none: the layout's project has no store"}
+
+
+@pytest.mark.parametrize(("shield", "says"), [
+    ([{**SHIELDED[0], "readonly": False, "cover": "/p"}], "is on a writable mount inside (/p)"),
+    ([{**SHIELDED[0], "below": {"/p/.aew": {"mount_point": False, "readonly": False}}}], "is not a mount point"),
+    ([{**SHIELDED[0], "below": {"/p/.aew": {"mount_point": True, "readonly": False}}}], "is not read-only inside"),
+    (None, "did not report the mounts on the store's path"),  # missing: fails closed
+    ([], "did not report the mounts on the store's path"),
+])
+def test_row_6_fails_closed(shield, says):
+    row = probe._row6({"store_shield": shield} if shield is not None else {}, LEAD_STORES)
+    assert row["ok"] is False and says in row["reason"], row["reason"]
+
+
+def test_row_6s_paths_are_each_spelling_of_the_store_and_the_directory_below_each_writable_bind_holding_it(tmp_path):
+    project = tmp_path / "p"
+    (project / ".aew" / "state").mkdir(parents=True)
+    real = os.path.realpath(project)
+    lead = L.Layout(role="lead", access="write", bwrap="/usr/bin/bwrap", writable=(real,),
+                    readonly=(os.path.join(real, ".aew"),), visible=(real,))
+    assert probe._stores(lead) == [{"store": os.path.join(real, ".aew", "state"),
+                                    "below": [os.path.join(real, ".aew")]}]
+    worker = dataclasses.replace(lead, writable=(str(tmp_path / "scratch"),), readonly=())
+    assert probe._stores(worker) == [{"store": os.path.join(real, ".aew", "state"), "below": []}]
+    assert probe._stores(dataclasses.replace(lead, visible=())) == []

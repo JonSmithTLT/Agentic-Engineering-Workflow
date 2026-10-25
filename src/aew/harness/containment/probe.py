@@ -14,7 +14,7 @@ root's file arrived on the host (a bind that is not the host's path is not a wri
 is contained; anything else is a failure with its reason. The test catches bind-order mistakes, such as a broad
 writable root laid over the read-only host.
 
-The probe also reads what the gates' rows need (STG-05 CB-12, rows 1 to 5), each judged by the host and recorded on
+The probe also reads what the gates' rows need (STG-05 CB-12, rows 1 to 6), each judged by the host and recorded on
 the run's label, pass or fail:
 
 * **row 1, the network** (F28 §3.6; CS-3b): in a network of its own, the probe runs under the run's shim, with the
@@ -23,8 +23,9 @@ the run's label, pass or fail:
   judges: the sandbox's network namespace is not the launcher's; a direct connection out, TCP or UDP, has no route; a
   loopback port and an abstract socket the host holds are not there; the listening ports inside are only the shim's
   and the probe's; the supervisor reaches the probe through the shim; a request through the relay reaches its
-  upstream with the credential in place of its sentinel; the egress proxy refuses a target off the allowlist; the
-  bridge answers by its path. A run on the host's network records its mode and claims nothing;
+  upstream with the credential in place of its sentinel; the egress proxy refuses a target off the allowlist (under
+  the Lead's any-public policy, which has none, the host's own loopback port: R-6); the bridge answers by its path. A
+  run on the host's network records its mode and claims nothing;
 * **row 2:** ``/run`` is a read-only tmpfs holding only what the layout put there, and no socket of a failing class
   (:mod:`.sockets`) is reachable inside. The host reads the kernel's socket table, with a listener of its own bound
   first as the control, and the probe checks each path socket in it, by device and inode, at every path the
@@ -34,9 +35,14 @@ the run's label, pass or fail:
   (the probe is handed each of them, set, so a sandbox that does not unset them fails);
 * **row 4:** the process has no controlling terminal. The kernel refuses ``TIOCSTI`` on a terminal that is not the
   caller's controlling terminal, to a caller without ``CAP_SYS_ADMIN`` in the initial user namespace, so with none
-  no descriptor it holds accepts it. The probe checks the property and never pushes input anywhere;
+  no descriptor it holds accepts it. The probe checks the property and never pushes input anywhere. The Lead's form
+  (CS-4, ruling R-7): the probe runs on a pseudo-terminal the host owns, through the shim's controlling-terminal step,
+  as the Lead's TUI runs on its relay's; that terminal is its controlling terminal, and no other is open inside;
 * **row 5:** the writes above, and each mask holds: secret directories list empty, secret files read empty, a runs
-  mask shows only the run's own directories, and neither marker is visible.
+  mask shows only the run's own directories, and neither marker is visible;
+* **row 6:** the store's path is shielded, read from the mount table inside: the mount that holds it is read-only,
+  and below a writable bind that contains it (the Lead's working tree), the next directory (``.aew``) is a read-only
+  mount point. Nothing is ever renamed to find out.
 """
 
 from __future__ import annotations
@@ -207,13 +213,46 @@ def listing(p):
     except OSError as e:
         return [errno.errorcode.get(e.errno, str(e.errno))]
 def terminal():
+    # the controlling terminal (tty_nr, /dev/tty), and every open descriptor that is a terminal, by device
     fields = open("/proc/self/stat", "rb").read().rsplit(b")", 1)[1].split()
-    try:
+    out = {"tty_nr": int(fields[4]), "session_leader": os.getsid(0) == os.getpid()}
+    try:  # /dev/tty opens only on a controlling terminal; it names none (its own device is always 5:0)
         os.close(os.open("/dev/tty", os.O_RDONLY | os.O_NOCTTY))
-        tty = "opened"
+        out["dev_tty"] = "opened"
     except OSError as e:
-        tty = errno.errorcode.get(e.errno, str(e.errno))
-    return {"tty_nr": int(fields[4]), "dev_tty": tty, "session_leader": os.getsid(0) == os.getpid()}
+        out["dev_tty"] = errno.errorcode.get(e.errno, str(e.errno))
+    ttys = {}
+    for name in os.listdir("/proc/self/fd"):
+        try:
+            st = os.stat("/proc/self/fd/" + name)
+        except OSError:
+            continue
+        if stat.S_ISCHR(st.st_mode) and os.isatty(int(name)):
+            ttys[name] = [os.major(st.st_rdev), os.minor(st.st_rdev)]
+    out["tty_fds"] = ttys
+    return out
+def covering(path, table):
+    # the mount on top at path's deepest mounted ancestor: (mount point, read-only), or None
+    best = None
+    for _, _, point, _, ro in table:
+        if path == point or path.startswith(point.rstrip("/") + "/"):
+            if best is None or len(point) >= len(best[0]):
+                best = (point, ro)
+    return best
+def shield(stores, table):
+    # row 6: for each spelling of the store's path, the mount that holds it, and whether each directory the layout
+    # re-binds below a writable bind that contains it is a mount point, read-only on top (read from the mount table;
+    # nothing is ever renamed to find out)
+    out = []
+    for s in stores:
+        cover = covering(s["store"], table)
+        below = {}
+        for b in s["below"]:
+            at = [ro for _, _, point, _, ro in table if point == b]
+            below[b] = {"mount_point": bool(at), "readonly": bool(at) and at[-1]}
+        out.append({"store": s["store"], "cover": cover[0] if cover else None,
+                    "readonly": bool(cover and cover[1]), "below": below})
+    return out
 def failure(e):
     return errno.errorcode.get(e.errno, str(e.errno)) if e.errno else type(e).__name__
 def attempt(family, address, dgram=False):
@@ -314,7 +353,8 @@ def network(net, server):
             conn.close()
     return out
 if __name__ == "__main__":
-    spec = json.loads(sys.stdin.read())
+    # the spec on stdin; or, when stdin is the terminal under test (the Lead's row 4), from the file argv names
+    spec = json.loads(open(sys.argv[1]).read() if len(sys.argv) > 1 else sys.stdin.read())
     net = spec.get("network")
     server = None
     if net:  # listening before anything else, so the host's connection through the shim finds it
@@ -342,6 +382,7 @@ if __name__ == "__main__":
         "hide_files": {p: reads(p) for p in spec["hide_files"]},
         "hide_runs": {p: listing(p) for p in spec["hide_runs"]},
         "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
+        "store_shield": shield(spec.get("stores") or [], table),
         "network": network(net, server) if net else None,
         "tools": {"rg": shutil.which("rg", path=spec["path"])},
     }))
@@ -490,28 +531,77 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
         state["shim"] = netns.shim_spec(directory, server=PROBE_SERVER,
                                         relay_sock=PROBE_RELAY if state["relay"] else None,
                                         egress_sock=PROBE_EGRESS if state["egress"] else None)
+        state["planted"], state["planted_why"] = planted_egress(egress_policy, held.getsockname()[1])
         state["inside"] = {"server_port": netns.SERVER_PORT, "server_wait": SERVER_WAIT_S, "outside": OUTSIDE,
                            "outside6": OUTSIDE6, "host_port": held.getsockname()[1], "host_abstract": state["abstract"],
                            "bridge": bridge, "provider_port": netns.PROVIDER_PORT, "egress_port": netns.EGRESS_PORT,
-                           "relay_path": "/aew-probe/check", "sentinel": sentinel, "unlisted": UNLISTED}
+                           "relay_path": "/aew-probe/check", "sentinel": sentinel, "unlisted": state["planted"]}
         yield state
+
+
+def _relay_pty(forbid: Any) -> tuple[tuple[int, int], dict[str, Any]]:
+    """A pseudo-terminal standing in for the terminal relay's (the Lead's row 4), and what row 4 expects of it."""
+    if sys.platform == "win32":
+        raise OSError("the Lead's relayed terminal is Linux's: on Windows the Lead runs labelled not contained")
+    fds = os.openpty()
+    rdev = os.fstat(fds[1]).st_rdev
+    return fds, {"expect": [os.major(rdev), os.minor(rdev)], "forbid": forbid}
+
+
+def planted_egress(policy: Any, host_port: int) -> tuple[str, str]:
+    """Row 1's target the egress proxy must refuse, and why: a name on no allowlist, for an allowlist; under the Lead's
+    any-public policy, which has no allowlist, the host's own loopback port the host holds for row 1, which R-6 refuses
+    before any connection (STG-05 CS-4; CS-3a)."""
+    if isinstance(policy, egress.AnyPublic):
+        return f"127.0.0.1:{host_port}", "a host address (R-6)"
+    return UNLISTED, "on no allowlist"
 
 
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
               env: Mapping[str, str] | None = None, egress_policy: Any = None,
-              bridge: str | None = None) -> dict[str, Any]:
+              bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
     never raises for a containment failure (the caller decides by policy). ``tools`` says where, on the launching
     environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
     ``own`` holds the run's own socket directories (its bridge, its network directory); ``env`` is the launching
     environment the socket classes read (default: this process's). For row 1: ``egress_policy`` is the run's egress
-    allowlist (None: the run has no egress proxy), and ``bridge`` the run's bridge socket, which must answer inside."""
+    allowlist (None: the run has no egress proxy), and ``bridge`` the run's bridge socket, which must answer inside.
+    ``relayed_terminal`` is the Lead's (STG-05 CS-4, ruling R-7): the probe then runs on a pseudo-terminal the host
+    owns, through the shim's controlling-terminal step, as the Lead's TUI runs on its relay's; row 4 checks that this
+    terminal is the probe's controlling terminal and that ``forbid``, the launching terminal's device, is not open
+    inside."""
     with _network(layout, egress_policy=egress_policy, bridge=bridge) as net:
-        return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net)
+        return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net,
+                          relayed_terminal=relayed_terminal)
+
+
+def tty_nr(major: int, minor: int) -> int:
+    """The kernel's encoding of a terminal's device in ``/proc/<pid>/stat`` field 7 (``new_encode_dev``)."""
+    return (minor & 0xFF) | (major << 8) | ((minor & ~0xFF) << 12)
+
+
+def _stores(layout: Layout) -> list[dict[str, Any]]:
+    """Row 6's paths: each spelling of the project's store (the walked ``.aew/state`` and where it leads), with the
+    directory below each writable bind that contains it, which the layout re-binds read-only after that bind (CB-07's
+    second clause; ruling R-2)."""
+    from aew.harness.containment.layout import STORE, order
+
+    out = []
+    binds = [p for flag, p in order(layout) if flag == "--bind"]
+    for project in layout.visible:
+        walked = os.path.join(project, *STORE)
+        if not os.path.isdir(walked):
+            continue
+        for store in dict.fromkeys((walked, os.path.realpath(walked))):
+            below = [os.path.join(w, os.path.relpath(store, w).split(os.sep)[0]) for w in binds
+                     if _within(store, w) and store != w]
+            out.append({"store": store, "below": below})
+    return out
 
 
 def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...],
-               env: Mapping[str, str] | None, net: dict[str, Any] | None) -> dict[str, Any]:
+               env: Mapping[str, str] | None, net: dict[str, Any] | None,
+               relayed_terminal: Mapping[str, Any] | None = None) -> dict[str, Any]:
     from aew.harness.containment import netns
 
     name = f".aew-containment-probe-{secrets.token_hex(8)}"
@@ -534,6 +624,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             # name a directory the read-only root shows; the bridge sockets live under /tmp whatever it says)
             "markers": [str(m) for m in markers if any(_within(str(m), h) for h in (SANDBOX_TMP, *layout.hide_runs))],
             "network": net["inside"] if net else None,
+            "stores": _stores(layout),
             # the PATH a run's harness gets (the launching environment's), on which the probe looks for the tools a
             # harness needs from the host: ripgrep, which OpenCode otherwise downloads (the designer's RG-1)
             "path": (os.environ if env is None else env).get("PATH", "")}
@@ -541,15 +632,25 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
     argv = [sys.executable, "-I", "-c", _PAYLOAD]
     echo: threading.Thread | None = None
     probed = threading.Event()  # the sandbox has ended: the echo has its answer, or never will
-    if net:  # under the run's shim, in the one sandbox, as the harness runs (F28 §3.2)
-        argv = netns.shim_argv(net["shim"], argv)
+    tty: dict[str, Any] | None = None
+    fds: tuple[int, int] | None = None
+    spec_file = sentinel_dir / f"{name}.spec.json"
+    shim = dict(net["shim"]) if net else None
+    if relayed_terminal is not None:  # the Lead's row 4: on a pseudo-terminal, through the shim's ctty step
+        fds, tty = _relay_pty(relayed_terminal.get("forbid"))
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")  # stdin is the terminal: the spec is a file
+        argv.append(str(spec_file))
+        shim = {**(shim or {"in": [], "out": []}), "ctty": True}
+    if shim is not None:  # under the run's shim, in the one sandbox, as the harness runs (F28 §3.2)
+        argv = netns.shim_argv(shim, argv)
+    if net:
         echo = threading.Thread(target=_echo, args=(net["server_socket"], time.monotonic() + TIMEOUT_S, net, probed),
                                 name="aew-probe-echo", daemon=True)
         echo.start()
     try:
         try:  # the spec on stdin: one argument is capped at 128 KiB (MAX_ARG_STRLEN), and it grows with the sockets
-            done = subprocess.run(bwrap_argv(layout, argv), input=json.dumps(spec),
-                                  capture_output=True, text=True, timeout=TIMEOUT_S,
+            done = subprocess.run(bwrap_argv(layout, argv), input=None if fds else json.dumps(spec),
+                                  stdin=fds[1] if fds else None, capture_output=True, text=True, timeout=TIMEOUT_S,
                                   env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8",
                                        **dict.fromkeys(DISPLAY_ENV, CANARY)})
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -559,6 +660,8 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             probed.set()
             if echo is not None:
                 echo.join(ECHO_JOIN_S)
+            for fd in fds or ():
+                os.close(fd)
         if done.returncode != 0:
             err = (done.stderr or "").strip().splitlines()
             last = err[-1] if err else "no output"
@@ -570,12 +673,13 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             result["reason"] = "the probe reported nothing readable"
             return result
         rows = _rows(layout, {**seen, "inventory": inventory}, written=(sentinel, content), sibling=sibling,
-                     name=name, net=net)
+                     name=name, net=net, tty=tty, stores=spec["stores"])
         problems = [f"row {n} ({row['name']}): {row['reason']}" for n, row in rows.items() if not row["ok"]]
         result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"), rows=rows,
                       tools=seen.get("tools") or {})
         return result
     finally:
+        spec_file.unlink(missing_ok=True)
         for m in markers:
             m.unlink(missing_ok=True)
             if m.parent.name.endswith(".probe-run"):
@@ -588,10 +692,11 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
 
 
 def _rows(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], sibling: Path,
-          name: str, net: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    """CB-12's rows 1 to 5, judged on the host from what the probe saw. Each row says what it checked."""
-    return {"1": _row1(layout, seen, net), "2": _row2(layout, seen, net), "3": _row3(seen), "4": _row4(seen),
-            "5": _row5(layout, seen, written=written, sibling=sibling, name=name)}
+          name: str, net: dict[str, Any] | None = None, tty: Mapping[str, Any] | None = None,
+          stores: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
+    """CB-12's rows 1 to 6, judged on the host from what the probe saw. Each row says what it checked."""
+    return {"1": _row1(layout, seen, net), "2": _row2(layout, seen, net), "3": _row3(seen), "4": _row4(seen, tty),
+            "5": _row5(layout, seen, written=written, sibling=sibling, name=name), "6": _row6(seen, stores or [])}
 
 
 def _row(name: str, problems: list[str], **facts: Any) -> dict[str, Any]:
@@ -647,14 +752,16 @@ def _row1(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None) -> d
     elif "status" in relayed:
         problems.append("a provider route answers inside a network with none")
     refused = inside.get("egress") or {}
+    planted, why = net.get("planted", UNLISTED), net.get("planted_why", "on no allowlist")
     if net["egress"] and refused.get("status", "").split(" ")[1:2] != ["403"]:
-        problems.append(f"the egress proxy did not refuse {UNLISTED}, which is on no allowlist ({refused})")
+        problems.append(f"the egress proxy did not refuse {planted}, which is {why} ({refused})")
     elif not net["egress"] and "status" in refused:
         problems.append("an egress route answers inside a run that has none")
     if net["inside"].get("bridge") and inside.get("bridge") != "connected":
         problems.append(f"the bridge does not answer inside by its path ({inside.get('bridge')})")
     return _row("network", problems, mode=layout.network, netns={"inside": inside.get("netns"), "launcher": launcher},
                 provider_relay="probe upstream" if net["relay"] else "none", egress=net["egress"],
+                egress_refused={"target": planted, "why": why} if net["egress"] else None,
                 checks={k: inside.get(k) for k in ("direct", "direct_udp", "direct6", "host_port", "host_abstract",
                                                    "bridge", "server")},
                 listening=inside.get("listening") or [], server=net.get("server"))
@@ -730,16 +837,34 @@ def _row3(seen: dict[str, Any]) -> dict[str, Any]:
     return _row("display", problems, files=files, env_set=seen.get("env_set") or [])
 
 
-def _row4(seen: dict[str, Any]) -> dict[str, Any]:
+def _row4(seen: dict[str, Any], tty: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """No controlling terminal, read on the started process itself: ``tty_nr`` 0 in its own ``/proc/self/stat`` and
     ``ENXIO`` from ``/dev/tty``. Whether it leads its session is a fact on the label, not a condition: under
-    bubblewrap's ``--new-session`` the session's leader is bubblewrap's own process in the sandbox (seen on CI)."""
+    bubblewrap's ``--new-session`` the session's leader is bubblewrap's own process in the sandbox (seen on CI).
+
+    The Lead's form (``tty``; ruling R-7, STG-05 CS-4): its controlling terminal is the relay's pseudo-terminal
+    (``expect``: ``tty_nr`` is that device, and ``/dev/tty`` opens), so a ``TIOCSTI`` from inside reaches only the TUI's
+    own input; and no descriptor inside is any other terminal, the launching one (``forbid``) above all. Nothing is
+    ever pushed."""
     term = seen.get("terminal") or {}
     problems = []
-    if term.get("tty_nr") != 0 or term.get("dev_tty") != errno.errorcode[errno.ENXIO]:
-        problems.append(f"the process has a controlling terminal (tty_nr {term.get('tty_nr')}, /dev/tty "
-                        f"{term.get('dev_tty')})")
-    return _row("terminal", problems, **term)
+    if tty is None:
+        if term.get("tty_nr") != 0 or term.get("dev_tty") != errno.errorcode[errno.ENXIO]:
+            problems.append(f"the process has a controlling terminal (tty_nr {term.get('tty_nr')}, /dev/tty "
+                            f"{term.get('dev_tty')})")
+        return _row("terminal", problems, **term)
+    expect = list(tty["expect"])
+    if term.get("tty_nr") != tty_nr(*expect) or term.get("dev_tty") != "opened":
+        problems.append(f"the controlling terminal is not the relay's pseudo-terminal {expect} (tty_nr "
+                        f"{term.get('tty_nr')}, /dev/tty {term.get('dev_tty')})")
+    others = {fd: dev for fd, dev in (term.get("tty_fds") or {}).items() if dev != expect}
+    if tty.get("forbid") and list(tty["forbid"]) in others.values():
+        problems.append(f"the launching terminal {list(tty['forbid'])} is open inside")
+    elif others:
+        problems.append(f"a terminal other than the relay's is open inside: {others}")
+    if "tty_fds" not in term:
+        problems.append("the probe did not list its open terminals")
+    return _row("terminal", problems, relayed=True, expect=expect, forbid=tty.get("forbid"), **term)
 
 
 def _row5(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], sibling: Path,
@@ -771,6 +896,30 @@ def _row5(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], 
                             "directories")
     problems += [f"{m} is visible from inside" for m in seen.get("markers_visible") or []]
     return _row("binds_and_masks", problems)
+
+
+def _row6(seen: dict[str, Any], stores: list[dict[str, Any]]) -> dict[str, Any]:
+    """The store's path is shielded (A-33 §3.12, row 6; CB-07), read from the mount table inside and never by trying to
+    rename the real store: the mount that holds each spelling of the store's path is read-only, and each directory the
+    layout re-binds below a writable bind that contains it (the Lead's `.aew`, ruling R-2) is a mount point, read-only
+    on top, which cannot be renamed, replaced or removed. A project with no store claims nothing."""
+    if not stores:
+        return _row("store_path", [], stores=[], claim="none: the layout's project has no store")
+    shield = seen.get("store_shield")
+    if not isinstance(shield, list) or [s.get("store") for s in shield] != [s["store"] for s in stores]:
+        return _row("store_path", ["the probe did not report the mounts on the store's path"], stores=stores)
+    problems = []
+    for want, got in zip(stores, shield, strict=True):
+        if not got.get("readonly"):
+            problems.append(f"the store's path {want['store']} is on a writable mount inside ({got.get('cover')})")
+        for below in want["below"]:
+            mount = (got.get("below") or {}).get(below) or {}
+            if not mount.get("mount_point"):
+                problems.append(f"{below}, below a writable bind that holds the store, is not a mount point inside, "
+                                "so the store's path can be renamed")
+            elif not mount.get("readonly"):
+                problems.append(f"{below}, below a writable bind that holds the store, is not read-only inside")
+    return _row("store_path", problems, stores=shield)
 
 
 def _markers(layout: Layout, name: str) -> list[Path]:

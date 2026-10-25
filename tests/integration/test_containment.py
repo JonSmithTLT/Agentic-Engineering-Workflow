@@ -781,17 +781,17 @@ def without(monkeypatch, *steps: tuple[str, ...]) -> None:
     monkeypatch.setattr(probe, "bwrap_argv", argv)
 
 
-def test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
-    """CB-12's rows 1 to 5 pass on the real layout and are on the label with their facts: the run's own network (row
+def test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run(lab, monkeypatch):
+    """CB-12's rows 1 to 6 pass on the real layout and are on the label with their facts: the run's own network (row
     1, F28 §3.6), /run a read-only tmpfs holding nothing the layout did not put there, the kernel's socket table read
     with the probe's own listener in it and no reachable socket of a failing class (D-CS2-2), no abstract socket of the
     host's listed inside (D-CS2-5), what the table cannot show named (D-CS2-3), no display credential or variable, no
-    controlling terminal, and every bind and mask holding. The table's size and the check's time are printed: its
-    cost, on CI and on the Rocky VM (`-s`)."""
+    controlling terminal, every bind and mask holding, and the store's path shielded (row 6, STG-05 CS-4). The table's
+    size and the check's time are printed: its cost, on CI and on the Rocky VM (`-s`)."""
     layout, label = establish(lab, monkeypatch)
     assert layout is not None and label["filesystem"] == "os_readonly_roots"
     rows = label["self_test"]["rows"]
-    assert sorted(rows) == ["1", "2", "3", "4", "5"]
+    assert sorted(rows) == ["1", "2", "3", "4", "5", "6"]
     assert {n: r["reason"] for n, r in rows.items() if not r["ok"]} == {}
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
     assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)

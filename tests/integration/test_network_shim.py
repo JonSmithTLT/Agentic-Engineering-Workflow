@@ -1,7 +1,8 @@
 """The in-sandbox network shim (STG-05 CS-3b; F28 §3.2), run as a contained run runs it: ``python -I shim.py <spec>
 -- <argv>``, as its harness's parent. Here it runs on the host's network, with loopback ports picked free, so what is
-tested is the shim itself: each leg forwards both ways, a leg it cannot set up stops the harness from starting, and it
-ends with its harness. The shim inside a network namespace of the run's own is the self-test's row 1
+tested is the shim itself: each leg forwards both ways, a leg it cannot set up stops the harness from starting, it
+ends with its harness, and for the Lead (STG-05 CS-4) its ``ctty`` step makes the relay's pseudo-terminal the harness's
+controlling terminal or starts nothing. The shim inside a network namespace of the run's own is the self-test's row 1
 (tests/integration/test_containment.py). Linux: the legs' far ends are socket files (AF_UNIX)."""
 
 from __future__ import annotations
@@ -108,6 +109,77 @@ def test_a_leg_that_cannot_be_set_up_stops_the_harness_from_starting(tmp_path):
         _, err = proc.communicate(timeout=TIMEOUT)
     assert proc.returncode == shim.EXIT_SETUP and not marker.exists()
     assert "a leg could not be set up, so the harness was not started" in err
+
+
+def wait_for(path: Path, text: str) -> str:
+    deadline = time.monotonic() + TIMEOUT
+    while time.monotonic() < deadline:
+        got = path.read_text() if path.exists() else ""
+        if text in got:
+            return got
+        time.sleep(0.05)
+    raise AssertionError(f"{text!r} never appeared in {path.name}: {got!r}")
+
+
+# The Lead's TUI as the ``ctty`` step leaves it: it records its controlling terminal (``/proc/self/stat`` field 7),
+# whether /dev/tty opens, whether it is in the terminal's foreground group, and each SIGINT it gets.
+TERMINAL_HARNESS = textwrap.dedent("""
+    import os, signal, sys, time
+    log = open(sys.argv[1], "a", buffering=1)
+    signal.signal(signal.SIGINT, lambda _s, _f: log.write("sigint\\n"))
+    with open("/proc/self/stat", "rb") as f:
+        nr = int(f.read().rsplit(b")", 1)[1].split()[4])
+    os.close(os.open("/dev/tty", os.O_RDWR))
+    log.write(f"tty_nr {nr} foreground {os.tcgetpgrp(0) == os.getpgrp()}\\n")
+    time.sleep(60)
+""")
+
+
+def test_the_ctty_step_makes_standard_input_the_harnesss_controlling_terminal_and_a_ctrl_c_reaches_it_once(tmp_path):
+    """STG-05 CS-4, ruling R-7: on the relay's pseudo-terminal the shim makes it the controlling terminal, so the TUI
+    it starts has that terminal (and /dev/tty) and is in its foreground group. A Ctrl-C there reaches the TUI once,
+    from the terminal: the shim does not forward it as well, and a SIGINT sent to the shim alone neither ends the shim
+    nor reaches the TUI. A termination still does, and the shim ends with it."""
+    import pty
+
+    master, slave = pty.openpty()
+    log = tmp_path / "log"
+    rdev = os.fstat(slave).st_rdev
+    major, minor = os.major(rdev), os.minor(rdev)
+    try:
+        proc = subprocess.Popen(netns.shim_argv({"in": [], "out": [], "ctty": True},
+                                                [sys.executable, "-I", "-c", TERMINAL_HARNESS, str(log)]),
+                                stdin=slave, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    finally:
+        os.close(slave)
+    try:
+        got = wait_for(log, "foreground")
+        assert f"tty_nr {(minor & 0xFF) | (major << 8) | ((minor & ~0xFF) << 12)} foreground True" in got
+        os.write(master, b"\x03")  # the line discipline's Ctrl-C: SIGINT to the terminal's foreground group
+        wait_for(log, "sigint")
+        os.kill(proc.pid, signal.SIGINT)
+        time.sleep(0.5)
+        assert proc.poll() is None and log.read_text().count("sigint") == 1
+        os.kill(proc.pid, signal.SIGTERM)
+        proc.wait(TIMEOUT)
+        assert proc.returncode == 128 + signal.SIGTERM
+    finally:
+        os.close(master)
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(TIMEOUT)
+
+
+def test_a_ctty_step_that_cannot_take_the_terminal_stops_the_harness_from_starting(tmp_path):
+    """Standard input that is not a terminal: the step fails, and the shim starts nothing rather than run the TUI with
+    no controlling terminal (row 4's Lead form refuses such a launch before it, on the probe)."""
+    marker = tmp_path / "started"
+    proc = subprocess.Popen(netns.shim_argv({"in": [], "out": [], "ctty": True},
+                                            [sys.executable, "-I", "-c", f"open({str(marker)!r}, 'w').close()"]),
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    _, err = proc.communicate(timeout=TIMEOUT)
+    assert proc.returncode == shim.EXIT_SETUP and not marker.exists()
+    assert "standard input could not be made the controlling terminal, so the harness was not started" in err
 
 
 def test_a_termination_reaches_the_harness_and_the_shim_ends_with_it(tmp_path):

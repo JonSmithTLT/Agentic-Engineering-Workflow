@@ -286,7 +286,7 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run: >-
+    tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run: >-
       Linux bubblewrap containment (STG-05 CS-2, CS-3b); Windows has no OS filesystem or network containment. Covered
       on Linux (CI and the Rocky 8 lane); the rows' judgement is tested on every platform in
       tests/unit/test_containment_probe.py.
@@ -303,6 +303,40 @@ skipped:
     tests/integration/test_network_shim.py::test_a_leg_that_cannot_be_set_up_stops_the_harness_from_starting: >-
       the shim runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has no network containment.
       Covered on Linux.
+    tests/integration/test_network_shim.py::test_the_ctty_step_makes_standard_input_the_harnesss_controlling_terminal_and_a_ctrl_c_reaches_it_once: >-
+      a controlling terminal (setsid, TIOCSCTTY) and /proc/self/stat are POSIX's and Linux's, and the shim's ctty step
+      serves the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on Linux.
+    tests/integration/test_network_shim.py::test_a_ctty_step_that_cannot_take_the_terminal_stops_the_harness_from_starting: >-
+      the shim's ctty step is POSIX's and serves only the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs
+      labelled not contained. Covered on Linux.
+    tests/integration/test_lead_containment.py::test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_from_the_leads_sandbox_aew_local_holds_only_its_own_directories: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_the_operators_opencode_login_and_configuration_are_empty_from_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_the_leads_self_test_passes_rows_1_to_6_with_its_relayed_terminal_and_any_public_egress: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_row_6_fails_closed_when_the_aew_re_bind_is_missing_from_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_row_4_for_the_lead_fails_closed_without_the_shims_controlling_terminal_step: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_a_lead_that_falls_back_to_allow_weaker_is_labelled_so: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.

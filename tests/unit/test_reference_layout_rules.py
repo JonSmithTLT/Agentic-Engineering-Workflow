@@ -353,6 +353,25 @@ def test_an_entry_is_masked_when_it_is_or_lies_under_an_entry_the_containment_la
     assert [k for k, r in got.items() if r.fact["masked_by_containment"]] == ["local", "local/a"]
 
 
+def test_the_pointer_to_the_unresolved_writes_names_the_writers_family_and_the_key_it_gives_them():
+    """Review of #261, N-2: the layout family points at records that are the writers family's, so a reader looking
+    for `layout:unresolved:*` is told where they are."""
+    record = by_key(LY.records_of(inputs({"work/w": [W1], "state/s": [W1], "local/l": [W1]})))["work"]
+    [pointer] = [i for i in record.coverage["unresolved"] if "write sites" in i["why"]]
+    assert "records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`" in pointer["why"]
+
+
+def test_the_page_and_the_docstring_do_not_gloss_what_git_keeps_and_state_the_rule_for_named_by():
+    """Review of #261, N-6 (the gloss restated `AEW_GITIGNORE`'s comment) and N-12 (the list is a lower bound with
+    nothing listed unresolved, so the rule for what it finds is stated where a reader looks)."""
+    page = LY.page(LY.records_of(inputs({"work/w": [W1], "state/s": [W1], "local/l": [W1]})), NO_READS)
+    doc = " ".join((LY.__doc__ or "").split())
+    for text in (page, doc):
+        assert "spent redo records" not in text and "runtime data" not in text
+    assert "a constant spelled another way, or holding the same text for another purpose, is not found" in page
+    assert "A constant spelled another way, or one that holds the same text for another purpose, is not found" in doc
+
+
 def test_the_mask_fact_says_it_is_a_mask_and_the_page_and_the_docstring_state_the_bind_back():
     """Review of the layout pull request, N-1: the field is read by the trace and not the page, so its name says what it
     holds, and the limit (a run's own directories are bound back into the mask) is stated where the fact is defined."""

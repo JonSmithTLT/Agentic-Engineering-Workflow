@@ -18,7 +18,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -138,6 +138,9 @@ class Built:
 
     records: list[Record] = field(default_factory=list)
     pages: dict[str, str] = field(default_factory=dict)  # file name under docs/reference -> its text
+    # Pages whose text needs every family built (the evaluator's figures are the whole render's): each is called once
+    # all have, and replaces the text in ``pages``, which is the text so far (what a family built alone gives).
+    late: dict[str, Callable[[], str]] = field(default_factory=dict)
 
 
 def unresolved_item(module: str, symbol: str | None, why: str) -> dict[str, Any]:

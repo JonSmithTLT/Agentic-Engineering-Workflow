@@ -10,13 +10,19 @@ store transaction's ``session.write(path, content)``). The destination expressio
 :data:`TOP_LEVEL` becomes a record, keyed by the path as a template (``work/{}/completion.md``: ``{}`` is a computed
 segment), with its writers: the module and function, the mechanism (``store-transaction`` or ``direct``) and the
 primitives. ``aew.util``, the store's own ``write_file`` and the store's apply step are the write mechanism, not
-writers: their callers (and the staging sites) are.
+writers: their callers (and the staging sites) are. One file the apply step writes has no staging site among the
+writers: the events sidecar the commit stages itself in ``ControlStore._commit_unprofiled``
+(``state/log/{}.events.yaml``), which no ``session.write`` stages, so nothing here names what creates it (review of
+the placement pull request, F1).
 
-A destination that is not provably under ``.aew`` and not provably outside it is **unresolved**: the site is a record of
-its own, ``unresolved:<module>:<symbol>:<primitive>``, with the reason, and every path record's list of writers carries
-one pointer item to them (any of them may write that path). A destination provably outside ``.aew`` (a temporary
-directory, the console, the repository's working tree) is a record too, ``outside:<module>:<symbol>:<primitive>``, with
-its root: nothing is dropped unseen, and the trace need not take it as unplaced.
+A destination that is not followed to a path under ``.aew`` and not followed to a place outside it is
+**unresolved**: the site is a record of its own, ``unresolved:<module>:<symbol>:<primitive>``, with the reason, and
+every path record's list of writers carries one pointer item to them (any of them may write that path). A destination
+followed to a place outside ``.aew`` is a record too, ``outside:<module>:<symbol>:<primitive>``, with its root: nothing
+is dropped unseen, and the trace need not take it as unplaced. The root is one of the site's possible values, and not
+always the only one (a site may also write under ``.aew``). It is outside by construction for a temporary directory, a
+literal or the console, and by the name of the variable for ``repo_root`` and ``workspaces_root`` (review of the
+placement pull request, F5).
 
 Each writer carries the entry points that reach it (:mod:`reference_families.writers_reach`), as a lower bound (a chain
 of resolved calls, and nothing more); a writer with no chain is unresolved on the records it appears in. The CLI's roles
@@ -66,7 +72,10 @@ TOP_LEVEL: tuple[str, ...] = (".gitignore", "coordination", "decisions", "eviden
 # `aew.util` is the write mechanism: its callers are the writers, so a path written inside it is its caller's. So is the
 # store's own `write_file` (every write into the store goes through it: its docstring says so). So is the store's apply
 # step, `ControlStore._apply`: it writes the files the transactions staged, whose paths are the `session.write` sites'
-# (the writers, and records here); its own target is data read from the redo record, which no reading follows.
+# (the writers, and records here); its own target is data read from the redo record, which no reading follows. The one
+# exception is the events sidecar `_commit_unprofiled` stages itself (`PendingWrite(overflow["path"], ...)`, not a
+# `session.write`): its path has no writer here but the compactor that deletes it (F1; a tree test pins the two
+# stagers).
 MECHANISM_MODULES = frozenset({"aew.util"})
 MECHANISM_FUNCTIONS = frozenset({("aew.engine.store", "write_file"), ("aew.engine.store", "ControlStore._apply")})
 STORE = "aew.engine.store"
@@ -113,6 +122,9 @@ CANNOT_SEE: tuple[tuple[str, str], ...] = (
     ("handler-by-name", "a command handler that calls an engine method by a name held in a variable, "
      "`getattr(engine, name)(...)` (the `integrate` commands' handlers, for one): the writers behind it are not "
      "attributed to the command's role"),
+    ("list-and-dict-edits", "a local list that is also grown by `extend`, `+=` or `insert` (read as its literal and "
+     "its `append`s), a list argument a caller builds that way, and a dict key reassigned after its literal "
+     "(`unit['record'] = ...`, `unit.update(record=...)`, read as the literal's value): no mark is made for them"),
 )
 
 
@@ -344,12 +356,14 @@ def destination(site: Site, top_level: frozenset[str]) -> Destination:
 # ------------------------------------------------------------------------------------------------------------ records
 
 UNRESOLVED_KEY = "unresolved"  # `writers:unresolved:<module>:<symbol>:<primitive>`: a write not placed under `.aew`
-OUTSIDE_KEY = "outside"  # `writers:outside:<module>:<symbol>:<primitive>`: a write provably outside `.aew`
+OUTSIDE_KEY = "outside"  # `writers:outside:<module>:<symbol>:<primitive>`: a write followed to a place outside `.aew`
 PATH_LIKE = re.compile(r"[\\/]|^[A-Za-z]:|^~")  # a separator, a drive or a home: what a root must never contain
 POINTER_SYMBOL = None
 NO_CHAIN = "no static call chain from any entry point's declaring function reaches this writer"
-POINTER = ("write sites whose destination this reading could not place under `.aew` are records of this family keyed "
-           "`unresolved:<module>:<symbol>:<primitive>`; any of them may write this path")
+# Said by every family that lists the writes (the layout family points here too), so it names its own: review of the
+# layout pull request, N-2.
+POINTER = ("write sites whose destination this reading could not place under `.aew` are records of the writers family "
+           f"keyed `{FAMILY}:{UNRESOLVED_KEY}:<module>:<symbol>:<primitive>`; any of them may write this path")
 
 
 def why_unplaced(primitive: str, reason: str) -> str:
@@ -740,15 +754,17 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
 def cap_lines(caps: Iterable[F.Cap]) -> list[str]:
     lines = ["## Caps of the reading", "",
              "Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the "
-             "reading says so: the reason is on the unresolved write, or the writer carries the no-chain item, or the "
-             "registration counts as run by every role. A tree test doubles every cap and holds this page and "
+             "reading takes one of two arms, named on each line: a marked item (the reason is on the unresolved write, "
+             "or the writer carries the no-chain item, or the registration counts as run by every role), or, where "
+             "what the cap bounds can carry no mark, `check` and `render` fail with an error that names the cap. A "
+             "tree test doubles every cap and holds this page and "
              "`index.json` unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut "
              "at a number of lines and says how many it left out, and an expression quoted in a reason is cut with "
              "`...`: those are not caps on what the reading follows.", ""]
     for cap in caps:
-        measured = "" if cap.measured is None else f" The largest in this tree: {cap.measured}."
+        measured = "" if cap.measured is None else f" The largest in this render: {cap.measured}."
         lines.append(f"- `{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; "
-                     f"past it: {cap.past}.{measured}")
+                     f"past it ({cap.arm}): {cap.past}.{measured}")
     return [*lines, ""]
 
 
@@ -764,7 +780,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
         "the path exactly. A writer's `mechanism` is `store-transaction` (it stages the file in the control store's "
         "transaction, which the store applies under the control lock) or `direct`; `via` names the primitives. The "
         "store's apply step writes whatever the transactions staged, so the staging sites are the writers and it is "
-        "not.", "",
+        "not. One file the commit stages itself, the events sidecar `state/log/{}.events.yaml` "
+        "(`ControlStore._commit_unprofiled`), has no staging site among the writers: nothing here names what creates "
+        "it.", "",
         "The list is a lower bound. A write whose destination this reading could not place is its own record, below "
         "and in [gaps.md](gaps.md), and any of those may write any path here. A call whose `open` mode or `os.open` "
         "flags cannot be read is one of those records too (its primitive ends in `?`): whether it writes is not "
@@ -819,12 +837,15 @@ def build(ctx: C.Context) -> C.Built:
 
     trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
     kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
-    program = F.Program.of(trees)
-    with F.measuring() as peaks:
+    with F.measuring() as peaks:  # the program too: building it follows bases (`MRO_DEPTH`)
+        program = F.Program.of(trees)
         analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
     records = records_of(analysis)
     problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)
     if problems:
         raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(C.shown(problems)))
-    caps = (*F.caps(peaks), *ROLES.caps())
-    return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL, caps)})
+
+    def written() -> str:  # the figures are the whole render's when `reference.py` runs every family under one block
+        return page(analysis, records, TOP_LEVEL, (*F.caps(peaks), *ROLES.caps()))
+
+    return C.Built(records=records, pages={"writers.md": written()}, late={"writers.md": written})

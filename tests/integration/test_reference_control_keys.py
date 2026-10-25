@@ -26,6 +26,7 @@ from store_model import initial_state  # noqa: E402
 from aew import schemas  # noqa: E402
 from aew.engine import base, ticket_fields  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
+from aew.engine.store import CONTROL_REL  # noqa: E402
 from aew.errors import ValidationFailed  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,13 +36,13 @@ def _tools():
     here = str(ROOT / "tools")
     sys.path.insert(0, here)
     try:
-        from reference_families import common, control_keys
+        from reference_families import common, control_keys, writers, writers_flow
     finally:
         sys.path.remove(here)
-    return common, control_keys
+    return common, control_keys, writers, writers_flow
 
 
-C, K = _tools()
+C, K, W, F = _tools()
 CTX = C.Context(ROOT)
 RECORDS = K.build(CTX).records
 CONTROL = {r.key: r for r in RECORDS if (r.fact or {})["scope"] == "control"}
@@ -57,9 +58,8 @@ def test_the_control_schema_is_closed_and_refuses_a_key_it_does_not_declare():
         schemas.validate("control", {**state, "not_a_control_key": 1}, source="a state with a key nothing declares")
 
 
-def test_every_load_and_commit_of_the_control_state_is_validated():
-    """The schema is the registry only if nothing reads or writes control state without it: the store validates the
-    state it deserializes, the one it creates and the one each commit makes."""
+def validating_functions() -> list[str]:
+    """The functions of the store that call ``validate("control", ...)``."""
     tree = ast.parse((ROOT / "src" / "aew" / "engine" / "store.py").read_text(encoding="utf-8"))
 
     class Validated(C.Scoped):
@@ -75,8 +75,33 @@ def test_every_load_and_commit_of_the_control_state_is_validated():
 
     visitor = Validated()
     visitor.visit(tree)
-    assert sorted(w for w in visitor.where if w) == ["ControlStore._commit_unprofiled", "ControlStore.create",
-                                                     "deserialize_control"]
+    return sorted(w for w in visitor.where if w)
+
+
+def test_every_load_and_commit_of_the_control_state_is_validated():
+    """The schema is the registry only if nothing reads or writes control state without it: the store validates the
+    state it deserializes, the one it creates and the one each commit makes."""
+    assert validating_functions() == ["ControlStore._commit_unprofiled", "ControlStore.create", "deserialize_control"]
+
+
+def test_every_function_that_writes_the_control_file_is_one_that_validates_the_state_it_writes():
+    """Review of #261, N-3: what ties the schema being the registry to the writers of the file. The writers family's
+    record of `state/control.yaml` lists its writers; each is a validating function above."""
+    trees = {n: (s.tree, s.is_package) for n, s in CTX.sources().items() if s.tree is not None}
+    analysis = W.analyse(F.Program.of(trees), frozenset(W.TOP_LEVEL))
+    writers = {(w.module, w.symbol) for w in analysis.writers[CONTROL_REL]}
+    assert writers and writers <= {("aew.engine.store", s) for s in validating_functions()}, sorted(writers)
+
+
+def test_the_spelled_anchors_and_the_oracles_checking_function_exist():
+    """Review of #261, N-4 and N-11: what the family names by string resolves in the tree, so a rename fails here and
+    not in a reader's index."""
+    for module, symbol in (K.SCHEMAS, K.V2_ONLY, K.REGISTRY):
+        assert hasattr(importlib.import_module(module), symbol), (module, symbol)
+    import invariants  # tests/helpers, the oracle
+
+    assert hasattr(invariants, K.ORACLE_CHECK)
+    assert f"`{K.ORACLE_CHECK}`" in K.UNIT_OPEN
 
 
 def test_the_control_key_records_are_the_schemas_top_level_properties_both_ways():

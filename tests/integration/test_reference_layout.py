@@ -16,6 +16,7 @@ The planted cases of each rule, with their right, wrong and missing cases, are i
 
 from __future__ import annotations
 
+import importlib
 import os
 import shutil
 import subprocess
@@ -74,7 +75,8 @@ def test_the_two_readers_find_the_same_read_primitive_calls_in_every_module():
 def test_doubling_every_cap_of_the_value_flow_changes_no_layout_record_and_nothing_on_the_page(monkeypatch):
     """The reads are placed by the writers family's value flow, so its caps bound them too (the writers tree test holds
     the same for the writers' records): a read lost to a cap would show here."""
-    for name in ("VALUES", "DEPTH", "CALLERS", "TYPING_DEPTH"):
+    for cap in F.caps():  # from `caps()`, the one list (review of the placement pull request, F3)
+        name = cap.name.removeprefix("writers_flow.")
         monkeypatch.setattr(F, name, getattr(F, name) * 2)
     doubled = LY.build(CTX)
     assert {r.id: r.as_json() for r in doubled.records} == {r.id: r.as_json() for r in BUILT.records}
@@ -145,25 +147,33 @@ def test_the_containment_layouts_own_spelling_of_the_store_is_the_store_the_reco
     assert RECORDS[STORE_REL].fact["store"]
 
 
-def test_the_entries_the_records_call_hidden_are_the_paths_the_containment_layout_hides(tmp_path, monkeypatch):
-    """A second derivation of the flag: the layout a run gets, made for a project that has an `.aew`."""
+def test_the_entries_the_records_call_masked_are_the_paths_the_containment_layout_masks(tmp_path, monkeypatch):
+    """A second derivation of the flag: the layout a run gets, made for a project that has an `.aew`, with the run's
+    own directory inside it (as the harness makes it: review of the layout pull request, N-1). The mask is the fact the
+    records hold; the run's own directories are bound back into it, which the page states and this pins: every
+    writable bind under `.aew` lies inside a masked entry, so the exception is a run-owned directory in a mask and no
+    entry the records leave unmasked."""
     monkeypatch.setattr(containment, "find_bwrap", lambda: "/usr/bin/bwrap")
     repo = make_git_repo(tmp_path / "repo")
     git("worktree", "add", "-q", "-b", "w", str(tmp_path / "ws"), cwd=repo)
+    run = repo / ".aew" / "local" / "harness" / "runs" / "R-1-1"
     (repo / ".aew" / "state").mkdir(parents=True)
-    run = tmp_path / "run"
+    run.mkdir(parents=True)
     layout = containment.for_run(role="reviewer", scope="ticket", workspace=str(tmp_path / "ws"), run_dir=run,
                                  scratch=str(run / "scratch"), bridge_dir=None, policy=None,
                                  home=str(tmp_path / "home"), project=str(repo), env={})
-    hidden = [Path(p) for p in layout.hide_runs]
-    assert hidden, "the layout hides nothing"
+    masked = [Path(p) for p in layout.hide_runs]
+    assert masked, "the layout masks nothing"
     aew = Path(os.path.realpath(repo / ".aew"))
 
-    def sees_nothing(prefix: str) -> bool:
-        path = aew / concrete(prefix)
-        return any(path == h or h in path.parents for h in hidden)
+    def under(path: Path, roots: list[Path]) -> bool:
+        return any(path == h or h in path.parents for h in roots)
 
-    assert {k: sees_nothing(k) for k in RECORDS} == {k: r.fact["hidden_from_contained"] for k, r in RECORDS.items()}
+    assert {k: under(aew / concrete(k), masked) for k in RECORDS} == {
+        k: r.fact["masked_by_containment"] for k, r in RECORDS.items()}
+    bound_back = [Path(p) for p in layout.writable if aew in Path(p).parents]
+    assert bound_back, "a run's own directories are bound back into the mask: this layout has them"
+    assert all(under(p, masked) for p in bound_back), sorted(map(str, bound_back))
 
 
 # -------------------------------------------------------------------------------------- a hand reading
@@ -191,6 +201,17 @@ def test_the_reading_agrees_with_a_hand_reading_of_the_readers_and_writers_that_
     writers = {(k, i["module"], i["symbol"]) for k, r in RECORDS.items() for i in r.fact["writers"]}
     assert KNOWN_READERS <= readers, sorted(KNOWN_READERS - readers)
     assert KNOWN_WRITERS <= writers, sorted(KNOWN_WRITERS - writers)
+
+
+def test_every_constant_that_names_an_entry_holds_that_entry_when_it_is_imported():
+    """Review of #261, N-11: `named_by` is found by `ast`; the second derivation imports each constant."""
+    seen = 0
+    for prefix, record in RECORDS.items():
+        for named in record.fact["named_by"]:
+            value = getattr(importlib.import_module(named["module"]), named["symbol"])
+            assert str(value).replace("\\", "/") == prefix, (prefix, named)
+            seen += 1
+    assert seen >= 15
 
 
 def test_an_entry_the_writers_family_has_as_a_constant_is_named_by_it_here_too():

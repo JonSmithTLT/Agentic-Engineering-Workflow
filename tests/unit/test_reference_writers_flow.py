@@ -15,6 +15,7 @@ import copy
 import re
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -1091,7 +1092,7 @@ def bounds_of(path: Path, tree: ast.Module) -> tuple[set[str], Counter[str], Bou
     stem = path.stem
     for scope in (tree, *(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))):
         for node in scope.body:
-            targets: list[ast.expr] = []
+            targets: Sequence[ast.expr] = []
             if isinstance(node, ast.Assign):
                 targets, value = node.targets, node.value
             elif isinstance(node, ast.AnnAssign) and node.value is not None:
@@ -1199,6 +1200,7 @@ EXCUSED_SLICES: dict[str, tuple[int, str]] = {
     "control_keys:target.params[:1]": (1, "a position: the first parameter, `self` or `cls`"),
     "common:module.split('.')[:-1]": (1, "a position: the package of a module, its name without the last word"),
     "concurrency:kept[:-1]": (1, "a position: a sentence without its closing colon"),
+    "modules:name.split('.')[:2]": (1, "a position: the second-level package of a module, the first two words of its name"),
     "writers:primitive[:-1]": (1, "a position: a primitive label without its closing `?` mark"),
 }
 # A number in a comparison or a default that bounds nothing the reading follows: the arity a syntactic form needs, a

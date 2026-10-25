@@ -11,7 +11,9 @@ from __future__ import annotations
 import copy
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -46,7 +48,7 @@ def chart(text: str) -> list[str]:
 
 # ---------------------------------------------------------------------------------------------------- the module page
 
-def module(name: str, *imports: str, package: bool = False, unresolved: tuple[dict, ...] = ()) -> M.Module:
+def module(name: str, *imports: str, package: bool = False, unresolved: tuple[dict, ...] = ()) -> Any:
     return M.Module(name, name.replace(".", "/") + ".py", package, tuple(imports), unresolved)
 
 
@@ -128,7 +130,7 @@ def writer(module_: str, symbol: str, *entry_points: str) -> dict:
             "mechanism": "direct", "via": []}
 
 
-def layout(prefix: str, readers: tuple = (), **flags) -> dict:
+def layout(prefix: str, readers: Sequence[tuple[str, str]] = (), **flags) -> dict:
     return rec("layout", {"prefix": prefix, "readers": [{"module": m, "symbol": s} for m, s in readers],
                           "store": False, "masked_by_containment": False, "git_ignored": False, **flags})
 

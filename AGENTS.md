@@ -62,8 +62,7 @@ The author may merge its own pull request when all of these hold on the **curren
   draft.
 
 Merge one pull request at a time. Do not update other branches with `main` unless they conflict: `main`'s full push
-run, one for every merge, checks the merged result (testing strategy §3). If `main` goes red, fixing it comes before
-any other merge.
+run checks the merged result (testing strategy §3). If `main` goes red, fixing it comes before any other merge.
 
 ## 5. Reserved for the operator
 

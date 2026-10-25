@@ -172,6 +172,27 @@ def test_served_is_read_per_route_and_not_per_method(monkeypatch):
     assert served["GET /v1/read/waiting"] is True and served["POST /v1/read/waiting"] is True
 
 
+def test_the_text_readings_patterns_do_not_backtrack_over_a_long_list(tmp_path):
+    """The code scan's inefficient-regular-expression alert on the test-route pattern: a list of literals was matched in
+    many ways when a comma was missing between two elements, so a long line did not finish. Two long lines (the test
+    route and the ``in (...)`` shape) are read in a child process that is killed after a bound, so a regression fails
+    this test instead of hanging it."""
+    import subprocess
+    import textwrap
+
+    script = tmp_path / "hostile.py"
+    script.write_text(textwrap.dedent(f'''
+        import sys
+        sys.path.insert(0, {str(ROOT / "tools")!r})
+        from reference_families import stg02_server_text as ST
+        ST.read('method == "POST" and path in (' + ' "/_test/x"' * 20000 + ' ', {{}})
+        ST.read('x in (' + ' "/x"' * 20000 + ' ', {{}})
+    '''), encoding="utf-8")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    done = subprocess.run([sys.executable, str(script)], capture_output=True, timeout=30, creationflags=flags)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+
+
 def test_the_text_reading_sees_the_front_of_a_concatenated_route_and_the_ast_reading_does_not():
     """They differ on purpose: text cannot tell a literal from the front of an expression, so it reports the fragment
     (which the matrix then explains or does not); the AST reading is the source."""

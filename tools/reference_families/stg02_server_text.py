@@ -21,13 +21,18 @@ from reference_families.stg02_server import TEST_PREFIX, Reading
 _STR = r"""["'](/[^"']*)["']"""
 _EQ_AFTER = re.compile(r"(?:==|!=)\s*" + _STR)
 _EQ_BEFORE = re.compile(_STR + r"\s*(?:==|!=)")
-_IN = re.compile(r"\b(?:not\s+)?in\s*[(\[{]\s*((?:" + _STR + r"\s*,?\s*)+)[)\]}]")
+# A list of literals is read as the first one and each ``, next`` after it, then an optional trailing comma: every
+# character can be matched in one way only, so the pattern cannot backtrack over a long list.
+_STRS = _STR + r"(?:\s*,\s*" + _STR + r")*"
+_IN = re.compile(r"\b(?:not\s+)?in\s*[(\[{]\s*(" + _STRS + r")(?:\s*,)?\s*[)\]}]")
 _NAME_EQ = re.compile(r"(?:==|!=)\s*([A-Za-z_]\w*)\b")
 _STARTSWITH = re.compile(r"\.startswith\(\s*" + _STR + r"\s*\)")
 _FOR_TUPLE = re.compile(r"^\s*for\s+(\w+)\s*,[^:]*\bin\s*\(\(")
 _ROW = re.compile(r"\(\s*" + _STR + r"\s*,")
 _MATCHED = re.compile(r"\b(\w+)\.(?:fullmatch|match|search)\(")
-_TEST_ROUTE = re.compile(r"""method\s*==\s*["'](\w+)["'][^\n]*?\bin\s*\(\s*((?:["']/_test/[^"']*["']\s*,?\s*)+)\)""")
+_TEST_STR = r"""["']/_test/[^"']*["']"""
+_TEST_ROUTE = re.compile(r"""method\s*==\s*["'](\w+)["'][^\n]*?\bin\s*\(\s*(""" + _TEST_STR + r"(?:\s*,\s*" + _TEST_STR
+                         + r")*)(?:\s*,)?\s*\)")
 
 
 def _route(value: Any) -> str | None:

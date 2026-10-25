@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -426,7 +427,102 @@ def chained(n):
 def test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed():
     assert sorted(analysed(chained(3)).writers) == ["local/d"]
     deep = analysed(chained(F.DEPTH + 2))
-    assert deep.writers == {} and any("resolution depth limit" in r for r in reasons(deep))
+    assert deep.writers == {} and any(f"resolution depth limit ({F.DEPTH} calls or parameters)" in r
+                                      for r in reasons(deep))
+
+
+# -------------------------------------------------------------------------------------------------------- the caps
+# The designer's rule (workspace e350605): past a cap the reading gives a marked item or fails the check, never silence,
+# with one planted case per kind of cap. The value, caller and depth caps mark the unresolved write; the typing depth
+# marks the writer that only it could reach; the parser reader's two caps mark the registration (the roles module's
+# tests). The keys of a mapping parameter read the first callers only until the cap was made to mark (review of the cap
+# sweep): the case below is that one.
+
+def keyed(n: int) -> str:
+    calls = "".join(f"def c{i}(aew_root):\n    put(aew_root, {{'local/a{i}': 'x'}})\n\n" for i in range(n))
+    put = ("def put(aew_root, files):\n    for rel, text in files.items():\n"
+           "        (aew_root / rel).write_text(text)\n\n")
+    return put + calls
+
+
+def test_the_keys_of_a_mapping_passed_from_more_call_sites_than_the_cap_are_unknown_and_not_the_first_few():
+    assert sorted(analysed(keyed(F.CALLERS)).writers) == sorted(f"local/a{i}" for i in range(F.CALLERS))  # at the cap
+    over = analysed(keyed(F.CALLERS + 1))
+    assert over.writers == {}, "a partial answer that looks complete is the silence the cap must not make"
+    assert [site for site in over.unresolved] == [("aew.m", "put", "Path.write_text")], "the site is marked"
+
+
+def typed_chain(links: int) -> str:
+    """`L0().nxt().nxt()...put(aew_root)`: each link's class is known only by the previous link's result annotation."""
+    src = "".join(f"class L{k}:\n    def nxt(self) -> L{k + 1}:\n        return L{k + 1}()\n\n" for k in range(links))
+    src += f"class L{links}:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'end').write_text('x')\n\n"
+    return src + "def main(aew_root):\n    L0()" + ".nxt()" * links + ".put(aew_root)\n"
+
+
+def test_a_receiver_typed_through_more_receivers_than_the_cap_is_not_followed_and_its_writer_says_so():
+    short, long = F.TYPING_DEPTH - 1, F.TYPING_DEPTH
+    reached = analysed(typed_chain(short), roots={("aew.m", "main"): {"aew"}})
+    assert reached.reach[("aew.m", f"L{short}.put")] == {"aew"}
+    cut = analysed(typed_chain(long), roots={("aew.m", "main"): {"aew"}})
+    assert ("aew.m", f"L{long}.put") not in cut.reach
+    [record] = W.records_of(cut)
+    assert any(item["why"] == W.NO_CHAIN for item in record.fact_coverage["writers"]["unresolved"])  # type: ignore[index]
+
+
+def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():
+    values = ("def f(aew_root, n):\n"
+              + "".join(f"    if n == {i}:\n        p = aew_root / 'local' / 'v{i}'\n" for i in range(F.VALUES + 1))
+              + "    p.write_text('x')\n")
+    over = analysed(values)
+    assert over.writers == {}, "not the first VALUES of them: the set is unknown, and the site is an unresolved write"
+    named = f"more than {F.VALUES} possible values of one expression (the cap on values)"
+    assert any(named in r for r in reasons(over))
+
+
+def test_a_refusal_that_lists_problems_says_how_many_it_left_out():
+    assert C.shown(["a", "b"], 5) == ["a", "b"]
+    assert C.shown(["a", "b", "c"], 2) == ["a", "b", "... and 1 more"]
+    assert C.shown([f"p{i}" for i in range(25)]) == [*(f"p{i}" for i in range(20)), "... and 5 more"]
+
+
+def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past_it():
+    a = analysed("def f(aew_root):\n    (aew_root / 'local' / 'x').write_text('x')\n")
+    page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
+    assert "## Caps of the reading" in page
+    for cap in (*F.caps(), *K.caps()):
+        assert f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it: {cap.past}." in page
+    measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps({"values": 7}))
+    assert "The largest in this tree: 7." in measured
+
+
+def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one_by_one():
+    """The sweep, made mechanical: a module-level integer named like a cap, and a slice cut at a number or a
+    constant, in `tools/reference_families`. Each is a cap of `caps()` (and so on the page, with its source and what the
+    reading does past it) or a display truncation named here with the reason it cuts no analysis. A new one fails this
+    test until it is decided."""
+    cap_names = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)")
+    constants: set[str] = set()
+    slices: set[str] = set()
+    for path in sorted((ROOT / "tools" / "reference_families").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and type(node.value.value) is int:
+                constants |= {f"{path.stem}.{t.id}" for t in node.targets
+                              if isinstance(t, ast.Name) and cap_names.search(t.id)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and node.slice.upper is not None:
+                upper = node.slice.upper
+                if (isinstance(upper, ast.Constant) and type(upper.value) is int) or (
+                        isinstance(upper, ast.Name) and upper.id.isupper()):
+                    slices.add(f"{path.stem}:{ast.unparse(node)}")
+    assert constants == {cap.name for cap in (*F.caps(), *K.caps())}
+    assert slices == set(DISPLAY_TRUNCATIONS), "decide each new cut: a cap is listed in caps(), a display cut below"
+
+
+# A slice of the generator that cuts what it shows and nothing it follows: the text of an expression quoted in a reason
+# (the cut is marked by `...`). The refusals that list problems cut through `common.shown`, which says how many it left
+# out; the parameter `limit` is not a constant, so the sweep does not see those cuts, and the test above holds them.
+DISPLAY_TRUNCATIONS = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`"}
 
 
 def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():

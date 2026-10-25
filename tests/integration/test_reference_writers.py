@@ -326,3 +326,41 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
     assert any("`brand-new-dir`" in why and "not in the declared set" in why
                for (m, s, _p), (_mech, why) in analysis.unresolved.items() if (m, s) == ("aew.planted", "planted"))
     assert "brand-new-dir/x" not in analysis.writers
+
+
+# ------------------------------------------------------------------------------------------------------------ the caps
+
+CAPS = ((F, "VALUES"), (F, "DEPTH"), (F, "CALLERS"), (F, "TYPING_DEPTH"), (K, "DEPTH"))
+
+
+def without_the_caps_section(page: str) -> str:
+    start = page.index("## Caps of the reading")
+    return page[:start] + page[page.index("\n## ", start):]
+
+
+def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_caps_own_section(monkeypatch):
+    """The designer's proof that a cap loses nothing silently, as a test: if any record of this tree depended on a cap,
+    raising it would change the records. (At the caps the committed reference is what the code gives; doubled, it is the
+    same.) A change that makes a cap bind fails here, naming nothing quietly lost, and is a decision."""
+    base = W.build(CTX)
+    for module, name in CAPS:
+        monkeypatch.setattr(module, name, getattr(module, name) * 2)
+    doubled = W.build(CTX)
+    assert {r.id: r.as_json() for r in doubled.records} == {r.id: r.as_json() for r in base.records}
+    assert (without_the_caps_section(doubled.pages["writers.md"])
+            == without_the_caps_section(base.pages["writers.md"]))
+    assert doubled.pages["writers.md"] != base.pages["writers.md"], "the caps' own section prints the doubled values"
+
+
+def test_the_value_cap_is_at_least_twice_the_largest_set_the_tree_makes():
+    with F.measuring() as peaks:
+        W.build(CTX)
+    assert peaks["values"] > 0 and F.VALUES >= 2 * peaks["values"], (
+        f"the largest set is {peaks['values']} and the cap {F.VALUES}: raise the cap, and say why")
+
+
+def test_the_caps_section_of_the_page_is_what_the_caps_say():
+    section = without_the_caps_section(W.build(CTX).pages["writers.md"])
+    assert section and "## Caps of the reading" not in section
+    page = W.build(CTX).pages["writers.md"]
+    assert all(f"`{cap.name}` = {cap.value}:" in page for cap in (*F.caps(), *K.caps()))

@@ -25,6 +25,8 @@ under ``.aew`` only where the primitive's own meaning makes it one (the store tr
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -35,9 +37,17 @@ AEW_DIRECTORY = ".aew"
 ROOT_NAME = "aew_root"  # the repository's spelling of the .aew directory (checked by the family's convention test)
 REPO_NAME = "repo_root"  # the repository's working tree: a path under it is outside `.aew`
 WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a method of the kernel): outside `.aew`
+# The caps of the reading. Each bounds how far one thing is followed, and past it the reading says so: a value is UNK
+# with the cap in its reason (so the site is an unresolved write), a call is not followed (a writer reached only through
+# it carries the no-chain item), or the roles reader counts a registration as run by every role. `caps()` is the one
+# list, written on the page. A tree test doubles every cap and holds the generated reference unchanged (no record is
+# lost to a cap), and another finds every cap or slice of the generator that is not listed (the sweep).
 DEPTH = 6  # calls and parameters followed in a chain
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
-VALUES = 16  # distinct values one expression may take before it is UNK
+# Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
+# the largest set the tree makes (the page prints that size), so a set that grows toward it is a decision and not a
+# record silently lost.
+VALUES = 40
 PLACEHOLDER = "{}"
 TYPING_DEPTH = 3  # receivers typed through receivers
 UTIL_MODULE = "aew.util"
@@ -82,10 +92,62 @@ def one(kind: str, text: str = "") -> Values:
     return frozenset({Val(kind, text)})
 
 
+def depth_limit() -> Values:
+    return unk(f"resolution depth limit ({DEPTH} calls or parameters)")
+
+
+_peak: dict[str, int] | None = None
+
+
+@contextmanager
+def measuring() -> Iterator[dict[str, int]]:
+    """Record, while the block runs, the size of the largest value set (the figure the page and a tree test report). A
+    block inside another records into the outer one."""
+    global _peak
+    if _peak is not None:
+        yield _peak
+        return
+    _peak = {"values": 0}
+    try:
+        yield _peak
+    finally:
+        _peak = None
+
+
 def capped(values: set[Val] | Values) -> Values:
+    if _peak is not None:
+        _peak["values"] = max(_peak["values"], len(values))
     if len(values) > VALUES:
-        return unk(f"more than {VALUES} possible values")
+        return unk(f"more than {VALUES} possible values of one expression (the cap on values)")
     return frozenset(values)
+
+
+class Cap(NamedTuple):
+    name: str  # the constant
+    value: int
+    bounds: str  # what it bounds
+    source: str  # where the number comes from
+    past: str  # what the reading does past it
+    measured: int | None = None  # the largest the tree reaches, where the reading measures it
+
+
+def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
+    """The caps of the value flow and the call graph, from the constants themselves."""
+    return (
+        Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through", "chosen",
+            "the value is unknown, with the reason `resolution depth limit`"),
+        Cap("writers_flow.CALLERS", CALLERS,
+            "the call sites of one function whose parameter, mapping keys or callback is read", "chosen",
+            "the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the "
+            "registration as run by every role)"),
+        Cap("writers_flow.VALUES", VALUES, "the distinct values one expression may take",
+            "measured, held to twice the largest", "the expression is unknown, with the reason `more than N possible "
+            "values`", None if peaks is None else peaks["values"]),
+        Cap("writers_flow.TYPING_DEPTH", TYPING_DEPTH,
+            "the receivers typed through receivers (`self.a.b.run()`)", "chosen",
+            "the call is not followed, as for any receiver whose class is not known, and a writer reached only "
+            "through it carries the no-chain item"),
+    )
 
 
 # ------------------------------------------------------------------------------------------------------ the program
@@ -889,7 +951,7 @@ class Evaluator:
             if method == "format" and isinstance(e.func.value, ast.Constant) and isinstance(e.func.value.value, str):
                 return one(STR, _format_template(e.func.value.value))
         if depth <= 0:
-            return unk("resolution depth limit")
+            return depth_limit()
         target = self.p.target(mod, func, e.func)
         if target is None:
             return unk(f"the result of `{_src(e.func)}(...)`, a callee this reading cannot name")
@@ -927,14 +989,18 @@ class Evaluator:
             return unk(f"the keys of `{mapping.id}`, a mapping this reading cannot read")
         token = ("keys", func.module, func.qual, mapping.id)
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
+            return frozenset() if token in seen else depth_limit()
         out = set()
         for rhs in func.assigns.get(mapping.id, []):
             out |= self._keys(rhs, env, depth, seen | {token})
         for key in func.subkeys.get(mapping.id, []):
             out |= self._ev(key, env, depth, seen | {token})
         if mapping.id in func.params:
-            for caller, caller_mod, call in self.p.callers.get(func.key, [])[:CALLERS]:
+            sites = self.p.callers.get(func.key, [])
+            if len(sites) > CALLERS:  # none is read: the first few would be a partial answer that looks complete
+                out.add(Val(UNK, f"the keys of `{mapping.id}`, which has more than {CALLERS} call sites"))
+                sites = []
+            for caller, caller_mod, call in sites:
                 arg = _argument(func, mapping.id, call)
                 if arg is not None:
                     out |= self._keys(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
@@ -1005,7 +1071,7 @@ class Evaluator:
         cmod, cls = owner
         token = ("typed", cmod.name, cls, e.attr)
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
+            return frozenset() if token in seen else depth_limit()
         sources = [(src, rhs) for m, k in self.p.mro(cmod, cls) for src, rhs in m.attrs.get((k, e.attr), [])]
         prop = self.p.prop(cmod, cls, e.attr)
         if not sources and prop is None:
@@ -1135,7 +1201,7 @@ class Evaluator:
     def _param(self, func: Func, name: str, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         """A parameter, read at the function's static call sites. A function nothing statically calls is UNK."""
         if depth <= 0:
-            return unk("resolution depth limit")
+            return depth_limit()
         if name == ROOT_NAME:
             return one(ROOT)
         sites = self.p.callers.get(func.key, [])

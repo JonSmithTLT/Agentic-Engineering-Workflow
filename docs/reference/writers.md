@@ -187,6 +187,16 @@ Writer functions with a store-transaction or direct write placed under `.aew`: 7
 **Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the mechanism: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`
 **Not checked:** a handler that calls its engine method by a name held in a variable, and a `with` statement's implicit calls, are not followed, so the writers behind them are not attributed to the role that runs them; and what the worker role may write is `process_kind.require_writer`'s to refuse (above), not this reading's to prove.
 
+## Caps of the reading
+
+Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the reading says so: the reason is on the unresolved write, or the writer carries the no-chain item, or the registration counts as run by every role. A tree test doubles every cap and holds this page and `index.json` unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut at a number of lines and says how many it left out, and an expression quoted in a reason is cut with `...`: those are not caps on what the reading follows.
+
+- `writers_flow.DEPTH` = 6: the calls and parameters one value is followed through; source: chosen; past it: the value is unknown, with the reason `resolution depth limit`.
+- `writers_flow.CALLERS` = 24: the call sites of one function whose parameter, mapping keys or callback is read; source: chosen; past it: the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the registration as run by every role).
+- `writers_flow.VALUES` = 40: the distinct values one expression may take; source: measured, held to twice the largest; past it: the expression is unknown, with the reason `more than N possible values`. The largest in this tree: 15.
+- `writers_flow.TYPING_DEPTH` = 3: the receivers typed through receivers (`self.a.b.run()`); source: chosen; past it: the call is not followed, as for any receiver whose class is not known, and a writer reached only through it carries the no-chain item.
+- `writers_roles.DEPTH` = 40: the names and parameters followed from `build_parser` to a command; source: chosen; past it: the registration's command is unread: it counts as run by every role, and the function that registers it is named.
+
 ## Writes this reading could not place
 
 - `aew.engine.disposition_ops:_unlink` (direct: Path.unlink): a loop variable over `paths`, a list this reading cannot read

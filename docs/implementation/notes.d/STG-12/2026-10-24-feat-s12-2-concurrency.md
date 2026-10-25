@@ -50,6 +50,11 @@ one of them complete by construction.
   from, takes precedence over a later "computed" in a join, a sum, an f-string and a sibling, and is stated beside it
   where a site is both. **No reason in the committed reference changes** (no cap binds in this tree), so the next pack's
   difference from this one is the concurrency records and the carried wording, not a cap.
+- **Addendum 7: every cap takes one of two arms.** A cap gives a marked item or fails `check`, and never drops a record.
+  `caps()` and the writers page name the arm of each. `MRO_DEPTH` bounds a list of classes, which has no item to mark, so
+  when the bases go deeper than the cap the reader raises an error that names the cap, its number and its source, and
+  `check` and `render` both fail (a planted hierarchy one level deeper, and this tree with the cap one below its deepest
+  chain). Its headroom test stays as an early warning.
 - **A finding the precedence made.** `DEPTH` was 14 and "held to twice what the tree needs" by a test that halved it.
   While a depth cut under a join read as a computed segment, halving it changed nothing the test could see; with the
   reason kept, the tree is seen to need 10 (the deepest chain it follows, which the page now prints), so the cap is 20.

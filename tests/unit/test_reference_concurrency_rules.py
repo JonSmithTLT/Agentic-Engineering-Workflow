@@ -334,6 +334,25 @@ def test_a_member_that_reaches_a_lock_through_more_attributes_than_the_typing_ca
     assert "(cap `writers_flow.TYPING_DEPTH` = 3:" in str(refused.value)
 
 
+def test_a_lock_reached_only_through_a_receiver_whose_typing_needs_itself_is_not_seen_and_is_not_the_cap(monkeypatch):
+    """Review of #267, Q-4: the cycle is a third path, unlike the cap it neither fails nor marks. The same member with
+    its receiver typed (the control) takes the lock; with `self.a1 = self.a1` the call is not followed, as for any
+    receiver this reading cannot type, and `CANNOT_SEE` says so."""
+    monkeypatch.setattr(CO, "DECLARED", ())
+    taken = {}
+    for label, source in (("typed", lock_through_attributes(1)),
+                          ("cycle", lock_through_attributes(1).replace("self.a1 = T()", "self.a1 = self.a1"))):
+        prog = program({"aew.m": source})
+        sites = CO.lock_sites(prog, F.Evaluator(prog))
+        [member] = CO.members_of(prog, TYPED_DOC, {(s.module, s.symbol) for s in sites})
+        taken[label] = (member.takes_no_lock, member.lock_takers)
+    assert taken == {"typed": (False, [("aew.m", "T.take")]), "cycle": (True, [])}
+    assert any(name == "cyclic-receiver" and "self.a = self.a" in text for name, text in CO.CANNOT_SEE)
+    page = " ".join(CO.page(CO.records_of(inputs())).split())
+    assert page.count("a receiver whose typing needs itself (`self.a = self.a`)") == 2, (
+        "the sentence of the members section and the one of the cannot-see section both say so")
+
+
 # ----------------------------------------------------------- what a docstring is quoted for, without its citations
 
 @pytest.mark.parametrize(("sentence", "kept"), [
@@ -355,6 +374,21 @@ def test_a_sentence_that_introduces_a_list_is_cut_at_its_last_comma_and_one_with
     assert CO.plain(listing) == "Build runs without the lock, so a commit never waits (a segment costs seconds)."
     assert CO.plain("These hold:") is None
     assert CO.says_of("Build runs without the lock, and that is safe:") == ["Build runs without the lock."]
+
+
+@pytest.mark.parametrize(("sentence", "kept"), [
+    ("It runs without the lock (a stat, a read):", None),
+    ("It runs without the lock, and reads ``a, b``:", "It runs without the lock."),
+    ("It runs without the lock, so a commit never waits (a stat, a read), and then [x, y]:",
+     "It runs without the lock, so a commit never waits (a stat, a read)."),
+    ("It runs without the lock (a stat, a read) and {a, b}, as follows:",
+     "It runs without the lock (a stat, a read) and {a, b}."),
+    ("It runs without the lock (a stat, a read)), then:", "It runs without the lock (a stat, a read))."),
+])
+def test_a_sentence_that_introduces_a_list_is_not_cut_at_a_comma_inside_brackets_or_a_code_span(sentence, kept):
+    """Review of #267, Q-3: the cut was the last comma of the sentence, so ``(a stat, a read):`` left ``(a stat.``."""
+    assert CO.plain(sentence) == kept
+    assert CO.says_of(sentence) == ([kept] if kept else [])
 
 
 def test_a_docstring_is_split_into_sentences_across_lines_and_paragraphs():
@@ -508,6 +542,7 @@ PROBES = {
     "other-lock-class": "OtherLock(path)",
     "computed-callee": "getattr(store, 'control_lock')('op')",
     "lock-in-a-variable": "make = FileLock\nmake(path)",
+    "cyclic-receiver": "self.a = self.a\nself.a.take(path)",
 }
 
 

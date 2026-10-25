@@ -16,7 +16,6 @@ test (every CLI repair runs as its own process).
 
 from __future__ import annotations
 
-import http.client
 import json
 import shutil
 import sqlite3
@@ -44,6 +43,7 @@ from aewflow import (  # noqa: E402
     to_verified,
 )
 from conftest import Project, make_git_repo  # noqa: E402
+from dashboard_client import request as dashboard_request  # noqa: E402
 
 from aew.dashboard import contract as CT  # noqa: E402
 from aew.dashboard import projections as P  # noqa: E402
@@ -141,15 +141,8 @@ class Served:
         self.server.start()
 
     def get(self, path: str, *, head: bool = False, inm: str | None = None) -> tuple[int, dict[str, str], bytes]:
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.port, timeout=60)
-        try:
-            conn.request("HEAD" if head else "GET", f"/api/v1{path}",
-                         headers={"If-None-Match": inm} if inm is not None else {})
-            resp = conn.getresponse()
-            raw = resp.read()
-            return resp.status, {k.lower(): v for k, v in resp.getheaders()}, raw
-        finally:
-            conn.close()
+        return dashboard_request(self.server.port, "HEAD" if head else "GET", f"/api/v1{path}",
+                                 {"If-None-Match": inm} if inm is not None else {})
 
     def json(self, path: str) -> tuple[int, Any]:
         status, _, raw = self.get(path)

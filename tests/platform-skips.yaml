@@ -382,6 +382,9 @@ skipped:
       The probe runs in a Linux sandbox, so its paths are POSIX, and making a symlink needs a privilege on Windows
       (STG-05 CS-2, review of #244, m2). Covered on Linux; the row's judgement of what it lists is tested on every
       platform (test_row_2_fails_closed_on_its_masks).
+    tests/unit/test_containment_probe.py::test_the_probes_network_stand_ins_leave_no_listener_socket_or_thread_behind: >-
+      Row 1's stand-ins exist only on Linux: _network yields None on win32, so there is nothing to leave behind
+      (register E75). Covered on Linux.
     tests/integration/test_containment.py::test_a_readers_fingerprint_in_its_sandbox_equals_the_writers[uncommitted_edits]: >-
       Linux bubblewrap containment (STG-05 CS-2, D-CS2-1, the sandbox face); Windows has no OS filesystem containment.
       Covered on Linux (CI and the Rocky 8 lane); on Windows a reader's fingerprint is judged outside a sandbox, by

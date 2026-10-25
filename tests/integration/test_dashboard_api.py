@@ -29,6 +29,7 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
+from dashboard_client import request as dashboard_request  # noqa: E402
 from dashboard_contract import LATER_ROUTES, expected_pending, proposed_routes  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
 
@@ -71,17 +72,10 @@ class World:
 
     def get(self, path: str, *, head: bool = False, raw: bool = False) -> tuple[int, dict[str, str], Any]:
         assert self.server is not None
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.port, timeout=60)
-        try:
-            conn.request("HEAD" if head else "GET", f"/api/v1{path}")
-            resp = conn.getresponse()
-            body = resp.read()
-            headers = {k.lower(): v for k, v in resp.getheaders()}
-            if head or raw:
-                return resp.status, headers, body
-            return resp.status, headers, json.loads(body.decode("utf-8"))
-        finally:
-            conn.close()
+        status, headers, body = dashboard_request(self.server.port, "HEAD" if head else "GET", f"/api/v1{path}")
+        if head or raw:
+            return status, headers, body
+        return status, headers, json.loads(body.decode("utf-8"))
 
     def ok(self, path: str, schema: str) -> dict[str, Any]:
         status, headers, body = self.get(path)

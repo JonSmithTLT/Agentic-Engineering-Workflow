@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 394,
-      "lower-bound": 649
+      "lower-bound": 650
     },
     "by_family": {
       "cli-commands": 109,
@@ -15,7 +15,7 @@
       "entry-points": 6,
       "guards": 11,
       "layout": 59,
-      "modules": 177,
+      "modules": 178,
       "reason-rules": 56,
       "schemas": 30,
       "sqlite-tables": 10,
@@ -61,7 +61,7 @@
         "lower-bound": 59
       },
       "modules": {
-        "lower-bound": 177
+        "lower-bound": 178
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 213
       }
     },
-    "digest": "sha256:f1d6e8f67be966d6557d9e2a6cbe0dc6f105f8540df08cf7cf096e7190caea69",
-    "records": 1043,
+    "digest": "sha256:5595ffe3cf1319785b45ba1d62c7f91bfb3db1911706e831ad0523304be1d2bf",
+    "records": 1044,
     "unresolved": 77
   },
   "gaps": [
@@ -17193,7 +17193,8 @@
         "aew.dashboard.reasons",
         "aew.dashboard.session",
         "aew.engine.api",
-        "aew.errors"
+        "aew.errors",
+        "aew.exclusive_server"
       ]
     },
     "modules:aew.dashboard.service": {
@@ -18610,6 +18611,23 @@
       "fact": {
         "package": false,
         "path": "src/aew/errors.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.exclusive_server": {
+      "anchor": {
+        "module": "aew.exclusive_server",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/exclusive_server.py"
       },
       "family": "modules",
       "imports": []
@@ -20228,6 +20246,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.exclusive_server",
         "aew.process_kind",
         "aew.stg02.commands",
         "aew.stg02.ledger",

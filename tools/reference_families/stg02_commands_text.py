@@ -6,9 +6,11 @@ no code with it: only ``re`` and the tuple type it answers with. The two must ag
 case (``tests/integration/test_reference_stg02.py``, ``tests/unit/test_reference_stg02_controls.py``). Text is the
 cruder reading (it follows the file's own spellings, ``refusal(<action>, "CAUSE")``, ``r["origin"] != "X"`` and
 ``action != "Y"``, and for a ``reason_code`` the three spellings ``"reason_code": v``, ``["reason_code"] = v`` and
-``reason_code=v``, and the steps of ``_member`` as the lines ``if r["origin"] != "X":``, ``if <name>:``,
-``if action != "Y":`` and ``return self.<method>(``; it skips a line that is only a comment and finds a function's body
-by its indentation), so it is the cross-check and the AST reading is the source.
+``reason_code=v`` (and every occurrence of the string ``"reason_code"``, classified by the text on either side of it:
+a dict key or value, a subscript load, store or delete, an argument of a call, a comparison), and the steps of
+``_member`` as the lines ``if r["origin"] != "X":``, ``if <name>:``, ``if action != "Y":`` and
+``return self.<method>(``; it skips a line that is only a comment and finds a function's body by its indentation), so
+it is the cross-check and the AST reading is the source.
 """
 
 from __future__ import annotations
@@ -32,6 +34,11 @@ _IF_ACTION = re.compile(r"""^\s*if\s+action\s*!=\s*["']([A-Z_0-9]+)["']\s*:""")
 _RETURN_REFUSAL = re.compile(r"""^\s*return\s+refusal\(\s*[^,()]*(?:\[[^\]]*\])?[^,()]*\s*,\s*"""
                              r"""(?:["']([A-Z_0-9]+)["']|([^,)\s]+(?:\([^)]*\))?))""")
 _RETURN_SELF = re.compile(r"""^\s*return\s+self\.(\w+)\(""")
+_REASON_STR = re.compile(r"""(["'])reason_code\1""")
+_KEYWORD_ARG = re.compile(r"""\breason_code\s*=(?!=)""")
+_STORE_AFTER = re.compile(r"""^\s*(?:=(?!=)|[-+*/%&|^@]=|//=|\*\*=|<<=|>>=|:\s*[^=:]+=(?!=))""")
+_COMPARE_BEFORE = re.compile(r"""(?:==|!=|<=|>=|<|>|\bin|\bis|\bnot\s+in|\bis\s+not)\s*$""")
+_COMPARE_AFTER = re.compile(r"""^\s*(?:==|!=|<=|>=|<|>|\bin\b|\bis\b|\bnot\s+in\b)""")
 _REASON = re.compile(r"""["']reason_code["']\s*:\s*([^,}\n]+)""")
 _STORE = re.compile(r"""\[\s*["']reason_code["']\s*\]\s*=(?!=)\s*([^\n]+)""")
 _KEYWORD = re.compile(r"""\breason_code\s*=(?!=)\s*([^,)\n]+)""")
@@ -50,6 +57,61 @@ def _kind(value: str) -> str:
     if re.fullmatch(r"[A-Za-z_]\w*\[.*\]", value):
         return "subscript"
     return "other"
+
+
+def _callee(before: str) -> tuple[str, str] | None:
+    """The call the text before a point is inside: (its name, what lies between its parenthesis and the point), or
+    None."""
+    depth = 0
+    for i in range(len(before) - 1, -1, -1):
+        if before[i] == ")":
+            depth += 1
+        elif before[i] == "(":
+            if depth == 0:
+                name = re.search(r"([A-Za-z_][\w.]*)\s*$", before[:i])
+                return (name.group(1), before[i + 1:]) if name else None
+            depth -= 1
+    return None
+
+
+def _occurrence_kind(before: str, after: str) -> str:
+    """What the string ``"reason_code"`` is in a line, from the text on either side of it, named as the AST reading
+    names it."""
+    if re.match(r"\s*:", after) and not re.search(r"\[\s*$", before):
+        return "dict-key"
+    if re.search(r"\[\s*$", before) and re.match(r"\s*\]", after):
+        rest = after[after.index("]") + 1:]
+        if re.search(r"\bdel\s+[^\s\[]*\[\s*$", before):
+            return "subscript-del"
+        return "subscript-store" if _STORE_AFTER.match(rest) else "subscript-load"
+    if re.search(r":\s*$", before):
+        return "dict-value"
+    if _COMPARE_BEFORE.search(before) or _COMPARE_AFTER.match(after):
+        return "compare"
+    inside = _callee(before)
+    if inside is not None:
+        name, between = inside
+        direct = (between.count("[") <= between.count("]") and between.count("{") <= between.count("}")
+                  and not re.search(r"\w\s*=\s*$", between))
+        if direct:
+            return f"call:{name}"
+    return "other"
+
+
+def _occurrences(lines: list[str], symbols: list[str]) -> list[tuple[str, str]]:
+    """Every occurrence of the string ``"reason_code"``, and of a keyword argument of that name, by symbol and kind."""
+    found: list[tuple[str, str]] = []
+    for line, symbol in zip(lines, symbols, strict=True):
+        if line.strip().startswith("#"):
+            continue
+        for hit in _REASON_STR.finditer(line):
+            found.append((symbol, _occurrence_kind(line[:hit.start()], line[hit.end():])))
+        if not line.lstrip().startswith(("def ", "async def ")):
+            for hit in _KEYWORD_ARG.finditer(line):
+                inside = _callee(line[:hit.start()])
+                if inside is not None:
+                    found.append((symbol, f"keyword:{inside[0]}"))
+    return sorted(found)
 
 
 def _steps(lines: list[str], symbols: list[str],
@@ -154,4 +216,4 @@ def read(text: str) -> Reading:
     origin = next(iter(origins)) if len(origins) == 1 else None
     action = next(iter(actions)) if len(actions) == 1 else None
     return Reading(origin, action, sorted(causes), sorted(unreadable), delegation, sorted(builders),
-                   sorted(inventory), steps)
+                   sorted(inventory), steps, _occurrences(lines, symbols))

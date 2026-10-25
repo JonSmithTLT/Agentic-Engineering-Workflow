@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -357,13 +358,76 @@ def test_a_use_of_a_reason_code_that_makes_none_is_not_a_builder(extra):
 
 @pytest.mark.parametrize("extra", [
     "\n\ndef sneak(m, key, code):\n    m[key] = code\n",
-    "\n\ndef sneak(m, code):\n    setattr(m, 'reason_code', code)\n",
     "\n\ndef sneak(base):\n    return {**base}\n",
 ])
 def test_what_the_builder_readings_do_not_see_is_pinned_one_probe_each(extra):
-    """A computed key, ``setattr`` and a ``**`` of a dict built elsewhere are not seen (the module says so)."""
+    """A computed key and a ``**`` of a dict built elsewhere hold no occurrence of the string and are not seen (the
+    module says so): neither the builders nor the occurrences move."""
     ours, theirs = both_commands(COMMANDS + extra)
-    assert ours == theirs and set(ours.builders) == set(both_commands(COMMANDS)[0].builders)
+    base = both_commands(COMMANDS)[0]
+    assert ours == theirs and ours.builders == base.builders and ours.occurrences == base.occurrences
+
+
+BASE_OCCURRENCES = [("Carrier._heb_continue", "dict-key"), ("Carrier._result", "dict-key"),
+                    ("Carrier._result", "subscript-load"), ("refusal", "dict-key"), ("refusal", "dict-key")]
+
+
+def test_both_readings_find_every_occurrence_of_the_reason_code_string_by_symbol_and_kind():
+    ours, theirs = both_commands(COMMANDS)
+    assert ours == theirs and ours.occurrences == BASE_OCCURRENCES
+
+
+@pytest.mark.parametrize(("name", "body", "kind"), [
+    ("a setdefault", "m.setdefault('reason_code', code)", "call:m.setdefault"),
+    ("an annotated store", "m['reason_code']: str = code", "subscript-store"),
+    ("an augmented store", "m['reason_code'] += code", "subscript-store"),
+    ("a setattr with the name", "setattr(m, 'reason_code', code)", "call:setattr"),
+    ("a delete", "del m['reason_code']", "subscript-del"),
+    ("a keyword", "return dict(reason_code=code)", "keyword:dict"),
+    ("a read", "return m['reason_code']", "subscript-load"),
+    ("a comparison", "return key == 'reason_code'", "compare"),
+    ("a get", "return m.get('reason_code')", "call:m.get"),
+    ("a dict value", "return {'name': 'reason_code'}", "dict-value"),
+    ("a bare string", "KEYS = ('reason_code',)", "other"),
+])
+def test_an_occurrence_of_the_reason_code_string_in_any_spelling_is_found_as_one_nobody_declared(name, body, kind):
+    """The wrong cases of the class: whatever the spelling, the string in a new place is a new occurrence by symbol and
+    kind, found by both readings the same way, and not one of the declared."""
+    ours, theirs = both_commands(COMMANDS + f"\n\ndef sneak(m, code, key=None):\n    {body}\n")
+    assert ours == theirs, name
+    assert Counter(ours.occurrences) - Counter(BASE_OCCURRENCES) == Counter({("sneak", kind): 1}), name
+    assert Counter(ours.occurrences) - Counter(K.OCCURRENCES), name  # the declared set does not have it
+
+
+def test_an_occurrence_nobody_declared_and_a_declared_one_the_source_lost_make_every_refusal_record_lower_bound(
+        monkeypatch):
+    src = C.Context(ROOT).sources()[K.COMMAND_MODULE]
+    assert src.tree is not None
+    real = K.read(src.tree)
+    assert real.occurrences == sorted(K.OCCURRENCES)  # the right case: the real module is the declared set
+    extra = sorted([*real.occurrences, (MEMBER, "call:m.setdefault")])
+    monkeypatch.setattr(K, "read", lambda tree: real._replace(occurrences=extra))
+    records = [r for r in K.build(C.Context(ROOT)) if r.family == K.REFUSALS]
+    assert records and all(r.coverage["label"] == "lower-bound" for r in records)
+    assert any("has the string reason_code as call:m.setdefault outside the declared places" in i["why"]
+               for i in records[0].coverage["unresolved"])
+    monkeypatch.undo()
+    monkeypatch.setattr(K, "OCCURRENCES", (*K.OCCURRENCES, ("Carrier.gone", "dict-key")))
+    records = [r for r in K.build(C.Context(ROOT)) if r.family == K.REFUSALS]
+    assert records and all(r.coverage["label"] == "lower-bound" for r in records)
+    assert any("no longer has the dict-key of reason_code the declared places list" in i["why"]
+               for i in records[0].coverage["unresolved"])
+
+
+@pytest.mark.parametrize("extra", [
+    "\n\ndef alias(action):\n    rf = refusal\n    return rf(action, 'NOT_MODELLED')\n",
+    "\n\ndef partial(action):\n    import functools\n    return functools.partial(refusal, action)('NOT_MODELLED')\n",
+])
+def test_a_refusal_called_through_an_alias_or_a_partial_is_in_neither_reading(extra):
+    """The inventory is of calls by name: an alias of ``refusal`` and ``functools.partial`` are not seen (the module
+    says so), and the battery test of the integration lane is what shows a pair returned that way."""
+    ours, theirs = both_commands(COMMANDS + extra)
+    assert ours == theirs and ours.calls == both_commands(COMMANDS)[0].calls
 
 
 def test_a_source_without_the_member_function_has_no_origin_and_no_action():
@@ -408,7 +472,8 @@ def test_a_cause_both_tables_name_is_one_record_and_the_vendored_one(monkeypatch
 
 
 def test_reaches_owner_is_null_with_an_unresolved_item_when_the_member_shape_is_not_found(monkeypatch):
-    monkeypatch.setattr(K, "read", lambda tree: K.Reading(None, None, [], [], [], sorted(K.BUILDERS), [], []))
+    monkeypatch.setattr(K, "read", lambda tree: K.Reading(None, None, [], [], [], sorted(K.BUILDERS), [], [],
+                                                          sorted(K.OCCURRENCES)))
     commands = [r for r in K.build(C.Context(ROOT)) if r.family == K.COMMANDS]
     assert commands and all((r.fact or {})["reaches_owner"] is None for r in commands)
     assert all(r.coverage["label"] == "lower-bound" and r.coverage["unresolved"] for r in commands)

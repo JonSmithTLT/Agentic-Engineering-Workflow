@@ -293,6 +293,8 @@ def test_every_refusal_result_comes_through_the_one_lookup():
     tree, _ = commands_source()
     reading = K.read(tree)
     assert set(reading.builders) == K.BUILDERS, sorted(set(reading.builders) ^ K.BUILDERS)
+    # and every occurrence of the string, of any spelling, counted: a place that makes or changes a reason is declared
+    assert reading.occurrences == sorted(K.OCCURRENCES), (reading.occurrences, sorted(K.OCCURRENCES))
     tables = (A.refusals(), COMMANDS.SLICE_OWNER_REASONS)
     named = {cause for table in tables for causes in table.values() for cause in causes}
     assert set(reading.causes) <= named, sorted(set(reading.causes) - named)

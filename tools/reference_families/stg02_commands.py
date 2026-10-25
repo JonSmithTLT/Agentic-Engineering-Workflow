@@ -19,7 +19,10 @@ return it.
 **``emitted_by``.** A record is a pair the lookup resolves; whether the slice returns it is a separate fact, the sites
 of the admission path that return the pair (``{module, symbol}``; an empty list: the slice never returns it). Both
 detectors read ``Carrier._member`` as the ordered steps it takes (a test of the origin, of a state a helper decides, of
-the action, then the hand-on to a method) and inventory every ``refusal(...)`` call of the module. :func:`emitted`
+the action, then the hand-on to a method) and inventory every ``refusal(...)`` call of the module, by name: a call
+through an alias of ``refusal`` (``rf = refusal``) or through ``functools.partial`` is not seen (pinned, one probe
+each), and the battery test below, which drives every registry action, is what shows a pair returned that way.
+:func:`emitted`
 replays the steps over the registry's actions, each step taking the actions it refuses and leaving the rest for the
 next, so a site returns a pair when both its action and its cause are possible there. The fact is
 complete-by-construction only when every ``refusal`` call of the module is placed by a step or by the method handed on
@@ -30,10 +33,15 @@ drives ``Carrier._member`` over a battery of states and compares the pairs it re
 cause)`` looks the pair up in the two tables and fails closed (an ``AssertionError``, never a default code) when
 neither has it; the only other places that make a result with a ``reason_code`` pass a refusal's through or say there
 is none, and the set of those places is declared (:data:`BUILDERS`) and held to the source in both directions. So a
-cause the admission path returns is a key of one of the two tables. A place that makes a ``reason_code`` is read in
-three spellings, by both detectors: a dict literal with the key, a subscript store to it, and a keyword argument of
-that name on any call (``dict(...)``, ``.update(...)``, a constructor). A computed key, ``setattr`` and a ``**`` of a
-dict built elsewhere are not seen (pinned, one probe each); a dict built elsewhere is read where it is made. The causes
+cause the admission path returns is a key of one of the two tables. The string ``"reason_code"`` is read wherever it
+occurs in the module, by both detectors, by symbol and by what the node is (a dict key or value, a subscript load,
+store or delete, a positional argument of a call by callee, a keyword argument by callee, a comparison, any other), and
+the occurrences, counted, are a declared set (:data:`OCCURRENCES`) held to the source in both directions. So
+``m.setdefault("reason_code", v)``, an annotated or an augmented store and ``setattr(m, "reason_code", v)`` are each an
+occurrence nobody declared, whatever the spelling. The places that make one are read as well, with the kind of the
+value (:data:`BUILDERS`): a dict literal, a subscript store and a keyword argument. Not seen, because they hold no
+occurrence of the string (pinned, one probe each): a computed key (``m[key] = v``) and a ``**`` of a dict built
+elsewhere (which is read where it is made). The causes
 the code spells, as literals in ``refusal`` calls and as the returns of ``_delegation`` (which ``_member`` hands to
 ``refusal`` through a variable), are read the same two ways, and each must be a key of some table. A literal cause no
 table names, a ``refusal`` call whose cause cannot be read, a table action the registry lacks, or a builder outside the
@@ -65,6 +73,15 @@ REGISTRY = f"{ADOPTED}:registry"
 BUILDERS: frozenset[tuple[str, str, str]] = frozenset({
     ("refusal", "literal", "name"), ("Carrier._heb_continue", "literal", "none"),
     ("Carrier._allocate", "literal", "subscript"), ("Carrier._result", "literal", "subscript")})
+# Every occurrence of the string ``"reason_code"`` in the module, by symbol and by what the node is, counted: the
+# lookup's two dict literals, the owner's success, and the two pass-throughs of a member's reason (a dict key and a
+# subscript read each). A new occurrence, of any kind, is a place that may make or change a reason: it is an
+# unresolved item until it is declared here.
+OCCURRENCES: tuple[tuple[str, str], ...] = (
+    ("Carrier._allocate", "dict-key"), ("Carrier._allocate", "subscript-load"),
+    ("Carrier._heb_continue", "dict-key"),
+    ("Carrier._result", "dict-key"), ("Carrier._result", "subscript-load"),
+    ("refusal", "dict-key"), ("refusal", "dict-key"))
 _TESTS = "tests/integration/test_reference_stg02.py"
 COMMAND_TESTS = (
     f"{_TESTS}::test_the_command_records_are_the_registry_both_ways",
@@ -97,6 +114,8 @@ class Reading(NamedTuple):
     # origin is not the literal: refused), ``state-test`` (a helper's verdict is true: refused), ``action-test`` (the
     # action is not the literal: refused) or ``hand-on`` (the literal is the method the rest go on to)
     steps: list[tuple[str, str, str, str]]
+    # (symbol, kind) of every occurrence of the string "reason_code", sorted, repeats kept
+    occurrences: list[tuple[str, str]]
 
 
 def _kind(value: ast.expr) -> str:
@@ -136,6 +155,60 @@ class _Builders(C.Scoped):
             if keyword.arg == "reason_code":
                 self.found.add((self.symbol or "", "keyword", _kind(keyword.value)))
         self.generic_visit(node)
+
+
+def _is_reason(node: ast.AST | None) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "reason_code"
+
+
+class _Occurrences(C.Scoped):
+    """Every occurrence of the string ``"reason_code"``, and every keyword argument of that name, by symbol and by what
+    the node is: a dict key or value, a subscript (load, store or delete: an assignment, an annotated or an augmented
+    one is a store), a positional argument of a call (by callee), a keyword argument (by callee), a comparison, or any
+    other. Positions (line, column) pair a string with the handler that classified it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.strings: list[tuple[tuple[int, int], str]] = []  # (position, symbol) of every such string
+        self.kinds: dict[tuple[int, int], str] = {}
+        self.keywords: list[tuple[str, str]] = []
+
+    def _kind(self, node: ast.expr | None, kind: str) -> None:
+        if node is not None and _is_reason(node):
+            self.kinds[(node.lineno, node.col_offset)] = kind
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if _is_reason(node):
+            self.strings.append(((node.lineno, node.col_offset), self.symbol or ""))
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        for key in node.keys:
+            self._kind(key, "dict-key")
+        for value in node.values:
+            self._kind(value, "dict-value")
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        self._kind(node.slice, "subscript-" + type(node.ctx).__name__.lower())
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        callee = ast.unparse(node.func)
+        for arg in node.args:
+            self._kind(arg, f"call:{callee}")
+        for keyword in node.keywords:
+            if keyword.arg == "reason_code":
+                self.keywords.append((self.symbol or "", f"keyword:{callee}"))
+        self.generic_visit(node)
+
+    def visit_Compare(self, node: ast.Compare) -> None:
+        for operand in (node.left, *node.comparators):
+            self._kind(operand, "compare")
+        self.generic_visit(node)
+
+    def found(self) -> list[tuple[str, str]]:
+        return sorted([(symbol, self.kinds.get(position, "other")) for position, symbol in self.strings]
+                      + self.keywords)
 
 
 def _string_returns(fn: ast.FunctionDef) -> list[str]:
@@ -283,8 +356,10 @@ def read(tree: ast.Module) -> Reading:
     builders = _Builders()
     builders.visit(tree)
     steps = _steps("Carrier._member", member) if member is not None else []
+    occurrences = _Occurrences()
+    occurrences.visit(tree)
     return Reading(origin, action, sorted(causes), sorted(set(unreadable)), delegation, sorted(builders.found),
-                   _calls(tree), steps)
+                   _calls(tree), steps, occurrences.found())
 
 
 def causes_of(reading: Reading, ref: str) -> list[str] | None:
@@ -376,6 +451,15 @@ def build(ctx: C.Context) -> list[C.Record]:
                                               "closed on it)"))
     problems += [C.unresolved_item(COMMAND_MODULE, symbol, "a refusal whose cause this reading cannot read")
                  for symbol in reading.unreadable]
+    found_here, declared_here = Counter(reading.occurrences), Counter(OCCURRENCES)
+    for (symbol, kind), n in sorted((found_here - declared_here).items()):
+        problems.append(C.unresolved_item(COMMAND_MODULE, symbol or None,
+                                          f"has the string reason_code as {kind} outside the declared places "
+                                          f"({n} more than declared)"))
+    for (symbol, kind), n in sorted((declared_here - found_here).items()):
+        problems.append(C.unresolved_item(COMMAND_MODULE, symbol or None,
+                                          f"no longer has the {kind} of reason_code the declared places list "
+                                          f"({n} fewer than declared)"))
     for symbol, form, kind in sorted(set(reading.builders) - BUILDERS):
         problems.append(C.unresolved_item(COMMAND_MODULE, symbol or None,
                                           f"makes a reason_code ({form}, {kind}) outside the declared places"))

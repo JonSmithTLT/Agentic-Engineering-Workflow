@@ -25,8 +25,11 @@ the commands the code admits and the causes it can refuse with mechanically.
   maps to and its source (`vendored` is the loaded map, `code` is `SLICE_OWNER_REASONS`). `NOT_MODELLED` is not a third
   source: `Carrier._member` returns it through `refusal` like every other cause. Complete-by-construction, because every
   refusal result is built in the one lookup, which fails closed, and the places that make a result with a `reason_code` are
-  a declared set held to the source both ways, in three spellings (a dict literal, a subscript store, a keyword argument;
-  a computed key, `setattr` and a `**` of a dict built elsewhere are not seen, pinned). The causes the code spells
+  a declared set held to the source both ways, in three spellings (a dict literal, a subscript store, a keyword argument).
+  The string `"reason_code"` is also read wherever it occurs in the module, by symbol and by what the node is, and the
+  occurrences, counted, are a declared set (`OCCURRENCES`) held to the source both ways: a `setdefault`, an annotated or
+  augmented store or a `setattr` is an occurrence nobody declared. A computed key and a `**` of a dict built elsewhere
+  hold no occurrence of the string and are not seen (pinned, one probe each). The causes the code spells
   (literals given to `refusal`, and the returns of `_delegation` that `_member` hands it through a variable) are read both
   ways and each is a key of some table. A cause no table names, a refusal whose cause cannot be read (a keyword cause, a
   helper that returns something but a constant, a second different origin or action test in `_member`), or a builder
@@ -38,7 +41,8 @@ the commands the code admits and the causes it can refuse with mechanically.
   actions, `NOT_MODELLED` for `DELEGATED_CANCEL` only, and the three owner causes for `CONTINUE_ELIGIBLE_WORK`); the other
   54 are map entries no path returns. The two detectors read `Carrier._member` as its ordered steps (a test of the origin,
   of a state a helper decides, of the action, then the hand-on to a method) and inventory every `refusal(...)` call of the
-  module, and the steps are replayed over the registry's actions, each step taking the actions it refuses and leaving the
+  module by name (a call through an alias of `refusal`, or `functools.partial`, is not seen; the battery test below is
+  what shows a pair returned that way), and the steps are replayed over the registry's actions, each step taking the actions it refuses and leaving the
   rest for the next. The fact has its own coverage: complete-by-construction while every `refusal` call of the module is
   placed by a step or by the method handed on to and no pair is one the tables lack, else lower-bound with the calls it
   could not place listed. A test drives `Carrier._member` over every action and over the states of a delegation and of the

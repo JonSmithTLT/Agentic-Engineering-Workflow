@@ -184,6 +184,27 @@ def test_a_chain_of_names_is_followed_to_a_bounded_depth(links, unread):
     assert found[2] is unread
 
 
+# The two guards of the roles reader (`_Reader.paths` and `_Reader.strings`, a `depth <= 0` that answers "unread") are
+# held at their boundary, the last chain they read and the first they do not (review of #267, Q-1): a chain of names
+# for the parser costs the cap less six links, one for a word less three, because the registration and the word are
+# read too.
+
+PARSER_READ, WORD_READ = K.DEPTH - 6, K.DEPTH - 3
+
+
+@pytest.mark.parametrize(("links", "unread"), [(PARSER_READ, False), (PARSER_READ + 1, True)])
+def test_a_chain_of_parsers_is_followed_to_the_guard_of_the_paths_and_no_further(links, unread):
+    chain = "    n0 = sub\n" + "".join(f"    n{i} = n{i - 1}\n" for i in range(1, links + 1))
+    assert only(top(chain + f"    n{links}.add_parser('a').set_defaults(handler=h)\n"))[2] is unread
+
+
+@pytest.mark.parametrize(("links", "unread"), [(WORD_READ, False), (WORD_READ + 1, True)])
+def test_a_chain_of_words_is_followed_to_the_guard_of_the_strings_and_no_further(links, unread):
+    chain = "    w0 = 'a'\n" + "".join(f"    w{i} = w{i - 1}\n" for i in range(1, links + 1))
+    paths, _handlers, was_unread = only(top(chain + f"    sub.add_parser(w{links}).set_defaults(handler=h)\n"))
+    assert was_unread is unread and (paths == () if unread else paths == (("a",),))
+
+
 # ---------------------------------------------------------------------------------------------------- the handlers
 
 def test_a_handler_is_the_function_a_name_or_a_wrapper_names_and_a_lambda_is_a_function_of_its_own():

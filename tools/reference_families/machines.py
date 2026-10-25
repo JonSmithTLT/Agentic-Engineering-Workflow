@@ -58,6 +58,10 @@ from reference_families import machines_writes as W
 
 TRANSITIONS, STATES, GUARDS, REASONS = "transitions", "states", "guards", "reason-rules"
 CONFIGURATION, USAGE_LIVE = "configuration-states", "usage-live-states"
+# Said by the machines page and by the state maps (`pages.py`): the machines the records hold are the ones a
+# table lists.
+NOT_LISTED = ("What no table lists (a Story's or Epic's phase, a second state tuple, the states of another machine) "
+              "is in [gaps.md](gaps.md).")
 OWNER = "aew.engine.transitions"
 REGISTRY = f"{OWNER}:RULES"
 GUARD_REGISTRY = "aew.engine.seams:GuardTable"
@@ -351,10 +355,8 @@ def page(records: list[C.Record]) -> str:
              "has a record. An edge is **lower-bound** when code that changes a Ticket's state without asking the "
              "table in the same function can take it (its `coverage.unresolved` names the code); the others are "
              "complete-by-construction. Today the lower-bound edges are those of the operations "
-             f"{', '.join(f'`{o}`' for o in operations)}{only}; the Coverage column says which. What no table "
-             "lists (a Story's or Epic's phase, "
-             "a second state tuple, the states of another machine) is in [gaps.md](gaps.md). The sites are found per "
-             "function: a second write in a function already declared is not seen.", "",
+             f"{', '.join(f'`{o}`' for o in operations)}{only}; the Coverage column says which. {NOT_LISTED} The "
+             "sites are found per function: a second write in a function already declared is not seen.", "",
              "## Ticket states", "", "| State | Terminal | Phase |", "|---|---|---|"]
     for r in by[STATES]:
         f = r.fact or {}

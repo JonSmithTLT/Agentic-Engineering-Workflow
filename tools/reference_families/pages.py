@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from reference_families import common as C
+from reference_families import concurrency, entry_points, layout, machines, writers
 
 GAPS = "gaps.md"
 README = "README.md"
@@ -51,14 +52,32 @@ def gaps_page(index: Mapping[str, Any]) -> str:
 
 
 # ------------------------------------------------------------------------------------------------------------ the maps
-# What a record states is drawn; a joined fact is joined on what the records carry; what no record states is counted
-# here from the records and listed under "Not drawn", never drawn from a guess.
+# What a record states is drawn; a joined fact is joined on what the records carry; what the records say they could not
+# resolve is listed from their own `fact_coverage`, with the number of records that carry it, never from a guess and
+# never by an item the generator was told about. The family names are their owners' (`entry_points.FAMILY`, ...).
 
 Function = tuple[str, str]  # (module, symbol)
+Item = tuple[str, str | None, str]  # an unresolved item: (module, symbol, why)
+
+ENTRY_POINTS, LAYOUT, WRITERS, CONCURRENCY = (entry_points.FAMILY, layout.FAMILY, writers.FAMILY, concurrency.FAMILY)
+# The families the data-flow map reads: a missing one is a refusal, not a map with its arrows gone.
+JOINED = (ENTRY_POINTS, LAYOUT, WRITERS, CONCURRENCY)
+# What a joined fact says it could not resolve: (what it is, its family, the fact whose `fact_coverage` is read).
+JOINED_FACTS = (
+    ("Writes", WRITERS, "writers"),
+    ("Readers of an entry", LAYOUT, "readers"),
+    ("Entry points of a lock-free member", CONCURRENCY, "entry_points"),
+)
 
 
 def _records(index: Mapping[str, Any], family: str) -> list[tuple[str, dict[str, Any]]]:
     return [(rid, r) for rid, r in sorted(index["records"].items()) if r["family"] == family]
+
+
+def _unresolved(record: Mapping[str, Any], fact: str) -> set[Item]:
+    """What a record says it could not resolve of one list fact (its ``fact_coverage``)."""
+    items = record.get("fact_coverage", {}).get(fact, {}).get("unresolved", [])
+    return {(i["module"], i["symbol"], i["why"]) for i in items}
 
 
 class _Ids:
@@ -92,24 +111,34 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
 
     A write is a ``writers`` record's (entry point, entry of ``.aew``) pair. A read is a function the ``layout`` records
     name as a reader of the entry that another record also reaches from entry points: a writer item carries them, and so
-    does a lock-free member of the ``concurrency`` family. Every other reader is counted, not drawn."""
-    processes = {r["fact"]["entry_point"]: r["fact"] for _rid, r in _records(index, "entry-points")}
-    layout = [r["fact"] for _rid, r in _records(index, "layout")]
-    flags = {f["prefix"]: f for f in layout if _top(f["prefix"]) == f["prefix"]}
+    does a lock-free member of the ``concurrency`` family. Every other reader is counted, not drawn by entry point. What
+    the joined records say they could not resolve is listed as they say it (``Not drawn``), and a family the map joins
+    that has no record, or an entry point no record names, is refused."""
+    for family in JOINED:
+        if not _records(index, family):
+            raise C.ReferenceError(f"the data-flow map: no `{family}` record, so it would draw an empty family")
+    processes = {r["fact"]["entry_point"]: r["fact"] for _rid, r in _records(index, ENTRY_POINTS)}
+    layout_records = _records(index, LAYOUT)
+    flags = {r["fact"]["prefix"]: r["fact"] for _rid, r in layout_records
+             if _top(r["fact"]["prefix"]) == r["fact"]["prefix"]}
     reached: dict[Function, set[str]] = defaultdict(set)
     writes: dict[tuple[str, str], set[Function]] = defaultdict(set)
     unreached_writes: dict[str, set[Function]] = defaultdict(set)
+    labels: Counter[str] = Counter()  # the coverage of the records an edge is drawn from
+    not_resolved: dict[str, Counter[Item]] = {fact: Counter() for _what, _family, fact in JOINED_FACTS}
     outside = unplaced = 0
-    for rid, r in _records(index, "writers"):
+    for rid, r in _records(index, WRITERS):
         f = r["fact"]
         if "writers" not in f:
-            if rid.startswith("writers:outside:"):
+            if rid.startswith(f"{WRITERS}:{writers.OUTSIDE_KEY}:"):
                 outside += 1
-            elif rid.startswith("writers:unresolved:"):
+            elif rid.startswith(f"{WRITERS}:{writers.UNRESOLVED_KEY}:"):
                 unplaced += 1
             else:
                 raise C.ReferenceError(f"{rid}: a writers record the data-flow map does not read (it has no `writers`)")
             continue
+        labels[r["coverage"]["label"]] += 1
+        not_resolved["writers"].update(_unresolved(r, "writers"))
         for w in f["writers"]:
             fn = (w["module"], w["symbol"])
             for ep in w["entry_points"]:
@@ -117,12 +146,17 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
                 reached[fn].add(ep)
             if not w["entry_points"]:
                 unreached_writes[_top(f["prefix"])].add(fn)
-    for rid, r in _records(index, "concurrency"):
-        if rid.startswith("concurrency:lock-free:"):
+    for rid, r in _records(index, CONCURRENCY):
+        if rid.startswith(f"{CONCURRENCY}:{concurrency.LOCK_FREE}:"):
+            labels[r["coverage"]["label"]] += 1
+            not_resolved["entry_points"].update(_unresolved(r, "entry_points"))
             reached[(r["fact"]["module"], r["fact"]["symbol"])] |= set(r["fact"]["entry_points"])
     reads: dict[tuple[str, str], set[Function]] = defaultdict(set)
     unreached_reads: dict[str, set[Function]] = defaultdict(set)
-    for f in layout:
+    for _rid, r in layout_records:
+        f = r["fact"]
+        labels[r["coverage"]["label"]] += 1
+        not_resolved["readers"].update(_unresolved(r, "readers"))
         for reader in f["readers"]:
             fn = (reader["module"], reader["symbol"])
             for ep in reached.get(fn, ()):
@@ -131,7 +165,7 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
                 unreached_reads[_top(f["prefix"])].add(fn)
     unknown = sorted({ep for ep, _entry in (*writes, *reads)} - set(processes))
     if unknown:
-        raise C.ReferenceError(f"the data-flow map: entry points no `entry-points` record names: {unknown}")
+        raise C.ReferenceError(f"the data-flow map: entry points no `{ENTRY_POINTS}` record names: {unknown}")
     tops = sorted({*flags, *(t for _ep, t in (*writes, *reads)), *unreached_writes, *unreached_reads})
 
     def group(top: str) -> str:
@@ -177,7 +211,8 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
         "entry that another record also reaches from entry points, a writer item or a lock-free member of the "
         "`concurrency` family ([concurrency.md](concurrency.md)); every other reader is drawn once, into the box "
         "\"read by functions no entry point reaches\". The group \"masked from a contained run\" is the layout's "
-        "`masked_by_containment`, the one trust boundary the records state.", "",
+        "`masked_by_containment`, the one trust boundary the records state. **Every edge is a lower bound**, and a "
+        "process or an entry with no edge is not shown to do nothing: see [Not drawn](#not-drawn).", "",
         "```mermaid", *chart, "```", "",
         "## Processes", "", "| Entry point | Kind | Why |", "|---|---|---|"]
     lines += [f"| `{n}` | {f['kind']} | {f['reason']} |" for n, f in sorted(processes.items())]
@@ -189,13 +224,27 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
         read = ", ".join(f"`{ep}` ({len(fns)})" for (ep, top), fns in sorted(reads.items()) if top == t) or "-"
         lines.append(f"| `{t}` | {titles[group(t)]} | {wrote} | {read} | {len(unreached_writes.get(t, ()))} "
                      f"| {len(unreached_reads.get(t, ()))} |")
+    joined = ", ".join(f"{n} {label}" for label, n in sorted(labels.items()))
     lines += ["", "## Not drawn", "",
+              f"**Every edge is a lower bound.** The edges are drawn from {sum(labels.values())} records (coverage: "
+              f"{joined}). The lists they give (the writers of an entry, its readers, the entry points that reach a "
+              "function) are what the reading found, and each record says what it could not resolve. Those items "
+              "follow, as the records give them, with the number of records that carry each; any of them may be an "
+              "edge the map does not draw.", ""]
+    for what, family, fact in JOINED_FACTS:
+        counted = not_resolved[fact]
+        lines += [f"### {what}", "", f"The `{fact}` fact of the `{family}` records.", ""]
+        lines += [f"- {_anchor(m, s)}: {why} ({n} record{'' if n == 1 else 's'})"
+                  for (m, s, why), n in sorted(counted.items(), key=lambda i: (-i[1], i[0][0], i[0][1] or "", i[0][2]))
+                  ] or ["None."]
+        lines.append("")
+    lines += ["### Not drawn by entry point", "",
               f"- Writes by functions the call graph attributes to no entry point: "
-              f"{sum(len(v) for v in unreached_writes.values())} (entry, function) pairs, drawn from the box \"written "
-              "by functions no entry point reaches\".",
+              f"{sum(len(v) for v in unreached_writes.values())} (entry, function) pairs, drawn only from the box "
+              "\"written by functions no entry point reaches\".",
               f"- Reads by functions no record reaches from an entry point: "
-              f"{sum(len(v) for v in unreached_reads.values())} (entry, function) pairs, drawn into the box \"read by "
-              "functions no entry point reaches\"; each is in the layout page with its function.",
+              f"{sum(len(v) for v in unreached_reads.values())} (entry, function) pairs, drawn only into the box "
+              "\"read by functions no entry point reaches\"; each is in the layout page with its function.",
               f"- {outside} write sites outside `.aew` and {unplaced} write sites this reading could not place belong "
               "to no entry of the map (the writers page lists them).",
               "- The bridge and the network. No record attributes a bridge call, or a route served, to the process "
@@ -207,24 +256,29 @@ def data_flow_page(index: Mapping[str, Any]) -> str:
 
 # (title, the states family, the edges family; None where the code records no table of how a state follows another)
 MACHINES = (
-    ("Ticket", "states", "transitions"),
-    ("Configuration document", "configuration-states", None),
-    ("Live usage", "usage-live-states", None),
+    ("Ticket", machines.STATES, machines.TRANSITIONS),
+    ("Configuration document", machines.CONFIGURATION, None),
+    ("Live usage", machines.USAGE_LIVE, None),
 )
 
 
 def state_maps_page(index: Mapping[str, Any]) -> str:
-    """One state diagram per machine. The Ticket machine's edges are the ``transitions`` records; the other two state
-    sets are drawn as states only, because the code records no edge table for them (their ``exits`` are empty and say
-    so). A state with an exit is refused, so an edge is never silently dropped."""
+    """One state diagram per machine the records hold. The Ticket machine's edges are the ``transitions`` records; the
+    other two state sets are drawn as states only, because the code records no edge table for them (their ``exits``
+    are empty and say so). A state with an exit, and a family with a ``state`` fact that no machine here names, are
+    refused, so a machine or an edge is never silently dropped."""
+    named = {family for _title, family, _edges in MACHINES}
+    unnamed = sorted({r["family"] for r in index["records"].values() if "state" in r.get("fact", {})} - named)
+    if unnamed:
+        raise C.ReferenceError(f"the state maps: records of a state machine no diagram here names: {unnamed}")
     lines = [
         "# State transition maps", "",
-        "One diagram per state machine of the code, drawn from the records alone. Generated by `python "
+        "One diagram per state machine the records hold, drawn from the records alone. Generated by `python "
         "tools/reference.py render`; do not edit. An edge of the Ticket machine is labelled with the operation that "
         "takes it (and the others the code names for it), then `[guard]` when the edge has one, then `(reason)` when "
         "the operation must be given a reason. A state with a closing arrow is terminal. The tables, the guards and "
-        "which edges code that does not ask the table can take are in [state-machines.md](state-machines.md); a "
-        "second state set no table lists is in [gaps.md](gaps.md).", ""]
+        "which edges code that does not ask the table can take are in [state-machines.md](state-machines.md). "
+        f"{machines.NOT_LISTED}", ""]
     for title, family, edges_family in MACHINES:
         found = _records(index, family)
         if not found:

@@ -24,13 +24,13 @@ def _tools():
     here = str(ROOT / "tools")
     sys.path.insert(0, here)
     try:
-        from reference_families import common, modules, pages
+        from reference_families import common, concurrency, entry_points, layout, machines, modules, pages, writers
     finally:
         sys.path.remove(here)
-    return common, modules, pages
+    return common, modules, pages, machines, (entry_points, layout, writers, concurrency)
 
 
-C, M, P = _tools()
+C, M, P, MA, OWNERS = _tools()
 
 
 def table(text: str, heading: str) -> dict[str, list[str]]:
@@ -221,6 +221,104 @@ def test_two_names_that_make_one_diagram_id_are_refused_and_not_merged():
         P.data_flow_page(index)
 
 
+WORKER = ("aew.process_kind", "require_writer", "the role `aew (worker run)` is chosen by an environment variable")
+HIDDEN = ("m.hidden", "stash", "no static call chain reaches this writer")
+UNPLACED = ("aew", None, "read sites whose path this reading could not place")
+UNLISTED = ("aew.process_kind", None, "a function that works without the control lock is not listed")
+
+
+def says(*items: tuple) -> dict[str, dict]:
+    return {"unresolved": [{"module": m, "symbol": s, "why": w} for m, s, w in items], "label": "lower-bound"}
+
+
+def planted_with_items() -> dict:
+    """The planted index whose joined facts say what they could not resolve: two writers records carry the worker run,
+    one a function no entry point reaches; every layout record the unplaced reads; the lock-free member an item of its
+    own, and it alone is complete by construction."""
+    index = planted()
+    records = index["records"]
+    records["writers:state"]["fact_coverage"] = {"writers": says(WORKER)}
+    records["writers:local"]["fact_coverage"] = {"writers": says(WORKER, HIDDEN)}
+    for rid in ("layout:state", "layout:state/log", "layout:local", "layout:docs"):
+        records[rid]["fact_coverage"] = {"readers": says(UNPLACED)}
+    member = records["concurrency:lock-free:m.reads:viaLockFree"]
+    member["fact_coverage"] = {"entry_points": says(UNLISTED)}
+    member["coverage"]["label"] = "complete-by-construction"
+    return index
+
+
+def test_the_page_lists_what_the_joined_records_say_they_could_not_resolve_with_the_records_that_carry_it():
+    """Review of #268, M-1: the worker run (an item on every writers record), the unplaced reads (one on every layout
+    record) and the entry points of a lock-free member are listed from the records' `fact_coverage`, grouped, counted,
+    and the page says once that its edges are a lower bound."""
+    text = P.data_flow_page(planted_with_items())
+    section = text.split("## Not drawn\n", 1)[1]
+    drawn = "**Every edge is a lower bound.** The edges are drawn from 7 records (coverage: "
+    assert drawn + "1 complete-by-construction, 6 lower-bound)." in section
+    writes = section.split("### Writes\n", 1)[1].split("### ", 1)[0]
+    assert "- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable " \
+           "(2 records)" in writes
+    assert "- `m.hidden:stash`: no static call chain reaches this writer (1 record)" in writes
+    assert writes.index("require_writer") < writes.index("m.hidden:stash"), "the item most records carry comes first"
+    readers = section.split("### Readers of an entry\n", 1)[1].split("### ", 1)[0]
+    assert "- `aew`: read sites whose path this reading could not place (4 records)" in readers
+    members = section.split("### Entry points of a lock-free member\n", 1)[1].split("### ", 1)[0]
+    assert "- `aew.process_kind`: a function that works without the control lock is not listed (1 record)" in members
+
+
+def test_every_item_a_joined_record_could_not_resolve_is_on_the_page_whatever_it_says():
+    """A kind of item nobody wrote a line for is listed all the same: the page is derived, so a record whose item the
+    page does not list is a failure of this test, not of a hand-kept list."""
+    index = planted_with_items()
+    novel = ("m.fresh", "thing", "a kind of item the generator was never told about")
+    index["records"]["writers:state"]["fact_coverage"]["writers"]["unresolved"].append(
+        {"module": novel[0], "symbol": novel[1], "why": novel[2]})
+    text = P.data_flow_page(index)
+    for _rid, record in index["records"].items():
+        for fact in record.get("fact_coverage", {}).values():
+            for item in fact["unresolved"]:
+                assert item["why"] in text, item
+
+
+def test_no_item_means_none_and_the_records_without_a_fact_coverage_are_read():
+    text = P.data_flow_page(planted())
+    assert text.count("\nNone.\n") == 3, "each of the three facts says None, not nothing"
+    assert "The edges are drawn from 7 records (coverage: 7 lower-bound)." in text
+
+
+def test_a_process_with_no_edge_is_said_not_to_be_shown_doing_nothing():
+    text = P.data_flow_page(planted())
+    assert "**Every edge is a lower bound**, and a process or an entry with no edge is not shown to do nothing" in text
+
+
+def test_the_two_counts_that_are_drawn_apart_say_they_are_not_drawn_by_entry_point_and_not_not_drawn():
+    """Review of #268, N-1: the pairs are drawn, in a box of their own; what is not drawn is the entry point."""
+    text = P.data_flow_page(planted())
+    section = text.split("### Not drawn by entry point\n", 1)[1]
+    assert "drawn only from the box \"written by functions no entry point reaches\"" in section
+    assert "drawn only into the box \"read by functions no entry point reaches\"" in section
+    assert "drawn from the box" not in text and "drawn into the box" not in text
+
+
+def test_the_family_names_the_maps_read_are_their_owners():
+    """Review of #268, M-2: derive, don't restate."""
+    entry_points, layout, writers, concurrency = OWNERS
+    assert P.JOINED == (entry_points.FAMILY, layout.FAMILY, writers.FAMILY, concurrency.FAMILY)
+    assert [(title, states, edges) for title, states, edges in P.MACHINES] == [
+        ("Ticket", MA.STATES, MA.TRANSITIONS), ("Configuration document", MA.CONFIGURATION, None),
+        ("Live usage", MA.USAGE_LIVE, None)]
+
+
+@pytest.mark.parametrize("family", ["entry-points", "layout", "writers", "concurrency"])
+def test_a_joined_family_with_no_records_is_refused_and_so_is_one_renamed(family):
+    """A renamed family had its arrows quietly gone: no record of it, no map."""
+    index = planted()
+    for rid in [rid for rid, r in index["records"].items() if r["family"] == family]:
+        index["records"][rid]["family"] = family + "-renamed"
+    with pytest.raises(C.ReferenceError, match=f"no `{family}` record"):
+        P.data_flow_page(index)
+
+
 def test_a_label_cannot_close_a_quoted_label():
     assert P._label('a "b"\nc') == "a #quot;b#quot; c"
 
@@ -292,6 +390,26 @@ def test_a_state_with_an_exit_or_an_edge_to_no_state_is_refused_and_never_droppe
     del index["records"]["configuration-states:ABSENT"], index["records"]["configuration-states:SEEN"]
     with pytest.raises(C.ReferenceError, match="no `configuration-states` record"):
         P.state_maps_page(index)
+
+
+def test_a_machine_the_records_hold_and_no_diagram_names_is_refused_and_not_left_out():
+    """Review of #268, M-2: `gaps.md` lists the machines of an integration queue entry, a validation run and a
+    projected field value, which a later pull request can add as a `*-states` family; the page rendered unchanged, and
+    now fails."""
+    index = machines()
+    index["records"]["queue-states:WAITING"] = rec("queue-states", {"state": "WAITING", "position": 0, "exits": []})
+    with pytest.raises(C.ReferenceError, match=r"no diagram here names: \['queue-states'\]"):
+        P.state_maps_page(index)
+
+
+def test_the_state_maps_say_what_the_records_hold_and_say_where_the_rest_is_in_the_machines_pages_own_words():
+    """Review of #268, M-4: not "one diagram per state machine of the code"; and `gaps.md`'s sentence is said once, by
+    the machines family, and read here."""
+    text = P.state_maps_page(machines())
+    assert "One diagram per state machine the records hold" in text and "of the code" not in text
+    assert MA.NOT_LISTED in text
+    for other in ("a Story's or Epic's phase", "the states of another machine"):
+        assert other in MA.NOT_LISTED
 
 
 def test_the_state_maps_are_the_same_in_any_record_order_and_never_change_the_index_they_read():

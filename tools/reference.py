@@ -42,6 +42,7 @@ def _families() -> Any:
             concurrency,
             control_keys,
             entry_points,
+            interfaces,
             layout,
             machines,
             modules,
@@ -51,7 +52,7 @@ def _families() -> Any:
     finally:
         if added:
             sys.path.remove(here)
-    return common, pages, (modules, entry_points, writers, control_keys, layout, machines, concurrency)
+    return common, pages, (modules, entry_points, writers, control_keys, layout, machines, interfaces, concurrency)
 
 
 def _one_tree(common: Any, root: Path) -> None:

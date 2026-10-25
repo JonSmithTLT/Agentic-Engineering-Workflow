@@ -543,16 +543,22 @@ def test_every_list_fact_a_detector_found_says_how_complete_it_is():
 
 def test_every_check_a_record_names_is_a_test_that_exists():
     """A coverage claim is only as good as the test it names: the file exists and defines the function."""
-    seen = 0
+    seen = fact_level = 0
     for rid, r in index_of(committed())["records"].items():
-        for node_id in r["coverage"].get("check", []):
-            path, _, name = node_id.partition("::")
-            file = ROOT / path
-            assert file.is_file(), f"{rid} names {node_id}, whose file does not exist"
-            tree = ast.parse(file.read_text(encoding="utf-8"))
-            assert any(isinstance(n, ast.FunctionDef) and n.name == name for n in ast.walk(tree)), f"{rid}: {node_id}"
-            seen += 1
-    assert seen
+        # a record's own coverage, and the coverage of each of its list facts (a lower-bound record can hold a list
+        # fact that is complete-by-construction, and then the test ids are only there)
+        claimed = [(r["coverage"], "")] + [(c, f" ({key})") for key, c in (r.get("fact_coverage") or {}).items()]
+        for coverage, label in claimed:
+            for node_id in coverage.get("check", []):
+                path, _, name = node_id.partition("::")
+                file = ROOT / path
+                assert file.is_file(), f"{rid}{label} names {node_id}, whose file does not exist"
+                tree = ast.parse(file.read_text(encoding="utf-8"))
+                assert any(isinstance(n, ast.FunctionDef) and n.name == name for n in ast.walk(tree)), \
+                    f"{rid}{label}: {node_id}"
+                seen += 1
+                fact_level += bool(label)
+    assert seen and fact_level
 
 
 # ------------------------------------------------------------------------------- every registry is a thing that exists

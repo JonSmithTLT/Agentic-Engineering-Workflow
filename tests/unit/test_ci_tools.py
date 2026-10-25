@@ -1123,7 +1123,9 @@ def covered(refs: list[tuple[str, str, str]], source: Path, tracked: list[str]) 
 # and the frontend importer by tests/unit/test_dashboard_static.py (both fast lane); eval/reviews holds archived
 # review probes kept as they ran, which nothing executes. The reference generator's entry reads and writes
 # docs/reference and runs only under tests/unit/test_reference.py; its family modules take every path as an argument
-# and name no document, so the heavy lanes' tests may import those (tests/integration/test_reference_entry_points.py).
+# and name no document, except interfaces_cli.py, which names docs/implementation/surface-map.yaml (a full-tier file, in
+# tier.SHARED: a change to it runs the heavy lanes' tests that import the family), so the heavy lanes' tests may import
+# those (tests/integration/test_reference_entry_points.py, tests/integration/test_reference_interfaces.py).
 CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py", "tools/reference.py")
 # Rooted expressions without a literal base that do not read the repository widely (PR #163 review, V7-3), by file
 # and source text. Each needs its reason; anything new of this shape fails the guard until it is listed or rewritten.

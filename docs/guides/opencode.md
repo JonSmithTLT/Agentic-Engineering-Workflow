@@ -57,7 +57,9 @@ aew doctor
 
 Set the key in your own environment, under the name `provider_env` lists (on Windows, as a user environment variable; open a new terminal afterwards). Runs launched from that terminal pass it to their OpenCode servers only.
 
-The Lead's own model is different. By default it uses the credentials OpenCode has stored for you (`opencode auth login`), and its environment holds no provider key. `aew opencode --provider-env NAME` passes a key to the Lead's OpenCode instead; the Lead's shell can then read that key, and the command says so.
+The Lead's own model is different. By default it uses the credentials OpenCode has stored for you (`opencode auth login`), and its environment holds no provider key.
+- **On Linux** the Lead runs contained (see [Containment](#containment)): AEW reads your stored logins on the host, never inside the sandbox, and gives each provider whose key OpenCode reads from a variable (openai, anthropic, google) a relay of its own; inside, that variable holds only a stand-in the relay swaps for the key. `aew opencode --provider-env NAME` feeds that provider's relay from your environment instead, and the Lead's shell still never sees the key. The session's first lines say which logins are relayed and why any is not.
+- **Elsewhere** (Windows) `aew opencode --provider-env NAME` passes a key to the Lead's OpenCode; the Lead's shell can then read that key, and the command says so.
 
 ## 3. Start the Lead
 
@@ -122,9 +124,15 @@ aew harness config opencode --lead     # the Lead's (the same as `aew opencode -
 
 ## Containment
 
-AEW provides **workdir separation only**: each run has its own workspace, private harness state and scratch directory. It does **not** contain the filesystem. An agent's shell runs as you, and can read and write anything your account can. Every run record says `containment: workdir_separation_only`, and `aew doctor` warns about it.
+**On Linux** (with bubblewrap) every run, and the Lead's TUI, runs contained: a sandbox per run from its role, checked by a self-test before anything starts, with a network of its own whose only routes out are AEW's provider relay and egress proxy (ADR-0009). A run whose containment fails is refused unless the execution policy says `containment.mode: allow_weaker`, which runs it labelled `workdir_separation_only`.
 
-Until real containment exists (`docs/design/proposals/execution-workspace-and-isolation-design-v0.1.md`), use AEW with models on scratch repositories and clones, not on your only copy of something that matters.
+**The Lead's session** (`aew opencode`) runs in a `lead` sandbox:
+- it writes the working tree; `.aew/` and the git metadata are read-only, so a commit fails there while `git status`, `diff` and `log` work, and its Lead `aew` commands still reach the broker, which writes AEW state for it;
+- its OpenCode state is its own, under `.aew/local/harness/lead`, kept per project between sessions; your OpenCode configuration and logins are not visible inside, and its first lines name any MCP servers of yours it leaves out;
+- its network reaches your providers through AEW's relays and public addresses over https through the egress proxy; a plain `http://` request is refused with the `https://` form to ask for instead;
+- the TUI runs on a terminal AEW relays: what you type and what it draws pass unchanged, and your terminal gets its settings back however the session ends.
+
+**Elsewhere** (Windows) AEW provides **workdir separation only**: each run has its own workspace, private harness state and scratch directory. It does **not** contain the filesystem. An agent's shell runs as you, and can read and write anything your account can. Every run record says `containment: workdir_separation_only`, and `aew doctor` warns about it. There, use AEW with models on scratch repositories and clones, not on your only copy of something that matters.
 
 ## When something goes wrong
 

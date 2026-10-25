@@ -213,6 +213,9 @@ These make races deterministic: rotation during an in-flight submit, a check spa
 - Lead permissions: the operator is present, so unlisted actions `ask`; `aew` and read-only `git` commands are allowed; `edit` and `subagent` are denied.
 - Command templates run only fixed read-only commands as inline shell, because V2 runs those outside the permission flow.
 - AEW writes nothing into the operator's OpenCode state.
+- **On Linux the TUI runs contained** (amendment 2026-10-25, STG-05 CS-4): in a self-tested `lead` sandbox, on a
+  network of its own, on a terminal AEW relays, with its own OpenCode state. What this section says of the TUI's
+  environment, its provider keys and its permissions holds where it runs not contained (Windows), labelled so.
 
 ### Harness-neutral contract (`src/aew/harness/base.py`)
 - **`HarnessAdapter`, one instance per run inside its supervisor:**
@@ -450,6 +453,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **Why:** the agent's own environment carries no provider secret and no server password, as above. But the harness server is the agent shell's parent, runs as the same user, and shares its PID namespace whether or not the run is contained. So its environment (the provider key the policy names, and the server password) is one read of `/proc/<parent>/environ` away. No AEW credential is ever there.
 - **Status:** closing this needs the server outside the agent's user or namespace. Until then it is stated here, and `test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell` asserts it. The day it stops being true, that test fails and this paragraph changes.
 - **Narrowed by design (2026-10-05):** the network amendment below takes the provider key out of the sandbox entirely (the supervisor's relay holds it). Once F28 is built, this residual is the server password only, and the test narrows with it.
+- **Accepted (the designer's ruling on triage ST-38, 2026-10-25; amendment 2026-10-25):** on a run with its own network the server's environment holds the provider variable's sentinel, never the key's value, and the server password, and the test now asserts exactly that, for a worker's run and for the Lead's session. The password authenticates only to that run's own server, which sits in the run's sandbox and network namespace and is reached from outside only by the run's supervisor, through the run's own socket: it opens nothing the agent's shell cannot already do, and none of the four routes (a G3 approval, an owner's fact, a credential beyond the run, a way out). Running the server outside the agent's PID namespace was not chosen: OpenCode's shell tool is the server's child. Three tests pin what would make the ruling wrong: the password is new per launch and in no file outside its run's directory; no other context, the Lead's included, reaches a run's server socket or loopback port; and no control AEW relies on for the four routes is a harness permission rule.
 - **To investigate:** using OpenCode's stored authentication in the run's private data directory, instead of environment variables.
 - **Secret masks are computed at launch.** A secret file or directory created on the host while a run is live is readable from it until the run ends; the next launch masks it.
 
@@ -1408,3 +1412,101 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
 - `tests/unit/test_containment_probe.py`: `aew doctor`'s `ripgrep` line from the containment line's sandbox, passing
   and warning, absent when that sandbox failed; its wording both ways. `tests/integration/test_containment.py`
   (Linux): the probe finding `rg` on a directory the sandbox sees, and not finding one the sandbox masks.
+
+## Amendment 2026-10-25 — the Lead contained (STG-05 CS-4; F28 decision 2)
+
+The designer's CS-4 hand-off and its addendum 1 (design workspace `8b4bd05`, `146f204`), with the rulings R-2, R-7
+and ST-38. On Linux, `aew opencode` runs the Lead's OpenCode TUI contained, and the session still works as the
+operator's own did: the TUI at their terminal, their stored provider logins, Lead commands through the broker.
+
+### The session (`opencode/lead.py`, `lead_broker.run_session`)
+- **Before the seat is taken:** the terminal is checked (standard input must be one: the TUI runs on a relay of it),
+  `--provider-env` is checked against the providers AEW relays, and the operator's stored logins are read. A refusal
+  here takes nothing.
+- **The sandbox:** `containment.establish` for role `lead`, scope `project`, mode `required` unless the policy says
+  `allow_weaker`, with rows 1 to 6 of the self-test (row 4 in the Lead's form, below). Under `required` a failing
+  row refuses the session (`CONTAINMENT_UNAVAILABLE`), saying what failed and what fixes it; under `allow_weaker`
+  the TUI runs as it does on Windows, labelled `workdir_separation_only` with the reason, and the start line says
+  so. A failure after the seat was taken frees the seat again.
+- **What it holds (R-2):** the working tree writable; `.aew` and the git metadata re-bound read-only; `.aew/local`
+  masked except the session's run directory (`.aew/local/harness/runs/lead-<UTC>-<hex>`, its label and harness
+  state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions); the
+  operator's OpenCode configuration and login masked wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `OPENCODE_DB`
+  put them.
+- **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set
+  (configuration and runtime in the run's harness state, data, state and cache in the Lead's), with
+  `OPENCODE_CONFIG_CONTENT` (the Lead projection, with the session's relays and its contained line) and
+  `AEW_LEAD_CONTAINED`. The broker's coordinates stay; no AEW credential and no provider key is there, which a check
+  of every value against the relays' keys enforces before the start.
+- **The CLI inside** is a non-writer (`aew (contained Lead)` in `process_kind`): it reads lock-free, and its
+  Lead-authenticated commands go through the broker, which holds the credential and the control lock. A write that
+  meets the read-only store is refused as `PERMISSION_DENIED`, reason `lead_contained`, never a traceback.
+
+### The network (F28 decision 2; `netns.RunNetwork.start_lead`)
+- `proxy_only`, with an egress proxy whose policy is any public address (`egress.AnyPublic`). Both `HTTPS_PROXY`
+  and `HTTP_PROXY` name it, with loopback in `NO_PROXY`, which keeps the relays direct (measured on the Rocky VM).
+  A plain `http://` request is refused, and the refusal names the `https://` form to ask for instead.
+- **One relay per provider** of the operator's stored login whose key OpenCode reads from a known variable
+  (`netns.PROVIDER_KEY_ENV`: openai, anthropic, google), on its own loopback port inside from
+  `netns.LEAD_RELAY_PORT`. Each provider's `baseURL` is set at the provider level (with `transport: http` for
+  openai), which takes every request of that provider to its relay, its title model's included (measured for all
+  three). Inside, the provider's variable holds the relay's sentinel; the relay outside swaps in the key.
+- **Not relayed, and said at the start:** opencode's own key (its models carry their own catalog address, so a
+  provider-level `baseURL` does not reach them; its free models still work through the egress proxy), a provider
+  AEW has no upstream for, and a refreshing (OAuth) login until it is served (addendum 1).
+- **`--provider-env NAME`** feeds that provider's relay on the host instead of the stored login, and never the Lead's
+  shell; a name no relayed provider reads is refused. Where the Lead runs not contained it keeps its old meaning.
+- **The stored login** is read on the host, in memory only: SQLite's read-only mode with a busy timeout, never
+  `immutable` (addendum 1). Nothing of it is written anywhere.
+
+### The terminal relay (ruling R-7; `procs.run_session_tree(relay=True)`)
+- The session's reaper opens a pseudo-terminal, copies the operator's terminal settings and size to it, starts the
+  harness on it in a new session (the shim makes it the controlling terminal), and sets the operator's terminal raw.
+  Bytes pass unfiltered both ways; a window-size change follows.
+- **Every ending gives the terminal back:** on the harness's own exit (after its last output drains), on a signal
+  and on the broker's death, the reaper writes the TUI's own exit sequence (`procs.TERMINAL_LEAVE`, the 2.0.18
+  TUI's, alternate screen off among it) and restores the saved settings before it ends the harness's processes. If
+  the reaper never reports, the broker does the same.
+- **Row 4, the Lead's form:** the self-test's probe runs on a pseudo-terminal the host owns, through the shim's
+  controlling-terminal step. Its controlling terminal must be that device, and no descriptor inside may be any other
+  terminal, the launching one above all. A `TIOCSTI` from inside reaches only the TUI's own input.
+
+### Messages (outcome 7)
+- The start lines name each stored login and whether it is relayed (and if not, why), what `--provider-env` feeds,
+  and the MCP servers of the operator's configuration that are left out (names only: their configuration is not
+  loaded).
+- The Lead's system text carries one line from the session's label: what the session reaches, that `.aew` and the
+  git metadata are read-only so a commit fails while reads and Lead commands work, that the rest is refused by
+  design, and to tell the operator what it needed rather than work around a refusal.
+- A sandbox that cannot start where the kernel allows no user namespace (`user.max_user_namespaces = 0`; bubblewrap
+  0.4.0 is not setuid) is refused naming the setting and the fix (ST-27 fact 5).
+
+### The server-password residual (ruling ST-38)
+- Accepted, as the residual paragraph of the M4-B amendment now records; three tests pin it (below).
+
+### What this does not claim
+- **The Lead's TUI permission asks are a convenience, not a boundary.** The TUI's server password, readable from the
+  Lead's shell as a worker's is, lets the model answer them; what any tool call can do is bounded by the sandbox.
+- **Windows** runs the Lead not contained, labelled `workdir_separation_only`, as before.
+
+### Tests
+- `tests/integration/test_lead_contained_session.py` (Linux): the session at a terminal the test holds, through the
+  broker from the sandbox, with rows 1 to 6, the environment, the label, the system-text line and the terminal given
+  back; each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode not
+  relayed; a failing self-test refused under `required` and labelled under `allow_weaker`.
+- `tests/integration/test_terminal_relay.py` (Linux): every ending gives the terminal back (the TUI exiting with its
+  last output unread, crashing, its sandbox killed, the broker killed, the reaper killed, the terminal hung up),
+  bytes unfiltered, the window size followed, a session without a terminal refused.
+- `tests/integration/test_lead_containment.py` (Linux): the layout (the working tree writable, never `.aew` or the
+  git metadata; `.aew/local` holding only the Lead's own directories; the operator's OpenCode login and
+  configuration empty); rows 1 to 6 passing with the relayed terminal and any-public egress, and rows 4 and 6
+  failing closed; the TUI's controlling terminal the relay's, with a `TIOCSTI` landing in its own input;
+  `allow_weaker` labelled. `tests/integration/test_network_shim.py`: the shim's controlling-terminal step and its
+  refusal. `tests/integration/test_containment.py`: the user-namespace refusal (mocked).
+- `tests/integration/test_opencode_adapter.py` (Linux), ST-38: the residual, for a worker's run and the Lead's
+  session; the password new per launch and in no file outside the run's directory; no run and no Lead session
+  reaching another run's server socket or a loopback port; and the routes closed with a harness that applies no
+  permission rule.
+- `tests/integration/test_non_writer_reads.py`: the CLI inside the contained Lead reads lock-free and refuses a
+  lock-taking command before the lock. `tests/unit/test_lead_contained.py`: the start lines, `--provider-env`, the
+  logins read, the refusal that frees the seat, the read-only store's typed refusal.

@@ -415,7 +415,7 @@ def test_each_poller_takes_its_predicate_where_its_definition_calls_it():
     """Read from the definitions under tests/, so a parameter that moves moves the detectors with it. This pins the
     result: a poller added, or one whose predicate moves, has to update it."""
     assert poller_params() == {
-        "until": ({0}, {"predicate"}),
+        "until": ({0}, {"predicate", "describe"}),  # notifier's calls its describer too: a lambda there is scanned
         "wait_for": ({0}, {"cond"}),
         "wait_until": ({0}, {"predicate"}),  # no test defines it: the default
         "_wait_for": ({0}, {"predicate"}),

@@ -12,8 +12,10 @@ Two kinds of record, keyed by what the code names:
   ``control_lock``, held by a tree test), so the record is complete-by-construction and its takers are a lower bound.
 * ``concurrency:lock-free:<module>:<symbol>``: a function or class that works without the control lock, and what the
   code says it may observe. The members are the ones ``aew.process_kind`` names in its module docstring (parsed from
-  it, not restated) and the ones this module declares because their own docstrings say so (the compactor's build,
-  re-read and prune; the wake mark). Each carries the first sentence of its own docstring as ``observes``, the
+  it, not restated) and six this module declares: the compactor's build, re-read and prune, because its module
+  docstring says they run without the lock, and the wake mark's writer, reader and waiter, because the wake signal is
+  advisory (their docstrings say nothing of a lock, so ``takes_no_lock`` is the only support there). Each carries the
+  first sentence of its own docstring as ``observes``, the
   sentences of its own or its module's docstring that say it is lock-free as ``says`` (a docstring's design citations
   are elided: the reference holds no such id), and whether its static call closure reaches a function that takes a
   lock (``takes_no_lock``; the closure is the call graph the reach uses).
@@ -55,17 +57,20 @@ PARENTHETICAL = re.compile(r"\s*\([^()]*\)")
 # A design citation in a docstring: a decision label (`D3`), a register row (`F20.2`), an ADR or a stage id.
 CITATION = re.compile(r"\b(?:[A-Z]{1,4}\d+(?:\.\d+)?[a-z]?|[A-Z]{2,}-\d+[a-z]?)\b")
 # Members this family declares because the code works without the control lock there and process_kind does not name
-# them: (module, symbol, why, whether the module's docstring is where the code says so). The compactor's module
-# docstring says its build, re-read and prune run without the lock; the wake mark's own docstrings say nothing of locks
-# (a stat and a rename), so for those the closure check is the proof and `says` is empty.
-DECLARED = (
-    ("aew.engine.log_compact", "build_segment", "the compactor's build of a segment from the unsealed files", True),
+# them: (module, symbol, why, the words by which the module's docstring names this member's own work). The compactor's
+# module docstring says its build, re-read and prune run without the lock, and a sentence of it is quoted for a member
+# only if it names that member's work (the same docstring says its readers are lockless, which is not the build's).
+# The wake mark's own docstrings say nothing of locks (a stat and a rename; the signal is advisory), so for those the
+# closure check is the only support, the words are empty and `says` is empty.
+DECLARED: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("aew.engine.log_compact", "build_segment", "the compactor's build of a segment from the unsealed files",
+     ("build",)),
     ("aew.engine.log_compact", "verify_against_unsealed",
-     "the compactor's check of a segment against the unsealed files", True),
-    ("aew.engine.log_compact", "_unlink", "the compactor's prune of the unsealed files", True),
-    ("aew.engine.outbox", "bump_wake", "the wake mark's writer", False),
-    ("aew.engine.outbox", "wake_mark", "the wake mark's reader", False),
-    ("aew.engine.outbox", "wait_for", "a waiter on the wake mark", False),
+     "the compactor's check of a segment against the unsealed files", ("re-read",)),
+    ("aew.engine.log_compact", "_unlink", "the compactor's prune of the unsealed files", ("prune",)),
+    ("aew.engine.outbox", "bump_wake", "the wake mark's writer", ()),
+    ("aew.engine.outbox", "wake_mark", "the wake mark's reader", ()),
+    ("aew.engine.outbox", "wait_for", "a waiter on the wake mark", ()),
 )
 OPENERS_ITEM = ("a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's "
                 "own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this "
@@ -138,7 +143,12 @@ def plain(sentence: str) -> str | None:
     names one is left out (None). The reference states what the code is and holds no requirement or register id
     (``tests/unit/test_reference.py``), and a docstring cites its decisions."""
     kept = PARENTHETICAL.sub(lambda m: "" if CITATION.search(m.group()) else m.group(), sentence).strip()
-    return None if CITATION.search(kept) else kept
+    if CITATION.search(kept):
+        return None
+    if kept.endswith(":"):  # it introduces a list: cut at its last comma (the clause that points at the list), or out
+        head, comma, _ = kept[:-1].rpartition(",")
+        return head + "." if comma and head else None
+    return kept
 
 
 def says_of(doc: str | None) -> list[str]:
@@ -270,18 +280,19 @@ def methods_of(program: F.Program, key: Key) -> list[Key]:
 def members_of(program: F.Program, pk_doc: str, takers: Iterable[Key]) -> list[Member]:
     edges = R.graph(program)
     taking = set(takers)
-    wanted: dict[Key, tuple[str, str, bool]] = {}
+    wanted: dict[Key, tuple[str, str, tuple[str, ...]]] = {}
     for dotted in process_kind_names(pk_doc):
-        wanted[resolve_name(program, dotted)] = ("process_kind", f"named by aew.process_kind: `{dotted}`", False)
-    for module, symbol, why, in_module in DECLARED:
-        wanted.setdefault((module, symbol), ("declared", why, in_module))
+        wanted[resolve_name(program, dotted)] = ("process_kind", f"named by aew.process_kind: `{dotted}`", ())
+    for module, symbol, why, words in DECLARED:
+        wanted.setdefault((module, symbol), ("declared", why, words))
     out = []
-    for key, (source, why, in_module) in sorted(wanted.items()):
+    for key, (source, why, words) in sorted(wanted.items()):
         node = _node(program, key)
         own = ast.get_docstring(node, clean=True)
         module_doc = ast.get_docstring(program.modules[key[0]].tree, clean=True)
-        says, says_in = (says_of(own), "symbol") if says_of(own) else (
-            (says_of(module_doc), "module") if in_module and says_of(module_doc) else ([], None))
+        of_module = [s for s in says_of(module_doc) if any(w in s.lower() for w in words)]
+        own_says = says_of(own)
+        says, says_in = (own_says, "symbol") if own_says else ((of_module, "module") if of_module else ([], None))
         reached = R.reach(edges, methods_of(program, key))
         locking = sorted(reached & taking)
         out.append(Member(key[0], key[1], source, why, observes_of(own), says, says_in, not locking, locking))
@@ -452,9 +463,11 @@ def page(records: list[C.Record]) -> str:
         "**observes** is the first sentence of the symbol's own docstring, **says** the sentences of the docstring "
         "(its own, else its module's) that state it is lock-free; a design citation in either is elided, and a "
         "sentence that still names one is left out. The members are the ones `aew.process_kind` names in its module "
-        "docstring and the ones this family declares because their docstrings say so. **Takes no lock** says the "
-        "static call closure of the member reaches no function that takes a lock; a call this reading does not "
-        "resolve is not followed.", ""]
+        "docstring and six this family declares: the compactor's build, re-read and prune, because its module "
+        "docstring says they run without the lock, and the wake mark's writer, reader and waiter, because the wake "
+        "signal is advisory (their docstrings say nothing of a lock, so **takes no lock** is the only support there). "
+        "**Takes no lock** says the static call closure of the member reaches no function that takes a lock; a call "
+        "this reading does not resolve is not followed.", ""]
     for r in free:
         f = r.fact or {}
         lines.append(f"### `{f['module']}:{f['symbol']}`")
@@ -479,8 +492,10 @@ def page(records: list[C.Record]) -> str:
 
 
 CANNOT_SEE: tuple[tuple[str, str], ...] = (
-    ("thread-lock", "an in-process `threading.Lock`, `RLock`, `Condition` or `Event`"),
-    ("exclusive-create", "a file created with `os.O_EXCL` as a guard"),
+    ("thread-lock", "an in-process `threading.Lock`, `RLock`, `Condition` or `Event` (the dashboard and the harness "
+     "have live ones)"),
+    ("exclusive-create", "a file created with `os.O_EXCL` as a guard (the integration queue's checkout sync lock, "
+     "`checkout_sync_lock_path` in `aew.engine.queue_ops`, is one that serialises a sync across processes)"),
     ("other-lock-class", "a lock class other than `aew.engine.lock.FileLock`"),
     ("computed-callee", "an opener called through `getattr`"),
     ("lock-in-a-variable", "a `FileLock` bound to another name and called by it"),

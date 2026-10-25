@@ -259,16 +259,24 @@ def test_a_class_member_is_checked_over_all_its_methods_and_a_function_over_its_
 
 
 def test_a_member_whose_closure_reaches_a_function_that_takes_a_lock_is_not_lock_free(monkeypatch):
-    got = {m.symbol: m for m in members(monkeypatch, declared=[("aew.util", "sink", "a sink", False)])}
+    got = {m.symbol: m for m in members(monkeypatch, declared=[("aew.util", "sink", "a sink", ())])}
     assert not got["sink"].takes_no_lock and got["sink"].lock_takers == [("aew.m", "S.mutate")]
 
 
-def test_the_module_docstring_is_where_a_declared_member_says_it_only_when_the_declaration_says_so(monkeypatch):
-    declared = [("aew.m", "S._load", "a loader inside the module", True), ("aew.util", "snap", "a snapshot", False)]
+def test_the_module_docstring_is_where_a_declared_member_says_it_only_when_the_declaration_names_its_work(monkeypatch):
+    declared = [("aew.m", "S._load", "a loader inside the module", ("snapshot",)),
+                ("aew.util", "snap", "a snapshot", ())]
     got = {m.symbol: m for m in members(monkeypatch, declared=declared)}
     assert got["S._load"].says_in == "module" and len(got["S._load"].says) == 1
     assert "without the control lock" in got["S._load"].says[0]
     assert got["snap"].says == [] and got["snap"].says_in is None, "a member's silence is not the module's statement"
+
+
+def test_a_sentence_of_the_module_docstring_is_quoted_for_a_member_only_if_it_names_that_members_work(monkeypatch):
+    """Review of #267, C-4: the compactor's module says its readers are lockless, which is not its build's statement."""
+    declared = [("aew.m", "S._load", "a loader", ("snapshot",)), ("aew.m", "S.mutate", "a mutator", ("compaction",))]
+    got = {m.symbol: m for m in members(monkeypatch, declared=declared)}
+    assert got["S._load"].says and got["S.mutate"].says == [] and got["S.mutate"].says_in is None
 
 
 def test_a_declared_member_that_is_no_function_or_class_of_the_module_is_refused(monkeypatch):
@@ -295,6 +303,37 @@ def test_a_member_record_carries_its_facts_its_entry_points_and_kinds_and_is_a_l
                                                    for i in snap.fact_coverage["entry_points"]["unresolved"])
 
 
+# ------------------------------------------------------------------------------ the typing cap, from a lock-free member
+
+TYPED_DOC = "A non-writer reads only lock-free: ``M.run``. These take no lock and run no recovery."
+
+
+def lock_through_attributes(hops: int) -> str:
+    """`self.a1.a2...aN.take(root)` where `take` returns a lock: a lock-free member that reaches the opener."""
+    src = HEAD + "class T:\n    def take(self, root):\n        process_kind.require_writer('x')\n"
+    src += "        return FileLock(root / 'local' / 't.lock')\n\n"
+    for k in range(hops - 1, 0, -1):
+        held = "T()" if k + 1 == hops else f"A{k + 1}()"
+        src += f"class A{k}:\n    def __init__(self):\n        self.a{k + 1} = {held}\n\n"
+    path = "self.a1" + "".join(f".a{k}" for k in range(2, hops + 1))
+    first = "T()" if hops == 1 else "A1()"
+    run = f"    def run(self, root):\n        {path}.take(root)\n"
+    return src + f"class M:\n    def __init__(self):\n        self.a1 = {first}\n" + run
+
+
+def test_a_member_that_reaches_a_lock_through_more_attributes_than_the_typing_cap_fails_the_reading(monkeypatch):
+    """Review of #267, addendum 7 for `TYPING_DEPTH`: the dropped edge read as `takes_no_lock=True`, with no mark."""
+    monkeypatch.setattr(F, "TYPING_DEPTH", 3)
+    monkeypatch.setattr(CO, "DECLARED", ())
+    prog = program({"aew.m": lock_through_attributes(3)})
+    sites = CO.lock_sites(prog, F.Evaluator(prog))
+    [member] = CO.members_of(prog, TYPED_DOC, {(s.module, s.symbol) for s in sites})
+    assert not member.takes_no_lock and member.lock_takers == [("aew.m", "T.take")], "at the cap the edge is followed"
+    with pytest.raises(C.ReferenceError) as refused:
+        program({"aew.m": lock_through_attributes(4)})
+    assert "(cap `writers_flow.TYPING_DEPTH` = 3:" in str(refused.value)
+
+
 # ----------------------------------------------------------- what a docstring is quoted for, without its citations
 
 @pytest.mark.parametrize(("sentence", "kept"), [
@@ -308,6 +347,14 @@ def test_a_member_record_carries_its_facts_its_entry_points_and_kinds_and_is_a_l
 ])
 def test_a_citation_is_elided_from_a_parenthetical_and_a_bare_one_drops_the_sentence(sentence, kept):
     assert CO.plain(sentence) == kept
+
+
+def test_a_sentence_that_introduces_a_list_is_cut_at_its_last_comma_and_one_with_no_comma_is_left_out():
+    """Review of #267, C-4: a quote must not end on a dangling clause ("... and that is safe:")."""
+    listing = "Build runs without the lock, so a commit never waits (a segment costs seconds), and that is safe:"
+    assert CO.plain(listing) == "Build runs without the lock, so a commit never waits (a segment costs seconds)."
+    assert CO.plain("These hold:") is None
+    assert CO.says_of("Build runs without the lock, and that is safe:") == ["Build runs without the lock."]
 
 
 def test_a_docstring_is_split_into_sentences_across_lines_and_paragraphs():
@@ -402,7 +449,7 @@ def test_the_page_lists_each_lock_with_its_opener_and_takers_and_each_member_wit
     assert "taker `aew.m:S.go` (`S.go`): reached from `aew`" in page
     assert "taker `aew.m:S.other`: reached from no static chain from any entry point" in page
     assert "### `aew.m:S.peek`" in page and "observes: A committed view, without the control lock." in page
-    assert all(text in page for _, text in CO.CANNOT_SEE)
+    assert "## What the reading does not see" in page and all(text in page for _, text in CO.CANNOT_SEE)
 
 
 # ------------------------------------------------------------------------- the two detectors and what neither sees
@@ -430,6 +477,14 @@ def counts(source: str) -> tuple[Counter[str], Counter[str]]:
 def test_the_two_detectors_find_the_same_lock_calls_with_the_same_names(source, expected):
     ast_found, text_found = counts("def f(p, store, a, b):\n    " + source.replace("\n", "\n    "))
     assert dict(ast_found) == expected and dict(text_found) == expected, source
+
+
+def test_a_call_at_module_level_is_counted_by_both_detectors():
+    """Review of #267, C-10: the module scope is held, not only a function's."""
+    text = HEAD + "lock = FileLock(p)\nheld = store.control_lock('op')\n"
+    found = CO.call_counts(program({"aew.m": text}), ["control_lock"])["aew.m"]
+    assert dict(found) == {"FileLock": 1, "control_lock": 1}
+    assert dict(CT.counts(text, ["control_lock"])) == {"FileLock": 1, "control_lock": 1}
 
 
 @pytest.mark.parametrize("source", NOT_COUNTED)

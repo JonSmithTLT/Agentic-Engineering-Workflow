@@ -80,7 +80,7 @@
         "lower-bound": 213
       }
     },
-    "digest": "sha256:7a6893822586dc6de11ef4f2e510e90eb00f710534d7e937af2a74a0491850c2",
+    "digest": "sha256:625d74bdbabb4a5dbf801b22a6189e8ab43e51683fb1f40c4e366ebe7b89da5b",
     "records": 937,
     "unresolved": 77
   },
@@ -3380,8 +3380,7 @@
         "module": "aew.engine.log_compact",
         "observes": "Remove ``path`` if present; False when the OS still refuses after a short wait (Windows: a reader has it open).",
         "says": [
-          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
-          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify)."
         ],
         "says_in": "module",
         "source": "declared",
@@ -3460,8 +3459,7 @@
         "module": "aew.engine.log_compact",
         "observes": "The canonical text of segment ``index`` from the unsealed files, verified before it is written.",
         "says": [
-          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
-          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify)."
         ],
         "says_in": "module",
         "source": "declared",
@@ -3540,8 +3538,7 @@
         "module": "aew.engine.log_compact",
         "observes": "A segment read back from disk, checked against everything around it before any unsealed file is removed: its link to the transition before it, and the equivalence of every unsealed copy still present.",
         "says": [
-          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify), and that is safe:",
-          "Lockless readers stay correct under any interleaving through the reader protocol (``outbox.LogView``), never through the lock."
+          "Build, the full re-read and the prune run without the lock, so a commit never waits for them (a segment costs seconds to verify)."
         ],
         "says_in": "module",
         "source": "declared",

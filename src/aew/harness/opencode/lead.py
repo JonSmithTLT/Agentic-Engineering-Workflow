@@ -32,6 +32,7 @@ can then read; the command says so.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -49,6 +50,8 @@ from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible, Us
 from aew.harness import agentenv, lead_broker, runlog
 from aew.harness.opencode import capabilities, login, projection
 from aew.harness.opencode.adapter import binary_command
+
+log = logging.getLogger(__name__)
 
 PASSED_THROUGH = ("OPENCODE_CONFIG", "SHELL")  # the operator's own config file and shell choice
 LEAD_DIR = "local/harness/lead"  # under the AEW root: the contained Lead's OpenCode state, per project (addendum 1)
@@ -70,6 +73,11 @@ REFRESH_STEP = (f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refres
 # A relayed login that expires within this many hours is named at the Lead's launch (the designer's addendum 2,
 # ruling 1: one working day's session). The operator's execution policy changes it: containment.lead.login_warning_h.
 LOGIN_WARNING_H = 24
+# What renews such a login before it expires (addendum 3, ruling 2). A refresh does not: OpenCode refreshes a login
+# only in its last 5 minutes. A fresh login does: OpenCode 2.0.18 stores it as a new row, active over the provider's
+# others, with a new expiry (`Credential.create`, read in the pinned bundle), and the relay reads the active row.
+RENEW_STEP = ("To renew it now, log in again at your own terminal (`opencode auth login {provider}`): your OpenCode "
+              "stores a fresh login, and the Lead's next request uses it, with no restart.")
 # Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
 # values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
 LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
@@ -161,14 +169,18 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         extra_args: list[str], print_config: bool) -> dict[str, Any]:
     if print_config:
         return {"ok": True, **describe(engine, provider_env=provider_env, extra_args=extra_args)}
+    stages = StartStages()
     version = check_version()
+    stages.mark("version")
     guide = guide_of(engine)
     argv = command(engine, extra_args)
     if contained_here():
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
         # would stay held).
-        lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ)
+        lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
+                             stages=stages)
         lead.announce(sys.stderr)
+        stages.mark("logins")
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=tui_env(os.environ, provider_env=[], guide=guide), contained=lead)
         return {**out, "opencode": version}
@@ -334,6 +346,24 @@ class StoredLogin:
                               if meta.get(k)}
 
 
+class StartStages:
+    """How long each stage of the contained Lead's start took, in seconds, on its label and in the debug log (the
+    designer's addendum 3: five starts of 15 to 31 s on the Rocky VM went unexplained, so a recurrence in the
+    operator's trial names its stage): ``version`` (the OpenCode CLI's), ``logins`` (the stored logins, the policy
+    and the start lines), ``seat`` (the seat and the broker), ``sandbox`` (built and self-tested), ``network`` (the
+    relays and the egress proxy), ``lead_logins`` (the Lead's own login rows; its database the first time)."""
+
+    def __init__(self) -> None:
+        self.last = time.monotonic()
+        self.seconds: dict[str, float] = {}
+
+    def mark(self, stage: str) -> None:
+        now = time.monotonic()
+        self.seconds[stage] = round(now - self.last, 3)
+        self.last = now
+        log.debug("aew opencode: start stage %s took %.3f s", stage, self.seconds[stage])
+
+
 class ContainedLead:
     """The contained Lead's session (STG-05 CS-4), made before the seat is taken: the operator's terminal, the
     providers to relay (their keys in this process's memory only), and what the session leaves out. Called by the
@@ -343,8 +373,10 @@ class ContainedLead:
     ``--provider-env`` variable that cannot be passed or that no relayed provider reads."""
 
     def __init__(self, engine: Any, *, argv: list[str], provider_env: list[str], guide: str,
-                 base: Mapping[str, str]) -> None:
+                 base: Mapping[str, str], stages: StartStages | None = None) -> None:
         from aew.harness.containment import netns
+
+        self.stages = stages or StartStages()
 
         if not os.isatty(0):
             raise UsageError("the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4): run `aew opencode` "
@@ -426,7 +458,7 @@ class ContainedLead:
             elif hours <= self.warning_h:
                 out.write(f"aew opencode: your stored {entry.integration} login expires in "
                           f"{_left(entry).removesuffix(' left')} (named when {self.warning_h} h or less is left: "
-                          f"containment.lead.login_warning_h). When it has expired, run {REFRESH_STEP}.\n")
+                          f"containment.lead.login_warning_h). {RENEW_STEP.format(provider=entry.integration)}\n")
         if self.mcp:
             out.write(f"aew opencode: your OpenCode configuration is not loaded in the contained Lead; its MCP servers "
                       f"are left out: {', '.join(self.mcp)}.\n")
@@ -445,6 +477,7 @@ class ContainedLead:
         from aew.harness.containment import egress, netns
 
         engine = self.engine
+        self.stages.mark("seat")
         run_dir = runlog.run_dir(engine.aew_root, f"lead-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-"
                                                   f"{secrets.token_hex(3)}")
         run_dir.mkdir(parents=True)
@@ -455,7 +488,9 @@ class ContainedLead:
             role="lead", scope="project", workspace=project, run_dir=run_dir, scratch=str(run_dir / "scratch"),
             bridge_dir=bridge_dir, policy=policy, project=project, bridge=child_env.get(lead_broker.ENV_ENDPOINT),
             egress_policy=egress.AnyPublic(), state_dir=str(state), relayed_terminal={"forbid": self.terminal})
+        self.stages.mark("sandbox")
         label["session"] = run_dir.name
+        label["start_s"] = self.stages.seconds  # the stages to come are added in place, before the label is recorded
         if layout is None:  # allowed weaker by the policy: the TUI runs as it does elsewhere, labelled so
             sys.stderr.write(f"aew opencode: the Lead runs NOT contained ({label['filesystem']}): "
                              f"{label.get('weaker_because')}\n")
@@ -469,6 +504,7 @@ class ContainedLead:
                     layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
                     refreshing={p: StoredLogin(p, self.base) for p in self.refreshing})
                 label["network"].update(network.describe())
+                self.stages.mark("network")
             config = projection.lead_config(self.guide, contained=label,
                                             relays=network.lead_bases() if network else None)
             inside = self._inside(child_env, layout, run_dir, state, config, network)
@@ -483,6 +519,7 @@ class ContainedLead:
                     sys.stderr.write(f"aew opencode: {', '.join(sorted(network.login_sentinels))} could not be given "
                                      f"to the contained Lead ({type(exc).__name__}): the Lead cannot use "
                                      f"{'it' if len(network.login_sentinels) == 1 else 'them'} this session.\n")
+                self.stages.mark("lead_logins")
             spec = network.spec() if network is not None and network.dir else {"in": [], "out": []}
             argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project)
         except BaseException:

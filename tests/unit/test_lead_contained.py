@@ -235,8 +235,9 @@ def test_a_relayed_login_close_to_expiry_is_named_at_launch_with_the_refresh_ste
                                                                                                       at_a_terminal):
     """Addendum 2, ruling 1: at the launch, a login the relay serves as stored that expires within 24 hours (the
     default; the operator's containment.lead.login_warning_h changes it) gets one line that names the provider, the
-    time left and the step the expiry message gives; an expired one says so. It only warns: the login is relayed all
-    the same. No token in it."""
+    time left and the step the operator can take now, a fresh login (addendum 3, ruling 2: a refresh happens only in
+    a login's last 5 minutes); an expired one says so, with the expiry message's step. It only warns: the login is
+    relayed all the same. No token in it."""
     def warned(expires_s: float, policy: dict[str, Any] | None = None) -> list[str]:
         db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access", expires_s), 1)])
         session = contained(tmp_path, policy=policy)
@@ -247,16 +248,57 @@ def test_a_relayed_login_close_to_expiry_is_named_at_launch_with_the_refresh_ste
         assert "synthetic" not in out.getvalue()
         return [ln for ln in out.getvalue().splitlines() if ln.startswith("aew opencode: your stored openai login")]
 
-    step = ("`opencode auth list` at your own terminal: your OpenCode refreshes it there, and the Lead's next request "
-            "then works, with no restart.")
+    renew = ("To renew it now, log in again at your own terminal (`opencode auth login openai`): your OpenCode stores "
+             "a fresh login, and the Lead's next request uses it, with no restart.")
     assert warned(time.time() + 5 * 3600 + 60) == [
         "aew opencode: your stored openai login expires in 5 h (named when 24 h or less is left: "
-        f"containment.lead.login_warning_h). When it has expired, run {step}"]
+        f"containment.lead.login_warning_h). {renew}"]
     assert warned(time.time() + 48 * 3600 + 60) == []
     assert warned(time.time() + 48 * 3600 + 60, {"containment": {"lead": {"login_warning_h": 72}}}) == [
         "aew opencode: your stored openai login expires in 48 h (named when 72 h or less is left: "
-        f"containment.lead.login_warning_h). When it has expired, run {step}"]
-    assert warned(time.time() - 60) == [f"aew opencode: your stored openai login has expired. Run {step}"]
+        f"containment.lead.login_warning_h). {renew}"]
+    assert warned(time.time() - 60) == [
+        "aew opencode: your stored openai login has expired. Run `opencode auth list` at your own terminal: your "
+        "OpenCode refreshes it there, and the Lead's next request then works, with no restart."]
+
+
+def test_a_fresh_login_is_what_the_relay_reads_next(tmp_path):
+    """Addendum 3, ruling 2: the warning's step works because OpenCode 2.0.18 stores a fresh login as a new row,
+    active over the provider's others (`Credential.create`, in the pinned bundle), and the relay reads the active
+    row on its next request."""
+    db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-old", time.time() + 3600), 1)])
+    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    assert resolve()[0] == "synthetic-access-old"
+    con = sqlite3.connect(db)  # what Credential.create does, in one transaction
+    con.execute("UPDATE credential SET active = 0 WHERE integration_id = 'openai'")
+    con.execute("INSERT INTO credential VALUES ('cred_new', 'openai', 'OpenAI 2', ?, NULL, 'chatgpt-browser', 1, 2, 2)",
+                (json.dumps(chatgpt("synthetic-access-fresh", time.time() + 240 * 3600)),))
+    con.commit()
+    con.close()
+    assert resolve()[0] == "synthetic-access-fresh"
+
+
+def test_a_launch_without_a_stored_opencode_key_says_nothing_of_it(tmp_path, at_a_terminal):
+    """Addendum 3, ruling 1: the stored opencode key's start line appears only when the operator's store holds one
+    (its presence: test_each_api_key_login_of_a_known_provider_is_relayed_and_the_others_say_why)."""
+    store(tmp_path, [r for r in key_rows() if r[0] == "anthropic"])
+    out = io.StringIO()
+    contained(tmp_path).announce(out)
+    assert "anthropic (key): relayed" in out.getvalue()
+    assert "opencode (" not in out.getvalue() and "not served" not in out.getvalue()
+
+
+def test_the_start_stages_are_timed_in_order_for_the_label(monkeypatch, caplog):
+    """Addendum 3: each start stage's seconds, in the order they ran, for the session's label, and at debug level."""
+    clock = iter([10.0, 10.5, 12.0, 27.25])
+    monkeypatch.setattr(lead.time, "monotonic", lambda: next(clock))
+    stages = lead.StartStages()
+    with caplog.at_level("DEBUG", logger=lead.__name__):
+        for name in ("version", "logins", "sandbox"):
+            stages.mark(name)
+    assert stages.seconds == {"version": 0.5, "logins": 1.5, "sandbox": 15.25}
+    assert list(stages.seconds) == ["version", "logins", "sandbox"]
+    assert "aew opencode: start stage sandbox took 15.250 s" in caplog.text
 
 
 def test_the_login_warning_hours_come_from_the_execution_policy_else_24():

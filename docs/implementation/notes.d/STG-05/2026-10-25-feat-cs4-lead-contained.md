@@ -1,6 +1,6 @@
 **STG-05 CS-4 (2026-10-25): the Lead contained.** On Linux, `aew opencode` runs the Lead's OpenCode TUI in a
 self-tested `lead` sandbox, on a network of its own, on a terminal AEW relays, and the session still works as the
-operator's own did. ADR-0009's amendment of 2026-10-25 says how; the designer's CS-4 hand-off and its addenda 1 and 2
+operator's own did. ADR-0009's amendment of 2026-10-25 says how; the designer's CS-4 hand-off and its addenda 1 to 3
 are the source.
 
 - **The sandbox (R-2):** role `lead`, mode `required` unless the policy says `allow_weaker` (then labelled
@@ -23,7 +23,9 @@ are the source.
   next request then works, with no restart. Inside, the Lead's own login store holds a row with the relay's sentinel.
 - **The login's expiry and its shape (addendum 2, ruling 1):** the operator's token lasts about 240 h, so option (a)
   stands. The launch names a login with `containment.lead.login_warning_h` hours or fewer left (default 24), its
-  time left and the same step; it only warns. The store is read as the operator's own OpenCode wrote it: a
+  time left and a fresh login as the step to take now, since OpenCode stores one as a new active row with a new
+  expiry (addendum 3, ruling 2, read in the pinned bundle); it only warns. Each start stage's seconds go on the
+  session's label (`start_s`) and to the debug log (addendum 3), for the five unexplained 15 to 31 s starts. The store is read as the operator's own OpenCode wrote it: a
   provider's row in a shape other than OpenCode 2.0.18's two is refused, at the start and on a request, naming the
   provider and what serves it instead, and never guessed at.
 - **The Lead's own OpenCode state:** per project, between sessions; the operator's TUI preferences come in at each

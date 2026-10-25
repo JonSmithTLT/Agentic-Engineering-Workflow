@@ -1415,8 +1415,8 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
 
 ## Amendment 2026-10-25 — the Lead contained (STG-05 CS-4; F28 decision 2)
 
-The designer's CS-4 hand-off and its addenda 1 and 2 (design workspace `8b4bd05`, `146f204`, `655930b`), with the
-rulings R-2, R-7 and ST-38. On Linux, `aew opencode` runs the Lead's OpenCode TUI contained, and the session still works as the
+The designer's CS-4 hand-off and its addenda 1 to 3 (design workspace `8b4bd05`, `146f204`, `655930b`, `b1c59d8`),
+with the rulings R-2, R-7 and ST-38. On Linux, `aew opencode` runs the Lead's OpenCode TUI contained, and the session still works as the
 operator's own did: the TUI at their terminal, their stored provider logins, Lead commands through the broker.
 
 ### The session (`opencode/lead.py`, `lead_broker.run_session`)
@@ -1441,6 +1441,9 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **The CLI inside** is a non-writer (`aew (contained Lead)` in `process_kind`): it reads lock-free, and its
   Lead-authenticated commands go through the broker, which holds the credential and the control lock. A write that
   meets the read-only store is refused as `PERMISSION_DENIED`, reason `lead_contained`, never a traceback.
+- **Its start, timed** (addendum 3): each stage's seconds (`version`, `logins`, `seat`, `sandbox`, `network`,
+  `lead_logins`; `lead.StartStages`) go on the label as `start_s` and to the debug log. Five early starts of 15 to
+  31 s on the Rocky VM went unexplained, so a recurrence names its stage.
 
 ### The network (F28 decision 2; `netns.RunNetwork.start_lead`)
 - `proxy_only`, with an egress proxy whose policy is any public address (`egress.AnyPublic`). Both `HTTPS_PROXY`
@@ -1466,8 +1469,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **Close to expiry** (addendum 2, ruling 1): the operator's measured token lasts about 240 h, so no session
   outlasts it, and option (a) stands; but their own OpenCode refreshes a login only in its last 5 minutes, so while
   they work contained it can lapse. When a login the relay serves has `containment.lead.login_warning_h` hours or
-  fewer left (default 24, one working day's session), the launch names the provider, the time left and the same
-  step; an expired one is named as expired. It only warns, and holds no token.
+  fewer left (default 24, one working day's session), the launch names the provider, the time left and the step the
+  operator can take now: a fresh login (`opencode auth login <provider>`), which OpenCode 2.0.18 stores as a new
+  row, active over the provider's others, with a new expiry (addendum 3, ruling 2; `Credential.create`, read in the
+  pinned bundle), so the relay's next request reads it. An expired one is named as expired, with the expiry
+  message's step. It only warns, and holds no token.
 - **Not relayed, and said at the start:** opencode's own key (addendum 2, ruling 2: its models carry their own
   catalog address, so a provider-level `baseURL` does not reach them). It fails closed: the key, stored or in the
   environment, never goes inside, and without it OpenCode 2.0.18 offers only the free opencode models (it turns off
@@ -1530,9 +1536,9 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 ### Tests
 - `tests/integration/test_lead_contained_session.py` (Linux): the session at a terminal the test holds, through the
   broker from the sandbox, with rows 1 to 6, the environment, the label, the system-text line and the terminal given
-  back, the operator's preferences without their plugins and their recent models without their prompt history;
-  each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode's key
-  not served and not inside; the ChatGPT login relayed as stored, named as expired at the launch, then refreshed
+  back, the start's stages timed on the label, the operator's preferences without their plugins and their recent
+  models without their prompt history; each stored provider relayed with only sentinels inside, `--provider-env`
+  feeding google's relay, opencode's key not served and nowhere in the Lead's view; the ChatGPT login relayed as stored, named as expired at the launch, then refreshed
   twice by the operator's own OpenCode within one session, the account header the stored one, nothing of the login
   inside and nothing of the operator's written; a failing self-test refused under `required` and labelled under
   `allow_weaker`.
@@ -1557,6 +1563,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   logins read, the refusal that frees the seat, the read-only store's typed refusal; the stored login re-read on
   each request, expired within the margin, gone or changed kind, and never written; a row in a shape AEW does not
   know, unread and never passed over for an older one, refused and named at the start and on a request; the launch's
-  warning within the policy's hours, and the key that sets them; the provider variables in the environment and the
-  start with no provider; the Lead's own login row; the preferences without their plugins; the recent models seeded
+  warning within the policy's hours, naming a fresh login, and the key that sets them; a fresh login read on the
+  next request; no opencode line without a stored opencode key; the start stages timed; the provider variables in
+  the environment and the start with no provider; the Lead's own login row; the preferences without their plugins; the recent models seeded
   once, never the prompt history.

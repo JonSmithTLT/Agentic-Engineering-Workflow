@@ -65,6 +65,10 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert label["network"]["mode"] == "proxy_only" and label["network"]["egress_policy"] == "any_public"
         run_dir = lab.aew_root / "local" / "harness" / "runs" / label["session"]
         assert json.loads((run_dir / "label.json").read_text())["session"] == label["session"]
+        # addendum 3: each start stage's seconds, so a slow start names its stage
+        assert list(label["start_s"]) == ["version", "logins", "seat", "sandbox", "network"], label["start_s"]
+        assert all(isinstance(s, float) and s >= 0 for s in label["start_s"].values())
+        assert json.loads((run_dir / "label.json").read_text())["start_s"] == label["start_s"]
         assert done["restored"]
         assert json.loads((tui / "tui-argv.json").read_text()) == ["--standalone", str(lab.root)]
 
@@ -137,9 +141,13 @@ def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_ho
             # empty under the mask, or absent where the home is under /tmp, private inside (the mask itself:
             # tests/integration/test_lead_containment.py, whose home is not)
             assert all(seen in ([], False) for seen in inside["visible"].values()), inside["visible"]
-            # addendum 2, ruling 2: the stored opencode key fails closed, said at the start
+            # addendum 2, ruling 2 (and addendum 3's two halves): the stored opencode key fails closed, said at the
+            # start, and the Lead's view holds no key: not its environment, nor anything it read, nor its own store
             assert "opencode (key): not served yet: OpenCode's catalog gives each opencode/* model an address of its " \
                    "own" in done["stderr"]
+            assert KEYS["opencode"] not in json.dumps(inside)
+            own = lab.aew_root / "local" / "harness" / "lead" / "xdg-data" / "opencode"
+            assert not any(KEYS["opencode"].encode() in p.read_bytes() for p in own.glob("*") if p.is_file())
             assert "--provider-env GOOGLE_GENERATIVE_AI_API_KEY feeds the google relay on the host" in done["stderr"]
         finally:
             lab.cleanup()
@@ -193,6 +201,7 @@ def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_ref
             assert "aew opencode: your stored openai login has expired. Run `opencode auth list` at your own " \
                    "terminal" in done["stderr"]
             assert done["result"]["containment"]["network"]["provider_relays"] == {"openai": up.url}
+            assert "lead_logins" in done["result"]["containment"]["start_s"]  # its rows are a stage of their own
             inside = json.loads((tui / "inside.json").read_text())
             status, body = inside["calls"]["openai"]
             assert status == 401, inside["calls"]

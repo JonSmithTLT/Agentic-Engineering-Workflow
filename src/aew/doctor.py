@@ -47,7 +47,7 @@ def environment_checks() -> list[dict[str, str]]:
     and the other checks still run (doctor reports, never crashes; review of #230, m5)."""
     checks: list[dict[str, str]] = []
     for name, check in (("platform", platform_qualification), ("python", _python), ("git", _git),
-                        ("modules", _modules), ("yaml", _yaml)):
+                        ("modules", _modules), ("yaml", _yaml), ("capability", _capabilities)):
         try:
             found = check()
         except Exception as exc:
@@ -94,6 +94,15 @@ def _yaml() -> dict[str, str]:
         return _check("yaml", "PASS", "libyaml: PyYAML's C parser and emitter read and write the control state")
     return _check("yaml", "WARN", "pure-python: this PyYAML has no libyaml, so every command reads and writes the "
                   "control state several times slower on a large project; install a PyYAML built with libyaml")
+
+
+def _capabilities() -> list[dict[str, str]]:
+    """One line per capability of the register (STG-15, CAP-1), read from the status ``aew capability list`` shows
+    (S01-21): the host's, so shown outside a project too. WARN, never FAIL, where one is not usable: no provider is
+    required for AEW to run (CAPR-12)."""
+    from aew.capability import ops
+
+    return [_check(name, status, detail) for name, status, detail in ops.doctor_checks()]
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:

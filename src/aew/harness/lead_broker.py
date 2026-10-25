@@ -89,8 +89,12 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
                      frozenset({"operator", "ping"}))
+# The capability register's operator changes (STG-15, CAP-1; the designer's ruling 1): they change what every
+# contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
+OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
+                     frozenset({"capability", "remove"}), frozenset({"capability", "host-copies"}))
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
-OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT
+OPERATOR_ONLY = CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -144,6 +148,10 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
     if any(p <= path for p in OPERATOR_DECIDED):
         return (f"`aew {command_name(ns)}` is the operator's decision, made at their own terminal; a Lead session "
                 "cannot run it or record it as theirs: ask the operator")
+    if any(p <= path for p in OPERATOR_REGISTER):
+        return (f"`aew {command_name(ns)}` changes the capability register, which every contained run reads, so it is "
+                "the operator's, approved at the operator endpoint in their own terminal; a Lead session cannot run "
+                "it: `aew capability list` shows the register, and the operator makes the change")
     if any(p <= path for p in OPERATOR_ENDPOINT):
         return (f"`aew {command_name(ns)}` is the operator's, through the operator endpoint in their own terminal; a "
                 "Lead session can neither raise its own steering mode nor reach the endpoint: request a raise with "

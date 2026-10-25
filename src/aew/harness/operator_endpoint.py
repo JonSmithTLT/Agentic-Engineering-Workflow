@@ -25,7 +25,9 @@ operator principal cannot be shown distinct from the Lead host's. What a same-ui
 
 The protocol is the dashboard control channel's (F20.3): one JSON request per connection, ``{op, args}``, never pickle,
 bounded size, one challenge at a time. E2's operations are ``ping`` and ``mode_raise``; ``confirm`` (M4-E E7c), the
-publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1).
+publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3 amendment 1). ``capability_change``
+is the capability register's operator changes (CAP-1; the designer's ruling 1): the register is per host, so a
+project's endpoint authorizes a change every project on the host reads.
 
 **Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
 whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
@@ -299,6 +301,8 @@ class OperatorEndpoint:
                     reply: dict[str, Any] = {"ok": True, "result": self.ping()}
                 elif op == "mode_raise":
                     reply = {"ok": True, "result": self._mode_raise(conn, args)}
+                elif op == "capability_change":
+                    reply = {"ok": True, "result": self._capability_change(conn, args)}
                 else:
                     raise errors.PermissionDenied(f"the operator endpoint does not offer {op!r}",
                                                   offered=list(OPERATIONS))
@@ -343,22 +347,61 @@ class OperatorEndpoint:
                             "(not here); anything else there refuses."))
             conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
                                                                "bound": bound}}).encode("utf-8"))
-            if not conn.poll(self.timeout):
-                self.console("\n(the `aew lead mode raise` request timed out; the code is void)\n")
-                raise errors.PermissionDenied("operator authorization timed out")
-            op, answer = _request(conn.recv_bytes(MAX_MESSAGE))
-            given = str(answer.get("code", "")).strip().upper() if op == "answer" else ""
-            if not hmac.compare_digest(given, code):
-                self.console("\n(the `aew lead mode raise` request was refused: wrong code)\n")
-                raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
-            principal = OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX"
-                                          else "named_pipe", endpoint_pid=self.pid,
-                                          endpoint_started_at=self.started_at)
+            principal = self._await_code(conn, code, "aew lead mode raise")
             with self._engine_lock:
                 out = self.engine.steering_raise(principal, mode=mode, generation=bound["generation"],
                                                  legality_digest=bound["legality_digest"])
             self.console(f"\n(steering mode raised to {mode} for Lead generation {bound['generation']}: "
                          f"{out['record']})\n")
+            return out
+        finally:
+            self._authorizing.release()
+
+    def _await_code(self, conn: Any, code: str, command: str) -> OperatorPrincipal:
+        """The code typed back at the requesting terminal, within the timeout: the operator principal of this one
+        request, or refused."""
+        if not conn.poll(self.timeout):
+            self.console(f"\n(the `{command}` request timed out; the code is void)\n")
+            raise errors.PermissionDenied("operator authorization timed out")
+        op, answer = _request(conn.recv_bytes(MAX_MESSAGE))
+        given = str(answer.get("code", "")).strip().upper() if op == "answer" else ""
+        if not hmac.compare_digest(given, code):
+            self.console(f"\n(the `{command}` request was refused: wrong code)\n")
+            raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
+        return OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX" else "named_pipe",
+                                 endpoint_pid=self.pid, endpoint_started_at=self.started_at)
+
+    def _capability_change(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        """One change to this host's capability register (CAP-1; the designer's ruling 1): previewed here, shown on
+        this console, and applied here, exactly as shown, once the operator typed its code back at the requesting
+        terminal. Its import's archives are the bytes this process read for the preview, never read again."""
+        from aew.capability import ops
+
+        kind = str(args.get("change") or "")
+        change_args: dict[str, Any] = args["args"] if isinstance(args.get("args"), dict) else {}
+        requester = str(args.get("requester") or "unknown")[:400]
+        command = f"aew capability {kind.replace('_', '-')}"
+        if not self._authorizing.acquire(blocking=False):
+            raise errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
+                                          "after it is answered or times out")
+        try:
+            change = ops.preview(kind, change_args)  # refused here before the operator is asked
+            code = operator.new_code()
+            self.console(operator.challenge(
+                code,
+                "CHANGE this host's capability register, which every project and every contained run on this host "
+                "reads:\n" + "\n".join(change.lines) + f"\n  change digest       : {change.digest}\n"
+                f"  guarantee           : {GUARANTEE} (not production authority until F18.6)",
+                requested_by=f"{requester} (as reported by the requester; the code below is the authorization)",
+                destination="the capability register (no credential is issued)",
+                instruction=f"Type the confirmation code {code} into the terminal that ran `{command}` (not here); "
+                            "anything else there refuses."))
+            conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
+                                                               "change": change.lines, "digest": change.digest}},
+                                       default=str).encode("utf-8"))
+            principal = self._await_code(conn, code, command)
+            out = ops.apply(principal, change)
+            self.console(f"\n(capability register changed by `{command}`, recorded at {out['recorded']})\n")
             return out
         finally:
             self._authorizing.release()

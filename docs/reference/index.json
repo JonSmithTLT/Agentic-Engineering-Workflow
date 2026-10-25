@@ -1,34 +1,34 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 394,
-      "lower-bound": 649
+      "complete-by-construction": 401,
+      "lower-bound": 672
     },
     "by_family": {
-      "cli-commands": 109,
+      "cli-commands": 115,
       "command-refusals": 72,
       "commands": 10,
-      "concurrency": 14,
+      "concurrency": 15,
       "configuration-states": 6,
       "control-keys": 92,
       "dashboard-routes": 24,
       "entry-points": 6,
       "guards": 11,
       "layout": 59,
-      "modules": 177,
+      "modules": 184,
       "reason-rules": 56,
-      "schemas": 30,
+      "schemas": 31,
       "sqlite-tables": 10,
       "states": 17,
       "stg02-routes": 24,
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 213
+      "writers": 228
     },
     "by_family_and_coverage": {
       "cli-commands": {
-        "complete-by-construction": 109
+        "complete-by-construction": 115
       },
       "command-refusals": {
         "complete-by-construction": 72
@@ -38,7 +38,7 @@
       },
       "concurrency": {
         "complete-by-construction": 1,
-        "lower-bound": 13
+        "lower-bound": 14
       },
       "configuration-states": {
         "complete-by-construction": 6
@@ -61,13 +61,13 @@
         "lower-bound": 59
       },
       "modules": {
-        "lower-bound": 177
+        "lower-bound": 184
       },
       "reason-rules": {
         "complete-by-construction": 56
       },
       "schemas": {
-        "complete-by-construction": 30
+        "complete-by-construction": 31
       },
       "sqlite-tables": {
         "lower-bound": 10
@@ -89,14 +89,20 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 213
+        "lower-bound": 228
       }
     },
-    "digest": "sha256:f1d6e8f67be966d6557d9e2a6cbe0dc6f105f8540df08cf7cf096e7190caea69",
-    "records": 1043,
-    "unresolved": 77
+    "digest": "sha256:daa5e8aed3aa85447737030522ac6335d2683cf956dfcc3791c6fbd8babb4a46",
+    "records": 1073,
+    "unresolved": 92
   },
   "gaps": [
+    {
+      "family": "concurrency",
+      "module": "aew.capability.store",
+      "symbol": "locked",
+      "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+    },
     {
       "family": "concurrency",
       "module": "aew.dashboard.service",
@@ -279,6 +285,66 @@
     },
     {
       "family": "writers",
+      "module": "aew.capability.payload",
+      "symbol": "discard",
+      "why": "shutil.rmtree of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.payload",
+      "symbol": "install",
+      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.payload",
+      "symbol": "install",
+      "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.payload",
+      "symbol": "install",
+      "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.payload",
+      "symbol": "install",
+      "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.store",
+      "symbol": "locked",
+      "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.store",
+      "symbol": "record_change",
+      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.store",
+      "symbol": "record_change",
+      "why": "open of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/changes.jsonl`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.store",
+      "symbol": "write",
+      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.capability.store",
+      "symbol": "write",
+      "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
       "module": "aew.engine.context_ops",
       "symbol": "ContextPacks.build_pack",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
@@ -324,6 +390,30 @@
       "module": "aew.engine.integration_ops",
       "symbol": "Integration._finish_publish",
       "why": "no static call chain from any entry point's declaring function reaches this writer"
+    },
+    {
+      "family": "writers",
+      "module": "aew.engine.lock",
+      "symbol": "FileLock._join_queue",
+      "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.engine.lock",
+      "symbol": "FileLock._join_queue",
+      "why": "open of a path this reading cannot place: a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.engine.lock",
+      "symbol": "FileLock._open",
+      "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.engine.lock",
+      "symbol": "FileLock._open",
+      "why": "open of a path this reading cannot place: a relative path, `aew/capability/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
@@ -631,6 +721,156 @@
         "surface_map": {
           "file": "docs/implementation/surface-map.yaml",
           "name": "authority reject",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability add": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "_add"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability add",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability add",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability check": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "_check"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability check",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability check",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability host-copies": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "register"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability host-copies",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability host-copies",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability import": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "register"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability import",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability import",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability list": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "_list"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability list",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability list",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:capability remove": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": "register"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "capability remove",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "capability remove",
           "section": "commands"
         }
       },
@@ -7202,6 +7442,72 @@
             {
               "module": "aew.harness.operator_endpoint",
               "symbol": "OperatorEndpoint._claim",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        }
+      },
+      "family": "concurrency"
+    },
+    "concurrency:lock:unplaced:aew.capability.store:locked": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "locked"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "locked",
+            "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+          }
+        ]
+      },
+      "fact": {
+        "control": false,
+        "lock": "unplaced:aew.capability.store:locked",
+        "openers": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "locked"
+          }
+        ],
+        "refused_in_non_writer": false,
+        "takers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "module": "aew.capability.store",
+            "operation": null,
+            "symbol": "locked"
+          }
+        ],
+        "timeout": "LOCK_TIMEOUT_S",
+        "unplaced_why": "the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "fact_coverage": {
+        "openers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.capability.store",
+              "symbol": "locked",
+              "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
+            }
+          ]
+        },
+        "takers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.capability.store",
+              "symbol": "locked",
               "why": "a lock taken another way than a `FileLock` construction (an in-process `threading` lock, SQLite's own, an `os.O_EXCL` file), a `FileLock` reached under another name, and a call of an opener this reading does not resolve are not seen"
             }
           ]
@@ -16609,6 +16915,135 @@
         "aew.cli.main"
       ]
     },
+    "modules:aew.capability": {
+      "anchor": {
+        "module": "aew.capability",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": true,
+        "path": "src/aew/capability/__init__.py"
+      },
+      "family": "modules",
+      "imports": []
+    },
+    "modules:aew.capability.ops": {
+      "anchor": {
+        "module": "aew.capability.ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/capability/ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.capability.payload",
+        "aew.capability.records",
+        "aew.capability.status",
+        "aew.capability.store",
+        "aew.engine.steering",
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.capability.payload": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/capability/payload.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.capability.store",
+        "aew.errors",
+        "aew.util"
+      ]
+    },
+    "modules:aew.capability.records": {
+      "anchor": {
+        "module": "aew.capability.records",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/capability/records.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
+    "modules:aew.capability.status": {
+      "anchor": {
+        "module": "aew.capability.status",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/capability/status.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.capability.payload",
+        "aew.capability.records",
+        "aew.capability.store",
+        "aew.errors",
+        "aew.harness.agentenv",
+        "aew.harness.opencode.adapter"
+      ]
+    },
+    "modules:aew.capability.store": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/capability/store.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.lock",
+        "aew.errors",
+        "aew.util"
+      ]
+    },
     "modules:aew.cli": {
       "anchor": {
         "module": "aew.cli",
@@ -16626,6 +17061,30 @@
       "family": "modules",
       "imports": []
     },
+    "modules:aew.cli.capability_commands": {
+      "anchor": {
+        "module": "aew.cli.capability_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/capability_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.capability.ops",
+        "aew.cli.commands",
+        "aew.engine.custody_ops",
+        "aew.errors",
+        "aew.harness.operator_client",
+        "aew.operator"
+      ]
+    },
     "modules:aew.cli.commands": {
       "anchor": {
         "module": "aew.cli.commands",
@@ -16642,6 +17101,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.cli.capability_commands",
         "aew.cli.dashboard_commands",
         "aew.cli.history_commands",
         "aew.cli.map_commands",
@@ -17270,6 +17730,7 @@
       "family": "modules",
       "imports": [
         "aew",
+        "aew.capability.ops",
         "aew.engine.api",
         "aew.util"
       ]
@@ -19200,6 +19661,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.capability.ops",
         "aew.engine.lock",
         "aew.engine.steering",
         "aew.errors",
@@ -21762,6 +22224,117 @@
         "via": "transition"
       },
       "family": "reason-rules"
+    },
+    "schemas:capability-records": {
+      "anchor": {
+        "module": "aew.schemas",
+        "symbol": "SCHEMAS"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+          "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "file": "capability-records.schema.json",
+        "id": "aew/capability-records/v1",
+        "name": "capability-records",
+        "properties": {
+          "providers": "object",
+          "providers.*": "object",
+          "providers.*.capabilities": "array",
+          "providers.*.capabilities[]": "string",
+          "providers.*.command": "string",
+          "providers.*.description": "string",
+          "providers.*.effect": "enum",
+          "providers.*.evidence": "string",
+          "providers.*.health": "object",
+          "providers.*.health.fixture": "object",
+          "providers.*.health.fixture.args": "array",
+          "providers.*.health.fixture.args[]": "string",
+          "providers.*.health.fixture.expect": "string",
+          "providers.*.health.fixture.files": "object",
+          "providers.*.health.fixture.files.*": "string",
+          "providers.*.health.version": "object",
+          "providers.*.health.version.args": "array",
+          "providers.*.health.version.args[]": "string",
+          "providers.*.health.version.expect": "string",
+          "providers.*.license": "string",
+          "providers.*.needs": "object",
+          "providers.*.needs.credentials": "boolean",
+          "providers.*.needs.network": "boolean",
+          "providers.*.needs.providers": "array",
+          "providers.*.needs.providers[]": "string",
+          "providers.*.path": "enum",
+          "providers.*.payloads": "object",
+          "providers.*.payloads.*": "object",
+          "providers.*.payloads.*.archive_sha256": "string",
+          "providers.*.payloads.*.archive_size": "integer",
+          "providers.*.payloads.*.member": "string",
+          "providers.*.payloads.*.sha256": "string",
+          "providers.*.payloads.*.size": "integer",
+          "providers.*.payloads.*.source": "string",
+          "providers.*.placement": "enum",
+          "providers.*.type": "enum",
+          "providers.*.version": "string",
+          "schema": "const"
+        },
+        "registered": true,
+        "required": [
+          "providers",
+          "providers.*.capabilities",
+          "providers.*.command",
+          "providers.*.effect",
+          "providers.*.evidence",
+          "providers.*.health",
+          "providers.*.health.fixture",
+          "providers.*.health.fixture.args",
+          "providers.*.health.fixture.expect",
+          "providers.*.health.fixture.files",
+          "providers.*.health.version",
+          "providers.*.health.version.args",
+          "providers.*.health.version.expect",
+          "providers.*.needs",
+          "providers.*.needs.credentials",
+          "providers.*.needs.network",
+          "providers.*.needs.providers",
+          "providers.*.path",
+          "providers.*.payloads",
+          "providers.*.payloads.*.archive_sha256",
+          "providers.*.payloads.*.archive_size",
+          "providers.*.payloads.*.member",
+          "providers.*.payloads.*.sha256",
+          "providers.*.payloads.*.size",
+          "providers.*.payloads.*.source",
+          "providers.*.placement",
+          "providers.*.type",
+          "providers.*.version",
+          "schema"
+        ]
+      },
+      "fact_coverage": {
+        "properties": {
+          "check": [
+            "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+            "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.schemas:SCHEMAS"
+        },
+        "required": {
+          "check": [
+            "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+            "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.schemas:SCHEMAS"
+        }
+      },
+      "family": "schemas"
     },
     "schemas:checks": {
       "anchor": {
@@ -38231,6 +38804,23 @@
       },
       "family": "writers"
     },
+    "writers:outside:aew.capability.status:health:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.capability.status",
+        "symbol": "health"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
+        "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
     "writers:outside:aew.cli.credentials:_open_terminal:open": {
       "anchor": {
         "module": "aew.cli.credentials",
@@ -40680,6 +41270,236 @@
       },
       "family": "writers"
     },
+    "writers:unresolved:aew.capability.payload:discard:shutil.rmtree": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": "discard"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.payload",
+            "symbol": "discard",
+            "why": "shutil.rmtree of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "shutil.rmtree",
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.payload:install:Path.mkdir": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": "install"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.payload",
+            "symbol": "install",
+            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.payload:install:Path.unlink": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": "install"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.payload",
+            "symbol": "install",
+            "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.payload:install:os.replace": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": "install"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.payload",
+            "symbol": "install",
+            "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "os.replace",
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.payload:install:write_temp": {
+      "anchor": {
+        "module": "aew.capability.payload",
+        "symbol": "install"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.payload",
+            "symbol": "install",
+            "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "write_temp",
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.store:locked:Path.mkdir": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "locked"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "locked",
+            "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.store:record_change:Path.mkdir": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "record_change"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "record_change",
+            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "`root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.store:record_change:open": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "record_change"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "record_change",
+            "why": "open of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/changes.jsonl`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "reason": "`root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/changes.jsonl`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.store:write:Path.mkdir": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "write"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "write",
+            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "`root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.capability.store:write:atomic_write": {
+      "anchor": {
+        "module": "aew.capability.store",
+        "symbol": "write"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.capability.store",
+            "symbol": "write",
+            "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "atomic_write",
+        "reason": "`root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
     "writers:unresolved:aew.engine.faults:pause:open": {
       "anchor": {
         "module": "aew.engine.faults",
@@ -40700,6 +41520,98 @@
         "mechanism": "direct",
         "primitive": "open",
         "reason": "element 2 of `item.partition(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.engine.lock:FileLock._join_queue:Path.mkdir": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.engine.lock:FileLock._join_queue:open": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._join_queue"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._join_queue",
+            "why": "open of a path this reading cannot place: a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "reason": "a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.engine.lock:FileLock._open:Path.mkdir": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._open"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._open",
+            "why": "Path.mkdir of a path this reading cannot place: a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.mkdir",
+        "reason": "a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.engine.lock:FileLock._open:open": {
+      "anchor": {
+        "module": "aew.engine.lock",
+        "symbol": "FileLock._open"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lock",
+            "symbol": "FileLock._open",
+            "why": "open of a path this reading cannot place: a relative path, `aew/capability/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "open",
+        "reason": "a relative path, `aew/capability/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },

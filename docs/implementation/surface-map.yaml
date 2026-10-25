@@ -1493,6 +1493,61 @@ commands:
     probe: [[settings, show], [settings, show, execution]]
     refusals: [INTEGRITY_ERROR, PROJECT_NOT_FOUND, USAGE]
     note: "F46.1; the read half of `settings set` (proposed, F46.2). INTEGRITY_ERROR: a damaged control.yaml"
+  # The capability register (STG-15, CAP-1; A-38 CAPR-05; the designer's CAP-1 ruling 1). `list` and `check` need no
+  # authorization; the four changes are the operator's, approved at the operator endpoint (OPERATOR_ENDPOINT).
+  - name: capability list
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: derives each capability's status from the host's register, its records and its payloads"
+    probe: [[capability, list], [capability, list, --json]]
+    refusals: [USAGE]
+    note: "outside any project: the register is the host's"
+  - name: capability check
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "writes the health checks' results to the host's register, and fetches payloads to existing pins"
+    lead_disposition: forbidden-to-lead
+    lead_kept_out_by: "capability_commands.refuse_lead_session: refused where a Lead session's environment is present"
+    primitive: none
+    primitive_reason: "host state outside the control engine: no engine primitive runs it"
+    keep_out_probe: [capability, check, --offline]
+    refusals: [LOCK_TIMEOUT, NOT_FOUND, PERMISSION_DENIED, USAGE]
+    note: "changes no record or setting, so it changes no authority (CAPR-05); NOT_FOUND: an unknown selector"
+  - name: capability import
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "asks the operator endpoint to install the bundle's pinned payloads into the host's register"
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
+    note: "NOT_FOUND: no operator endpoint runs, or no bundle there; PERMISSION_DENIED: refused at the endpoint"
+  - name: capability add
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "asks the operator endpoint to add an operator record to the host's register, once validated"
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
+               VALIDATION_FAILED]
+    note: "VALIDATION_FAILED: the record, its payload's pin or its health check failed, and nothing changed"
+  - name: capability remove
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "asks the operator endpoint to remove an operator record from the host's register"
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
+  - name: capability host-copies
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "asks the operator endpoint to turn the host's own copies on or off in the host's register"
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
   - name: message thread
     home: diagnostic
     users: [operator, lead]

@@ -206,6 +206,26 @@ def policy_pins(root: Path) -> dict[str, str | None]:
     return {rel: sha256_file(aew / rel) if (aew / rel).is_file() else None for rel in policy_files(load_manifest(aew))}
 
 
+@pytest.fixture(scope="session")
+def capability_register_dir(tmp_path_factory) -> Path:
+    return tmp_path_factory.mktemp("capability-register")
+
+
+@pytest.fixture(autouse=True)
+def capability_register(capability_register_dir):
+    """No test reads or writes this host's own capability register in process (STG-15, CAP-1): the register is the
+    session's own directory, and a test that needs an empty one sets ``aew.capability.store.ROOT_OVERRIDE`` itself.
+    An `aew` a test starts as a process reads the host's, which only `aew capability` changes. (Not through
+    ``monkeypatch``: an autouse fixture that takes it would undo every test's ``setenv`` after ``process_isolation``
+    looks.)"""
+    from aew.capability import store
+
+    saved = store.ROOT_OVERRIDE
+    store.ROOT_OVERRIDE = capability_register_dir
+    yield capability_register_dir
+    store.ROOT_OVERRIDE = saved
+
+
 @pytest.fixture
 def repo(tmp_path) -> Path:
     return make_git_repo(tmp_path / "repo", {

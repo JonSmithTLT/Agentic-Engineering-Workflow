@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/capability-records/v1",
+  "title": "Capability provider records",
+  "description": "The capability register's provider records (STG-15, A-38: CAPR-02), one shape for AEW's shipped records and the operator's (CAPR-13). A record names the capabilities it serves in D-01's form, where it runs, what it can change, its pinned payload for each platform, and its health check: a version check and a fixture query.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "providers"],
+  "properties": {
+    "schema": {"const": "aew/capability-records/v1"},
+    "providers": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]{0,63}$"},
+      "additionalProperties": {"$ref": "#/$defs/provider"}
+    }
+  },
+  "$defs": {
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command", "capabilities", "placement", "effect", "path", "evidence", "needs", "version",
+                   "payloads", "health"],
+      "properties": {
+        "description": {"type": "string", "maxLength": 300},
+        "type": {"description": "CLI only until MCP providers come (CAPR-11).", "enum": ["cli"]},
+        "command": {"description": "The executable's plain name, as the harness and the agents call it.",
+                    "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+        "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true,
+                         "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$", "maxLength": 64}},
+        "placement": {"description": "Where it runs (CAPR-07). Host placement is a protected change, not built yet.",
+                      "enum": ["sandbox", "host"]},
+        "effect": {"description": "Whether it only reads its inputs, or can change them.",
+                   "enum": ["read_only", "changes_inputs"]},
+        "path": {"description": "Where AEW's copy goes on a contained context's PATH: `first` only where the harness needs the plain name (CAPR-04); otherwise under its own name only.",
+                 "enum": ["first", "own_name"]},
+        "evidence": {"description": "The highest kind of evidence its output can be admitted as (CAPR-09).",
+                     "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        "license": {"type": "string", "maxLength": 100},
+        "needs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["network", "credentials", "providers"],
+          "properties": {
+            "network": {"type": "boolean"},
+            "credentials": {"type": "boolean"},
+            "providers": {"type": "array", "uniqueItems": true,
+                          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+          }
+        },
+        "version": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$"},
+        "payloads": {
+          "description": "The pinned payload for each platform, keyed `<os>-<machine>` (linux-x86_64, linux-aarch64, windows-x86_64). A platform with none reads UNSUPPORTED.",
+          "type": "object",
+          "propertyNames": {"pattern": "^(linux|windows|darwin)-(x86_64|aarch64)$"},
+          "additionalProperties": {"$ref": "#/$defs/payload"}
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "fixture"],
+          "properties": {
+            "version": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["args", "expect"],
+              "properties": {
+                "args": {"$ref": "#/$defs/args"},
+                "expect": {"description": "The start of the first line it prints.", "type": "string",
+                           "minLength": 1, "maxLength": 200}
+              }
+            },
+            "fixture": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["files", "args", "expect"],
+              "properties": {
+                "files": {"type": "object", "minProperties": 1, "maxProperties": 16,
+                          "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+                          "additionalProperties": {"type": "string", "maxLength": 4096}},
+                "args": {"$ref": "#/$defs/args"},
+                "expect": {"description": "Exactly what it prints, surrounding whitespace aside.", "type": "string",
+                           "maxLength": 4096}
+              }
+            }
+          }
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "archive_sha256", "archive_size", "member", "sha256", "size"],
+      "properties": {
+        "source": {"description": "Where the online fetch takes the archive from.", "type": "string",
+                   "pattern": "^https://[^\\s]+/[^/\\s]+\\.(tar\\.gz|zip)$", "maxLength": 500},
+        "archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "archive_size": {"description": "The archive's size: a fetch or an import that reads more is refused.",
+                         "type": "integer", "minimum": 1},
+        "member": {"description": "The executable's path in the archive.", "type": "string",
+                   "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$", "maxLength": 300},
+        "sha256": {"description": "The executable's own digest, checked at fetch, at import and at every check.",
+                   "type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 1}
+      }
+    },
+    "args": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 300}}
+  }
+}

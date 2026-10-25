@@ -1,5 +1,6 @@
-"""A return from escalation, or a reconcile after an interruption, meets the gates of the phase it enters (EW-U06.f;
-R1-D2; option C of the R1 plan v4, the designer's ruling of 2026-10-25).
+"""A return from escalation meets the gates of the phase it enters, and a reconcile after an interruption meets the
+guard of the Lead's direct edge from the interrupted phase, where the table has one (EW-U06.f; R1-D2; option C of the
+R1 plan v4, the designer's ruling of 2026-10-25).
 
 Through the Lead's direct edge from the phase the unit left, the return meets that edge's guard; otherwise it meets
 the gate guards of the Lead's own entries into the phase, asked through their query forms, and is refused where one
@@ -27,11 +28,12 @@ from invariants import assert_control_invariants
 
 from aew.engine import transitions as T
 from aew.engine.api import Engine
-from aew.engine.guards import AVAILABLE, BLOCKED
+from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
 from aew.engine.seams import GATE, MUTATING, NON_MUTATING
 from aew.engine.store import Transition
 from aew.errors import AEWError
 from aew.knowledge.manifest import DEFAULT_GATES
+from aew.util import dump_yaml, load_yaml
 
 REQUIRED_FINDING = [{"id": "F1", "severity": "major", "summary": "missing negative test", "required": True}]
 PRE_REVIEW_KINDS = {"check_result", "implementation_report"}  # what the pre-review gates count (local_checks, ...)
@@ -61,6 +63,14 @@ def refused(p, wid, to, reason_code, *, verb=("work", "transition")):
     return out["details"]
 
 
+def relied_pre_review(p, wid) -> set[str]:
+    """The evidence the pre-review gates (local_checks, self_review) count now: what a recheck of them relies on."""
+    gates = p.ok("gate", "show", wid)["gates"]
+    return {i for g in ("local_checks", "self_review")
+            for i in [gates[g].get("evidence"), *(c.get("evidence") for c in gates[g].get("checks", {}).values())]
+            if isinstance(i, str)}
+
+
 def seed(p, mutate) -> None:
     """Put a unit into a state with one plain commit (the class test reaches every origin this way)."""
     engine = Engine.discover(p.root)
@@ -84,7 +94,9 @@ def test_a_return_from_escalation_never_skips_the_findings_a_rework_round_needs(
     assert details["guard"] == "findings_recorded"
     assert "requires recorded review findings" in details["refused"]["message"]
     assert details["instead"][0] == {"option": "meet_the_guard", "guard": "findings_recorded"}
-    assert {"option": "return_to", "to": "REVIEW_PENDING"} in details["instead"]
+    # Only the returns the hub admits now are named: VERIFY_PENDING is beyond the phase left.
+    assert [o for o in details["instead"] if o["option"] == "return_to"] == [{"option": "return_to",
+                                                                              "to": "REVIEW_PENDING"}]
     assert details["instead"][-1] == {"option": "leave_to", "to": ["CANCELLED", "REPLAN_REQUIRED"]}
     # The remedy: return to review (its gate rechecked: admitted), where the findings are recorded; then rework.
     move(p, wid, "REVIEW_PENDING", "a new review records what failed")
@@ -116,10 +128,7 @@ def test_a_return_to_review_rechecks_its_gates_and_pins_what_it_relied_on(tmp_pa
     seed(p, lambda s: s["work"][wid].update(
         evidence=[r for r in s["work"][wid]["evidence"] if r["kind"] not in PRE_REVIEW_KINDS]))
     move(p, wid, "REVIEW_PENDING")
-    gates = p.ok("gate", "show", wid)["gates"]
-    relied = {i for g in ("local_checks", "self_review")
-              for i in [gates[g].get("evidence"), *(c.get("evidence") for c in gates[g].get("checks", {}).values())]
-              if isinstance(i, str)}
+    relied = relied_pre_review(p, wid)
     assert len(relied) == 2 and relied <= {r["id"] for r in show(p, wid)["evidence"]}
     # A pre-review gate goes stale during escalation: the return is refused with the gate guard's own refusal.
     move(p, wid, "ESCALATED")
@@ -154,6 +163,65 @@ def test_a_return_to_verification_without_review_rechecks_the_entry_the_gates_ch
     assert details["guard"] == "ready_for_verification_without_review"
     move(p, wid, "RUNNING")
     implement(redispatch_implementer(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    assert show(p, wid)["state"] == "VERIFY_PENDING"
+    assert_control_invariants(p)
+
+
+def test_a_return_to_verification_after_review_rechecks_that_the_review_is_current(tmp_path):
+    """Where a review gate applies, a return to VERIFY_PENDING meets `review_current`, the guard of the Lead's entry
+    after review: admitted while the review is of what is there now, pinning the pre-review evidence it relied on;
+    refused by `review_current` itself after an edit nobody reviewed, naming the way back (rework through RUNNING),
+    which is then taken through review to verification."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    implement(impl)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    move(p, wid, "ESCALATED")
+    # Planted: the pre-review pins are cleared during escalation; the return pins the evidence its recheck relied on.
+    seed(p, lambda s: s["work"][wid].update(
+        evidence=[r for r in s["work"][wid]["evidence"] if r["kind"] not in PRE_REVIEW_KINDS]))
+    move(p, wid, "VERIFY_PENDING")
+    relied = relied_pre_review(p, wid)
+    assert len(relied) == 2 and relied <= {r["id"] for r in show(p, wid)["evidence"]}
+    # An edit nobody reviewed, during escalation: the return is refused with review_current's own refusal.
+    move(p, wid, "ESCALATED")
+    impl.write({"calc/core.py": "def add(a, b):\n    return a + b\n# changed while escalated\n"})
+    details = refused(p, wid, "VERIFY_PENDING", "entry_guard_unmet")
+    assert details["guard"] == "review_current"
+    assert details["refused"]["message"].startswith("REVIEW_PASSED -> VERIFY_PENDING: gates not satisfied")
+    assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
+    # The remedy: rework through RUNNING, a review of the new change, then the Lead's own entry into verification.
+    move(p, wid, "RUNNING")
+    implement(redispatch_implementer(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    assert show(p, wid)["state"] == "VERIFY_PENDING"
+    assert_control_invariants(p)
+
+
+def test_a_return_to_review_once_no_review_gate_applies_is_refused_by_its_entry_guard(tmp_path):
+    """The review gate stops applying during escalation (the operator adopts a policy whose class path has none): a
+    return to REVIEW_PENDING meets `ready_for_review` against current state and is refused by it, naming the way on,
+    back to RUNNING, from where the Lead's own entry into verification without review is taken."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    move(p, wid, "ESCALATED")
+    path = p.root / ".aew/policy/gates.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy["risk_paths"]["1"] = [g for g in policy["risk_paths"]["1"] if not g.startswith("review_")]
+    path.write_text(dump_yaml(policy), encoding="utf-8")
+    p.adopt_policy()
+    details = refused(p, wid, "REVIEW_PENDING", "entry_guard_unmet")
+    assert details["guard"] == "ready_for_review" and "no review gate applies" in details["refused"]["message"]
+    assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
+    move(p, wid, "RUNNING")
     p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
     assert show(p, wid)["state"] == "VERIFY_PENDING"
     assert_control_invariants(p)
@@ -198,9 +266,9 @@ def test_a_return_beyond_the_phase_left_names_the_phases_it_may_enter(tmp_path):
     assert_control_invariants(p)
 
 
-def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None, dict[str, Any] | None]:
+def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None, dict[str, Any] | None, str | None]:
     """Ask the transition's guard, then execute it on the same state: the same answer either way (M4-E E4).
-    Returns (``admitted`` or the code, the reason code, the refusal's details)."""
+    Returns (``admitted`` or the code, the reason code, the refusal's details, its message)."""
     answer = engine.guard_query("work.transition", wid, {"to": to, "reason": "r"})
     rev = engine.store.read()["revision"]
     try:
@@ -210,16 +278,17 @@ def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None
         [blocker] = answer["blocking_conditions"]
         assert (blocker["code"], blocker["message"]) == (exc.code, exc.message)
         assert engine.store.read()["revision"] == rev
-        return exc.code, exc.details.get("reason"), dict(exc.details)
+        return exc.code, exc.details.get("reason"), dict(exc.details), exc.message
     assert answer["availability"] == AVAILABLE, (to, answer)
-    return "admitted", None, None
+    return "admitted", None, None, None
 
 
 def test_every_escalation_return_meets_what_the_phase_it_enters_requires(tmp_path):
     """Every (origin, target) pair the transition table allows through ESCALATED, for both Ticket kinds, on a unit
     whose gates are not met. Each return answers as the Lead's own entry into the target would, run through the real
     transition: from the origin where the table has that direct edge, else from the phase the gates choose (a
-    non-mutating Ticket's gated entries cannot be rechecked: refused). The guard's query equals its execution."""
+    non-mutating Ticket's gated entries cannot be rechecked: refused). A refused return names the guard of that entry,
+    with that entry's own refusal. The guard's query equals its execution."""
     p = sample_project(tmp_path)
     units = {MUTATING: create_planned_ticket(p, tmp_path), NON_MUTATING: create_investigation(p, tmp_path)}
     engine = Engine.discover(p.root)
@@ -256,8 +325,10 @@ def test_every_escalation_return_meets_what_the_phase_it_enters_requires(tmp_pat
                 if direct[0] == "admitted":
                     assert got[0] == "admitted", (kind, origin, to, got)
                 else:
-                    assert got[:2] == ("GATE_UNSATISFIED", why) and got[2]["refused"]["code"] == direct[0], (
-                        kind, origin, to, got, direct)
+                    assert got[:2] == ("GATE_UNSATISFIED", why) and got[2] is not None, (kind, origin, to, got, direct)
+                    refusal = got[2]["refused"]
+                    assert (got[2]["guard"], refusal["code"], refusal["message"]) == (
+                        T.RULES[(source, to)].guard, direct[0], direct[3]), (kind, origin, to, got, direct)
     assert {("admitted", None), ("GATE_UNSATISFIED", "beyond_the_phase_left"),
             ("GATE_UNSATISFIED", "direct_edge_guard_unmet"), ("GATE_UNSATISFIED", "entry_guard_unmet"),
             ("GATE_UNSATISFIED", "entry_guard_not_queryable")} <= seen
@@ -266,29 +337,66 @@ def test_every_escalation_return_meets_what_the_phase_it_enters_requires(tmp_pat
 def test_a_return_with_no_guard_to_recheck_is_refused_and_names_one_that_has(tmp_path, monkeypatch):
     """Fail closed (R1-D2: an unqualified return is refused): a return to a phase whose entry guard has no role for the
     unit's kind, or whose Lead entries have no guard at all, is refused. Neither arises in today's table (the role test
-    holds every entry's role); both are planted in the engine, and the named return is taken."""
+    holds every entry's role); the first is planted in the guard table, the second in the transition table (the
+    Lead's own edge RUNNING -> REVIEW_PENDING dropped, so only the hub's own return enters the phase), and the named
+    return is taken."""
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     implement(assign(p, wid))
     engine = Engine.discover(p.root)
-    guards, role_of, entries = engine._units.guards, engine._units.guards.role_of, T.lead_entry_guards
+    guards, role_of = engine._units.guards, engine._units.guards.role_of
     plants = {
         "entry_guard_unclassified": lambda: monkeypatch.setattr(
             guards, "role_of", lambda name, unit: None if name == "ready_for_review" else role_of(name, unit)),
-        "no_entry_guard": lambda: monkeypatch.setattr(
-            T, "lead_entry_guards", lambda to, besides=None: [] if to == "REVIEW_PENDING" else entries(to, besides)),
+        "no_entry_guard": lambda: monkeypatch.delitem(T.RULES, ("RUNNING", "REVIEW_PENDING")),
     }
     for reason, plant in plants.items():
         p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
         move(p, wid, "ESCALATED")
         plant()
-        code, why, details = _attempt(engine, p, wid, "REVIEW_PENDING")
+        code, why, details, _ = _attempt(engine, p, wid, "REVIEW_PENDING")
         assert (code, why) == ("GATE_UNSATISFIED", reason) and details is not None, (code, why, details)
         assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
         engine.work_transition(token=p.token, expect_rev=engine.store.read()["revision"], work_id=wid, to="RUNNING",
                                reason="the named return")
         assert show(p, wid)["state"] == "RUNNING"
         monkeypatch.undo()
+    assert_control_invariants(p)
+
+
+def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the_reconcile(tmp_path, monkeypatch):
+    """Where the guard of the Lead's direct edge has no query form for the unit's kind, a return through it (or a
+    reconcile) cannot be answered beforehand, and its transaction runs that guard itself: refused without the
+    findings, admitted with them. Planted: the mutating kind's `findings_recorded` query removed from the guard
+    table."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid, disposition="changes_required"))
+    move(p, wid, "ESCALATED")
+    engine = Engine.discover(p.root)
+    monkeypatch.delitem(engine._units.guards._queries, ("findings_recorded", MUTATING))
+
+    def attempt(op: Any) -> AEWError | None:
+        rev = engine.store.read()["revision"]
+        try:
+            op(token=p.token, expect_rev=rev, work_id=wid, to="RUNNING", reason="the operator answered")
+        except AEWError as exc:
+            assert engine.store.read()["revision"] == rev
+            return exc
+        return None
+
+    assert engine.guard_query("work.transition", wid, {"to": "RUNNING", "reason": "r"})["availability"] == UNKNOWN
+    for op, hub in ((engine.work_transition, "ESCALATED"), (engine.work_reconcile, "INTERRUPTED")):
+        seed(p, lambda s, h=hub: s["work"][wid].update(state=h, findings=[], **{
+            "escalated_from" if h == "ESCALATED" else "interrupted_from": "REVIEW_FAILED"}))
+        exc = attempt(op)
+        assert exc is not None and exc.code == "GATE_UNSATISFIED", (hub, exc)
+        assert "requires recorded review findings" in exc.message, (hub, exc.message)
+        # Planted control: with an open required finding, the guard admits the same move.
+        seed(p, lambda s: s["work"][wid].update(findings=[{**REQUIRED_FINDING[0], "status": "open"}]))
+        assert attempt(op) is None and show(p, wid)["state"] == "RUNNING", hub
     assert_control_invariants(p)
 
 

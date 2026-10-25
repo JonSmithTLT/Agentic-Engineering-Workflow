@@ -38,7 +38,8 @@ ENTRY_GUARD_NOT_QUERYABLE = "entry_guard_not_queryable"  # that gate guard has n
 ENTRY_GUARD_UNCLASSIFIED = "entry_guard_unclassified"  # an entry guard has no role, or several gate guards no rule
 NO_ENTRY_GUARD = "no_entry_guard"  # the Lead's own entries into the phase have no guard: nothing to recheck
 _HUB_RULE = {"ESCALATED": "a return from escalation meets the gates of the phase it enters (EW-U06.f)",
-             "INTERRUPTED": "a reconcile after an interruption meets the gates of the phase it enters (EW-U06.f)"}
+             "INTERRUPTED": "a reconcile after an interruption meets the guard of the Lead's direct edge from the "
+                            "interrupted phase, where the table has one (EW-U06.f)"}
 _HUB_VERB = {"ESCALATED": "return it", "INTERRUPTED": "reconcile it"}
 
 

@@ -131,8 +131,9 @@ AEW's deterministic machinery may produce check evidence under a custody invocat
 
 ## Amendment 2026-10-25 — a return through a hub meets the gates of the phase it enters (EW-U06.f, register E85)
 
-A return from escalation, or a reconcile after an interruption, meets the gates of the phase it enters. The table is
-unchanged: no edge is added or removed.
+A return from escalation meets the gates of the phase it enters. A reconcile after an interruption meets the guard of
+the Lead's direct edge from the interrupted phase, where the table has one. The table is unchanged: no edge is added
+or removed.
 
 - **Through the Lead's direct edge.** Where the table has the Lead's own edge from the phase the unit left (the
   `transition` rule from `escalated_from`, or from `interrupted_from`) to the phase it enters, the return or reconcile
@@ -154,6 +155,10 @@ unchanged: no edge is added or removed.
   `beyond_the_phase_left`), the guard and its own refusal, and
   `instead`: meet what the guard requires, return to another phase the hub admits now, or leave the hub (its
   unguarded exits, read from the table).
+- **The reconcile's limit.** A reconcile meets no entry guard of the phase it enters: where the table has no Lead edge
+  from the interrupted phase to that phase, it meets the phase bound alone (by the R1 plan's design). Today the table
+  yields one guarded pair, REVIEW_FAILED -> RUNNING, and the engine's own interrupt never leaves a unit interrupted
+  from REVIEW_FAILED. `work.reconcile` has no guard query, so its projected availability is still `UNKNOWN`.
 - **Placement.** The return is `Gates.return_admitted` (`engine/evidence_ops.py`), not `WorkUnits`, because it reads
   the gate context, VERIFY_PENDING's choice and the pinning, which `Gates` owns. `Gates` receives the guard table
   through its constructor; the reconcile's recheck stays with `WorkUnits`.

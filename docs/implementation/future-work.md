@@ -32,15 +32,16 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 | # | Row | Item |
 |---|---|---|
-| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (PRs 4 to 9 merged; PR 10 open as #268) |
+| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (all merged: PR 10 as #268, `a4d81bae`) |
 | 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
-| 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (building) |
-| 5 | E84, E85 | two of the trace's FIX rows, taken ahead of their milestone (building) |
+| 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 starts from CS-4's merge) |
+| 5 | E85 | two of the trace's FIX rows, taken ahead of their milestone (E84 merged as #274, `c81eb233`, and closed; E85 open as #279) |
 | 6 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 7 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building: G3-A open as #269) |
+| 7 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, building) |
 | 8 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 9 | STG-13 | V-01's oracle rebuilt |
+| 10 | STG-14 | I-6, the resource model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established |
 
 **Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E84 and E85 (item 5) come before H-1 and CS-4: the operator took them ahead of their milestone on 2026-10-25 (in chat).
 
@@ -58,13 +59,13 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7; O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report)
 
-**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`)
+**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`); A-40, WIS's research statements (adopted by the operator on 2026-10-25, design workspace `44156d0`), from which research's minimum slice is briefed
 
 ### **Internal alpha**
 
-**Done when:** **The trace's removals and FIX rows are done** (S12-6). **The hold groups** the operator keeps for alpha are re-sourced and built
+**Done when:** **The trace's removals and FIX rows are done** (S12-6). **The hold groups** the operator keeps for alpha are re-sourced and built. **AEW is packaged for the operator's own trial:** an install the operator can run on their own machine and on a managed Linux host. The trial's order is the operator's: AEW's first real job is SPT's backlog, then the issues it turns up are fixed, then the operator uses AEW on that host and brings the feedback back
 
-**Source:** A-35; the register rebaseline (design workspace, `b598fdc`)
+**Source:** A-35; the register rebaseline (design workspace, `b598fdc`); the operator's decision of 2026-10-25 on the triage's ST-46 (design workspace `0d6292f`)
 
 ### **Before a provider that requires a client certificate is used**
 
@@ -141,6 +142,18 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
 *Later notes: `notes.d/STG-13/`, oldest first (`python tools/register.py show STG-13`).*
+
+### STG-14
+
+**Work:** I-6, the resource model and host policy: the first of the wire increments V-01 needs, with O-01 0.8 (42 actions) as the selected command wire
+
+**Source (governing):** A-39, I-6 at revision 3 (adopted by the operator on 2026-10-25, design workspace `43e14c0`)
+
+**Belongs to or gated by:** **Stage.** STG-14; after V-01's oracle in the Now list (§1), unless the operator moves it. A contract, not an activation: its protected rows stay held until G3 is established, which is once CS-4 lands
+
+**Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
+
+*Later notes: `notes.d/STG-14/`, oldest first (`python tools/register.py show STG-14`).*
 
 ### STG-15
 
@@ -875,18 +888,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
 
-### E84
-
-**Work:** A move keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations
-
-**Source:** STG-12's S12-4 trace, FIX claim of that name (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
-
-**When:** **Now**, one of the trace's FIX rows (S12-6), taken ahead of its milestone (the operator, in chat, 2026-10-25)
-
-**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
-
-*Later notes: `notes.d/E84/`, oldest first (`python tools/register.py show E84`).*
-
 ### E85
 
 **Work:** A return from escalation rechecks the gates of the phase it returns to (EW-U06.f), as the designer ruled on 2026-10-25
@@ -898,6 +899,102 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
+
+### E87
+
+**Work:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3 and 3.12a, which cover a move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names
+
+**Source:** The designer's follow-on after E84, from the operator's decision on S12-4's first flags batch (design workspace `fb1fabe`, "a link the Lead needs"); FLAG-12 keeps `carried_obligations` for it under `EW-U05.g` (the second batch, design workspace `ca01a32`)
+
+**When:** **Unscheduled**: FLAG-12 clears when it is built
+
+**Notes:** Filed by the Lead after #274 merged. The plan's design is its starting point, not its authority: F4 is held in HOLD-08
+
+*Later notes: `notes.d/E87/`, oldest first (`python tools/register.py show E87`).*
+
+### E88
+
+**Work:** Remove nine reserved keys from `src/aew/schemas/ticket-field-registry.v1.json`'s bookkeeping list, as one change: FLAG-08's seven (`recorded_digests`, `revisions`, `revision_events`, `revision_impact_holds`, `revision_pending`, `revision_refusals`, `ticket_revision`) and FLAG-11's two (`hierarchy_baseline`, `coverage_obligations`). Check first that `coordination-message.schema.json`'s required `ticket_revision` field, which `coordination_ops` writes as null, does not rely on the registry's entry
+
+**Source:** The operator's decisions on S12-4's flags: the first batch with its correction (design workspace `fb1fabe`) and the second batch (`ca01a32`)
+
+**When:** **Internal alpha**, one of the trace's removals (S12-6)
+
+**Notes:** Reserved keys removed, F4 still held in HOLD-08: removing the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry's meta-test (invariant 50) makes each later F4 slice add its key back before writing it
+
+*Later notes: `notes.d/E88/`, oldest first (`python tools/register.py show E88`).*
+
+### E89
+
+**Work:** Re-point `spec_set` at the published contracts once D-A's first publication lands (FLAG-09). Retiring it instead would need a schema change, since `control.schema.json` requires it, and a read-as for old state
+
+**Source:** The operator's decision on S12-4's first flags batch (design workspace `fb1fabe`)
+
+**When:** **Internal alpha**, one of the trace's changes (S12-6), once D-A's first publication lands
+
+**Notes:** Filed by the Lead from the decision record
+
+*Later notes: `notes.d/E89/`, oldest first (`python tools/register.py show E89`).*
+
+### E90
+
+**Work:** An authority check must not read a failed check as "authority held". `LeadBroker._authority_lost` and `SteeringLoop._authority_lost` both catch `AEWError` and answer "still the Lead", so a lock timeout hides a lost seat until a check succeeds. Find every such handler mechanically (a check over the `_authority_lost`-style handlers that catch `AEWError`, not one instance at a time), and surface the last swallowed error in the beat or heartbeat that R-DEC-03's supervision reads
+
+**Source:** The root-cause analysis behind #276 (the notifier's superseded case); the second instance, found on 2026-10-25 and checked on `main`; R-DEC-03, the built supervision set (the operator, 2026-10-25, design workspace `e1f1920`); the designer's ask that the row say how every instance is found
+
+**When:** **Unscheduled**
+
+**Notes:** The engine still refuses a superseded broker's requests, so no authority is gained: the defect is a seat loss that goes unseen and unrecorded
+
+*Later notes: `notes.d/E90/`, oldest first (`python tools/register.py show E90`).*
+
+### E91
+
+**Work:** A static check that every pin in `tests/platform-skips.yaml` sits under the platform its module's `skipif` skips. A pin under the wrong platform turns `assurance` red only in CI
+
+**Source:** The quick check of #269, which found skip pins under `linux` for tests skipped on `win32`; its reviewer proposed the check as the class's mechanism
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E91/`, oldest first (`python tools/register.py show E91`).*
+
+### E92
+
+**Work:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them. The proxy is CONNECT only, so CS-4 refuses them and names the https form
+
+**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25)
+
+**When:** **Unscheduled**: after CS-4 merges
+
+**Notes:** It restricts nothing the threat model asks for (the designer)
+
+*Later notes: `notes.d/E92/`, oldest first (`python tools/register.py show E92`).*
+
+### E93
+
+**Work:** Serve a stored OpenCode (Zen) key to the contained Lead: map each `opencode/*` model's catalogue address from a pinned copy of the catalogue, never the live one. Each such model carries its own address, so a provider-level override does not catch it, and AEW cannot see the live catalogue
+
+**Source:** CS-4's hand-off, addendum 2, ruling 2 (design workspace `655930b`)
+
+**When:** **On measured need**: the operator has no stored Zen key, and CS-4 fails closed with a message naming the provider
+
+**Notes:** The builder's start line is its input (addendum 2); the Lead adds it as a note when the builder sends it
+
+*Later notes: `notes.d/E93/`, oldest first (`python tools/register.py show E93`).*
+
+### E94
+
+**Work:** The web package refresh (S3), from a source commit the web developer picks
+
+**Source:** The operator's decision of 2026-10-25 on the triage's ST-07 (design workspace `0d6292f`): it stays a target, as one row held in HOLD-12
+
+**When:** **After the trace**, held in HOLD-12 (A-12). Not built before V-01, unless the operator moves it
+
+**Notes:** Owned by the web developer. Its acceptance follows their S3 preparation checklist of 2026-10-11
+
+*Later notes: `notes.d/E94/`, oldest first (`python tools/register.py show E94`).*
 
 ### E47
 
@@ -1574,6 +1671,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** held in HOLD-09
 
 *Later notes: `notes.d/E78/`, oldest first (`python tools/register.py show E78`).*
+
+### E84
+
+**Was:** A move or a promotion keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations. One of the trace's FIX rows (S12-6), taken ahead of its milestone
+
+**Closed:** 2026-10-25
+
+**By:** #274 (`c81eb233`): a move or a promotion that would lower the moved work's class floor or drop an inherited non-waivable gate is refused (`OBLIGATIONS_DROPPED`), with ADR-0007's amendment of 2026-10-25. Carrying the obligations instead is E87
+
+*Later notes: `notes.d/E84/`, oldest first (`python tools/register.py show E84`).*
 
 ### F1
 

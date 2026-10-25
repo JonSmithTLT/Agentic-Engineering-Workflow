@@ -332,14 +332,21 @@ def _masks(home: str | None, extra: list[str],
 
 def _env_masks(env: Mapping[str, str]) -> list[str]:
     """Credential paths the launching environment names rather than the home directory: the file ``XAUTHORITY`` names
-    (CB-04), and git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or
-    ``XDG_CONFIG_HOME``. Read in the process that makes the layout: a run's supervisor, whose environment is the
-    launching CLI's without AEW's own credentials (``harness_ops.supervisor_env``), or the CLI itself."""
+    (CB-04), git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or ``XDG_CONFIG_HOME``,
+    and OpenCode's login and configuration under a custom ``XDG_DATA_HOME`` or ``XDG_CONFIG_HOME``, with the login
+    database ``OPENCODE_DB`` names (STG-05 CS-4: the Lead's relays read it there, ``opencode.login``). Read in the
+    process that makes the layout: a run's supervisor, whose environment is the launching CLI's without AEW's own
+    credentials (``harness_ops.supervisor_env``), or the CLI itself."""
     out = [env["XAUTHORITY"]] if env.get("XAUTHORITY") else []
     if env.get("XDG_CACHE_HOME"):
         out.append(os.path.join(env["XDG_CACHE_HOME"], "git", "credential"))
     if env.get("XDG_CONFIG_HOME"):
-        out.append(os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"))
+        out += [os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"),
+                os.path.join(env["XDG_CONFIG_HOME"], "opencode")]
+    if env.get("XDG_DATA_HOME"):
+        out.append(os.path.join(env["XDG_DATA_HOME"], "opencode"))
+    if env.get("OPENCODE_DB") and os.path.isabs(env["OPENCODE_DB"]):
+        out.append(env["OPENCODE_DB"])
     return [os.path.expanduser(p) for p in out]
 
 

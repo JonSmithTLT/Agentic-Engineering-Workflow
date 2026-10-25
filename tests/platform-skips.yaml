@@ -367,6 +367,18 @@ skipped:
     tests/integration/test_lead_containment.py::test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_its_own_input: >-
       Linux bubblewrap containment of the Lead with its terminal relay (STG-05 CS-4); the Windows Lead runs labelled
       not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_contained_session.py::test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_relayed_terminal: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_holds_only_sentinels: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_labelled_under_allow_weaker: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.
@@ -537,5 +549,11 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker: >-
+      the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
+      CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_a_provider_key_reaches_the_lead_only_when_passed_explicitly: >-
+      the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
+      CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

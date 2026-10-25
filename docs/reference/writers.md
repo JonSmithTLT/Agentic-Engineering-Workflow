@@ -63,6 +63,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/events/run-{}.jsonl`: written or removed by `aew.harness.event_spool:_open_append` (direct: os.open); `aew.harness.event_spool:append` (direct: os.replace)
 - `local/events/{}.1.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/events/{}.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
+- `local/harness/lead`, named by `aew.harness.opencode.lead:LEAD_DIR`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/R-{}-{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
@@ -70,6 +71,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
 - `local/harness/runs/R-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/R-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/harness/runs/R-{}-{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/R-{}-{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/R-{}-{}/requests/{}`: written or removed by `aew.harness.runlog:take_requests` (direct: Path.unlink)
@@ -77,6 +79,16 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/supervisor.log`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.open)
+- `local/harness/runs/lead-{}-{}`: written or removed by `aew.harness.opencode.lead:ContainedLead.__call__` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
+- `local/harness/runs/lead-{}-{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
+- `local/harness/runs/lead-{}-{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
+- `local/harness/runs/lead-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/lead-{}-{}/label.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._record` (direct: Path.write_text)
+- `local/harness/runs/lead-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
@@ -84,6 +96,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
 - `local/harness/runs/{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/harness/runs/{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/{}/requests`: written or removed by `aew.harness.runlog:deliver_request` (direct: Path.mkdir)
@@ -128,6 +141,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/validation/{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
 - `local/validation/{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/validation/{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/validation/{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
 - `local/validation/{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/{}.json`: written or removed by `aew.engine.validation_ops:Validation._one_check` (direct: atomic_write)
@@ -204,18 +218,19 @@ A chain of resolved calls from the function where an entry point declares itself
 
 A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a context manager writes is attributed only to the roles that call it by name: the dashboard server takes its own lock file by `with self._lock():` (`aew.dashboard.service:Service.start`), and `local/dashboard/endpoint.lock` and `local/dashboard/endpoint.lock.queue` are listed under `aew` alone. The counts of writer functions reached below are lower bounds.
 
-The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
+The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 78; reached from at least one entry point: 56.
+Writer functions with a store-transaction or direct write placed under `.aew`: 81; reached from at least one entry point: 57.
 
-- `aew` (store_writer): 48 writer functions (24 write the store, 24 only under `local/`)
+- `aew` (store_writer): 49 writer functions (24 write the store, 25 only under `local/`)
+- `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
 - `aew lead mcp` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew.harness.supervisor` (store_writer): 11 writer functions (0 write the store, 11 only under `local/`)
+- `aew.harness.supervisor` (store_writer): 12 writer functions (0 write the store, 12 only under `local/`)
 - `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
-**Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
+**Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
 **Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the mechanism: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`
 **Not checked:** a write whose destination is not placed (the unresolved records) carries no role reach and is not checked; a handler that calls its engine method by a name held in a variable, and a `with` statement's implicit calls, are not followed, so the writers behind them are not attributed to the role that runs them; and what the worker role may write is `process_kind.require_writer`'s to refuse (above), not this reading's to prove.
 
@@ -243,10 +258,14 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.containment.probe:_self_test` (direct: Path.rmdir): a loop variable over `markers`, a list this reading cannot read
 - `aew.harness.containment.probe:_self_test` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read
 - `aew.harness.containment.probe:_self_test` (direct: Path.write_bytes): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal
+- `aew.harness.containment.probe:_self_test` (direct: Path.write_text): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal
 - `aew.harness.opencode.adapter:OpenCodeAdapter.launch` (direct: Path.mkdir): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:OpenCodeAdapter.launch` (direct: Path.write_text): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.adapter:server_env` (direct: Path.mkdir): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.opencode.client:Server.start` (direct: Path.open): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.opencode.lead:ContainedLead._inside` (direct: Path.mkdir): `directory` is bound by a `with`, an unpacking or an `except`
+- `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor._contain` (direct: shutil.rmtree): the attribute `self.layout.net_dir` is not a value this reading can follow
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
@@ -263,12 +282,12 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 Write sites whose destination this reading follows to a place outside `.aew`: each is a record, `outside:<module>:<symbol>:<primitive>`, with its root, so that nothing is dropped unseen. A site that also writes a path under `.aew` is a record there too.
 
-- a temporary directory: `aew.engine.history_ops:HistoryCommands.history_reindex` (Path.unlink), `aew.harness.bridge:stop_listener` (shutil.rmtree), `aew.harness.containment:_doctor` (Path.mkdir), `aew.harness.containment:_doctor` (shutil.rmtree), `aew.harness.containment:establish` (shutil.rmtree), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.write_bytes), `aew.harness.containment.layout:for_run` (os.makedirs), `aew.harness.containment.layout:private_git` (Path.mkdir), `aew.harness.containment.layout:private_git` (shutil.copy2), `aew.harness.containment.netns:RunNetwork.close` (shutil.rmtree), `aew.harness.containment.probe:_control` (shutil.rmtree), `aew.harness.containment.probe:_markers` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_bytes), `aew.harness.operator_endpoint:OperatorEndpoint.close` (shutil.rmtree), `aew.history.index:HistoryIndex._db` (Path.mkdir), `aew.history.index:HistoryIndex._db` (sqlite3.connect), `aew.history.index:HistoryIndex._rebuild` (Path.unlink), `aew.history.index:HistoryIndex._use_private_copy` (shutil.copy2), `aew.history.index:HistoryIndex.sync` (Path.unlink), `aew.snapshot.fingerprint:_staged_index` (shutil.copy2), `aew.snapshot.fingerprint:_staged_index` (shutil.rmtree), `aew.snapshot.fingerprint:_working_index` (shutil.copy2), `aew.snapshot.fingerprint:_working_index` (shutil.rmtree)
+- a temporary directory: `aew.engine.history_ops:HistoryCommands.history_reindex` (Path.unlink), `aew.harness.bridge:stop_listener` (shutil.rmtree), `aew.harness.containment:_doctor` (Path.mkdir), `aew.harness.containment:_doctor` (shutil.rmtree), `aew.harness.containment:establish` (shutil.rmtree), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.write_bytes), `aew.harness.containment.layout:for_run` (os.makedirs), `aew.harness.containment.layout:private_git` (Path.mkdir), `aew.harness.containment.layout:private_git` (shutil.copy2), `aew.harness.containment.netns:RunNetwork.close` (shutil.rmtree), `aew.harness.containment.probe:_control` (shutil.rmtree), `aew.harness.containment.probe:_markers` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.operator_endpoint:OperatorEndpoint.close` (shutil.rmtree), `aew.history.index:HistoryIndex._db` (Path.mkdir), `aew.history.index:HistoryIndex._db` (sqlite3.connect), `aew.history.index:HistoryIndex._rebuild` (Path.unlink), `aew.history.index:HistoryIndex._use_private_copy` (shutil.copy2), `aew.history.index:HistoryIndex.sync` (Path.unlink), `aew.snapshot.fingerprint:_staged_index` (shutil.copy2), `aew.snapshot.fingerprint:_staged_index` (shutil.rmtree), `aew.snapshot.fingerprint:_working_index` (shutil.copy2), `aew.snapshot.fingerprint:_working_index` (shutil.rmtree)
 - an absolute path: `aew.cli.credentials:_open_terminal` (os.open), `aew.operator:_ask_posix` (os.open), `aew.operator:has_terminal` (os.open)
 - an in-memory database: `aew.engine.recall:_Matcher.__init__` (sqlite3.connect), `aew.engine.recall:fts5_available` (sqlite3.connect)
 - the Windows console: `aew.cli.credentials:_open_terminal` (open), `aew.operator:_ask_windows` (open)
 - the null device: `aew.harness.supervisor:main` (open)
-- the repository's working tree: `aew.workspace.integration:_prune_empty_parents` (Path.rmdir), `aew.workspace.integration:sync_worktree` (Path.unlink)
+- the repository's working tree: `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.workspace.integration:_prune_empty_parents` (Path.rmdir), `aew.workspace.integration:sync_worktree` (Path.unlink)
 - the task workspaces' directory: `aew.workspace.worktrees:_clear_orphan` (shutil.rmtree), `aew.workspace.worktrees:allocate` (Path.mkdir), `aew.workspace.worktrees:allocate_detached` (Path.mkdir), `aew.workspace.worktrees:remove` (shutil.rmtree)
 
 The `.aew` directory itself (a directory is created or its parent listed, not a path under it): `aew.engine.store:store_dirs` (Path.mkdir)

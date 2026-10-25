@@ -808,6 +808,32 @@ def test_display_files_and_the_xauthority_file_are_masked_by_type_when_present(t
     assert run_layout(tmp_path / "bare", "reviewer", home=str(tmp_path / "empty")).display_files == ()
 
 
+def test_the_operators_opencode_login_and_configuration_are_masked_where_xdg_or_opencode_db_move_them(tmp_path,
+                                                                                                    fake_bwrap):
+    """STG-05 CS-4, outcome 2: the operator's OpenCode login and configuration are masked at their defaults and where
+    XDG_DATA_HOME, XDG_CONFIG_HOME or OPENCODE_DB put them, which is where the Lead's relays read the login
+    (``opencode.login.db_path``); a relative OPENCODE_DB is under the data directory, masked with it."""
+    from aew.harness.opencode import login
+
+    home, xdg = tmp_path / "home", tmp_path / "xdg"
+    for d in (home / ".local/share/opencode", home / ".config/opencode", xdg / "data/opencode",
+              xdg / "config/opencode"):
+        d.mkdir(parents=True)
+    named = tmp_path / "elsewhere" / "logins.db"
+    named.parent.mkdir()
+    named.write_text("SYNTHETIC\n")
+    env = {"XDG_DATA_HOME": str(xdg / "data"), "XDG_CONFIG_HOME": str(xdg / "config"), "OPENCODE_DB": str(named)}
+    layout = run_layout(tmp_path, "reviewer", home=str(home), env=env)
+    real = os.path.realpath
+    assert {real(home / ".local/share/opencode"), real(home / ".config/opencode"), real(xdg / "data/opencode"),
+            real(xdg / "config/opencode")} <= set(layout.hide_dirs)
+    assert real(named) in layout.hide_files and login.db_path(env) == named
+    relative = {**env, "OPENCODE_DB": "other.db"}
+    assert login.db_path(relative).parent == xdg / "data/opencode"  # inside a masked directory
+    bare = run_layout(tmp_path / "bare", "reviewer", home=str(home), env={})
+    assert real(xdg / "data/opencode") not in bare.hide_dirs and real(named) not in bare.hide_files
+
+
 def test_every_bwrap_argv_unsets_the_display_variables_and_starts_a_new_session():
     """CB-04 and CB-05 on every argv, whoever built the layout: no display or session variable, and no controlling
     terminal (bubblewrap's --new-session), so TIOCSTI has no terminal it would accept."""

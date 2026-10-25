@@ -93,7 +93,7 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
         repo_root = "."
         store = Store()
 
-    def tree(command, *, env, cwd):
+    def tree(command, *, env, cwd, relay=False):
         seen.append(("run", agentenv.env_fix("VENDOR_KEY")))
         return 0, "clean"
 

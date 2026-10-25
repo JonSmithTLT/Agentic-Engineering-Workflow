@@ -294,13 +294,42 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
 }
 
 
-def lead_config(guide: str = "") -> dict[str, Any]:
-    """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration.
+# Providers whose OpenCode 2.0.18 SDK opens a WebSocket first unless their transport is http, which the relay refuses
+# (measured on the Rocky VM, 2026-10-24: OpenAI's).
+WEBSOCKET_FIRST = frozenset({"openai"})
+
+
+def lead_contained_text(label: Mapping[str, Any]) -> str:
+    """The contained Lead's system-text line (STG-05 CS-4, outcome 7), from its session's label: what the session
+    reaches, that the rest is refused by design, and what to do instead of working around a refusal."""
+    net = label.get("network") or {}
+    relays = sorted(net.get("provider_relays") or {})
+    reach = ([f"your model providers {', '.join(f'`{p}`' for p in relays)} through AEW's relays"] if relays else []) \
+        + (["public addresses over https through `HTTPS_PROXY`"] if net.get("egress_policy") == "any_public" else [])
+    return (f"- This Lead session is contained (`{label.get('filesystem')}`, network `{net.get('mode')}`): only the "
+            "working tree is writable. `.aew/` and the git metadata are read-only, so a commit fails here, while "
+            "`git status`, `diff` and `log` work and your Lead `aew` commands still reach the broker, which writes "
+            "AEW state for you. The session reaches " + (" and ".join(reach) or "nothing outside it")
+            + ". The desktop, the clipboard bus, browser tools and private or host addresses are refused by design. "
+            "Do not work around a refusal: tell the operator what you needed and why, so they can do it at their own "
+            "terminal or widen AEW's containment settings where a setting exists.")
+
+
+def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
+                relays: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
+    contained Lead does not load (STG-05 CS-4).
 
     ``guide`` is the project's Lead guide (``aew guide``, F16), rendered from its own policy: appended to the Lead's
-    system text so every Lead works from how AEW actually runs here, not by trial and error."""
-    system = f"{LEAD_SYSTEM}\n\n{guide}" if guide else LEAD_SYSTEM
-    return {"share": "disabled", "default_agent": LEAD_AGENT,
+    system text so every Lead works from how AEW actually runs here, not by trial and error. ``contained`` is a
+    contained session's label, whose line the system text carries (:func:`lead_contained_text`), and ``relays`` its
+    relayed providers' ``baseURL`` (provider id -> the relay's loopback address inside): provider-level only, which
+    every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list."""
+    system = LEAD_SYSTEM + (f"\n{lead_contained_text(contained)}" if contained is not None else "")
+    system = f"{system}\n\n{guide}" if guide else system
+    providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
+                 for p, url in sorted((relays or {}).items())}
+    return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
             # The typed surface's server: spawned by OpenCode in the session's curated environment, with no
             # `environment` of its own (it holds no credential), and with Code Mode off so its tools are function
             # tools (2.0.18's default hides MCP tools behind one `execute` tool). Its execution timeout is left at the

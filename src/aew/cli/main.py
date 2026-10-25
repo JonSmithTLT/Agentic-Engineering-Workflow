@@ -189,12 +189,36 @@ def _run_main(argv: list[str]) -> int:
         return exc.exit_code
     except KeyboardInterrupt:
         return 130
+    except OSError as exc:
+        refusal = _contained_refusal(exc)
+        if refusal is None:
+            raise
+        sys.stderr.write(json.dumps({"ok": False, "error": refusal.to_dict()}, indent=2, default=str) + "\n")
+        return refusal.exit_code
     if result is not None:
         emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)
     return int(exit_status(result)) if exit_status is not None else 0
+
+
+def _contained_refusal(exc: OSError) -> AEWError | None:
+    """In the contained Lead's sandbox (STG-05 CS-4, outcome 7), a write that met its read-only `.aew/` or git metadata
+    is refused by design, and says so instead of a traceback. The variable that marks the sandbox shapes this message
+    only: the kernel refused the write."""
+    import errno
+
+    from aew import process_kind
+    from aew.errors import PermissionDenied
+
+    if exc.errno != errno.EROFS or not os.environ.get(process_kind.LEAD_CONTAINED_ENV):
+        return None
+    return PermissionDenied(
+        f"this Lead session is contained by design: {exc.filename or 'that path'} is read-only inside it, as are "
+        "`.aew/` and the git metadata. Lead-authenticated `aew` commands reach the session's broker, which writes AEW "
+        "state for you; anything else that writes them is for the operator, at their own terminal",
+        reason="lead_contained", path=str(exc.filename) if exc.filename else None)
 
 
 if __name__ == "__main__":

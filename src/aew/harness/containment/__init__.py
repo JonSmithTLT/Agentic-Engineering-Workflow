@@ -145,7 +145,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
                                own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
                                egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge,
-                               relayed_terminal=relayed_terminal)
+                               relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness")
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:

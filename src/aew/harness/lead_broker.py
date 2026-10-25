@@ -44,6 +44,8 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -479,12 +481,31 @@ def routes(args: argparse.Namespace) -> bool:
             and bool(os.environ.get(ENV_ENDPOINT)) and command_path(args) not in NOT_RELAYED)
 
 
+@dataclass
+class Harness:
+    """What a contained Lead session runs (STG-05 CS-4): ``argv`` with ``env``, on the terminal relay when ``relay``
+    (``procs.run_session_tree``); ``label`` is the session's containment label, and ``close`` ends what the session
+    holds outside its sandbox (its network)."""
+
+    argv: list[str]
+    env: dict[str, str]
+    relay: bool
+    label: dict[str, Any]
+    close: Callable[[], None]
+
+
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
-                keep_seat: bool, env: dict[str, str] | None = None) -> dict[str, Any]:
+                keep_seat: bool, env: dict[str, str] | None = None,
+                contained: Callable[[str | None, dict[str, str]], Harness] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
     adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
+
+    ``contained`` (the contained Lead, STG-05 CS-4) is called once the broker serves, with the broker's private
+    directory (which the sandbox binds in) and that environment, and returns what to run instead of ``command``: in
+    its sandbox, or, where the policy allows a weaker run, as it is, labelled so. When it refuses (containment
+    required and not established), nothing runs, and a seat this session acquired is released again.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -507,11 +528,26 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
         broker.start()
         child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
+        harness = None
+        if contained is not None:
+            try:
+                harness = contained(broker.server.private_dir, child_env)
+            except BaseException:
+                broker.close()
+                if acquire and not broker.superseded:  # nothing ran: the seat this session took is free again
+                    with contextlib.suppress(errors.AEWError):
+                        engine.lead_release(token=token, expect_rev=engine.store.current()["revision"])
+                raise
         try:
-            code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
+            code, ownership = run_session_tree(harness.argv if harness else command,
+                                               env=harness.env if harness else child_env, cwd=str(engine.repo_root),
+                                               relay=bool(harness and harness.relay))
         finally:
+            if harness is not None:
+                harness.close()
             broker.close()
-    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership}
+    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership,
+                           **({"containment": harness.label} if harness is not None else {})}
     state = engine.store.current()
     if acquire and not broker.superseded:
         active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")

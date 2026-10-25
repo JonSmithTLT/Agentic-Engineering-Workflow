@@ -559,7 +559,8 @@ def planted_egress(policy: Any, host_port: int) -> tuple[str, str]:
 
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
               env: Mapping[str, str] | None = None, egress_policy: Any = None,
-              bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None) -> dict[str, Any]:
+              bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None,
+              spec_dir: Path | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
     never raises for a containment failure (the caller decides by policy). ``tools`` says where, on the launching
     environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
@@ -569,10 +570,11 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     ``relayed_terminal`` is the Lead's (STG-05 CS-4, ruling R-7): the probe then runs on a pseudo-terminal the host
     owns, through the shim's controlling-terminal step, as the Lead's TUI runs on its relay's; row 4 checks that this
     terminal is the probe's controlling terminal and that ``forbid``, the launching terminal's device, is not open
-    inside."""
+    inside. Its standard input is that terminal, so its spec is a file in ``spec_dir``, which the sandbox must show
+    (the run's own harness directory; default ``sentinel_dir``)."""
     with _network(layout, egress_policy=egress_policy, bridge=bridge) as net:
         return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net,
-                          relayed_terminal=relayed_terminal)
+                          relayed_terminal=relayed_terminal, spec_dir=spec_dir)
 
 
 def tty_nr(major: int, minor: int) -> int:
@@ -601,7 +603,7 @@ def _stores(layout: Layout) -> list[dict[str, Any]]:
 
 def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...],
                env: Mapping[str, str] | None, net: dict[str, Any] | None,
-               relayed_terminal: Mapping[str, Any] | None = None) -> dict[str, Any]:
+               relayed_terminal: Mapping[str, Any] | None = None, spec_dir: Path | None = None) -> dict[str, Any]:
     from aew.harness.containment import netns
 
     name = f".aew-containment-probe-{secrets.token_hex(8)}"
@@ -634,7 +636,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
     probed = threading.Event()  # the sandbox has ended: the echo has its answer, or never will
     tty: dict[str, Any] | None = None
     fds: tuple[int, int] | None = None
-    spec_file = sentinel_dir / f"{name}.spec.json"
+    spec_file = (spec_dir or sentinel_dir) / f"{name}.spec.json"
     shim = dict(net["shim"]) if net else None
     if relayed_terminal is not None:  # the Lead's row 4: on a pseudo-terminal, through the shim's ctty step
         fds, tty = _relay_pty(relayed_terminal.get("forbid"))

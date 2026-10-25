@@ -47,9 +47,21 @@ SERVER_PORT, PROVIDER_PORT, EGRESS_PORT = 4100, 4101, 4102
 SERVER, RELAY, EGRESS = f"{NET_SHIM}/server.sock", "relay.sock", "egress.sock"
 SHIM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shim.py")
 # Provider upstreams AEW knows, by OpenCode's provider id: where OpenCode 2.0.18 itself sends that provider's requests
-# (measured on the Rocky VM, 2026-10-24: the free opencode/* models' catalog baseURL, and OpenAI's API). Any other
-# provider, or another upstream (an AEW Provider Gateway, F18.8), is named in containment.network.upstreams.
-UPSTREAMS = {"openai": "https://api.openai.com/v1", "opencode": "https://opencode.ai/inference/openai/v1"}
+# (measured on the Rocky VM: 2026-10-24, the free opencode/* models' catalog baseURL and OpenAI's API; 2026-10-25,
+# Anthropic's `/v1/messages` and Google's `/v1beta/models/...`, each through a relay at its provider-level baseURL). Any
+# other provider, or another upstream (an AEW Provider Gateway, F18.8), is named in containment.network.upstreams.
+UPSTREAMS = {"anthropic": "https://api.anthropic.com/v1", "google": "https://generativelanguage.googleapis.com/v1beta",
+             "openai": "https://api.openai.com/v1", "opencode": "https://opencode.ai/inference/openai/v1"}
+# The variable OpenCode 2.0.18 reads each provider's API key from (its integrations' `env` method), by provider id:
+# each carried a synthetic key to its relay on the Rocky VM (2026-10-25). The contained Lead's sentinel goes there.
+PROVIDER_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_GENERATIVE_AI_API_KEY",
+                    "openai": "OPENAI_API_KEY", "opencode": "OPENCODE_API_KEY"}
+# Providers whose models each carry an address of their own in OpenCode's catalog, which beats the provider-level
+# baseURL (measured, 2026-10-24 and 25): the Lead, which switches models from the live catalog, cannot point them at a
+# relay, so their key is never relayed for it (STG-05 CS-4). Their free models need no key and go out through egress.
+CATALOG_ADDRESSED = frozenset({"opencode"})
+# The contained Lead's relays, one per provider, on loopback ports inside from here up (4100-4102 are the workers').
+LEAD_RELAY_PORT = 4111
 PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
 # The designer's ruling on #246's P8, as the operator decided it (2026-10-24): the one-line form, for the label.
 EGRESS_RESIDUAL = ("egress (R-6): a destination the host's own network configuration, root's, rewrites to this host "
@@ -118,6 +130,11 @@ def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | 
     return {"in": [{"unix": os.path.join(directory, server), "port": server_port}] if server else [], "out": out}
 
 
+def _relay_sock(provider: str) -> str:
+    """The socket file of the Lead's relay for ``provider``, in the run's network directory."""
+    return f"relay-{provider}.sock"
+
+
 def shim_argv(spec: Mapping[str, Any], argv: list[str]) -> list[str]:
     """``argv`` under the shim: its text run with ``-c``, isolated, by the interpreter AEW runs on (as the self-test's
     probe is; the shim's own docstring says why it is not an entry point)."""
@@ -169,6 +186,9 @@ class RunNetwork:
         self.egress = egress_proxy
         self.sentinels = dict(sentinels or {})  # provider variable -> its sentinel inside
         self._values = dict(values or {})       # provider variable -> its value, for the leak check only
+        self.relays: dict[str, tuple[int, relay.ProviderRelay]] = {}  # the Lead's: provider -> (port inside, relay)
+        self.server_leg = True    # a worker's harness server is reached through the shim; the Lead's TUI uses stdio
+        self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
         self._closed = False
 
     @classmethod
@@ -210,6 +230,49 @@ class RunNetwork:
             raise
         return net
 
+    @classmethod
+    def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
+                   policy: Mapping[str, Any] | None, env: Mapping[str, str]) -> RunNetwork:
+        """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
+        ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
+        own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
+        (:data:`PROVIDER_KEY_ENV`); and the egress proxy under the any-public policy (the operator's decision 3 of
+        2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
+        the relays' own route to their upstreams, as a worker's are. Raises ``ContainmentUnavailable`` as
+        :meth:`start` does."""
+        names = [str(n) for n in provider_env]
+        net = cls(layout)
+        net.server_leg, net.http_proxy = False, True
+        if layout.network != PROXY_ONLY or not layout.net_dir:
+            return net
+        try:
+            for i, (provider, value) in enumerate(sorted(keys.items())):
+                target = upstream(provider, policy)
+                try:
+                    proxy = operator_proxy(target, names, env)
+                except AEWError as exc:
+                    raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
+                token = relay.sentinel()
+                net.sentinels[PROVIDER_KEY_ENV[provider]] = token
+                net._values[PROVIDER_KEY_ENV[provider]] = value
+                net.relays[provider] = (LEAD_RELAY_PORT + i, relay.ProviderRelay(
+                    target, {token: value}, proxy=proxy,
+                    listener=listen(os.path.join(layout.net_dir, _relay_sock(provider)))).start())
+            net.egress = egress.EgressProxy(egress.AnyPublic(),
+                                            listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
+        except OSError as exc:
+            net.close()
+            raise ContainmentUnavailable(f"the Lead's network could not be set up: {exc}", reason="network") from None
+        except BaseException:
+            net.close()
+            raise
+        return net
+
+    def lead_bases(self) -> dict[str, str]:
+        """The Lead's provider ``baseURL`` for each relayed provider: its relay's loopback port inside, with the
+        upstream's path."""
+        return {p: f"http://127.0.0.1:{port}{r.upstream.path}" for p, (port, r) in self.relays.items()}
+
     @property
     def server_socket(self) -> str | None:
         """Where the supervisor reaches the harness server (through the shim), or None without a network of its own."""
@@ -217,8 +280,11 @@ class RunNetwork:
 
     def spec(self) -> dict[str, Any]:
         assert self.dir is not None
-        return shim_spec(self.dir, relay_sock=RELAY if self.relay else None,
+        spec = shim_spec(self.dir, server=SERVER if self.server_leg else None, relay_sock=RELAY if self.relay else None,
                          egress_sock=EGRESS if self.egress else None)
+        spec["out"] += [{"port": port, "unix": os.path.join(self.dir, _relay_sock(p))}
+                        for p, (port, _) in self.relays.items()]
+        return spec
 
     def shim_argv(self, argv: list[str]) -> list[str]:
         if not self.dir:
@@ -239,6 +305,8 @@ class RunNetwork:
         if self.egress is not None:
             url = f"http://127.0.0.1:{EGRESS_PORT}"
             out.update({"HTTPS_PROXY": url, "https_proxy": url})
+            if self.http_proxy:  # NO_PROXY keeps the loopback relays direct (measured on the Rocky VM, 2026-10-25)
+                out.update({"HTTP_PROXY": url, "http_proxy": url})
             agentenv.bypass_proxy_for_loopback(out)
         return out
 
@@ -256,24 +324,36 @@ class RunNetwork:
 
     def describe(self) -> dict[str, Any]:
         """The label's ``network`` (F28 §3.1): the mode, the relay, the egress allowlist, and the stated limit."""
-        out: dict[str, Any] = {"mode": self.mode, **relay.describe(self.relay)}
+        out: dict[str, Any] = {"mode": self.mode}
+        if self.server_leg:
+            out.update(relay.describe(self.relay))
+        else:  # the Lead's: each relayed provider's fixed upstream
+            out["provider_relay"] = "configured" if self.relays else "none"
+            out["provider_relays"] = {p: r.upstream.url for p, (_, r) in self.relays.items()}
         if self.egress is not None:
-            out["egress_allow"] = self.egress.policy.describe().get("allow", [])
+            policy = self.egress.policy.describe()
+            if "allow" in policy:
+                out["egress_allow"] = policy["allow"]
+            else:
+                out["egress_policy"] = policy.get("policy")
             out["limits"] = [EGRESS_RESIDUAL]
         return out
 
+    def _services(self) -> list[tuple[str, Any]]:
+        return [*(("relay", self.relay), ("egress", self.egress)),
+                *((f"relay:{p}", r) for p, (_, r) in self.relays.items())]
+
     def decisions(self) -> dict[str, dict[str, int]]:
-        """What the relay and the egress proxy decided, counted by outcome, for the run's record at its end."""
-        return {name: service.counts() for name, service in (("relay", self.relay), ("egress", self.egress))
-                if service is not None}
+        """What the relays and the egress proxy decided, counted by outcome, for the run's record at its end."""
+        return {name: service.counts() for name, service in self._services() if service is not None}
 
     def close(self) -> None:
-        """Stop the relay and the egress proxy and remove the run's network directory. Idempotent."""
+        """Stop the relays and the egress proxy and remove the run's network directory. Idempotent."""
         if self._closed:
             return
         self._closed = True
         try:
-            for service in (self.relay, self.egress):
+            for _, service in self._services():
                 if service is not None:
                     service.close()
         finally:

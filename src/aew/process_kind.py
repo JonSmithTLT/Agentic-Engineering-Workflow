@@ -40,6 +40,10 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
     "aew (worker run)": (NON_WRITER, "the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, "
                          "`check run` and `submit` go through the run's bridge, whose supervisor holds the "
                          "credential and the lock; nothing else in that process may take the lock"),
+    "aew (contained Lead)": (NON_WRITER, "the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its "
+                             "Lead-authenticated commands go through the Lead broker, which holds the credential and "
+                             "the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` "
+                             "is masked) and `.aew` is read-only there"),
     "aew lead mcp": (NON_WRITER, "the Lead's MCP transport: it constructs no engine and forwards every call to the "
                      "Lead broker, which holds the credential"),
     "aew.harness.supervisor": (STORE_WRITER, "a run's supervisor: holds the run's credential and commits through the "
@@ -48,6 +52,9 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
                          "(dashboard.reader) and writes only its own state directory, never the store"),
 }
 AGENT_ENDPOINT_ENV = "AEW_AGENT_ENDPOINT"  # aew.harness.bridge.ENV_ENDPOINT, named here to keep this module free of AEW
+# Set in the contained Lead's sandbox (``aew.harness.opencode.lead``, which takes it from here): how AEW's own CLI
+# there behaves, never a boundary (see the module docstring).
+LEAD_CONTAINED_ENV = "AEW_LEAD_CONTAINED"
 
 _declared: str | None = None
 
@@ -80,6 +87,7 @@ def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
     if env.get(AGENT_ENDPOINT_ENV):
         return "aew (worker run)"
     words: list[str] = []
+    contained = bool(env.get(LEAD_CONTAINED_ENV))
     value = False
     for arg in argv:
         if value:  # the directory of `-C <dir>`, the one global option that takes a value
@@ -89,7 +97,7 @@ def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
         elif not arg.startswith("-"):
             words.append(arg)
     named: dict[tuple[str, ...], str] = {("lead", "mcp"): "aew lead mcp", ("dashboard", "serve"): "aew dashboard serve"}
-    return named.get(tuple(words[:2]), "aew")
+    return named.get(tuple(words[:2]), "aew (contained Lead)" if contained else "aew")
 
 
 def declared() -> str | None:

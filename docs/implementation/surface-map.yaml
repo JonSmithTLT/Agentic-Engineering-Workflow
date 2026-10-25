@@ -335,7 +335,10 @@ commands:
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
     mutates_basis: "runs the Lead session (lead_broker.run_session); with --acquire takes the seat"
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
+    note: "on Linux the Lead runs contained (STG-05 CS-4): at a terminal, refused when its sandbox is required and not
+      established; --provider-env NAME then feeds NAME's provider relay on the host, and the Lead's shell sees a
+      placeholder"
   - name: stage continue
     home: recovery
     users: [lead]

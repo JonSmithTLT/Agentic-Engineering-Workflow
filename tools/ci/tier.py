@@ -6,8 +6,7 @@ dashboard frontend (``web``), or documentation plus fast-lane test modules and `
 CI plan v7). A push to ``main``, a merge group, a manual run, an empty diff, a diff that cannot be computed, a
 ``full-ci`` label or a ``CI-Full: yes`` trailer on the pull request's head commit is always ``full``. ``main``'s push
 run is the compensating control for the reduced tiers: a personal-account repository has no merge queue, so a
-reduced-tier change is first run in full by the next ``main`` push run, which verifies the cumulative tip (a
-superseded pending run may be cancelled; strategy §3).
+reduced-tier change is first run in full by its merge's own ``main`` push run (one for every merge; strategy §3).
 
 The diff is the tested tree's: ``GITHUB_SHA`` on a pull request is the merge commit GitHub tests, and its first
 parent is the base tip (plan v7 §1.1). Anything but a two-parent merge is ``full``.

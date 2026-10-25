@@ -29,8 +29,10 @@ on:
   merge_group:
   workflow_dispatch:
 
+# A push to main has a group of its own commit, so every merge gets its own full run and none is replaced by the next
+# merge's (operator, ST-30, 2026-10-25). A pull request has one group, and its newer push cancels its older run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

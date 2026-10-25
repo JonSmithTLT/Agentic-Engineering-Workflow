@@ -964,9 +964,9 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing them. The proxy is CONNECT only, so CS-4 refuses them and names the https form
 
-**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25)
+**Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25); its target is the designer's ruling of 2026-10-25 on #280's targets
 
-**When:** **V-01**, after CS-4 merges
+**When:** **Internal alpha**, after CS-4 merges: V-01's matrix names no step that needs plain `http://`, and the refusal already names the https form
 
 **Notes:** It restricts nothing the threat model asks for (the designer)
 
@@ -976,11 +976,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Serve a stored OpenCode (Zen) key to the contained Lead: map each `opencode/*` model's catalogue address from a pinned copy of the catalogue, never the live one. Each such model carries its own address, so a provider-level override does not catch it, and AEW cannot see the live catalogue
 
-**Source:** CS-4's hand-off, addendum 2, ruling 2 (design workspace `655930b`)
+**Source:** CS-4's hand-off, addendum 2, ruling 2 (design workspace `655930b`); its target is the designer's ruling of 2026-10-25 on #280's targets, which replaces addendum 2's
 
-**When:** **On measured need**: the operator has no stored Zen key, and CS-4 fails closed with a message naming the provider
+**When:** **Internal alpha**, if the need is measured by then: its ambiguity report marks it in scope only if a stored Zen key is in use, and deferred otherwise, with that reason. Until then CS-4 fails closed, with a message naming the provider
 
-**Notes:** The builder's start line is its input (addendum 2); the Lead adds it as a note when the builder sends it. Its target is addendum 2's, which the preamble's rule for a new row does not allow: the designer is asked for a milestone (#280's review, M1)
+**Notes:** The builder's start line is its input (addendum 2); the Lead adds it as a note when the builder sends it
 
 *Later notes: `notes.d/E93/`, oldest first (`python tools/register.py show E93`).*
 

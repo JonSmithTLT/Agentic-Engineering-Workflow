@@ -1,0 +1,27 @@
+# AEW G3 (A-37): the issuer, verifier and one-use ledger, as its own dynamic account with no capabilities.
+# Its state (the key, the PIN's hash, the ledger) is /var/lib/aew-g3, the account's alone (G3-05, G3-09).
+[Unit]
+Description=AEW G3 approval service
+Requires=aew-g3.socket
+After=aew-g3.socket
+
+[Service]
+Type=simple
+ExecStart=/opt/aew-g3/venv/bin/python -I -B -m aew_g3 serve
+DynamicUser=yes
+StateDirectory=aew-g3
+StateDirectoryMode=0700
+# /run/aew-g3 itself is the socket unit's (it holds the sockets across restarts); the service owns only keys/,
+# where it publishes its public keys and issuer_ref (G3-09).
+RuntimeDirectory=aew-g3/keys
+RuntimeDirectoryMode=0755
+UMask=0077
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+LimitCORE=0
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

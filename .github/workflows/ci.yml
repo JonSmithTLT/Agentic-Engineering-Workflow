@@ -29,8 +29,11 @@ on:
   merge_group:
   workflow_dispatch:
 
+# A push to main has a group of its own commit, so every merge gets its own full run and none is replaced by the next
+# merge's (operator, 2026-10-25, ST-30; strategy §3). A pull request has one group, and its newer push cancels its
+# older run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -299,7 +302,7 @@ jobs:
       - name: Install AEW with the lint tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,parallel,coverage,lint,eval]"
+          python -m pip install -e ".[dev,parallel,coverage,lint,eval,g3]"
       - name: Ruff (pycodestyle, pyflakes, bugbear, Bandit security rules, pyupgrade, import order)
         if: success() || failure()
         run: ruff check --output-format github .
@@ -387,6 +390,7 @@ jobs:
       # lane that outgrows its budget is measured and gets more shards. The history never fails the gate
       # (continue-on-error), and a history the update could not write is never saved. A bad one is replaced by the next
       # green run, whose update sets aside one not of a history's shape and starts again (review of #235, F2).
+      # Overlapping push runs can lose reports, since the newest save wins (strategy §7; review of #277, F2).
       - name: The shard-durations history so far (main's green push runs only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.tier.outputs.tier == 'full'
         continue-on-error: true

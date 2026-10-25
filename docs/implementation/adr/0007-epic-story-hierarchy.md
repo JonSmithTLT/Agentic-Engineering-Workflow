@@ -90,3 +90,27 @@ A Story's or Epic's `state` is recomputed inside every Lead commit (`hierarchy.r
 
 - Plan-driven materialization of child Tickets from a parent plan.
 - Priority and milestone concepts (KC §28.10); backlog priorities stay in `external_refs` and the body.
+
+## Amendment 2026-10-25 — a reorganization keeps the obligations of the work it moves (EW-U05.g, register E84)
+
+- A move or a promotion is refused when a unit it moves that is still to be proven (not DONE or CANCELLED) would end
+  with a lower effective class, fewer inherited non-waivable gates or, for a mutating Ticket, with its integration
+  validated by checks where it was validated by a verifier. The refusal (`OBLIGATIONS_DROPPED`) names each unit and what it would lose, and
+  changes nothing. Each unit's obligations are read before and after the move from their owners,
+  `gates.effective_obligations` and `validation.obligation`.
+- Refused rather than carried: a unit's own `mandatory_gates` and floor apply to its descendants only (above), so a
+  move could not hand the moved unit itself what its old ancestors required without a second source of obligations.
+- The refusal says whether a move or a promotion was refused, and its `details["instead"]` name what the Lead may do,
+  each with the values that keep the obligations. A move goes under a parent that requires at least as much, or under
+  a new one created with what the old parent chain required: the moved unit's inherited floor and non-waivable gates,
+  read before the move (`aew work create` with `--min-descendant-class` and its `--rationale`, and
+  `--mandatory-gate`). A promotion chooses its own new parent, so the Lead creates that parent with what the units
+  would lose (a floor only where a class would be lost) and moves the unit under it instead; carrying them onto the
+  promoted parent is a follow-on. Where a class or a verifier would be lost, raising each unit's own class first
+  (`aew work reclassify`) meets that part: to the class it would lose, and for a verifier to the lowest class above
+  its own that the policy validates by a verifier (a unit with none is left out, and the refusal says so). It never
+  keeps a gate. The obligations are checked before the move's refusal for the dependencies of started work, since no
+  change of state meets them.
+- Only units in a state the machine never leaves (no rule starts there: DONE and CANCELLED) are not compared: they
+  are never live again, and their completion records hold what they met. Nothing revives one: a parent has no reopen,
+  and the archive takes only those states and has no way back.

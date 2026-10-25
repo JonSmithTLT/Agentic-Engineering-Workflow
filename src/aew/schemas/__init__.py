@@ -43,6 +43,7 @@ SCHEMAS = {
     "coordination-seal": "coordination-seal.schema.json",  # a sealed thread's pin (F9-A D-16)
     "notify-event": "notify-event.schema.json",  # the notifier's stdin (M4-E E7a)
     "spool-event": "spool-event.schema.json",  # an event spool line, per writer kind (M4-E E7a)
+    "capability-records": "capability-records.schema.json",  # the capability register's provider records (CAPR-02)
 }
 
 

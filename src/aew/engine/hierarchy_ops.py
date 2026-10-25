@@ -11,6 +11,7 @@ earlier parent review/verification stale.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import gates as G
@@ -21,9 +22,18 @@ from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import NO_GUARDRAILS, is_nm_ticket
 from aew.engine.seams import CLASSIFY_VERIFICATION, GATE_CONTEXT, INGEST, INVOKE, PARENT, KindRegistration
-from aew.errors import DependencyUnsatisfied, GateUnsatisfied, IllegalTransition, NotFound, UsageError
+from aew.errors import (
+    DependencyUnsatisfied,
+    GateUnsatisfied,
+    IllegalTransition,
+    NotFound,
+    ObligationsDropped,
+    UsageError,
+)
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
+from aew.policy import validation as V
+from aew.schemas import schema
 from aew.util import render_frontmatter, sha256_text, utc_now
 
 if TYPE_CHECKING:
@@ -41,6 +51,126 @@ if TYPE_CHECKING:
     )
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
+MOVE_LOWERS_OBLIGATIONS = "move_lowers_obligations"  # ObligationsDropped's reason code (details["reason"])
+# The states the machine never leaves: no rule starts there. Nothing else revives a unit in one (a parent's DONE and
+# CANCELLED are its recorded closeout and cancellation, and there is no reopen; the archive takes only these states and
+# has no way back). They are the only units a move may leave out of its comparison.
+FINAL = frozenset(s for s in transitions.STATES if not transitions.allowed_from(s))
+MOVE, PROMOTE = "move", "promotion"  # the operation a refusal names: `work move`, or `work promote` (which moves)
+
+
+def inherited_obligations(state: dict[str, Any], work_ids: list[str], gates_policy: dict[str, Any]) -> dict[str, Any]:
+    """What each unit still to be proven inherits from its ancestors, read from the owners (EW-U05.g): its effective
+    class and inherited non-waivable gates (``gates.effective_obligations``), and for a mutating Ticket how its
+    integration is validated, with the ancestors' reasons a verifier is required (``validation.obligation``, which
+    reads each ancestor's floor on its own). A unit in a ``FINAL`` state is left out: it is never live again, and its
+    completion record holds what it met."""
+    no_path_gates: dict[str, Any] = {"risk_paths": defaultdict(list)}  # the class path follows the class compared
+    out: dict[str, Any] = {}
+    for wid in work_ids:
+        unit = state["work"][wid]
+        if unit["state"] in FINAL:
+            continue
+        obligations = G.effective_obligations(state, wid, no_path_gates)
+        entry: dict[str, Any] = {"effective_class": obligations["effective_class"],
+                                 "non_waivable": obligations["non_waivable"]}
+        if unit["kind"] == "ticket" and unit.get("mutating"):
+            validation = V.obligation(state, wid, gates_policy)
+            entry["validation"] = {"mode": validation["mode"], "sources": validation["sources"]}
+        out[wid] = entry
+    return out
+
+
+def lowered_obligations(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    """Per unit of ``before``, what it lost in ``after`` (both from ``inherited_obligations``): a lower effective
+    class, inherited non-waivable gates, or an integration validated by a verifier that would be validated by checks.
+    Empty when nothing is lowered."""
+    out: dict[str, Any] = {}
+    for wid, was in before.items():
+        now = after[wid]
+        lost: dict[str, Any] = {}
+        if now["effective_class"] < was["effective_class"]:
+            lost["effective_class"] = {"before": was["effective_class"], "after": now["effective_class"]}
+        gates = sorted(set(was["non_waivable"]) - set(now["non_waivable"]))
+        if gates:
+            lost["non_waivable_gates"] = gates
+        was_mode, now_mode = ((v.get("validation") or {}).get("mode") for v in (was, now))
+        if was_mode == V.VERIFIER and now_mode != V.VERIFIER:
+            lost["integration_verifier"] = was["validation"]["sources"]
+        if lost:
+            out[wid] = lost
+    return out
+
+
+def reclassify_to(unit: dict[str, Any], lost: dict[str, Any], post: dict[str, Any]) -> int | None:
+    """The own class that meets ``unit``'s lost class and verifier (``lost``, from ``lowered_obligations``), or None
+    where no class does. A lost class is met by that class. A lost verifier is met by a class the policy validates by a
+    verifier (``validation.mode_for_class``, which a unit's own class selects once no ancestor requires one), the lowest
+    above the unit's own; the classes end at the control schema's highest."""
+    top = schema("control")["$defs"]["work_unit"]["properties"]["risk_class"]["maximum"]
+    low = lost["effective_class"]["before"] if "effective_class" in lost else unit["risk_class"] + 1
+    for cls in range(low, top + 1):
+        if "integration_verifier" not in lost or V.mode_for_class(post, cls) == V.VERIFIER:
+            return cls
+    return None
+
+
+def instead_of_lowering(state: dict[str, Any], operation: str, work_id: str, new_parent: str | None,
+                        dropped: dict[str, Any], old_chain: dict[str, Any],
+                        gates_policy: dict[str, Any]) -> list[dict[str, Any]]:
+    """What the Lead may do instead of a move or promotion that would lower obligations (ObligationsDropped's
+    ``details["instead"]``). A parent that requires at least as much keeps every obligation. For a move, that is an
+    existing one, or one created with what the old parent chain required (``old_chain``, the moved unit's
+    ``gates.effective_obligations`` before the move: its floor and non-waivable gates). A promotion chooses its own new
+    parent, so that parent is created with what the units would lose (a floor only where a class would be lost) and the
+    unit moved under it instead (carrying them onto the promoted parent is a follow-on). Where a class or a verifier
+    would be lost, each unit's own class raised first meets that part (``reclassify_to``; a unit no class meets is left
+    out), never a gate."""
+    post = gates_policy.get("post_integration") or {}
+    ranked = {w: lost for w, lost in sorted(dropped.items()) if {"effective_class", "integration_verifier"} & set(lost)}
+    classes = {w: c for w, lost in ranked.items() if (c := reclassify_to(state["work"][w], lost, post)) is not None}
+    lost_gates = sorted({g for lost in dropped.values() for g in lost.get("non_waivable_gates", [])})
+    if operation == PROMOTE:
+        floor = max((lost["effective_class"]["before"] for lost in ranked.values() if "effective_class" in lost),
+                    default=None)
+        them = {"floor": floor, "gates": lost_gates}
+    else:
+        them = {"floor": old_chain["floor"], "gates": list(old_chain["non_waivable"])}
+    flags = ", ".join(([f"--min-descendant-class {them['floor']} and its --rationale"] if them["floor"] is not None
+                       else []) + [f"--mandatory-gate {g}" for g in them["gates"]])
+    if operation == PROMOTE:
+        assert new_parent is not None  # a promotion moves the unit under the parent it creates
+        kind, home = state["work"][new_parent]["kind"], state["work"][new_parent].get("parent")
+        out = [{"option": "create_the_parent_then_move", **them,
+                "how": f"create the {kind} with them yourself (work create {kind}"
+                       + (f" --parent {home}" if home else "") + f", with {flags}), then move {work_id} under it "
+                       "(work move) instead of promoting it"}]
+    else:
+        out = [{"option": "move_under_an_equal_parent", "how": "move it under a parent that requires at least as much"},
+               {"option": "create_the_parent_with_them", **them,
+                "how": f"create that parent with them (work create, with {flags}), then move it there"}]
+    if classes:
+        by_class: dict[int, list[str]] = defaultdict(list)
+        for w, c in classes.items():
+            by_class[c].append(w)
+        left = [w for w in ranked if w not in classes]
+        kept_not = (["a gate"] if lost_gates else []) + ([f"the verifier of {', '.join(left)}"] if left else [])
+        out.append({"option": "reclassify_first", "classes": classes,
+                    "how": "raise the own class of " + " and ".join(f"{', '.join(ws)} to {c}" for c, ws in sorted(
+                        by_class.items(), reverse=True)) + f" first (work reclassify), then retry the {operation}"
+                           + (f"; that does not keep {' or '.join(kept_not)}" if kept_not else "")})
+    return out
+
+
+def _describe_lost(lost: dict[str, Any]) -> str:
+    parts = []
+    if "effective_class" in lost:
+        parts.append(f"class {lost['effective_class']['before']} -> {lost['effective_class']['after']}")
+    if "non_waivable_gates" in lost:
+        parts.append("non-waivable gate(s) " + ", ".join(lost["non_waivable_gates"]))
+    if "integration_verifier" in lost:
+        parts.append("its integration verifier (it would be validated by checks)")
+    return "; ".join(parts)
 
 
 class Hierarchy:
@@ -424,7 +554,7 @@ class Hierarchy:
                 touched.append(wid)
         return touched
 
-    def _move(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
+    def _move(self, ctx: Any, work_id: str, new_parent: str | None, why: str, *, operation: str = MOVE) -> list[str]:
         state = ctx.state
         if work_id not in state["work"]:
             return self._move_archived(ctx, work_id, new_parent, why)
@@ -437,13 +567,20 @@ class Hierarchy:
             self.units.check_parent(state, unit["kind"], new_parent)
             if new_parent == work_id or new_parent in H.descendants(state, work_id):
                 raise UsageError(f"{work_id} cannot be moved under itself or its own descendant")
-        subtree = [w for w in [work_id, *H.descendants(state, work_id)] if state["work"][w]["kind"] == "ticket"]
+        moved = [work_id, *H.descendants(state, work_id)]
+        subtree = [w for w in moved if state["work"][w]["kind"] == "ticket"]
         before = {w: effective_edge_set(state, w) for w in subtree}
+        gates_policy = self.k.policy("gates")
+        obligations = inherited_obligations(state, moved, gates_policy)
+        old_chain = G.effective_obligations(state, work_id, {"risk_paths": defaultdict(list)})
         self.archive.move_hot_subtree(state, unit, old, new_parent)  # archived work below it moves too (R3)
         unit["parent"] = new_parent
         unit.setdefault("parent_history", []).append({"from": old, "to": new_parent, "at": utc_now(), "reason": why})
         self.units.refuse_cycles(state)
-        self._refuse_dependency_change_of_started_work(state, before, "this move")
+        # Obligations first: no state change meets that refusal, so the dependency refusal's advice (a replan) would
+        # end a started attempt for nothing.
+        self._refuse_lowered_obligations(state, obligations, old_chain, gates_policy, operation, work_id, new_parent)
+        self._refuse_dependency_change_of_started_work(state, before, f"this {operation}")
         return self._invalidate_bindings(state, work_id, f"moved from {old} to {new_parent}: {why}")
 
     def _move_archived(self, ctx: Any, work_id: str, new_parent: str | None, why: str) -> list[str]:
@@ -481,6 +618,26 @@ class Hierarchy:
                 f"{', '.join(started)} to REPLAN_REQUIRED first (the attempt ends when a plan revision is accepted, "
                 "and the next dispatch checks the new dependencies)",
                 in_progress=started, dependencies={w: changed[w] for w in started})
+
+    @staticmethod
+    def _refuse_lowered_obligations(state: dict[str, Any], before: dict[str, Any], old_chain: dict[str, Any],
+                                    gates_policy: dict[str, Any], operation: str, work_id: str,
+                                    new_parent: str | None) -> None:
+        """A reorganization preserves the proof obligations of the work it moves (EW-U05.g): no unit still to be
+        proven ends with a lower effective class, fewer inherited non-waivable gates, or its integration validated by
+        checks where a verifier validated it. A move or promotion that would lower any of them is refused, naming what
+        each unit would lose and what to do instead. Refused rather than carried: a unit's own policy binds only its
+        descendants (ADR-0007), so a move could not give the moved unit itself what its old ancestors required without
+        a second source of obligations."""
+        dropped = lowered_obligations(before, inherited_obligations(state, list(before), gates_policy))
+        if dropped:
+            instead = instead_of_lowering(state, operation, work_id, new_parent, dropped, old_chain, gates_policy)
+            raise ObligationsDropped(
+                f"a {operation} that would lower a unit's inherited obligations is refused (EW-U05.g); "
+                f"this {operation} would lower "
+                + "; ".join(f"{w}: {_describe_lost(lost)}" for w, lost in sorted(dropped.items()))
+                + ". Instead: " + "; or ".join(o["how"] for o in instead),
+                reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=instead)
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None,
                   reason: str) -> dict[str, Any]:
@@ -523,7 +680,7 @@ class Hierarchy:
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")
                 self.units.set_state(unit, "REPLAN_REQUIRED", f"promoted to {new_id} ({decision}): {reason}",
                                      state=state)
-            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})")
+            self._move(ctx, work_id, new_id, f"promoted to {new_id} ({decision})", operation=PROMOTE)
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,

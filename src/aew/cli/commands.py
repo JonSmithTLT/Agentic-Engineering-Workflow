@@ -113,6 +113,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
             "operator", "ADOPT as YOUR decision: the edits of project.yaml and the policy files")))
 
     from aew.cli import (
+        capability_commands,
         dashboard_commands,
         history_commands,
         map_commands,
@@ -127,6 +128,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     map_commands.register(sub)
     operator_commands.register(sub)
     settings_commands.register(sub)
+    capability_commands.register(sub)  # the capability register (STG-15, CAP-1)
     if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
         from aew.cli import message_commands
 

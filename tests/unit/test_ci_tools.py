@@ -1391,6 +1391,55 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "vertical" not in ci  # not a job of the gate's workflow, nor anything its jobs run
 
 
+def _github_expression(expr: str, context: dict) -> object:
+    """A GitHub expression of the shapes `ci.yml`'s concurrency block uses: alternatives joined by `||`, each a run of
+    `&&`, each operand a context path or `path == 'literal'`. `&&` and `||` return an operand, as GitHub's do."""
+    expr = expr.strip()
+    assert expr.startswith("${{") and expr.endswith("}}"), expr
+    expr = expr[3:-2]
+
+    def operand(text: str) -> object:
+        if "==" in text:
+            left, right = text.split("==")
+            return operand(left) == right.strip().strip("'")
+        value: object = context
+        for part in text.strip().split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        return value
+
+    value: object = None
+    for alternative in expr.split("||"):
+        for conjunct in alternative.split("&&"):
+            value = operand(conjunct)
+            if not value:
+                break
+        if value:
+            return value
+    return value
+
+
+def test_every_push_run_on_main_has_a_concurrency_group_of_its_own_commit():
+    """Every merge to `main` gets its own full push run, which no later merge's run replaces, and a pull request's
+    pushes share one group, where the newer cancels the older (operator, 2026-10-25, ST-30; strategy §3). The group and
+    the cancel rule are evaluated per event, as GitHub evaluates them (review of #277, F1)."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    group, cancel = wf["concurrency"]["group"], wf["concurrency"]["cancel-in-progress"]
+    assert group.startswith("ci-") and set(wf[True]) == {"pull_request", "push", "merge_group", "workflow_dispatch"}
+
+    def run(event_name: str, **github: object) -> tuple[str, object]:
+        context = {"github": {"event_name": event_name, "ref": "refs/heads/main", "sha": None, "event": {}, **github}}
+        return "ci-" + str(_github_expression(group[3:], context)), _github_expression(cancel, context)
+
+    first, second = run("push", sha="a" * 40), run("push", sha="b" * 40)
+    assert first == ("ci-" + "a" * 40, False) and second == ("ci-" + "b" * 40, False)
+    pr = {"event": {"pull_request": {"number": 277}}, "ref": "refs/pull/277/merge"}
+    assert run("pull_request", sha="c" * 40, **pr) == run("pull_request", sha="d" * 40, **pr) == ("ci-277", True)
+    queue = "refs/heads/gh-readonly-queue/main/pr-277-" + "e" * 40
+    assert run("merge_group", sha="e" * 40, ref=queue) == ("ci-" + queue, False)
+    dispatch = run("workflow_dispatch", sha="a" * 40)
+    assert dispatch == ("ci-refs/heads/main", False) and dispatch[0] != first[0]
+
+
 DISCOVERY_TEST = "tests/discovery/test_static_texts.py"
 
 

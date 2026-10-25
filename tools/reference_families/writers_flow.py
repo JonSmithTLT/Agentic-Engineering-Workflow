@@ -53,8 +53,10 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 DEPTH = 32
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 # Distinct values one expression may take before it is UNK, so a set that grows toward the cap is a decision and not a
-# record silently lost.
-VALUES = 60
+# record silently lost. 64 since CAP-1 (STG-15): its schema made the largest set the file names of `SCHEMAS`
+# (src/aew/schemas/__init__.py), 31 (docs/reference/writers.md, "The largest in this render"), and the tree test holds
+# the cap to at least twice that.
+VALUES = 64
 PLACEHOLDER = "{}"
 # Receivers typed through receivers (`self.a.b.run()`, `Class().m().n()`): a call edge past it would be dropped as if
 # the receiver were unknown, so the reading fails instead (addendum 7). A receiver whose typing needs itself is a cycle
@@ -649,8 +651,9 @@ class Program:
                 if expr.id in scope.annotations and expr.id not in scope.assigns:
                     return self.class_of(self.modules[scope.module], scope.annotations[expr.id])
                 if expr.id in scope.assigns:
-                    if id(expr) in self._typing_active:
-                        return None  # a local whose class needs itself: a cycle
+                    # No cycle check here: a local's class is read from the calls it is assigned, and every way back to
+                    # this node passes `_enter_typing` on one of those calls' callees, which stops the repeat (review of
+                    # #267, Q-2: the check was unreachable). The mark counts this hop in `_enter_typing`'s level.
                     self._level(depth, expr)
                     self._typing_active.add(id(expr))
                     try:

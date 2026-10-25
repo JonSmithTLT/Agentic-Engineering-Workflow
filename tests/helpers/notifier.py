@@ -1,5 +1,6 @@
 """Helpers for the operator notifier's tests (M4-E E7a): a recording notifier, adopting a policy with a notifier, the
-operator's raise as the endpoint commits it, seeding control state, and a bounded wait."""
+operator's raise as the endpoint commits it, seeding control state, a bounded wait that can say why it timed out, and
+the wait on a Lead broker's watchdog with what to say."""
 
 from __future__ import annotations
 
@@ -8,14 +9,17 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
+import traceback
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from aew.engine.api import Engine
 from aew.engine.steering import OperatorPrincipal
 from aew.engine.store import Transition
-from aew.harness import procs
+from aew.harness import broker_liveness, procs
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -88,14 +92,72 @@ def dead_pid() -> int:
     return proc.pid
 
 
-def until(predicate: Any, timeout: float = 30.0, what: str = "the condition") -> Any:
+def until(predicate: Any, timeout: float = 30.0, what: str = "the condition", *,
+          describe: Callable[[], str] | None = None) -> Any:
+    """``predicate``'s first truthy result within ``timeout`` seconds, or AssertionError. On a timeout, ``describe``
+    (when given) says what the chain being waited on was doing at that moment, so a rare failure names the link that
+    broke; a describer that raises is reported in the message, never in place of the timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         result = predicate()
         if result:
             return result
         time.sleep(0.05)
-    raise AssertionError(f"timed out waiting for {what}")
+    message = f"timed out waiting for {what}"
+    if describe is not None:
+        try:
+            message += f"; at the timeout:\n{describe()}"
+        except Exception as exc:  # the timeout is the failure: a broken describer must not hide it  # noqa: BLE001
+            message += f"; the describer failed: {type(exc).__name__}: {exc}"
+    raise AssertionError(message)
+
+
+def thread_stack(thread: threading.Thread) -> str:
+    """One thread's current stack, as ``autopsy.thread_stacks`` gives every thread's, or why there is none. A thread
+    that has ended has none: its identifier may already name a newer thread (review of #276, N3)."""
+    frame = sys._current_frames().get(thread.ident) if thread.is_alive() and thread.ident is not None else None
+    if frame is None:
+        return "(no stack: the thread is not running)"
+    return "".join(traceback.format_stack(frame))
+
+
+def watchdog_wait_s(record: dict[str, Any], poll_s: float) -> float:
+    """How long a test waits for a Lead broker's watchdog to act on a commit (main's run at f41b001e, whose literal
+    10 s was below this). One watchdog iteration may take the broker's own recorded bound, ``wedge_after_s``
+    (``broker_liveness.wedge_threshold_s``: ``store.lock_timeout + 2 x POLL_S``), because its read waits out the
+    control lock, and ``judge`` never calls it stale before then. A read that times out is "still the Lead"
+    (``LeadBroker._authority_lost``), so the next iteration acts: ``2 x POLL_S`` more covers its start, its read and
+    the write that follows. Past this window, the stall has outlasted one timed-out read plus the next iteration's
+    start. That is not a stale broker: a timed-out read still ticks, so ``judge`` calls the broker live while each
+    iteration stays inside ``wedge_after_s``, and the swallowed ``LockTimeout`` is what hides the supersession (review
+    of #276, F1)."""
+    return float(record["wedge_after_s"]) + 2 * poll_s
+
+
+def broker_chain(broker: Any, aew_root: Path) -> Callable[[], str]:
+    """A describer (``until(..., describe=)``) for a wait on a Lead broker's watchdog: each link from a commit to the
+    broker's liveness record, as it stands at the timeout.
+
+    - ``broker.superseded``: whether the watchdog has seen its authority go.
+    - The watchdog thread, alive or ended, and its stack. In ``FileLock._wait``, its read is waiting out the control
+      lock, and a ``LockTimeout`` there is swallowed as "still the Lead". In ``Beat.close``, ``_mu`` or
+      ``replace_with_retry``, the closing write is slow. Anywhere else, the cause is something new.
+    - The record's ``beat_at`` and ``watchdog_tick_at`` ages: the last signs of life of the beat thread and the
+      watchdog."""
+
+    def describe() -> str:
+        now, record, watch = time.time(), broker_liveness.read(aew_root), broker._watch
+        lines = [f"broker.superseded: {broker.superseded!r}",
+                 f"the watchdog thread: {'alive' if watch.is_alive() else 'ended'}; its stack:\n{thread_stack(watch)}"]
+        if record is None:
+            lines.append("the liveness record: none at this moment (absent, or racing its rewrite)")
+        else:
+            lines.append(f"the liveness record: beat_at {now - record['beat_at']:.2f}s ago, watchdog_tick_at "
+                         f"{now - record['watchdog_tick_at']:.2f}s ago, closed_at {record.get('closed_at')!r}, "
+                         f"wedge_after_s {record['wedge_after_s']}")
+        return "\n".join(lines)
+
+    return describe
 
 
 def takeover(project: Any, monkeypatch: Any) -> None:

@@ -37,6 +37,22 @@ first, with the blocked rows beside what they wait for. ``check`` keeps it curre
 has closed is stale; one row has at most one item; every open question (§4) must have its own item, and every open row
 targeted **Designer** must have one or be blocked by one (it then waits for that item's decision).
 
+**The Now list.** §1's intro holds the build order as a table, one line per item, ``| <n> | <row ids> | <item> |``,
+numbered from 1, each item naming the rows that carry it (``now_list``). It is the register's own data, and the Lead
+keeps it, adding and reordering items (designer, 2026-10-25; the rebaseline's list of 2026-10-24 stays frozen in
+``register-rebaseline-dispositions.yaml``). ``check`` holds it to the rows (``now_problems``, through ``problems``):
+- every id it names is an open row targeted **Now** or **Stage**, and every item names at least one;
+- every open row targeted **Now** is named in it, so a row cannot be put in the queue in one place and left out of the
+  order in the other. A **Stage** row need not be named: a stage waits in the map's order for its hand-off, and is
+  named once it is queued;
+- it is §1's intro's only table: a line that starts a table (``|``, after at most three spaces) is the header, the
+  separator or an item. A line indented further, or by a tab, is a code block in Markdown, not a table line. A second
+  table in the list's own shape (headed ``#``, with numbers that continue the list) is read as more items: the check
+  does not tell it apart (quick check of #273, N2).
+
+The table is one cell, the intro, so two changes to it conflict. The Lead keeps the order, but a change that closes or
+retargets a row the list names must edit the list in the same change (its refusals say so), and renumber what follows.
+
 The markdown gives every row its own block, never a table line: a ``### <id>`` heading (the row's first cell), then
 one paragraph per non-empty cell, ``**<column>:** <text>``, each between blank lines. Each section names its columns in
 an HTML comment (``<!-- columns: # | Work | ... -->``, invisible on GitHub) so the page parses back to the YAML. A cell
@@ -122,6 +138,14 @@ NOTE_NAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\
 SLUG_RULE = ("the branch slug is the branch's name in lower case, each run of characters other than a-z and 0-9 "
              "replaced by one hyphen, with none at either end (impl/F9a_MS3 is impl-f9a-ms3)")
 POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
+NOW_LINE_RE = re.compile(r"^ {0,3}\|\s*(\d+)\s*\|\s*([^|]*?)\s*\|")
+NOW_TABLE_LINE_RE = re.compile(r"^ {0,3}\|")
+NOW_HEADER_RE = re.compile(r"^ {0,3}\|\s*#\s*\|")
+NOW_SEPARATOR_RE = re.compile(r"^ {0,3}\|[\s|:-]*-[\s|:-]*$")
+# Which targets may stand in the queue is its own fact (the module's *The Now list*); test_register keeps it a subset
+# of TARGETS.
+NOW_TARGETS = ("Now", "Stage")
+NOW_EDIT = "edit §1's Now list in the same change"
 
 
 # libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
@@ -459,7 +483,7 @@ def rows(data: dict[str, Any], *, open_only: bool = True) -> list[dict[str, Any]
 
 def problems(data: dict[str, Any]) -> list[str]:
     """What a consumer would stumble on: duplicate ids, a row outside §1 headed by something that is not an id, open
-    rows without a recognised target."""
+    rows without a recognised target, and a Now list that disagrees with the rows (``now_problems``)."""
     out = []
     ids = Counter(r["id"] for r in rows(data, open_only=False) if r["id"] and r["id"] != "Gate")
     out += [f"id {i} appears {n} times" for i, n in sorted(ids.items()) if n > 1]
@@ -485,6 +509,43 @@ def problems(data: dict[str, Any]) -> list[str]:
     if CHANGELOG_RE.search(data["preamble"]):
         out.append("the preamble carries a 'Last updated' change log: every change edits that line, so every pair of "
                    "changes conflicts; the history is `git log` on the YAML and each row's own dates")
+    return out + now_problems(data)
+
+
+def now_list(data: dict[str, Any]) -> list[tuple[int, list[str]]]:
+    """§1's Now table, as (number, the row ids it names) per line, in the table's order (the module's *The Now
+    list*)."""
+    first = next((s for s in data["sections"] if s["number"] == 1), {})
+    return [(int(m.group(1)), [i.strip() for i in m.group(2).split(",") if i.strip()])
+            for line in str(first.get("intro") or "").splitlines() if (m := NOW_LINE_RE.match(line))]
+
+
+def now_problems(data: dict[str, Any]) -> list[str]:
+    """Where §1's Now list and the rows disagree: an item numbered out of order or naming no row, an id that is not an
+    open row targeted **Now** or **Stage**, an open row targeted **Now** that the list does not name, or a table line in
+    §1's intro that is not the list's header, separator or an item (the module's *The Now list*)."""
+    listed = now_list(data)
+    if not listed:
+        return ["§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
+    first = next(s for s in data["sections"] if s["number"] == 1)
+    out = [f"§1's intro has a table line that is not a Now item, its header or its separator: {line.strip()[:40]!r} "
+           "(the Now list is §1's only table)" for line in str(first.get("intro") or "").splitlines()
+           if NOW_TABLE_LINE_RE.match(line) and not (NOW_LINE_RE.match(line) or NOW_HEADER_RE.match(line)
+                                                      or NOW_SEPARATOR_RE.match(line))]
+    out += [f"the Now list's item {n} is numbered out of order (expected {i})"
+            for i, (n, _) in enumerate(listed, start=1) if n != i]
+    out += [f"the Now list's item {n} names no row (each item names the rows that carry it)"
+            for n, ids in listed if not ids]
+    open_rows = {r["id"]: r for r in rows(data) if r["id"]}
+    named = [i for _, ids in listed for i in ids]
+    for i in named:
+        if i not in open_rows:
+            out.append(f"the Now list names {i}, which is not an open row: {NOW_EDIT}")
+        elif open_rows[i]["target"] not in NOW_TARGETS:
+            out.append(f"the Now list names {i}, which is targeted {open_rows[i]['target'] or '(none)'}, not "
+                       + " or ".join(NOW_TARGETS) + f": {NOW_EDIT}")
+    out += [f"{i} is targeted Now, but the Now list does not name it: {NOW_EDIT}" for i, r in sorted(open_rows.items())
+            if r["target"] == "Now" and i not in named]
     return out
 
 
@@ -1075,7 +1136,8 @@ def main(argv: list[str] | None = None) -> int:
     ok = md_ok = render_markdown(data) == MD.read_text(encoding="utf-8")
     if not md_ok:  # each line names what is out of step, never the register for a decisions-due problem (PR #104, A)
         print(f"{MD.relative_to(ROOT)} differs from what {YAML.relative_to(ROOT)} renders")
-    for problem in source_problems() + due_problems(data, due) + note_problems(data, files):  # named, not a crash
+    # problems(data) joined check with the Now list's rule (review of #273, F1); before, only `summary` printed it.
+    for problem in problems(data) + source_problems() + due_problems(data, due) + note_problems(data, files):  # named
         ok = False
         print("problem:", problem)
     if render_due(due) != DUE_MD.read_text(encoding="utf-8"):

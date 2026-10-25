@@ -1,11 +1,13 @@
 """Hierarchy semantics as pure functions over control state (ADR-0007): derived parent state, attention,
-inherited edges, cycle refusal and the children digest."""
+inherited edges, cycle refusal, the children digest, and what a move may not lower (EW-U05.g)."""
 
 from __future__ import annotations
 
 import pytest
 
 from aew.engine import hierarchy as H
+from aew.engine import transitions as T
+from aew.engine.hierarchy_ops import FINAL, inherited_obligations, lowered_obligations
 
 
 def unit(kind, state, parent=None, deps=(), **extra):
@@ -86,3 +88,52 @@ def test_children_digest_tracks_ids_states_and_completion_records():
     assert base != H.children_digest(s, "S-1", {"T-1": "bbb"})
     s["work"]["T-2"] = unit("ticket", "CANCELLED", "S-1")
     assert base != H.children_digest(s, "S-1", {"T-1": "aaa"})
+
+
+def test_a_move_keeps_each_required_integration_verifier():
+    """``validation.obligation`` reads each ancestor's floor on its own (a class mapping need not be monotonic), so a
+    required integration verifier is an obligation of its own, compared apart from the effective class and the
+    gates."""
+    gates_policy = {"post_integration": {"validation": {"by_class": {"2": "checks"}, "default": "verifier"}}}
+    s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 1, "rationale": "r"}),
+              E_2=unit("epic", "IN_PROGRESS", policy=None),
+              E_3=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 1, "rationale": "r"}),
+              T_1=unit("ticket", "READY", "E-1", risk_class=2, mutating=True))
+    before = inherited_obligations(s, ["T-1"], gates_policy)
+    sources = ["E-1 minimum descendant class 1, whose validation is verifier"]
+    assert before["T-1"]["validation"] == {"mode": "verifier", "sources": sources}
+    for parent, lost in (("E-3", {}), ("E-2", {"T-1": {"integration_verifier": sources}}),
+                         (None, {"T-1": {"integration_verifier": sources}})):
+        s["work"]["T-1"]["parent"] = parent
+        after = inherited_obligations(s, ["T-1"], gates_policy)
+        assert after["T-1"]["effective_class"] == before["T-1"]["effective_class"] == 2  # compared on its own
+        assert lowered_obligations(before, after) == lost
+
+
+@pytest.mark.parametrize("kind", ["ticket", "story"])
+def test_a_move_leaves_out_exactly_the_states_the_machine_never_leaves(kind):
+    """The comparison's exclusion is read from the live machine, both ways: a unit is left out if and only if no rule
+    leaves its state. A Story's phase is derived; its final phases are its recorded closeout and cancellation, the same
+    states, which are also the only ones the archive takes."""
+    no_exit = {s for s in T.STATES if not T.allowed_from(s)}
+    assert FINAL == no_exit == T.TERMINAL == H.TERMINAL
+    for state in (T.STATES if kind == "ticket" else H.PARENT_STATES):
+        s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 2, "rationale": "r"}),
+                  X_1=unit(kind, state, "E-1", risk_class=1, mutating=False))
+        assert ("X-1" not in inherited_obligations(s, ["X-1"], {})) == (state in no_exit), state
+
+
+def test_a_move_compares_only_work_still_to_be_proven_and_names_each_loss():
+    s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 3, "rationale": "r",
+                                                       "mandatory_gates": ["review_security"]}),
+              S_1=unit("story", "IN_PROGRESS", "E-1", risk_class=1),
+              T_1=unit("ticket", "DONE", "S-1", risk_class=1, mutating=True),
+              T_2=unit("ticket", "CANCELLED", "S-1", risk_class=1, mutating=True),
+              T_3=unit("ticket", "BLOCKED", "S-1", risk_class=1, mutating=False))
+    moved = ["S-1", "T-1", "T-2", "T-3"]
+    before = inherited_obligations(s, moved, {})
+    assert set(before) == {"S-1", "T-3"}  # finished work proves nothing more
+    s["work"]["S-1"]["parent"] = None
+    assert lowered_obligations(before, inherited_obligations(s, moved, {})) == {
+        w: {"effective_class": {"before": 3, "after": 1}, "non_waivable_gates": ["review_security"]}
+        for w in ("S-1", "T-3")}

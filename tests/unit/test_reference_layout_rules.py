@@ -431,6 +431,13 @@ def test_a_flag_that_holds_for_an_entry_must_hold_for_what_is_under_it(flag):
     assert f"{flag} holds for 'local' and not for what is under it" in problem
 
 
+def test_every_boolean_fact_of_an_entry_is_a_flag_the_family_holds_downward():
+    """Review of #261, N-10: `FLAGS` is the list the downward and boolean rules run over, so a flag left off it is held
+    by nothing. The facts say which are booleans, and the list is held to them."""
+    fact = records_json()["layout:work"]["fact"]
+    assert sorted(k for k, v in fact.items() if isinstance(v, bool)) == sorted(LY.FLAGS)
+
+
 @pytest.mark.parametrize("flag", LY.FLAGS)
 def test_a_flag_that_is_not_a_boolean_is_refused(flag):
     records = copy.deepcopy(records_json())

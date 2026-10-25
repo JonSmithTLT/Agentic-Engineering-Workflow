@@ -9,6 +9,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
 - [layout.md](layout.md): Layout
+- [state-machines.md](state-machines.md): State machines
 - [writers.md](writers.md): Writers
 
 ## A record

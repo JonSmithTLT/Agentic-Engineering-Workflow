@@ -37,11 +37,11 @@ def _families() -> Any:
     if added:
         sys.path.insert(0, here)
     try:
-        from reference_families import common, control_keys, entry_points, layout, modules, pages, writers
+        from reference_families import common, control_keys, entry_points, layout, machines, modules, pages, writers
     finally:
         if added:
             sys.path.remove(here)
-    return common, pages, (modules, entry_points, writers, control_keys, layout)
+    return common, pages, (modules, entry_points, writers, control_keys, layout, machines)
 
 
 def _one_tree(common: Any, root: Path) -> None:

@@ -1,17 +1,26 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 32,
-      "lower-bound": 515
+      "complete-by-construction": 134,
+      "lower-bound": 600
     },
     "by_family": {
+      "configuration-states": 6,
       "control-keys": 92,
       "entry-points": 6,
+      "guards": 11,
       "layout": 59,
       "modules": 177,
+      "reason-rules": 56,
+      "states": 17,
+      "transitions": 94,
+      "usage-live-states": 3,
       "writers": 213
     },
     "by_family_and_coverage": {
+      "configuration-states": {
+        "complete-by-construction": 6
+      },
       "control-keys": {
         "complete-by-construction": 26,
         "lower-bound": 66
@@ -19,21 +28,43 @@
       "entry-points": {
         "complete-by-construction": 6
       },
+      "guards": {
+        "complete-by-construction": 11
+      },
       "layout": {
         "lower-bound": 59
       },
       "modules": {
         "lower-bound": 177
       },
+      "reason-rules": {
+        "complete-by-construction": 56
+      },
+      "states": {
+        "lower-bound": 17
+      },
+      "transitions": {
+        "complete-by-construction": 29,
+        "lower-bound": 65
+      },
+      "usage-live-states": {
+        "lower-bound": 3
+      },
       "writers": {
         "lower-bound": 213
       }
     },
-    "digest": "sha256:127af393b494effc52fb041c269ff5ad7055b6c3d576ef4978cda3b79214ef1d",
-    "records": 547,
-    "unresolved": 56
+    "digest": "sha256:231a3cfce572d4975a8bef80e7f00fdb9d73d0c3cb00b672ddbd27a93870347a",
+    "records": 734,
+    "unresolved": 69
   },
   "gaps": [
+    {
+      "family": "configuration-states",
+      "module": "aew.engine.configuration",
+      "symbol": "STATES",
+      "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+    },
     {
       "family": "control-keys",
       "module": "aew.engine.ticket_fields",
@@ -81,6 +112,78 @@
       "module": "aew.harness.registry",
       "symbol": "load",
       "why": "importlib.util.spec_from_file_location loads code by file path or name"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.configuration",
+      "symbol": "_Projector.fv",
+      "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.hierarchy",
+      "symbol": "PARENT_STATES",
+      "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.queue_ops",
+      "symbol": "Queue.defer",
+      "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.validation_ops",
+      "symbol": "Validation._terminate",
+      "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+    },
+    {
+      "family": "states",
+      "module": "aew.schemas",
+      "symbol": "SCHEMAS",
+      "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+    },
+    {
+      "family": "transitions",
+      "module": "aew.engine.dependencies",
+      "symbol": "recompute_readiness",
+      "why": "assigns the unit's state with no transitions.check in the function; it moves Tickets between BLOCKED and READY (operation recompute)"
+    },
+    {
+      "family": "transitions",
+      "module": "aew.engine.lead_ops",
+      "symbol": "Lead._interrupt_invocations",
+      "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+    },
+    {
+      "family": "transitions",
+      "module": "aew.engine.nonmutating_ops",
+      "symbol": "NonMutating.work_dispatch",
+      "why": "calls set_state with no transitions.check in the function; it dispatches a non-mutating Ticket (operation assign)"
+    },
+    {
+      "family": "transitions",
+      "module": "aew.engine.work_ops",
+      "symbol": "WorkCommands.work_transition",
+      "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+    },
+    {
+      "family": "transitions",
+      "module": "aew.engine.workspace_ops",
+      "symbol": "Assignment.work_assign",
+      "why": "calls set_state with no transitions.check in the function; it assigns a mutating Ticket (operation assign)"
+    },
+    {
+      "family": "usage-live-states",
+      "module": "aew.harness.usage_live",
+      "symbol": "PROMPT_STATES",
+      "why": "a second state set of this module (unsent, posting, posted) is not recorded"
+    },
+    {
+      "family": "usage-live-states",
+      "module": "aew.harness.usage_live",
+      "symbol": "STATES",
+      "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
     },
     {
       "family": "writers",
@@ -372,6 +475,210 @@
     }
   ],
   "records": {
+    "configuration-states:ABSENT": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 5,
+        "state": "ABSENT"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
+    "configuration-states:ADOPTED": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 3,
+        "state": "ADOPTED"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
+    "configuration-states:DRIFTED": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 1,
+        "state": "DRIFTED"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
+    "configuration-states:INVALID": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 2,
+        "state": "INVALID"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
+    "configuration-states:MANIFEST_DRIFTED": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 0,
+        "state": "MANIFEST_DRIFTED"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
+    "configuration-states:UNPINNED": {
+      "anchor": {
+        "module": "aew.engine.configuration",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
+          "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.configuration:STATES"
+      },
+      "fact": {
+        "exits": [],
+        "position": 4,
+        "state": "UNPINNED"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.engine.configuration",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "configuration-states"
+    },
     "control-keys:anomalies": {
       "anchor": {
         "module": "aew.engine.base",
@@ -2948,6 +3255,523 @@
         }
       },
       "family": "entry-points"
+    },
+    "guards:all_gates_current": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_all_gates_current"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_all_gates_current"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_all_gates_current"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_all_gates_current"
+          }
+        ],
+        "name": "all_gates_current"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:commit_ready_without_review_or_verification": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_commit_ready_without_review_or_verification"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_commit_ready_without_review_or_verification"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_commit_ready_without_review_or_verification"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_commit_ready_without_review_or_verification"
+          }
+        ],
+        "name": "commit_ready_without_review_or_verification"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:commit_ready_without_verification": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_commit_ready_without_verification"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_commit_ready_without_verification"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_commit_ready_without_verification"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_commit_ready_without_verification"
+          }
+        ],
+        "name": "commit_ready_without_verification"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:evidence_only_complete": {
+      "anchor": {
+        "module": "aew.engine.nonmutating_ops",
+        "symbol": "NonMutating._guard_evidence_only_complete"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_evidence_only_complete"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_evidence_only_complete"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_evidence_only_complete"
+          }
+        ],
+        "name": "evidence_only_complete"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:findings_recorded": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkUnits._guard_findings_recorded"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_findings_recorded"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_findings_recorded"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_findings_recorded"
+          }
+        ],
+        "name": "findings_recorded"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:implementer_active": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkUnits._guard_implementer_active"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.work_ops",
+            "query": true,
+            "symbol": "WorkUnits._guard_implementer_active"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_implementer_active"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.work_ops",
+            "query": true,
+            "symbol": "WorkUnits._guard_implementer_active"
+          }
+        ],
+        "name": "implementer_active"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:not_beyond_interrupted_phase": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
+          }
+        ],
+        "name": "not_beyond_interrupted_phase"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:ready_for_review": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_ready_for_review"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_ready_for_review"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_ready_for_review"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_ready_for_review"
+          }
+        ],
+        "name": "ready_for_review"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:ready_for_verification_without_review": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_ready_for_verification_without_review"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_ready_for_verification_without_review"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_ready_for_verification_without_review"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": false,
+            "symbol": "Gates._guard_ready_for_verification_without_review"
+          }
+        ],
+        "name": "ready_for_verification_without_review"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:returning_from_escalation": {
+      "anchor": {
+        "module": "aew.engine.work_ops",
+        "symbol": "WorkUnits._guard_returning_from_escalation"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_returning_from_escalation"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_returning_from_escalation"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.work_ops",
+            "query": false,
+            "symbol": "WorkUnits._guard_returning_from_escalation"
+          }
+        ],
+        "name": "returning_from_escalation"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
+    },
+    "guards:review_current": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_review_current"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.seams:GuardTable"
+      },
+      "fact": {
+        "evaluators": [
+          {
+            "kind": "mutating",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_review_current"
+          },
+          {
+            "kind": "non_mutating",
+            "module": "aew.engine.nonmutating_ops",
+            "query": false,
+            "symbol": "NonMutating._guard_review_current"
+          },
+          {
+            "kind": "parent",
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_review_current"
+          }
+        ],
+        "name": "review_current"
+      },
+      "fact_coverage": {
+        "evaluators": {
+          "check": [
+            "tests/integration/test_reference_machines.py::test_the_guard_records_are_the_registered_guards_the_rules_name"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.seams:GuardTable"
+        }
+      },
+      "family": "guards"
     },
     "layout:.gitignore": {
       "anchor": {
@@ -11859,6 +12683,4362 @@
         "aew.util",
         "aew.workspace.git"
       ]
+    },
+    "reason-rules:ASSIGNED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ASSIGNED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ASSIGNED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:BLOCKED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "BLOCKED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:BLOCKED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "BLOCKED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:COMMIT_READY->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:COMMIT_READY->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:COMMIT_READY->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:COMMIT_READY->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ESCALATED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ESCALATED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ESCALATED->REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "to": "REVIEW_PENDING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ESCALATED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:ESCALATED->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->ASSIGNED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "ASSIGNED",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "COMMIT_READY",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->REVIEW_PASSED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "REVIEW_PASSED",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "REVIEW_PENDING",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "RUNNING",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->VERIFIED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "VERIFIED",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:INTERRUPTED->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "to": "VERIFY_PENDING",
+        "via": "reconcile"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:READY->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "READY",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:READY->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "READY",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REPLAN_REQUIRED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REPLAN_REQUIRED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_FAILED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_FAILED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_FAILED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PASSED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PASSED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PASSED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PASSED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PENDING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PENDING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PENDING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:REVIEW_PENDING->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:RUNNING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "RUNNING",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:RUNNING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "RUNNING",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:RUNNING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "RUNNING",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_FAILED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_INCONCLUSIVE->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_INCONCLUSIVE->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_INCONCLUSIVE->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_INCONCLUSIVE->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFICATION_INCONCLUSIVE->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFIED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFIED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFIED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFIED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFY_PENDING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFY_PENDING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFY_PENDING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "reason-rules:VERIFY_PENDING->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machines.py::test_the_reason_rules_are_the_flagged_edges_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "reason-rules"
+    },
+    "states:ASSIGNED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 1,
+        "state": "ASSIGNED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:BLOCKED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 0,
+        "state": "BLOCKED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": null,
+        "state": "CANCELLED",
+        "terminal": true
+      },
+      "family": "states"
+    },
+    "states:COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 7,
+        "state": "COMMIT_READY",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:DONE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 8,
+        "state": "DONE",
+        "terminal": true
+      },
+      "family": "states"
+    },
+    "states:ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": null,
+        "state": "ESCALATED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": null,
+        "state": "INTERRUPTED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 0,
+        "state": "READY",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": null,
+        "state": "REPLAN_REQUIRED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:REVIEW_FAILED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 3,
+        "state": "REVIEW_FAILED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:REVIEW_PASSED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 4,
+        "state": "REVIEW_PASSED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 3,
+        "state": "REVIEW_PENDING",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 2,
+        "state": "RUNNING",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:VERIFICATION_FAILED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 5,
+        "state": "VERIFICATION_FAILED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:VERIFICATION_INCONCLUSIVE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 5,
+        "state": "VERIFICATION_INCONCLUSIVE",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:VERIFIED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 6,
+        "state": "VERIFIED",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "states:VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.hierarchy",
+            "symbol": "PARENT_STATES",
+            "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.schemas",
+            "symbol": "SCHEMAS",
+            "why": "the control schema's work unit state enum also admits OPEN, which is in no state table"
+          }
+        ]
+      },
+      "fact": {
+        "phase": 5,
+        "state": "VERIFY_PENDING",
+        "terminal": false
+      },
+      "family": "states"
+    },
+    "transitions:ASSIGNED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ASSIGNED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ASSIGNED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lead_ops",
+            "symbol": "Lead._interrupt_invocations",
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:ASSIGNED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ASSIGNED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ASSIGNED",
+        "guard": "implementer_active",
+        "reason_required": false,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:BLOCKED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "BLOCKED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:BLOCKED->READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.dependencies",
+            "symbol": "recompute_readiness",
+            "why": "assigns the unit's state with no transitions.check in the function; it moves Tickets between BLOCKED and READY (operation recompute)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "BLOCKED",
+        "guard": null,
+        "reason_required": false,
+        "to": "READY",
+        "via": "recompute"
+      },
+      "family": "transitions"
+    },
+    "transitions:BLOCKED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "BLOCKED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->DONE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": false,
+        "to": "DONE",
+        "via": "integrate.publish"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lead_ops",
+            "symbol": "Lead._interrupt_invocations",
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:COMMIT_READY->VERIFICATION_FAILED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "also": [
+          "integrate.validate"
+        ],
+        "from": "COMMIT_READY",
+        "guard": null,
+        "reason_required": false,
+        "to": "VERIFICATION_FAILED",
+        "via": "verify.ingest"
+      },
+      "fact_coverage": {
+        "also": {
+          "check": [
+            "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+            "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+            "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+            "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+            "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.engine.transitions:RULES"
+        }
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": "returning_from_escalation",
+        "reason_required": true,
+        "to": "REVIEW_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": "returning_from_escalation",
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:ESCALATED->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "ESCALATED",
+        "guard": "returning_from_escalation",
+        "reason_required": true,
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->ASSIGNED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "ASSIGNED",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "COMMIT_READY",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->REVIEW_PASSED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "REVIEW_PASSED",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "REVIEW_PENDING",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->VERIFIED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "VERIFIED",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:INTERRUPTED->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "INTERRUPTED",
+        "guard": "not_beyond_interrupted_phase",
+        "reason_required": true,
+        "to": "VERIFY_PENDING",
+        "via": "reconcile"
+      },
+      "family": "transitions"
+    },
+    "transitions:READY->ASSIGNED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.nonmutating_ops",
+            "symbol": "NonMutating.work_dispatch",
+            "why": "calls set_state with no transitions.check in the function; it dispatches a non-mutating Ticket (operation assign)"
+          },
+          {
+            "module": "aew.engine.workspace_ops",
+            "symbol": "Assignment.work_assign",
+            "why": "calls set_state with no transitions.check in the function; it assigns a mutating Ticket (operation assign)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "READY",
+        "guard": null,
+        "reason_required": false,
+        "to": "ASSIGNED",
+        "via": "assign"
+      },
+      "family": "transitions"
+    },
+    "transitions:READY->BLOCKED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.dependencies",
+            "symbol": "recompute_readiness",
+            "why": "assigns the unit's state with no transitions.check in the function; it moves Tickets between BLOCKED and READY (operation recompute)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "READY",
+        "guard": null,
+        "reason_required": false,
+        "to": "BLOCKED",
+        "via": "recompute"
+      },
+      "family": "transitions"
+    },
+    "transitions:READY->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:READY->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "READY",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REPLAN_REQUIRED->BLOCKED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "guard": null,
+        "reason_required": false,
+        "to": "BLOCKED",
+        "via": "plan.accept"
+      },
+      "family": "transitions"
+    },
+    "transitions:REPLAN_REQUIRED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REPLAN_REQUIRED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REPLAN_REQUIRED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:REPLAN_REQUIRED->READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REPLAN_REQUIRED",
+        "guard": null,
+        "reason_required": false,
+        "to": "READY",
+        "via": "plan.accept"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_FAILED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_FAILED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_FAILED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_FAILED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_FAILED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_FAILED",
+        "guard": "findings_recorded",
+        "reason_required": false,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": "commit_ready_without_verification",
+        "reason_required": false,
+        "to": "COMMIT_READY",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->DONE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": "evidence_only_complete",
+        "reason_required": false,
+        "to": "DONE",
+        "via": "accept"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PASSED->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PASSED",
+        "guard": "review_current",
+        "reason_required": false,
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lead_ops",
+            "symbol": "Lead._interrupt_invocations",
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->REVIEW_FAILED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "REVIEW_FAILED",
+        "via": "review.ingest"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->REVIEW_PASSED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "REVIEW_PASSED",
+        "via": "review.ingest"
+      },
+      "family": "transitions"
+    },
+    "transitions:REVIEW_PENDING->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "REVIEW_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": "commit_ready_without_review_or_verification",
+        "reason_required": false,
+        "to": "COMMIT_READY",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->DONE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": "evidence_only_complete",
+        "reason_required": false,
+        "to": "DONE",
+        "via": "accept"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lead_ops",
+            "symbol": "Lead._interrupt_invocations",
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->REVIEW_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": "ready_for_review",
+        "reason_required": false,
+        "to": "REVIEW_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:RUNNING->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "RUNNING",
+        "guard": "ready_for_verification_without_review",
+        "reason_required": false,
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_FAILED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_FAILED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_FAILED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "guard": null,
+        "reason_required": false,
+        "to": "REPLAN_REQUIRED",
+        "via": "verify.classify"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_FAILED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "guard": null,
+        "reason_required": false,
+        "to": "RUNNING",
+        "via": "verify.classify"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_FAILED->VERIFICATION_INCONCLUSIVE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_FAILED",
+        "guard": null,
+        "reason_required": false,
+        "to": "VERIFICATION_INCONCLUSIVE",
+        "via": "verify.classify"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFICATION_INCONCLUSIVE->VERIFY_PENDING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFICATION_INCONCLUSIVE",
+        "guard": null,
+        "reason_required": true,
+        "to": "VERIFY_PENDING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->COMMIT_READY": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": "all_gates_current",
+        "reason_required": false,
+        "to": "COMMIT_READY",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->DONE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": "evidence_only_complete",
+        "reason_required": false,
+        "to": "DONE",
+        "via": "accept"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFIED->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFIED",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->CANCELLED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "CANCELLED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->ESCALATED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "ESCALATED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->INTERRUPTED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.lead_ops",
+            "symbol": "Lead._interrupt_invocations",
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "INTERRUPTED",
+        "via": "interrupt"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->REPLAN_REQUIRED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "REPLAN_REQUIRED",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->RUNNING": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.engine.work_ops",
+            "symbol": "WorkCommands.work_transition",
+            "why": "calls set_state with no transitions.check in the function; it carries out the Lead's generic transition (operation transition)"
+          }
+        ]
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": true,
+        "to": "RUNNING",
+        "via": "transition"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->VERIFICATION_FAILED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "VERIFICATION_FAILED",
+        "via": "verify.ingest"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->VERIFICATION_INCONCLUSIVE": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "VERIFICATION_INCONCLUSIVE",
+        "via": "verify.ingest"
+      },
+      "family": "transitions"
+    },
+    "transitions:VERIFY_PENDING->VERIFIED": {
+      "anchor": {
+        "module": "aew.engine.transitions",
+        "symbol": "RULES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
+      },
+      "fact": {
+        "from": "VERIFY_PENDING",
+        "guard": null,
+        "reason_required": false,
+        "to": "VERIFIED",
+        "via": "verify.ingest"
+      },
+      "family": "transitions"
+    },
+    "usage-live-states:final": {
+      "anchor": {
+        "module": "aew.harness.usage_live",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.usage_live",
+            "symbol": "PROMPT_STATES",
+            "why": "a second state set of this module (unsent, posting, posted) is not recorded"
+          }
+        ]
+      },
+      "fact": {
+        "exits": [],
+        "position": 1,
+        "state": "final"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.usage_live",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "usage-live-states"
+    },
+    "usage-live-states:live": {
+      "anchor": {
+        "module": "aew.harness.usage_live",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.usage_live",
+            "symbol": "PROMPT_STATES",
+            "why": "a second state set of this module (unsent, posting, posted) is not recorded"
+          }
+        ]
+      },
+      "fact": {
+        "exits": [],
+        "position": 0,
+        "state": "live"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.usage_live",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "usage-live-states"
+    },
+    "usage-live-states:server_gone": {
+      "anchor": {
+        "module": "aew.harness.usage_live",
+        "symbol": "STATES"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.usage_live",
+            "symbol": "PROMPT_STATES",
+            "why": "a second state set of this module (unsent, posting, posted) is not recorded"
+          }
+        ]
+      },
+      "fact": {
+        "exits": [],
+        "position": 2,
+        "state": "server_gone"
+      },
+      "fact_coverage": {
+        "exits": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew.harness.usage_live",
+              "symbol": "STATES",
+              "why": "no edge table: how a state follows another is not recorded in a table, so no exit is enumerated"
+            }
+          ]
+        }
+      },
+      "family": "usage-live-states"
     },
     "writers:.gitignore": {
       "anchor": {

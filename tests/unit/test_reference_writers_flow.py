@@ -565,8 +565,8 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
 def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one_by_one():
     """The sweep, made mechanical: a module-level integer named like a cap, and a slice cut at a number or a
     constant, in `tools/reference_families` and `tools/reference.py`. Each is a cap of `caps()` (and so on the page,
-    with its source and what the reading does past it) or a display truncation named here with the reason it cuts no
-    analysis. A new one fails this test until it is decided."""
+    with its source and what the reading does past it) or a slice named here with the reason it bounds nothing the
+    reading follows. A new one fails this test until it is decided."""
     cap_names = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)")
     constants: set[str] = set()
     slices: set[str] = set()
@@ -583,13 +583,15 @@ def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one
                         isinstance(upper, ast.Name) and upper.id.isupper()):
                     slices.add(f"{path.stem}:{ast.unparse(node)}")
     assert constants == {cap.name for cap in (*F.caps(), *K.caps())}
-    assert slices == set(DISPLAY_TRUNCATIONS), "decide each new cut: a cap is listed in caps(), a display cut below"
+    assert slices == set(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
 
 
-# A slice of the generator that cuts what it shows and nothing it follows: the text of an expression quoted in a reason
-# (the cut is marked by `...`). The refusals that list problems cut through `common.shown`, which says how many it left
-# out; the parameter `limit` is not a constant, so the sweep does not see those cuts, and the test above holds them.
-DISPLAY_TRUNCATIONS = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`"}
+# A slice of the generator that bounds nothing it follows: what it shows (the text of an expression quoted in a reason,
+# the cut marked by `...`) or a position (the first parameter, `self` or `cls`). The refusals that list problems cut
+# through `common.shown`, which says how many it left out; its `limit` is a parameter, not a constant, so the sweep
+# does not see those cuts, and a raw `[:20]` written instead of it is seen.
+EXCUSED_SLICES = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`",
+                  "control_keys:target.params[:1]": "a position: the first parameter, `self` or `cls`"}
 
 
 def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():

@@ -1,27 +1,39 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 6,
-      "lower-bound": 335
+      "complete-by-construction": 88,
+      "lower-bound": 359
     },
     "by_family": {
+      "command-refusals": 72,
+      "commands": 10,
       "entry-points": 6,
       "modules": 174,
+      "stg02-routes": 24,
       "writers": 161
     },
     "by_family_and_coverage": {
+      "command-refusals": {
+        "complete-by-construction": 72
+      },
+      "commands": {
+        "complete-by-construction": 10
+      },
       "entry-points": {
         "complete-by-construction": 6
       },
       "modules": {
         "lower-bound": 174
       },
+      "stg02-routes": {
+        "lower-bound": 24
+      },
       "writers": {
         "lower-bound": 161
       }
     },
-    "digest": "sha256:0aa4b74c9fbe879ab939221900be248cacc2c672de761591a2a7f16c56a361e4",
-    "records": 341,
+    "digest": "sha256:5c5657eaa9ccb4bcf8d47f01b3954b349eef6d1e326e87335772a4cb702da4b9",
+    "records": 447,
     "unresolved": 69
   },
   "gaps": [
@@ -441,6 +453,1882 @@
     }
   ],
   "records": {
+    "command-refusals:ATTACH_LEAD:ALREADY_ATTACHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "ALREADY_ATTACHED",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:INVALID_INSTALLATION_OR_PROFILE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "INVALID_INSTALLATION_OR_PROFILE",
+        "reason": "PROTECTIVE_SCOPE_CHANGED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ATTACH_LEAD:UNKNOWN_OWNER_STATE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "cause": "UNKNOWN_OWNER_STATE",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CLOSE_ATTACHMENT:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_GRANT_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "DELEGATED_GRANT_UNVERIFIED",
+        "reason": "DELEGATED_GRANT_UNVERIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATED_INTENT_NOT_GRANTED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "DELEGATED_INTENT_NOT_GRANTED",
+        "reason": "DELEGATED_GRANT_UNVERIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:DELEGATION_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "DELEGATION_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STALE_PREDECESSOR": {
+      "anchor": {
+        "module": "aew.stg02.commands",
+        "symbol": "SLICE_OWNER_REASONS"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "HEB_STALE_PREDECESSOR",
+        "reason": "PRECONDITION_STALE",
+        "source": "code"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:HEB_STATE_UNKNOWN": {
+      "anchor": {
+        "module": "aew.stg02.commands",
+        "symbol": "SLICE_OWNER_REASONS"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "HEB_STATE_UNKNOWN",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "code"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:CONTINUE_ELIGIBLE_WORK:WORK_NOT_CURRENTLY_ELIGIBLE": {
+      "anchor": {
+        "module": "aew.stg02.commands",
+        "symbol": "SLICE_OWNER_REASONS"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "cause": "WORK_NOT_CURRENTLY_ELIGIBLE",
+        "reason": "PRECONDITION_STALE",
+        "source": "code"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:DELEGATED_CANCEL:DELEGATED_GRANT_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "DELEGATED_CANCEL",
+        "cause": "DELEGATED_GRANT_UNVERIFIED",
+        "reason": "DELEGATED_GRANT_UNVERIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:DELEGATED_CANCEL:DELEGATED_INTENT_NOT_GRANTED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "DELEGATED_CANCEL",
+        "cause": "DELEGATED_INTENT_NOT_GRANTED",
+        "reason": "DELEGATED_GRANT_UNVERIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:DELEGATED_CANCEL:DELEGATION_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "DELEGATED_CANCEL",
+        "cause": "DELEGATION_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:DELEGATED_CANCEL:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "DELEGATED_CANCEL",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:ISSUE_STANDING_POLICY:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:LIFT_OPERATOR_SUSPENSION:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:ACTOR_NOT_CURRENT_SUCCESSOR": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "ACTOR_NOT_CURRENT_SUCCESSOR",
+        "reason": "AUTHORITY_REFUSED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:ALREADY_REAFFIRMED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "ALREADY_REAFFIRMED",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CHILD_REFUSED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CHILD_REFUSED",
+        "reason": "AUTHORITY_REFUSED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CHILD_STALE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CHILD_STALE",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CHILD_UNKNOWN": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CHILD_UNKNOWN",
+        "reason": "AUTHORITY_REFUSED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CHILD_WRONG_PREDECESSOR": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CHILD_WRONG_PREDECESSOR",
+        "reason": "PROTECTIVE_SCOPE_CHANGED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CLASSIFICATION_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CLASSIFICATION_MISMATCH",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CLASSIFICATION_NOT_ROUTINE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CLASSIFICATION_NOT_ROUTINE",
+        "reason": "AUTHORITY_REFUSED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CLASSIFICATION_TRANSITION_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CLASSIFICATION_TRANSITION_MISMATCH",
+        "reason": "PROTECTIVE_SCOPE_CHANGED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:CLASSIFICATION_UNAVAILABLE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "CLASSIFICATION_UNAVAILABLE",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:HEB_TRANSITION_INCONSISTENT": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "HEB_TRANSITION_INCONSISTENT",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:SOURCE_UNAVAILABLE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "SOURCE_UNAVAILABLE",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:SUCCESSOR_NOT_CURRENT": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "SUCCESSOR_NOT_CURRENT",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REAFFIRM_ELIGIBLE_CHILD_GRANTS:UNKNOWN_OWNER_STATE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "cause": "UNKNOWN_OWNER_STATE",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:HEB_ALREADY_FENCED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "HEB_ALREADY_FENCED",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:HEB_STALE_PREDECESSOR": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "HEB_STALE_PREDECESSOR",
+        "reason": "PRECONDITION_STALE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REATTACH_LEAD:UNKNOWN_OWNER_STATE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "cause": "UNKNOWN_OWNER_STATE",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:REQUEST_PROFILE_CHANGE:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:CONSENT_ALREADY_USED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "CONSENT_ALREADY_USED",
+        "reason": "CONSENT_ALREADY_USED_OR_MISSING",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:CONSENT_EXPIRED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "CONSENT_EXPIRED",
+        "reason": "CURRENTNESS_EXPIRED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:CONSENT_ISSUER_UNVERIFIED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:CONSENT_SCOPE_MISMATCH": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "CONSENT_SCOPE_MISMATCH",
+        "reason": "ORIGIN_UNQUALIFIED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:NOT_MODELLED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "NOT_MODELLED",
+        "reason": "SOURCE_UNAVAILABLE",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "command-refusals:SUSPEND_GRANT:ORIGIN_NOT_ESTABLISHED": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "refusals"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_every_refusal_result_comes_through_the_one_lookup",
+          "tests/integration/test_reference_stg02.py::test_the_refusal_records_are_the_two_tables_both_ways",
+          "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.commands:refusal"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "cause": "ORIGIN_NOT_ESTABLISHED",
+        "reason": "ORIGIN_NOT_ESTABLISHED",
+        "source": "vendored"
+      },
+      "family": "command-refusals"
+    },
+    "commands:ATTACH_LEAD": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "ATTACH_LEAD",
+        "origin": "PROTECTED_G3",
+        "owner": "HEB",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:CLOSE_ATTACHMENT": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "CLOSE_ATTACHMENT",
+        "origin": "PROTECTED_G3",
+        "owner": "HEB",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:CONTINUE_ELIGIBLE_WORK": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "CONTINUE_ELIGIBLE_WORK",
+        "origin": "CURRENT_DELEGATED_GRANT",
+        "owner": "HEB",
+        "reaches_owner": true
+      },
+      "family": "commands"
+    },
+    "commands:DELEGATED_CANCEL": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "DELEGATED_CANCEL",
+        "origin": "CURRENT_DELEGATED_GRANT",
+        "owner": "HEB",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:ISSUE_STANDING_POLICY": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "ISSUE_STANDING_POLICY",
+        "origin": "PROTECTED_G3",
+        "owner": "RESOURCE_POLICY_ISSUER",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:LIFT_OPERATOR_SUSPENSION": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "LIFT_OPERATOR_SUSPENSION",
+        "origin": "PROTECTED_G3",
+        "owner": "ADC",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:REAFFIRM_ELIGIBLE_CHILD_GRANTS": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+        "origin": "CURRENT_SUCCESSOR_GENERATION",
+        "owner": "ADC",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:REATTACH_LEAD": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "REATTACH_LEAD",
+        "origin": "PROTECTED_G3",
+        "owner": "HEB",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:REQUEST_PROFILE_CHANGE": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "REQUEST_PROFILE_CHANGE",
+        "origin": "PROTECTED_G3",
+        "owner": "IF13",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
+    "commands:SUSPEND_GRANT": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "registry"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_stg02.py::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+          "tests/integration/test_reference_stg02.py::test_the_command_records_are_the_registry_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.stg02.adopted:registry"
+      },
+      "fact": {
+        "action": "SUSPEND_GRANT",
+        "origin": "PROTECTED_G3",
+        "owner": "ADC",
+        "reaches_owner": false
+      },
+      "family": "commands"
+    },
     "entry-points:aew": {
       "anchor": {
         "module": "aew.cli.main",
@@ -4772,6 +6660,438 @@
         "aew.util",
         "aew.workspace.git"
       ]
+    },
+    "stg02-routes:GET /o01/v0/owner-operations/{owner}/{operation_ref}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/o01/v0/owner-operations/{owner}/{operation_ref}",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/assurance/{subject_kind}/{subject_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/assurance/{subject_kind}/{subject_id}",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/attachments": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/attachments",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/attachments/{attachment_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/attachments/{attachment_id}",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/attention": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/attention",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/capabilities": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/capabilities",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/continuation-state/{work_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/continuation-state/{work_id}",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/coverage": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/coverage",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/holds/{hold_id}/recovery": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/holds/{hold_id}/recovery",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/knowledge": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/knowledge",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/owner-operations": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/owner-operations",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/research/claims/{claim_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/research/claims/{claim_id}",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/resolve": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/resolve",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/runs": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/runs",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/runs/{execution_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/runs/{execution_id}",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/waiting": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/waiting",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/work": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/work",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/work/{work_kind}/{work_id}": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/work/{work_kind}/{work_id}",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:GET /v1/read/work/{work_kind}/{work_id}/packages": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "GET",
+        "route": "/v1/read/work/{work_kind}/{work_id}/packages",
+        "served": false,
+        "test_only": false
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:POST /_test/engine-outage": {
+      "anchor": {
+        "module": "aew.stg02.server",
+        "symbol": "handle"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "POST",
+        "route": "/_test/engine-outage",
+        "served": true,
+        "test_only": true
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:POST /_test/read-entitlement": {
+      "anchor": {
+        "module": "aew.stg02.server",
+        "symbol": "handle"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "POST",
+        "route": "/_test/read-entitlement",
+        "served": true,
+        "test_only": true
+      },
+      "family": "stg02-routes"
+    },
+    "stg02-routes:POST /o01/v0/command-sets": {
+      "anchor": {
+        "module": "aew.stg02.adopted",
+        "symbol": "matrix"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "method": "POST",
+        "route": "/o01/v0/command-sets",
+        "served": true,
+        "test_only": false
+      },
+      "family": "stg02-routes"
     },
     "writers:.gitignore": {
       "anchor": {

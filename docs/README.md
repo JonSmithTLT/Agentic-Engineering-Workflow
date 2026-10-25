@@ -223,6 +223,7 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | File | What it is |
 |---|---|
 | [`README.md`](reference/README.md) | What the directory is, the files, how to read a record, and what to do when a change moves it |
+| [`commands.md`](reference/commands.md) | The routes of the STG-02 wire and whether the slice's server serves them, the actions its command path admits and whether admission can hand one to an owner, and the refusal causes each can return |
 | [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
 | [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |
 | [`index.json`](reference/index.json) | The machine index: every record by id, with its anchor, basis and coverage label, and the measured counts |

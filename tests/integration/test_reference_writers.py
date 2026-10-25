@@ -151,8 +151,8 @@ def test_a_name_spelled_aew_root_is_the_dot_aew_directory_by_forms_this_test_pin
 
 
 def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
-    """`aew.util` and the store's `write_file` are excluded as writers because their callers are the writers: each must
-    exist, and each must make the writes (else the exclusion hides nothing and should go)."""
+    """`aew.util`, the store's `write_file` and its apply step are excluded as writers because they write for others:
+    each must exist, and each must make the writes (else the exclusion hides nothing and should go)."""
     counts = W.primitive_counts(PROGRAM)
     for module in sorted(W.MECHANISM_MODULES):
         assert module in PROGRAM.modules and sum(counts[module].values()) > 0, module
@@ -161,6 +161,7 @@ def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
         func = mod.funcs[qual]
         # `write_file` picks its primitive in a conditional callee, which neither reader sees as a call: it names them
         names = {mod.aliases.resolve(n) for n in ast.walk(func.node) if isinstance(n, (ast.Name, ast.Attribute))}
+        names |= {f"{module}.{n}" for n in names if n in mod.funcs}  # a function of the module, called by its bare name
         assert names & set(W.CALL_PRIMITIVES), (module, qual)
 
 
@@ -302,12 +303,26 @@ KNOWN = {
     ("state/handoffs/H-{}.md", "aew.engine.lead_ops", "Lead.write_handoff"),
     ("knowledge/PROJECT.md", "aew.engine.store", "ControlStore.create"),
     ("local/control.lock", "aew.engine.lock", "FileLock._open"),
+    # placed by the command-line, destructuring and returned-dict rules (the placement pull request)
+    ("local/harness/runs/{}/run.json", "aew.harness.runlog", "write_record"),
+    ("local/harness/runs/{}/heartbeat", "aew.harness.runlog", "beat"),
+    ("work/{}/plan-v{}.md", "aew.engine.work_ops", "WorkUnits.propose"),
+    ("history/audits/{}.yaml", "aew.history.store", "History.write_record"),
 }
 
 
 def test_the_reading_agrees_with_a_hand_reading_of_the_writers_whose_paths_matter():
     found = {(t, w.module, w.symbol) for t, ws in ANALYSIS.writers.items() for w in ws}
     assert KNOWN <= found, sorted(KNOWN - found)
+
+
+def test_the_sites_the_page_lists_as_outside_aew_are_the_outside_records():
+    """Each site that the reading follows to a place outside `.aew` is a record (and the page lists the same sites)."""
+    records = {r.key for r in W.records_of(ANALYSIS) if r.key.startswith(f"{W.OUTSIDE_KEY}:")}
+    listed = {f"{W.OUTSIDE_KEY}:{m}:{s}:{p}" for sites in ANALYSIS.outside.values() for m, s, p in sites}
+    assert records == listed and records
+    page = W.page(ANALYSIS, W.records_of(ANALYSIS), W.TOP_LEVEL)
+    assert all(f"`{m}:{s}` ({p})" in page for sites in ANALYSIS.outside.values() for m, s, p in sites)
 
 
 def test_the_store_transaction_writers_are_exactly_the_session_write_sites():
@@ -334,3 +349,48 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
     assert any("`brand-new-dir`" in why and "not in the declared set" in why
                for (m, s, _p), (_mech, why) in analysis.unresolved.items() if (m, s) == ("aew.planted", "planted"))
     assert "brand-new-dir/x" not in analysis.writers
+
+
+# ------------------------------------------------------------------------------------------------------------ the caps
+
+CAPS = ((F, "VALUES"), (F, "DEPTH"), (F, "CALLERS"), (F, "TYPING_DEPTH"), (K, "DEPTH"))
+
+
+def without_the_caps_section(page: str) -> str:
+    start = page.index("## Caps of the reading")
+    return page[:start] + page[page.index("\n## ", start):]
+
+
+def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_caps_own_section(monkeypatch):
+    """The designer's proof that a cap loses nothing silently, as a test: if any record of this tree depended on a cap,
+    raising it would change the records. (At the caps the committed reference is what the code gives; doubled, it is the
+    same.) A change that makes a cap bind fails here, naming nothing quietly lost, and is a decision."""
+    base = W.build(CTX)
+    for module, name in CAPS:
+        monkeypatch.setattr(module, name, getattr(module, name) * 2)
+    doubled = W.build(CTX)
+    assert {r.id: r.as_json() for r in doubled.records} == {r.id: r.as_json() for r in base.records}
+    assert (without_the_caps_section(doubled.pages["writers.md"])
+            == without_the_caps_section(base.pages["writers.md"]))
+    assert doubled.pages["writers.md"] != base.pages["writers.md"], "the caps' own section prints the doubled values"
+
+
+def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_the_tree_needs(monkeypatch):
+    base = {r.id: r.as_json() for r in W.build(CTX).records}
+    monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
+    halved = {r.id: r.as_json() for r in W.build(CTX).records}
+    assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
+
+
+def test_the_value_cap_is_at_least_twice_the_largest_set_the_tree_makes():
+    with F.measuring() as peaks:
+        W.build(CTX)
+    assert peaks["values"] > 0 and F.VALUES >= 2 * peaks["values"], (
+        f"the largest set is {peaks['values']} and the cap {F.VALUES}: raise the cap, and say why")
+
+
+def test_the_caps_section_of_the_page_is_what_the_caps_say():
+    section = without_the_caps_section(W.build(CTX).pages["writers.md"])
+    assert section and "## Caps of the reading" not in section
+    page = W.build(CTX).pages["writers.md"]
+    assert all(f"`{cap.name}` = {cap.value}:" in page for cap in (*F.caps(), *K.caps()))

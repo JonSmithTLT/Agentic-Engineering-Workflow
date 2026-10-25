@@ -285,7 +285,7 @@ def build(ctx: C.Context) -> C.Built:
     records = records_of(inp)
     bad = problems({r.id: r.as_json() for r in records})
     if bad:
-        raise C.ReferenceError("the control-keys records break their own rules:\n  " + "\n  ".join(bad[:20]))
+        raise C.ReferenceError("the control-keys records break their own rules:\n  " + "\n  ".join(C.shown(bad)))
     known = {(r.fact or {})["key"] for r in records}
     skipped = sorted((m, n, v) for v, found in key_constants(trees).items() if v not in known for m, n in found)
     return C.Built(records=records, pages={"control-keys.md": page(records, skipped)})

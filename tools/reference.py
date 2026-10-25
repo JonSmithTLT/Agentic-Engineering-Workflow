@@ -80,7 +80,8 @@ def render_files(root: Path = ROOT) -> dict[str, bytes]:
     for name, text in sorted(texts.items()):
         problems += common.text_problems(name, text)
     if problems:
-        raise common.ReferenceError("the generated reference breaks its own rules:\n  " + "\n  ".join(problems[:20]))
+        raise common.ReferenceError("the generated reference breaks its own rules:\n  "
+                                    + "\n  ".join(common.shown(problems)))
     return {name: text.encode("utf-8") for name, text in texts.items()}
 
 

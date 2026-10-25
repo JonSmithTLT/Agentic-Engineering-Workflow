@@ -1,5 +1,6 @@
-**The dashboard wrong-answer flakes (2026-10-25, branch `fix/probe-upstream-teardown`).** Five CI rows got an
-answer that was not their dashboard server's:
+**The dashboard wrong-answer flakes (2026-10-25, branch `fix/probe-upstream-teardown`).** They are recorded here
+because E75 is the flake register's anchor until G3c. Five CI rows got an answer that was not their dashboard
+server's:
 - #262's run 40152522675, `integration 2/12` and `integration 4/12` (ubuntu);
 - `main` at `290d5bca`, run 40171024681 attempt 1, `integration 11/12` (ubuntu), which left `main` red for about 7 hours;
 - `main` at `6eec6f10`, run 40158679984, `integration 11/16` (windows);
@@ -16,8 +17,10 @@ fails on `290d5bca` and passes with the fix.
 **Open:** how a dashboard client's connection to its own server's port reached that listener. The kernel refused two
 listeners on one port in every experiment. In `c640c2f6`, the three dashboard World clients' requests fail on any
 answer without the dashboard's marks, with the port's listening and connected sockets and their owners, this process's
-socket inodes and its threads. The next occurrence then names the process and the socket. Note that the leaked
-listener frees its port once it has answered, so by then it is gone from the table.
+socket inodes and its threads. If the next occurrence is such an answer, it names the process and the socket. It
+describes nothing for a refused, reset or empty connection, which raises bare, and it passes another dashboard's
+well-formed answer. Only those three clients use it. Note that the leaked listener frees its port once it has
+answered, so by then it is gone from the table.
 
 **Windows, a separate cause, supported but not proven:** two sockets that both set `SO_REUSEADDR` can listen on one
 port there, and the dashboard's listener set it (http.server's default). `75e03a0f` gives it `ExclusiveServer`'s rule,
@@ -25,3 +28,16 @@ now owned by `aew/exclusive_server.py`, and `tests/unit/test_exclusive_server.py
 No explicit bind on a port another dashboard holds was found in the tree, so rows 4 and 5's mechanism stays open. This
 entry closes only once a test reproduces each cause deterministically, as the row says. The Linux one has such a test;
 the open link and the Windows rows do not.
+
+**Follow-on (review of #271, m1, m2, m4 and n1):** these are meant to be fixed by one test-only pull request on
+this row, before it closes:
+- the 14 other dashboard client sites move onto `tests/helpers/dashboard_client.py`: `test_dashboard_maps`,
+  `display_redaction`, `security`, `session`, `acceptance`, and two direct connections in `test_dashboard_api`. First
+  the helper's type check is scoped to `/api/v1` paths, which `session` and `acceptance` need;
+- the helper describes `OSError` and `HTTPException` from connect, request and getresponse with the same diagnostics.
+  It also checks the answer's identity through the client ports the World's own `_Listener` accepted (a project id
+  cannot serve: every sample project is `calc`);
+- the regression test records `ResourceWarning`s around `_network` and asserts that none names a socket, so a dropped
+  `close()` fails too;
+- `tests/unit/test_exclusive_server.py` gets a pinned planted probe for each of the 17 forms its scan does not see,
+  which its docstring lists.

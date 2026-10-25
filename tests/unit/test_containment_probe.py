@@ -568,7 +568,10 @@ def relayed(path: str, sentinel: str) -> bytes:
 def test_the_probes_network_stand_ins_leave_no_listener_socket_or_thread_behind(tmp_path):
     """Register E75: the upstream's port stayed in ``LISTEN`` after every run, its thread blocked in ``accept``, and
     answered any local connection with the token (the dashboard tests' 32-byte replies on CI). Each of ``_network``'s
-    own sockets is found by its inode while it is open, so nothing another process does can pass or fail this."""
+    own sockets is found by its inode while it is open, so nothing another process does can pass or fail this. After
+    exit each is gone, closed or collected: a socket nothing closes is collected when ``_network``'s frame ends, so
+    this fails only when something keeps one alive, as the upstream's blocked ``accept`` did, and not for a dropped
+    ``close()`` alone (review of #271, m1; a ``ResourceWarning`` check is E75's follow-on)."""
     before, threads = socket_inodes(), set(threading.enumerate())
     with probe._network(dataclasses.replace(PRIVATE, net_dir=str(tmp_path)), egress_policy=None, bridge=None) as net:
         assert net is not None

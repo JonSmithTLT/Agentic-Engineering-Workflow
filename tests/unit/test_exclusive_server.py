@@ -6,6 +6,13 @@ directly), is found in the code and in its string constants: the probe's sandbox
 must be :class:`~aew.exclusive_server.ExclusiveServer` or derive from it; every other site is in :data:`SITES` with
 the reason it cannot share a port. A new site fails until it is classified there, and a row whose site has gone fails
 too. The behaviour is then shown on each platform: a second bind on a held port is refused.
+
+What the scan does not see (review of #271, m4; a pinned probe for each is E75's follow-on), none of it in ``src``
+when this was written: aliased imports (``create_server as cs``, ``TCPServer as T`` as a base, ``Listener as L``); a
+server class reached through a variable, as a base or a call, or made by ``type()``; ``SO_REUSEADDR`` or
+``reuse_port=True`` added inside a site already classified; ``asyncio.start_server``, ``wsgiref``'s ``make_server``,
+``SimpleXMLRPCServer`` and ``BaseManager``; ``getattr(s, "bind")(...)`` and ``functools.partial(s.bind, ...)()``; a
+local class named ``ExclusiveServer``; and ``HTTPServer(`` in a string or ``.bind(`` in a bytes constant.
 """
 
 from __future__ import annotations
@@ -173,7 +180,10 @@ def explicit_bind(port: int, *, reuse: bool) -> None:
 ], ids=["exclusive_server", "dashboard_listener"])
 def test_a_port_an_aew_server_holds_is_refused_to_any_second_listener(make):
     """Windows let a second ``SO_REUSEADDR`` listener share a port the dashboard held (register E75); Linux never did.
-    Here neither does: not a plain socket with or without the option, and not a second server of the same kind."""
+    Here neither does: not a plain socket with or without the option, and not a second server of the same kind. This
+    proves the rule's ``allow_reuse_address`` half on loopback, where a holder with neither option refuses the same
+    second binds: the ``SO_EXCLUSIVEADDRUSE`` half is carried from STG-02 without a case that tells it apart (review of
+    #271, m3)."""
     held = make(("127.0.0.1", 0))
     try:
         port = held.server_address[1]

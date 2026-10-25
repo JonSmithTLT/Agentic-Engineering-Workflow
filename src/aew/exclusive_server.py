@@ -5,7 +5,9 @@ answered by either; ``http.server`` sets it on every server (``allow_reuse_addre
 such a bind (``WSAEACCES``), and one with ``SO_EXCLUSIVEADDRUSE`` refuses every second bind. On Linux a second
 listener on a held port is refused whatever either sets, and ``SO_REUSEADDR`` lets a stopped server's port be bound
 again while its connections are in ``TIME_WAIT``: so it stays on there. Measured on Windows 11 with Python 3.13, a
-server with this rule binds its port again at once after a stop that left five connections in ``TIME_WAIT``.
+server with this rule binds its port again at once after a stop that left five connections in ``TIME_WAIT``. Its
+tests prove the ``allow_reuse_address`` half on loopback, where a holder with neither option refuses the same second
+binds: the ``SO_EXCLUSIVEADDRUSE`` half is carried from STG-02 without a case that tells it apart (review of #271, m3).
 
 Every ``socketserver`` server in ``src`` derives from :class:`ExclusiveServer`; the other listening sites are Unix
 sockets, named pipes or Linux-only (``tests/unit/test_exclusive_server.py`` enumerates them).

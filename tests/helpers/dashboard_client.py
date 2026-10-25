@@ -4,6 +4,13 @@ CI rows got answers that were not their dashboard server's (a bare 32-hex body w
 does not carry the dashboard's marks fails here, and the failure records who held the port while the connection was
 still open: the kernel's listening and connected sockets on it with their owners, this process's socket inodes, and
 its threads. One occurrence then shows whether the answer came from this process or another, and from which socket.
+
+Its limits (review of #271, m2; E75's follow-on): a refused, reset or empty connection raises as ``http.client``
+raises it (``ConnectionRefusedError``, ``RemoteDisconnected``), with nothing recorded; a well-formed answer from
+another dashboard, R21's headers and JSON included, passes as this one's; and only the three World clients use it
+(``test_dashboard_api``, ``test_dashboard_conditional``, ``test_dashboard_history_search``), while 14 other dashboard
+client sites still use ``http.client`` directly. Its marks are an API answer's (``/api/v1``, the only paths it is used
+for): the dashboard's static files and session pages are its own answers too, but not JSON.
 """
 
 from __future__ import annotations
@@ -49,8 +56,8 @@ def request(port: int, method: str, path: str,
 
 
 def not_the_dashboards(status: int, headers: Mapping[str, str]) -> str | None:
-    """Why an answer is not the dashboard's, or None. Every dashboard answer carries R21's headers, and every one
-    with a body is JSON; a ``304`` has none (``aew.dashboard.server``)."""
+    """Why an API answer is not the dashboard's, or None. Every dashboard answer carries R21's headers, and every API
+    answer with a body is JSON; a ``304`` has none (``aew.dashboard.server``)."""
     missing = [name for name, value in SECURITY_HEADERS if headers.get(name.lower()) != value]
     if missing:
         return f"it lacks the dashboard's R21 headers {missing}"

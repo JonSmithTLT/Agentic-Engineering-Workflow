@@ -511,6 +511,24 @@ PROBES = {
 }
 
 
+def test_the_page_and_the_docstring_say_why_each_declared_member_is_declared():
+    """Review of #267, C-3: the compactor's three because its module says so, the wake mark's three because the signal
+    is advisory and the call graph is their only support (their docstrings say nothing of a lock)."""
+    page = CO.page(CO.records_of(inputs()))
+    assert "because the wake signal is advisory" in page
+    assert "because its module docstring says they run without" in page
+    assert "because the wake signal is advisory" in " ".join((CO.__doc__ or "").split())
+    wake = [d for d in CO.DECLARED if d[0] == "aew.engine.outbox"]
+    assert len(wake) == 3 and all(words == () for *_, words in wake), "the wake mark has no statement to quote"
+
+
+def test_the_cannot_see_list_names_the_live_instances_of_the_locks_it_misses():
+    """Review of #267, C-9: the page's title is "which locks the code takes", so the ones it misses are named."""
+    said = " ".join(text for _, text in CO.CANNOT_SEE)
+    assert "checkout_sync_lock_path" in said and "aew.engine.queue_ops" in said
+    assert "the dashboard and the harness" in said
+
+
 def test_the_cannot_see_list_has_a_probe_for_each_class_and_nothing_else():
     assert set(PROBES) == {name for name, _ in CO.CANNOT_SEE}
     assert len({name for name, _ in CO.CANNOT_SEE}) == len(CO.CANNOT_SEE)

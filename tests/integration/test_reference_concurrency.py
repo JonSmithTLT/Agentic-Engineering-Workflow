@@ -76,6 +76,16 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     assert constructions == len(sites) == placed == 4, (constructions, len(sites), placed)
 
 
+def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
+    """Review of #267, C-9: the list names the checkout sync lock (an `O_EXCL` file) and the `threading` locks."""
+    queue = CTX.sources()["aew.engine.queue_ops"]
+    assert any(q.endswith("checkout_sync_lock_path") for q in PROGRAM.modules["aew.engine.queue_ops"].funcs)
+    assert "O_EXCL" in queue.text
+    for module in ("aew.dashboard.server", "aew.harness.bridge"):
+        text = CTX.sources()[module].text
+        assert any(f"threading.{kind}(" in text for kind in ("Lock", "RLock", "Condition", "Event")), module
+
+
 # --------------------------------------------------------------------------------------------- the control lock
 
 def test_the_control_locks_only_opener_is_the_stores_and_its_takers_are_the_functions_that_call_it(tmp_path):

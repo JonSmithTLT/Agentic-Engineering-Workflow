@@ -63,7 +63,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 
 | Schema | File | Paths | Required |
 |---|---|---|---|
-| `checks` | `checks.schema.json` | 11 | 3 |
+| `checks` | `checks.schema.json` | 12 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
 | `control` | `control.schema.json` | 488 | 271 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
@@ -72,7 +72,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `decision` | `decision.schema.json` | 17 | 10 |
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 128 | 46 |
-| `execution` | `execution.schema.json` | 50 | 7 |
+| `execution` | `execution.schema.json` | 56 | 7 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
 | `history` | `history.schema.json` | 12 | 9 |

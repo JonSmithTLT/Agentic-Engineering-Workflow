@@ -21,9 +21,10 @@ of resolved calls, and nothing more); a writer with no chain is unresolved on th
 share one declaring function, and the command decides the role, so they are cut by the parser
 (:mod:`reference_families.writers_roles`): a handler is reached by the role of its command. A handler whose command
 cannot be read is reached by every role, and the writers behind it say so, with an unresolved item anchored at the
-function that registers it. The role the environment selects reaches nothing by the call graph: a writer that the
-general handlers reach and that role is not given carries an item that says so, and that a write a non-writer may not
-make is refused there (`process_kind.require_writer`, tested at run time and not proved here). A second detector,
+function that registers it. The role the environment selects reaches nothing by the call graph: a writer that a CLI
+command's handler reaches (whatever that command's own role) and that role is not given carries an item that says so,
+and that a write a non-writer may not make is refused there (`process_kind.require_writer`, tested at run time and
+not proved here). A second detector,
 :mod:`reference_families.writers_text`, finds the write-primitive calls by tokens, and the two must agree per module.
 
 What it does not see is the family's ``cannot see`` list, pinned by probes in the tests: a path built in one function
@@ -485,10 +486,12 @@ def store_class(directory: str, mechanism: str) -> bool:
 
 
 def gated(keys: Iterable[str], roles: ROLES.Roles | None) -> bool:
-    """Whether the worker role may reach this writer without the call graph saying so: the general handlers reach it
-    and the worker role (chosen by the environment, not by a command) is not already given it. The call graph gives
-    that role nothing, so its absence from ``entry_points`` is no evidence, whatever the writer writes."""
-    return roles is not None and roles.general in set(keys) and roles.worker not in set(keys)
+    """Whether the worker role may reach this writer without the call graph saying so: some CLI command's handler
+    reaches it, whatever role that command has (every command runs as the worker role when the environment says so),
+    and the worker role is not already given it. The call graph gives that role nothing, so its absence from
+    ``entry_points`` is no evidence, whatever the writer writes. A writer no entry point reaches carries the no-chain
+    item, and one reached only by entry points outside the CLI is a process the worker run does not run."""
+    return roles is not None and bool(set(keys) & (roles.all - {roles.worker})) and roles.worker not in set(keys)
 
 
 # The run-time test of the gate, in tests/integration/test_non_writer_reads.py (a tree test holds that it exists).
@@ -552,7 +555,7 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
                     undecided: Mapping[tuple[str, str], Iterable[tuple[str, str]]] | None = None) -> list[str]:
     """The family's own invariants over its records as JSON (``Record.as_json`` keyed by id), which the index checks do
     not know: a writer's mechanism is one of two, its primitives are named, its entry points are rows of the owner's
-    table and its kinds are theirs, a writer that the general CLI handlers reach and the worker role is not given
+    table and its kinds are theirs, a writer that a CLI command's handler reaches and the worker role is not given
     says on its record that the call graph gives that role nothing, a writer behind a handler of a command not read
     says which function registers it, and every path record points at the unresolved ones. ``kinds`` is the owner's
     table (entry-point key -> kind), ``roles`` the CLI's roles and ``undecided`` the registering functions that reach
@@ -613,7 +616,7 @@ def record_problems(records: Mapping[str, Any], kinds: Mapping[str, str], roles:
                                     "command this reading could not read, and the record does not say so")
             if roles is not None and gated(w["entry_points"], roles):
                 if gate_item(roles) not in listed:
-                    problems.append(f"{where} is reached by the general handlers and not the worker role, and the "
+                    problems.append(f"{where} is reached by a CLI command's handler and not the worker role, and the "
                                     "record does not say that the call graph gives that role nothing")
         if (r.get("coverage") or {}).get("unresolved") != [pointer]:
             problems.append(f"{rid}: its coverage does not point at the unresolved writes")
@@ -664,7 +667,7 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "context manager writes is attributed only to the roles that call it by name: the dashboard server takes "
              f"its own lock file by `with self._lock():` (`{WITH_CASE[0]}:{WITH_CASE[1]}`), and "
              + " and ".join(f"`{key}`" for key in WITH_CASE[2])
-             + " are listed under `aew` alone. The counts below are lower bounds.", ""]
+             + " are listed under `aew` alone. The counts of writer functions reached below are lower bounds.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles
@@ -694,9 +697,10 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
               "**Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable "
               "runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the "
               f"mechanism: {allowed}",
-              "**Not checked:** a handler that calls its engine method by a name held in a variable, and a `with` "
-              "statement's implicit calls, are not followed, so the writers behind them are not attributed to the "
-              "role that runs them; and what the worker role may write is "
+              "**Not checked:** a write whose destination is not placed (the unresolved records) carries no role "
+              "reach and is not checked; a handler that calls its engine method by a name held in a variable, and a "
+              "`with` statement's implicit calls, are not followed, so the writers behind them are not attributed to "
+              "the role that runs them; and what the worker role may write is "
               "`process_kind.require_writer`'s to refuse (above), not this reading's to prove.", ""]
     return lines
 

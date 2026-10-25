@@ -35,6 +35,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -189,10 +190,14 @@ class Validation:
         return containment.supported() and containment.mode(self.k.policy("execution")) == containment.REQUIRED
 
     def establish(self, *, workspace: str, run_dir: Path) -> tuple[Any, dict[str, Any]]:
-        """The run's sandbox (the verifier layout: the worktree read-only), self-tested. A seam tests replace."""
-        return containment.establish(role="verifier", scope="integration", workspace=workspace, run_dir=run_dir,
-                                     scratch=str(run_dir / "scratch"), bridge_dir=None,
-                                     policy=self.k.policy("execution"), project=str(self.k.repo_root))
+        """The run's sandbox (the verifier layout: the worktree read-only), self-tested. A seam tests replace. Its
+        network directory is removed at once: a check never uses the run's routes out (F28 §3.8, ``for_check``)."""
+        layout, label = containment.establish(role="verifier", scope="integration", workspace=workspace,
+                                              run_dir=run_dir, scratch=str(run_dir / "scratch"), bridge_dir=None,
+                                              policy=self.k.policy("execution"), project=str(self.k.repo_root))
+        if layout is not None and layout.net_dir:
+            shutil.rmtree(layout.net_dir, ignore_errors=True)
+        return layout, label
 
     def _require_validatable(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         unit = self.units.unit(state, work_id)
@@ -526,7 +531,8 @@ class Validation:
             result, reason = ("pass" if out["exit_code"] == 0 else "fail"), None
         record = {"check_id": check_id, "definition_sha256": entry["definition_sha256"], "result": result,
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
-                  "command": out["command"], "log": out["log"]}
+                  "command": out["command"], "log": out["log"],
+                  **({"network": out["network"]} if out.get("network") else {})}
         name = f"{check_id}.json"
         atomic_write(directory / name, json.dumps(record, indent=2, sort_keys=True))
         return {**record, "file": name}
@@ -674,7 +680,9 @@ class Validation:
                 "evaluated_snapshot": staged["before"],
                 "method": {"capability": "targeted_test_execution" if r["command"][0] != "aew-builtin"
                            else "guardrail_check", "provider": "aew-check-runner", "command": r["command"],
-                           "containment": label.get("filesystem", containment.WORKDIR_ONLY)},
+                           "containment": label.get("filesystem", containment.WORKDIR_ONLY),
+                           # the check's effective network (F28 §3.8), where it ran in a sandbox
+                           **({"network": r["network"]} if r.get("network") else {})},
                 "claim": f"check {r['check_id']} passes on the integration candidate {run['identity']['candidate']}",
                 "result": result,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],

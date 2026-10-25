@@ -161,6 +161,9 @@ class FakeOpenCode:
                                                              "OPENCODE_DISABLE_AUTOUPDATE", "XDG_CONFIG_HOME",
                                                              "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                                                              "TEMP")},
+                   # the variables whose value is a relay sentinel (F28 §3.6 row 6): a name, never a value
+                   "sentinel_names": sorted(k for k, v in os.environ.items() if v.startswith("aew-relay-")),
+                   "proxy": {k: os.environ.get(k) for k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")},
                    "cwd": os.getcwd()}
         (self.data_home.parent / "fake-server.json").write_text(json.dumps(started, indent=1), encoding="utf-8")
         self.config = started["config"] or {}
@@ -252,7 +255,11 @@ class FakeOpenCode:
         import hashlib
 
         key = os.environ.get(knob["variable"]) or ""
-        if hashlib.sha256(key.encode()).hexdigest() not in knob["rejected_sha256"]:
+        base = provider_base(s.info["model"])
+        if base is not None:  # a network of the run's own (F28): the relay holds the key, and the provider answers
+            if call_provider(base, key, knob["rejected_sha256"]) != 401:
+                return None
+        elif hashlib.sha256(key.encode()).hexdigest() not in knob["rejected_sha256"]:
             return None
         error = {"type": "provider.auth", "message": f"Incorrect API key provided: {key[:3]}***{key[-4:]}.",
                  "status": 401}
@@ -425,7 +432,16 @@ class FakeOpenCode:
             self.catalog_asked = now
         if now - self.catalog_asked < float(self.knobs.get("catalog_delay_s") or 0):
             return []
-        return self.knobs.get("models") or DEFAULT_MODELS
+        offered = list(self.knobs.get("models") or DEFAULT_MODELS)
+        # As 2.0.18 does (measured, 2026-10-24): a model the configuration names is listed even when the catalog does
+        # not offer it, made up from the provider's defaults: no family, no release time, its name its id.
+        known = {(m.get("providerID"), m.get("id")) for m in offered}
+        for provider, entry in (self.config.get("providers") or {}).items():
+            for model in (entry.get("models") or {}):
+                if (provider, model) not in known:
+                    offered.append({"id": model, "providerID": provider, "name": model, "enabled": True,
+                                    "time": {"released": 0}, "variants": []})
+        return offered
 
     def route(self, method: str, path: str, query: dict[str, list[str]], body: Any) -> tuple[int, Any]:
         m = re.fullmatch(r"/api/session/(ses[^/]+)(/.*)?", path)
@@ -824,6 +840,73 @@ def tui(argv: list[str], scripts: Path) -> int:
     return fake_agent.main()
 
 
+def provider_base(model: dict[str, Any]) -> str | None:
+    """The ``baseURL`` AEW projected for the session's model (``projection.relayed``: the provider relay's loopback
+    port, in a network of the run's own), or None where it projected none."""
+    config = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT") or "{}")
+    provider = (config.get("providers") or {}).get(model.get("providerID")) or {}
+    settings = ((provider.get("models") or {}).get(model.get("id")) or {}).get("settings") or provider.get("settings")
+    return (settings or {}).get("baseURL")
+
+
+def call_provider(base: str, key: str, rejected: list[str]) -> int:
+    """One model call through the relay, as 2.0.18's OpenAI provider makes it (``POST <baseURL>/responses``, its key
+    as a bearer token): the status the provider answered. ``X-Fake-Rejected`` tells :class:`ProviderUpstream` which
+    keys to refuse."""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(base.rstrip("/") + "/responses", data=b"{}", method="POST", headers={  # noqa: S310
+        "Authorization": f"Bearer {key}", "Content-Type": "application/json", "X-Fake-Rejected": ",".join(rejected)})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=30) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+
+
+class ProviderUpstream:
+    """A model provider for the run's relay to reach (F28, STG-05 CS-3b): a host listener that answers 401 when the
+    bearer token the relay sent hashes to one the request's ``X-Fake-Rejected`` lists, else 200. It keeps the hash of
+    each token it was given (``seen``), never a token."""
+
+    def __init__(self) -> None:
+        import hashlib
+
+        seen: list[str] = []
+        self.seen = seen
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 (http.server's name)
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                token = (self.headers.get("Authorization") or "").removeprefix("Bearer ")
+                digest = hashlib.sha256(token.encode()).hexdigest()
+                seen.append(digest)
+                status = 401 if digest in (self.headers.get("X-Fake-Rejected") or "").split(",") else 200
+                body = b'{"error": {"message": "rejected"}}' if status == 401 else b"{}"
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args: Any) -> None:
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
 def main(argv: list[str], scripts: Path) -> int:
     if argv[:1] == ["--version"]:
         print("opencode v2.0.18")
@@ -834,7 +917,9 @@ def main(argv: list[str], scripts: Path) -> int:
         print(f"fake opencode: unsupported arguments {argv}", file=sys.stderr)
         return 2
     app = FakeOpenCode(scripts)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_for(app))
+    # the port it is given, as the real server listens: a fixed one in a network of the run's own (F28, CS-3b)
+    port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 0
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler_for(app))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     sys.stdout.write(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}"}) + "\n")

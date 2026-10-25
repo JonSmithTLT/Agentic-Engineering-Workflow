@@ -93,10 +93,14 @@ def _add(a: argparse.Namespace) -> Any:
     path = Path(a.record_file)
     try:
         with open(path, "rb") as fh:
-            text = fh.read(ops.MAX_RECORD_TEXT + 1).decode("utf-8")  # one past the limit is enough to refuse it
-    except (OSError, UnicodeDecodeError) as exc:
+            raw = fh.read(ops.MAX_RECORD_TEXT + 1)  # one past the limit is enough to refuse it
+    except OSError as exc:
         raise UsageError(f"cannot read the record file {a.record_file}: {exc}", path=a.record_file) from None
-    ops.check_record_size(text, str(path))  # before anything is sent: the endpoint's request is bounded (F12)
+    ops.check_record_size(raw, str(path))  # before anything is sent: the endpoint's request is bounded (F12)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise UsageError(f"cannot read the record file {a.record_file}: {exc}", path=a.record_file) from None
     return _change(a, "add", {"text": text, "source": str(path),
                               "bundle": os.path.abspath(a.bundle) if a.bundle else None})
 

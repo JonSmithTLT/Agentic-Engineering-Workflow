@@ -418,10 +418,10 @@ def _apply_import(change: Change, state: dict[str, Any], root: Path) -> dict[str
     return {"imported": imported, "refused": refused, "skipped": skipped}
 
 
-def check_record_size(text: str, source: str) -> None:
-    """Refuse a record text one operator endpoint request cannot carry: at the requesting terminal before it is sent,
-    and at the endpoint (review F12)."""
-    if len(text.encode("utf-8")) > MAX_RECORD_TEXT:
+def check_record_size(text: str | bytes, source: str) -> None:
+    """Refuse a record text one operator endpoint request cannot carry: at the requesting terminal before it is sent
+    (its bytes, before they are decoded), and at the endpoint (review F12)."""
+    if len(text if isinstance(text, bytes) else text.encode("utf-8")) > MAX_RECORD_TEXT:
         raise UsageError(f"{source} is larger than {MAX_RECORD_TEXT} bytes, the most one operator endpoint request "
                          "carries; one record is far smaller", path=source, limit=MAX_RECORD_TEXT)
 

@@ -1524,9 +1524,11 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "asks the operator endpoint to install the bundle's pinned payloads into the host's register"
-    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
+               VALIDATION_FAILED]
     note: "NOT_FOUND: no operator endpoint runs, or no bundle there; PERMISSION_DENIED: refused at the endpoint
-      (register_not_writable where the register cannot be written)"
+      (register_not_writable where the register cannot be written); VALIDATION_FAILED (register_changed): the
+      register's operator records or host-copies setting changed since the change was shown"
   - name: capability add
     home: operator-admin
     users: [operator]
@@ -1535,21 +1537,26 @@ commands:
     mutates_basis: "asks the operator endpoint to add an operator record to the host's register, once validated"
     refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
                VALIDATION_FAILED]
-    note: "VALIDATION_FAILED: the record, its payload's pin or its health check failed, and nothing changed"
+    note: "VALIDATION_FAILED: the record, its payload's pin or its health check failed, or the register changed
+      since the change was shown (register_changed), and nothing changed"
   - name: capability remove
     home: operator-admin
     users: [operator]
     journeys: []
     mutates: "yes"
     mutates_basis: "asks the operator endpoint to remove an operator record from the host's register"
-    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
+               VALIDATION_FAILED]
+    note: "VALIDATION_FAILED (register_changed): the register changed since the change was shown"
   - name: capability host-copies
     home: operator-admin
     users: [operator]
     journeys: []
     mutates: "yes"
     mutates_basis: "asks the operator endpoint to turn the host's own copies on or off in the host's register"
-    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
+               VALIDATION_FAILED]
+    note: "VALIDATION_FAILED (register_changed): the register changed since the change was shown"
   - name: message thread
     home: diagnostic
     users: [operator, lead]

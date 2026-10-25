@@ -156,9 +156,11 @@ def test_an_add_of_a_record_too_large_for_the_endpoint_is_refused_before_anythin
     asked: list[Any] = []
     monkeypatch.setattr(operator, "has_terminal", lambda: True)
     monkeypatch.setattr(operator_client, "request_capability_change", lambda *a, **k: asked.append(a))
-    for size in (ops.MAX_RECORD_TEXT + 1, 20 * 1024):
+    wide = "# " + "\u00e9" * (ops.MAX_RECORD_TEXT // 2)  # two bytes each: the bound falls inside a character
+    for size, body in ((ops.MAX_RECORD_TEXT + 1, b"#" * (ops.MAX_RECORD_TEXT + 1)), (20 * 1024, b"#" * 20 * 1024),
+                       (len(wide.encode()), wide.encode())):
         record = tmp_path / f"record-{size}.yaml"
-        record.write_bytes(b"#" * size)
+        record.write_bytes(body)
         code, _, err = _run(capsys, "-C", str(project.root), "capability", "add", str(record))
         assert code != 0 and err["error"]["code"] == "USAGE", err
         assert err["error"]["details"]["limit"] == ops.MAX_RECORD_TEXT and str(record) in err["error"]["message"]
@@ -201,6 +203,26 @@ def test_a_change_needs_the_code_shown_on_the_endpoints_console(project, reg, en
     assert console.code() not in "".join(prompts)  # the code is on the endpoint's console, never at the requester
     log = json.loads((reg["root"] / store.CHANGES).read_text(encoding="utf-8").splitlines()[-1])
     assert log["principal"]["endpoint"]["pid"] == ep.pid and log["principal"]["guarantee"] == "dev"
+
+
+def test_a_change_the_register_moved_under_is_refused_at_the_requesting_terminal(project, reg, endpoint):
+    """Review F10, end to end: another change lands while the operator types the code, so the endpoint refuses the
+    shown one, and the requesting terminal gets VALIDATION_FAILED, reason register_changed (the surface map's)."""
+    from capability_stand_in import _principal
+
+    from aew.capability import ops
+
+    _, console = endpoint
+
+    def another_lands_then_answer(prompt: str) -> str:
+        ops.apply(_principal(), ops.preview(ops.HOST_COPIES, {"on": False}))
+        return console.code()
+
+    with pytest.raises(errors.ValidationFailed) as exc:
+        operator_client.request_capability_change(project.root / ".aew", "host_copies", {"on": False},
+                                                  ask=another_lands_then_answer, requester="test")
+    assert exc.value.code == "VALIDATION_FAILED" and exc.value.details.get("reason") == "register_changed"
+    assert len((reg["root"] / store.CHANGES).read_text(encoding="utf-8").splitlines()) == 1  # only the other's
 
 
 def test_the_endpoint_applies_the_bundle_it_showed_not_what_is_there_after(project, reg, endpoint):

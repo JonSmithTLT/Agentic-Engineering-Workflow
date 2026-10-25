@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from aew.errors import ValidationFailed
-from aew_g3 import DEPLOYMENT_FILE, ROOT, deployment, pinstore, render, wire
+from aew_g3 import DEPLOYMENT_FILE, ROOT, cli, deployment, pinstore, render, wire
 from aew_g3.keys import KeyStore, key_id_of
 from aew_g3.service import PROOF, app_specific_id, issuer_ref_from_machine_id
 from tests.helpers import g3 as G
@@ -278,3 +278,19 @@ def test_the_service_imports_from_aew_only_the_sealed_o01_files_sw02_and_the_err
     assert set(modules) - ALLOWED_AEW == set(), modules
     assert set(modules) == ALLOWED_AEW, "control: the detector sees the imports the service does make"
 
+
+# ------------------------------------------------------------------------------------------------ the install
+def test_every_command_given_to_root_names_the_wrapper_install_sh_writes_by_its_full_path() -> None:
+    """Rocky 8's sudo searches only its secure_path, which leaves out /usr/local/sbin: a bare `sudo aew-g3 set-pin`
+    is "command not found" on the target host (the operator's run on AEW's Rocky 8 VM, 2026-10-25). So every command
+    given to root, in install.sh, the README and the service's own messages, is the path install.sh writes."""
+    install = (ROOT / "install.sh").read_bytes().decode()
+    wrapper = re.search(r"^WRAPPER=(\S+)$", install, re.M)
+    assert wrapper and wrapper.group(1) == cli.COMMAND == "/usr/local/sbin/aew-g3"
+    assert 'cat > "$WRAPPER" <<EOF' in install and 'Set the PIN: sudo $WRAPPER set-pin' in install
+    given = []
+    for f in [ROOT / "install.sh", ROOT / "README.md", *sorted((ROOT / "aew_g3").glob("*.py"))]:
+        for m in re.finditer(r"sudo\s+(\S*aew-g3(?![\w.-])|\$WRAPPER|\{COMMAND\})", f.read_bytes().decode()):
+            given.append((f.name, m.group(1)))
+    assert {g for _, g in given} <= {cli.COMMAND, "$WRAPPER", "{COMMAND}"}, given
+    assert len(given) >= 6, given  # control: the detector sees the commands the files do give

@@ -21,6 +21,8 @@ from aew.errors import AEWError, PermissionDenied, UsageError, ValidationFailed
 
 from . import DEPLOYMENT_FILE, deployment, keys, pinstore
 
+# The command root runs: install.sh writes it there (WRAPPER=), and sudo needs the full path on Rocky 8.
+COMMAND = "/usr/local/sbin/aew-g3"
 STATE_DIR = Path("/var/lib/aew-g3")  # StateDirectory=aew-g3 (systemd 239 sets no $STATE_DIRECTORY)
 RUNTIME_DIR = Path("/run/aew-g3")
 MACHINE_ID = Path("/etc/machine-id")
@@ -29,7 +31,7 @@ MACHINE_ID = Path("/etc/machine-id")
 def _require_root(what: str) -> None:
     assert sys.platform != "win32"  # main() refuses Windows first
     if os.geteuid() != 0:
-        raise PermissionDenied(f"{what} is root's administration (A-37 G3-05, G3-09): run it with sudo",
+        raise PermissionDenied(f"{what} is root's administration (A-37 G3-05, G3-09): run sudo {COMMAND} {what}",
                                reason="NOT_ROOT")
 
 

@@ -1,9 +1,9 @@
 """The operator's PIN, kept only as a salted scrypt hash in the service's state directory (G3-05).
 
-Root sets and resets it (``sudo aew-g3 set-pin``). Each set writes a new record with a fresh random ``pin_id``: the
-lockout count is kept in the durable ledger against that id, so setting the PIN is what ends a lockout (G3-05, "until
-root resets the PIN"), and a restart never does (G3-11). The record also keeps the minimum length the PIN was set under,
-so a raised minimum locks a PIN set under a lower one until root sets a new one.
+Root sets and resets it (``sudo /usr/local/sbin/aew-g3 set-pin``). Each set writes a new record with a fresh random
+``pin_id``: the lockout count is kept in the durable ledger against that id, so setting the PIN is what ends a lockout
+(G3-05, "until root resets the PIN"), and a restart never does (G3-11). The record also keeps the minimum length the
+PIN was set under, so a raised minimum locks a PIN set under a lower one until root sets a new one.
 
 The service reads the record at each approval, never once at start: a record that cannot be read holds the approval
 (G3-11), and a PIN root has just set takes effect at once.

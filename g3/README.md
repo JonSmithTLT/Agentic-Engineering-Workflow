@@ -45,13 +45,15 @@ one owner instead of copying them. It also takes AEW's typed errors. A test pins
 
 ```sh
 sudo sh g3/install.sh --operator <account> --wheelhouse <dir> --aew-wheel <aew-*.whl>
-sudo aew-g3 set-pin
+sudo /usr/local/sbin/aew-g3 set-pin
 ```
+
+The full path, because Rocky 8's `sudo` searches only its `secure_path`, which leaves out `/usr/local/sbin`.
 
 - `set-pin` reads the PIN twice from the terminal. It stores only a salted scrypt hash, and the minimum length the PIN
   was set under. Setting the PIN also ends a lockout.
-- `sudo aew-g3 rotate-key`, then a restart of `aew-g3.service`, retires the signing key. A record signed under the
-  retired key stays verifiable from its published public key, and is no longer consumable.
+- `sudo /usr/local/sbin/aew-g3 rotate-key`, then a restart of `aew-g3.service`, retires the signing key. A record
+  signed under the retired key stays verifiable from its published public key, and is no longer consumable.
 
 ## Tests
 

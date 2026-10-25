@@ -10,11 +10,13 @@
 #
 # Nothing under /opt/aew-g3 is writable by the operator or by the service's own dynamic account; the bytecode is
 # compiled here, as root, and the service runs with -B. An existing etc/deployment.json is kept: changing it is root's
-# administration (G3-14). Afterwards root sets the PIN: sudo aew-g3 set-pin
+# administration (G3-14). Afterwards root sets the PIN: sudo /usr/local/sbin/aew-g3 set-pin
+# (the full path: Rocky 8's sudo secure_path does not include /usr/local/sbin, and /usr/sbin is the package manager's)
 set -eu
 
 ROOT=/opt/aew-g3
 UNITS=/etc/systemd/system
+WRAPPER=/usr/local/sbin/aew-g3
 HERE=$(cd "$(dirname "$0")" && pwd)
 OPERATOR= WHEELHOUSE= AEW_WHEEL=
 while [ $# -gt 0 ]; do
@@ -58,16 +60,16 @@ chmod -R go-w "$ROOT"
 sed "s/@OPERATOR@/$OPERATOR/" "$HERE/systemd/aew-g3.socket" > "$UNITS/aew-g3.socket"
 cp "$HERE/systemd/aew-g3.service" "$UNITS/aew-g3.service"
 chmod 0644 "$UNITS/aew-g3.socket" "$UNITS/aew-g3.service"
-cat > /usr/local/sbin/aew-g3 <<EOF
+cat > "$WRAPPER" <<EOF
 #!/bin/sh
 exec $ROOT/venv/bin/python -I -B -m aew_g3 "\$@"
 EOF
-chmod 0755 /usr/local/sbin/aew-g3
+chmod 0755 "$WRAPPER"
 if command -v restorecon >/dev/null 2>&1; then
-    restorecon -R "$ROOT" "$UNITS/aew-g3.socket" "$UNITS/aew-g3.service" /usr/local/sbin/aew-g3
+    restorecon -R "$ROOT" "$UNITS/aew-g3.socket" "$UNITS/aew-g3.service" "$WRAPPER"
 fi
 systemctl daemon-reload
 systemctl enable --now aew-g3.socket
 systemctl restart aew-g3.service
 systemctl --no-pager --lines=5 status aew-g3.service || true
-echo "install.sh: installed. Set the PIN: sudo aew-g3 set-pin"
+echo "install.sh: installed. Set the PIN: sudo $WRAPPER set-pin"

@@ -1,9 +1,10 @@
 """Key custody (G3-09): a P-256 ECDSA key file in the service's state directory, mode 0600, on every host.
 
-``key_id`` is the SHA-256 of the public key's DER ``SubjectPublicKeyInfo``. Rotating (``aew-g3 rotate-key``, root,
-then a restart) keeps the retired public key beside the current key: a record signed under it stays verifiable for
-audit from the published copy, and is never consumable (G3-08 step 1). The standard library has no P-256 ECDSA, so
-this module uses ``cryptography`` with its defaults (review guide §10: standard libraries, no custom hardening).
+``key_id`` is the SHA-256 of the public key's DER ``SubjectPublicKeyInfo``. Rotating
+(``sudo /usr/local/sbin/aew-g3 rotate-key``, then a restart) keeps the retired public key beside the current key: a
+record signed under it stays verifiable for audit from the published copy, and is never consumable (G3-08 step 1).
+The standard library has no P-256 ECDSA, so this module uses ``cryptography`` with its defaults (review guide §10:
+standard libraries, no custom hardening).
 """
 
 from __future__ import annotations

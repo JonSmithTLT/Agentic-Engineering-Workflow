@@ -1,10 +1,13 @@
 # The G3 service's runtime on a Rocky 8 host, Python 3.11, x86_64, installed offline by install.sh with
 # `pip install --no-index --require-hashes` (hand-off addendum 2 §3: the offline wheels pinned by hash).
-# The wheels are SPT's py311 wheelhouse's (core-python: aew's own runtime; ci-integration: cryptography and its two);
-# each hash agrees with that wheelhouse's SHA256SUMS. aew itself is installed from a wheel of the same commit.
+# The wheels are SPT's py311 wheelhouse's (core-python: aew's own runtime; ci-integration: cffi and pycparser); each
+# hash agrees with that wheelhouse's SHA256SUMS. aew itself is installed from a wheel of the same commit.
+# cryptography is not: SPT carries only 47.0.0, which has published advisories (PYSEC-2026-3552, fixed in 50.0.0;
+# PYSEC-2026-3553 and -3554, fixed in 49.0.0; GHSA-537c-gmf6-5ccf, fixed in 48.0.1). Its pin is PyPI's
+# cp311-abi3 manylinux2014 wheel, by PyPI's hash, carried by hand until SPT's wheelhouse has it (register, STG-03).
 attrs==26.1.0 --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309
 cffi==2.0.0 --hash=sha256:8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26
-cryptography==47.0.0 --hash=sha256:f5c15764f261394b22aef6b00252f5195f46f2ca300bec57149474e2538b31f8
+cryptography==50.0.2 --hash=sha256:630ebfea3bf689d075f82316324ff7433dc447fe6bc1bfc76524b74b4a9567d2
 jsonschema==4.26.0 --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
 jsonschema-specifications==2025.9.1 --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe
 pycparser==3.0 --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992

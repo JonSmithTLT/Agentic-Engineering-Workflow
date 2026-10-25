@@ -35,7 +35,7 @@ lint = ["ruff==0.16.10", "pyright==1.1.414", "pip-audit==2.10.1"]
 eval = ["numpy==2.4.6"]
 # The G3 approval service (g3/, STG-03, A-37) and its tests: P-256 ECDSA signing (G3-09), which the standard library
 # does not have. Never the editable install's: root installs the service into /opt/aew-g3 with its own copy (g3/README.md).
-g3 = ["cryptography==47.0.0"]  # the host's pin, g3/requirements-offline.txt (#269, n3)
+g3 = ["cryptography==50.0.2"]  # the host's pin, g3/requirements-offline.txt (#269, n3)
 
 [project.scripts]
 aew = "aew.cli.main:main"

@@ -38,8 +38,9 @@ one owner instead of copying them. It also takes AEW's typed errors. A test pins
   keys make each proof and each consumed member unique.
 - **`hashlib.scrypt`** for the PIN's hash, and **`http.server`** over the Unix sockets, with `SO_PEERCRED` for the
   caller's UID. Both are standard library.
-- **Offline:** `requirements-offline.txt` pins every wheel by hash (SPT's py311 wheelhouse). `install.sh` installs
-  with `--no-index --require-hashes`.
+- **Offline:** `requirements-offline.txt` pins every wheel by hash: SPT's py311 wheelhouse's, except `cryptography`
+  50.0.2. SPT carries only 47.0.0, which has published advisories, so that wheel comes from PyPI by its hash and is
+  carried by hand until SPT has it (the register, STG-03). `install.sh` installs with `--no-index --require-hashes`.
 
 ## Install (root, on the host)
 

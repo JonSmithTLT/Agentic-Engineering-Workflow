@@ -18,5 +18,12 @@ installs it under `/opt/aew-g3` with `g3/install.sh`, offline, every wheel pinne
   refusal. A stalled client is dropped after 30 s. http.server's own refusals pass the peer check and carry the wire's
   Problem (review of #269, M2 and m1).
 
+**Follow-up, SPT's wheelhouse (2026-10-25):** SPT's py311 wheelhouse carries only `cryptography` 47.0.0, below G3's
+pin of 50.0.2 (47.0.0 has published advisories: PYSEC-2026-3552, fixed in 50.0.0; PYSEC-2026-3553 and -3554, fixed
+in 49.0.0; GHSA-537c-gmf6-5ccf, fixed in 48.0.1). Until SPT has it, an offline host's G3 install takes PyPI's
+`cryptography-50.0.2-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl` by hand, checked against the hash in
+`g3/requirements-offline.txt`. What fixes it: an SPT change that adds `cryptography` 50.0.2 to its py311 wheelhouse.
+Its `Requires-Dist` (`cffi>=2.0.0`; `cffi` 2.0.0 takes any `pycparser`) moves nothing else SPT already carries.
+
 **Next in the stage:** G3-B (the confirmer) and G3-D (the CLI client). G3-C (the owners' side) waits only for this
 `consume`. G3 is not established on any host until CS-4 contains the Lead (G3-12).

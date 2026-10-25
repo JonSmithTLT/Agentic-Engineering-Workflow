@@ -194,7 +194,7 @@ dashboard and more) has no guide yet: the operator guide is register E71, which 
 
 **ADR-0017 D8's evidence** (the F9-A MS0 live-delivery probe of OpenCode 2.0.18, 2026-10-10; summaries only, sanitized): [what is there](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/README.md), [the results](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/probe-results.md), and the per-run tables for [Windows](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-windows.md) and [Rocky 8](implementation/adr/evidence/f9a-delivery-probe-2026-10-10/table-rocky8.md).
 
-Two amendments of 2026-10-05 are designed, not built, and the register tracks their implementation: network containment (ADR-0009; F28, absorbed into STG-05 as CS-3b, in the Contained milestone) and the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; with the knowledge system, F21, held in HOLD-13).
+Two amendments of 2026-10-05, whose implementation the register tracks: network containment (ADR-0009; F28, absorbed into STG-05) is built for workers on Linux (CS-3b, ADR-0009's amendment of 2026-10-24; its live lane passed that day), and the Lead's harness on it is CS-4's (STG-05), in the Contained milestone; the `service` credential kind (ADR-0005, ADR-0009 and ADR-0013 D9; with the knowledge system, F21, held in HOLD-13) is designed, not built.
 
 **Contract with the dashboard:** [`dashboard-api-v1-provisional.yaml`](design/dashboard-api-v1-provisional.yaml) (accepted API 0.1.3, which adds the maps and raw-history search routes to 0.1.2 and changes nothing 0.1.2 returns; the retained filename is historical). Separate frontend fixture preview contracts remain provisional. The dashboard lives in `web/`, indexed by [`web/docs/README.md`](../web/docs/README.md); its Engine-side integration is register F20; the server's design note is [`dashboard-main-line-api-design-v0.1.md`](design/proposals/dashboard-main-line-api-design-v0.1.md) (approved 2026-10-05).
 
@@ -228,9 +228,11 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | File | What it is |
 |---|---|
 | [`README.md`](reference/README.md) | What the directory is, the files, how to read a record, and what to do when a change moves it |
+| [`control-keys.md`](reference/control-keys.md) | The keys of the control state, by the code's own name: the control schema's top-level keys and the keys of a unit in `work`, each anchored where the code defines it |
 | [`entry-points.md`](reference/entry-points.md) | Every AEW process entry point (`aew.process_kind.ENTRY_POINTS`): its kind, where it declares itself, the `python -m` sites that start it |
 | [`gaps.md`](reference/gaps.md) | Everything the generator could not resolve, by family, anchored by module and symbol |
 | [`index.json`](reference/index.json) | The machine index: every record by id, with its anchor, basis and coverage label, and the measured counts |
+| [`layout.md`](reference/layout.md) | The `.aew` directory tree: each entry's writers and readers, whether git keeps it, whether it is the store, and whether a contained process sees it; the reads the reading could not place |
 | [`writers.md`](reference/writers.md) | Every path under `.aew` that AEW code writes, the module and function that writes it, its mechanism and the entry points that reach it; the writes the reading could not place |
 
 ## Proposals, not adopted ([`design/proposals/`](design/proposals/))

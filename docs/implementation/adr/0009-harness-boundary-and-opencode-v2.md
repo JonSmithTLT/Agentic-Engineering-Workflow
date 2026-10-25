@@ -1225,3 +1225,186 @@ digest on both faces. That paragraph stays as the record of CS-1.
     ruling, row 2 holding exactly them, the media's other directories absent inside (condition 5), and row 2 failing
     with the mask taken out; a socket inside the project tree that the launching environment names as its agent fails
     the launch (condition 4).
+
+## Amendment 2026-10-24 — a run's own network, the shim and the provider relay (STG-05 CS-3b; F28)
+
+This builds F28 (the network containment design v0.2, §3.1 to §3.6 and §3.8) for workers on Linux, wiring in CS-3a's
+egress proxy (#246). It amends the M4-B amendment (2026-10-03), whose runs shared the host's network, and the CS-2
+amendment above, whose abstract-socket facts and resolver exception assumed a shared network. F28's own amendment of
+the same date (its §7) records the egress policies, ruling R-6, and where the relay puts the credential.
+
+### The network modes (F28 §3.1; `layout`, `netns`)
+- **The mode** is the execution policy's `containment.network.mode`, else `proxy_only` on Linux (F28 decision 1).
+  `isolated` has no route out; `shared` is the host's network, an explicit weaker choice, labelled for what it is;
+  Windows is `not_provided`. A layout of a private mode gets `--unshare-net`: a network namespace of its own, without
+  the host's loopback ports or abstract sockets.
+- **The label's `network`** is an object: `mode`, `provider_relay` (`configured` or `none`), with the relay its
+  `provider_upstream` (and `provider_upstream_proxy` when the operator's proxy carries it), with egress its
+  `egress_allow` and `limits` (R-6's stated residual), and at the run's end `decisions`: what the relay and the egress
+  proxy decided, counted by outcome. Every label has `provider_relay`: a contained run whose network started no relay
+  (integration validation's) says `none`. A record from before CS-3b holds the mode as a string, which `normalize`
+  reads as `{mode, provider_relay: none}`.
+- **The run's network directory** (`netns.private_dir`): a fresh 0700 directory under the host's `/tmp`, bound
+  read-only, with its `shim/` subdirectory bound writable (the one place the sandbox may bind a socket). The relay and
+  the egress proxy listen there, 0600. The run's process tree owns it: killing or closing the tree closes both and
+  removes the directory. A refused launch removes it, and an integration validation removes it at once, since its
+  checks never use the run's routes out.
+- **Name resolution:** a private network resolves no names, and the harness needs none: its routes out are the relay
+  and the egress proxy, which resolve on the host. CS-2's `/run` exception for `resolv.conf` stays, read and unused
+  there; its reason now says so.
+
+### The shim (F28 §3.2; `containment/shim.py`)
+- **What it is:** standard library only, its file's text run with `python -I -c` as the self-test's probe is, as the
+  harness's parent in the one sandbox (each bubblewrap call has a namespace of its own). It never execs away, passes
+  its standard streams to the harness, forwards `SIGTERM`, `SIGINT` and `SIGHUP`, and exits with the harness's status.
+  It is not an AEW entry point (`aew.process_kind`): it imports nothing of AEW and never opens the store, so it has no
+  `__main__` block and declares nothing.
+- **Its legs:** in, `shim/server.sock` to the harness server's `127.0.0.1:4100` (the supervisor reaches the server
+  this way); out, `127.0.0.1:4101` to `relay.sock` and, with egress, `127.0.0.1:4102` to `egress.sock`. Bytes move
+  both ways as they come, with half-closes passed on. A leg it cannot set up ends it before the harness starts (exit
+  70, saying so). It holds no credential and no authority.
+
+### The provider relay (F28 §3.3; `containment/relay.py`)
+- **The credential:** each variable the policy's `provider_env` names (proxy variables aside) is a random sentinel
+  inside; only the relay knows what it stands for. The relay swaps a sentinel only in a credential header
+  (`Authorization`, `X-Api-Key`, `Api-Key`, `X-Goog-Api-Key`); a credential header without one passes as it came.
+  Closing the relay forgets the credentials.
+- **The upstream** is fixed: the policy's `containment.network.upstreams.<provider>`, else AEW's table of known
+  providers (`netns.UPSTREAMS`: `openai`, and `opencode`, the free models). A provider with neither refuses the launch
+  (`CONTAINMENT_UNAVAILABLE`, reason `no_upstream`), saying what to set. The operator's HTTP proxy, when the provider's
+  variables name one, carries the relay's `CONNECT` to it, unless `NO_PROXY` covers it.
+- **Requests:** origin-form only (a request cannot name a host: 400 `not_origin_form`), one per connection
+  (`Connection: close` both ways), hop-by-hop headers dropped, `Expect: 100-continue` answered by the relay, a protocol
+  upgrade refused (501, naming the http transport AEW sets), a body framed by length or chunks (a chunk size that is
+  not hex digits alone refused, `bad_chunk`), TLS by the system's default verifying context with its TLS 1.2 floor
+  stated. Each refusal is a fixed answer with a reason code in `X-AEW-Refusal` that says what to do.
+- **Streaming:** the response goes back as it comes, one thread per connection, reading the upstream only once the
+  client has taken the last chunk (backpressure). A client that goes away closes the upstream connection at once. It
+  is counted `cancelled` only when it went before the response's end, by its `Content-Length` or its last chunk:
+  OpenCode closes as soon as it has a whole answer, before the upstream's own close arrives (seen in the live lane
+  below), and that is no cancelled turn. A body with neither length nor chunks, or a chunk size that is not hex digits
+  alone, ends only when the upstream closes.
+
+### Egress (F28 §3.4; CS-3a's proxy)
+- **When:** under `proxy_only`, when the allowlist names something: the policy's `containment.network.egress_allow`
+  and what the harness itself needs (`Harness.EGRESS`; OpenCode's `models.opencode.ai:443`, its catalog). Credentialless,
+  `CONNECT` only, R-6 under every policy.
+- **Inside:** only `HTTPS_PROXY` (both cases) names it, at `127.0.0.1:4102`; the operator's proxy variables are
+  removed, `HTTP_PROXY` stays unset (the provider's `baseURL` is plain HTTP to loopback), and `NO_PROXY` lists loopback.
+
+### OpenCode (F28 §3.5; `opencode/adapter.py`, `projection.relayed`, `client.py`)
+- **The projection** points the pinned model at the relay: `providers.<p>.settings` gets `baseURL`
+  `http://127.0.0.1:4101<the upstream's path>` and `transport: http` (2.0.18 tries a WebSocket upgrade first
+  otherwise), and `providers.<p>.models.<m>.settings.baseURL` the same, since a catalog model with a base URL of its
+  own ignores the provider's (all the free `opencode/*` ones; measured on the Rocky VM, 2026-10-24).
+- **A model named only by that projection** is listed by 2.0.18 even when its catalog does not offer it, made up from
+  the provider's defaults (no family, no release time, its name its id; measured). Such an entry counts as absent, so
+  a pinned model the catalog does not offer is still refused at launch, saying why it is listed.
+- **The server** listens on `127.0.0.1:4100` inside (`serve --port`, whose announcement must match), and the
+  supervisor's client, event stream and meter reach it over the shim's socket file.
+- **The agent is told** (the system text, from the run's label): a run on a network of its own gets one line naming
+  its mode and what it reaches (the provider, and through `HTTPS_PROXY` the allowlist's hosts), that every other
+  connection is refused by design, and to name in its report the `host:port` it needed, so the Lead can ask the
+  operator to add it to `containment.network.egress_allow` (#257's review, F3). The upstream and the stated limits are
+  not in it.
+- **Row 6 before the start:** the server's environment and configuration are checked for every provider variable's
+  value; one found refuses the launch (`HARNESS_INCOMPATIBLE`, reason `provider_secret_in_sandbox`), naming the
+  variable, never the value. The files a contained run can read hold no key: the provider configuration locations and
+  the secret files are masked (CS-1, CS-2).
+
+### Checks (F28 §3.8; `layout.for_check`, `policy/checks.py`)
+- A check runs `isolated` unless its definition says `network: shared` and its run's mode is `shared`; it never gets
+  the run's relay or egress proxy. Its log says when it ran with no network, and how to ask for one.
+- The effective mode is recorded with its evidence (`method.network`), on the run's checks and on integration
+  validation's. A definition's digest includes `network` only when it is set, so existing digests are unchanged.
+
+### The self-test's row 1 (F28 §3.6; `probe.self_test`)
+- **Under the run's shim, in its namespace:** the probe runs as the harness will, with a probe relay (a credential of
+  the probe's own, to an upstream the host holds), an egress proxy with the run's allowlist, and a loopback port and an
+  abstract socket the host holds. Row 1 passes only when the namespace is not the launcher's or PID 1's (where
+  readable); a direct TCP, UDP and IPv6 connection out fails for want of a route; the host's loopback port and abstract
+  socket are unreachable, and the abstract one is not listed inside; only the shim's ports listen inside; the host
+  reaches the probe through the shim's socket file; a request through the relay reaches its upstream with the
+  sentinel swapped; the egress proxy refuses a destination on no allowlist; and the bridge answers by its path.
+- **Row 2 in a private network:** an abstract socket the host holds that is listed inside fails it; on the shared
+  network the abstract sockets stay facts, and `aew doctor` warns of a failing class, naming the default mode as what
+  closes it.
+- `required` refuses a launch whose row 1 fails, and `allow_weaker` starts it labelled `workdir_separation_only`, with
+  the rows. On the shared network, row 1 records the mode and claims nothing.
+
+### The live lane (F28 decision 6, NET-19; the Rocky 8 VM, 2026-10-24)
+- **The production path:** `tests/live/test_opencode_model_live.py`'s lifecycle on OpenCode 2.0.18 with
+  `openai/gpt-5.6-luna#medium` and a real OpenAI key, which the supervisor held. Its implementer, reviewer and verifier
+  runs, each `proxy_only` with the relay's upstream `https://api.openai.com/v1`, ended with evidence, with the pinned
+  model effective, rows 1 to 5 passing and a clean credential scan. The relay carried 14 streamed model requests (7, 4,
+  3). The live test's own checks found the key in no file the runs left, and no file the lane left held its value.
+- **The relay against the real upstream** (a real 2.0.18 server on the same model, the relay in front of it, a script
+  standing in for the supervisor): a 136 KB streamed answer arrived whole, its first bytes after 0.40 s and the rest
+  after 1.76 s; with its client slowed to about 20 KB/s, the same answer arrived whole over 7.8 s, with no timeout and
+  nothing lost. An answer interrupted mid-stream (`POST /api/session/<id>/interrupt`, after 59 KB) closed the upstream
+  connection and was counted `cancelled` 0.12 s later, with no socket left open. The slow client shows a stream
+  delivered intact to a slow reader; the answer fits in the sockets' buffers, so it does not show the upstream held
+  back, which the relay does by construction (it reads the upstream only once the client has taken the last chunk).
+- **The upstream's IPv6 address** could not be tried: the VM has no IPv6 route.
+
+- **The live lane's counts predate a fix:** at that head the relay counted `cancelled` whenever the client closed
+  first, so most finished steps were counted too (6 of run 1's 7). The count now waits for the response's end, as
+  the streaming bullet above says.
+
+### ripgrep (the designer's rulings RG-1 and RG-4, and the operator's decision, 2026-10-24)
+- OpenCode's glob and grep tools run ripgrep. With none on the `PATH`, 2.0.18 downloads it from github.com, which a
+  `proxy_only` run's egress proxy refuses (github.com is on no allowlist), so in the live lane those tools failed in
+  two of the three runs, which still ended with evidence. The Rocky VM has no ripgrep.
+- **`aew doctor`'s `ripgrep` line (RG-1):** the containment line's own sandbox looks for `rg` on the launching
+  environment's `PATH`, from inside, so the line says what a contained run sees, not only what the host has. It
+  passes naming where, or warns naming the tools that fail (glob, grep), the cause (the harness cannot download
+  ripgrep on a network of its own or offline) and the fix: CAP-1, and until then an `rg` runs can see, naming a host
+  `rg` the sandbox cannot see when there is one.
+- **No egress widening** for the download (RG-4): the workers' allowlist stays as adopted.
+- **The fix is CAP-1** (the operator's decision of 2026-10-24: AEW brings its own tools, through the capability
+  register): the register's first slice puts a pinned ripgrep into every contained context, and its provider health
+  replaces the `ripgrep` line. RG-2 (binding a host `rg` the sandbox cannot see) is withdrawn for it.
+
+### What this does not claim
+- **ripgrep where a run finds none:** AEW bringing ripgrep itself is CAP-1's, right after this. Until then a host
+  without ripgrep on a `PATH` runs can see has glob and grep failing in contained runs, and `aew doctor` says so.
+- **A card's web capability** (the researcher's `documentation_lookup`, which allows `webfetch` and `websearch`)
+  reaches nothing under `proxy_only` unless the policy's `egress_allow` names the hosts: the egress proxy refuses
+  every other fetch (403). The system text tells the agent so, and how to ask for a host.
+- **The Lead's harness** on `proxy_only` (F28 decision 2, with the any-public egress policy) is CS-4's. Until then
+  only worker runs have a network of their own.
+- **A check's route out** through the run's egress proxy (`proxy_only` for a check) is not built.
+- **R-6's residual** is stated on the label; its check is register row F28.1, deferred.
+- **Windows** stays `not_provided`.
+
+### Tests
+- `tests/unit/test_provider_relay.py`: the relay over socketpairs, nothing contacted: the sentinel swapped only in
+  credential headers; a credential header without one unchanged; hop-by-hop headers dropped and `Connection: close`
+  both ways; absolute-form, `CONNECT` and a bad version refused with nothing connected; an upgrade refused; a chunked
+  body relayed whole; `Expect` answered and not forwarded; the response streamed; a client going away closing the
+  upstream, counted `cancelled` only before the response's end (by length, by last chunk, and a chunked body followed
+  however it is split); a chunk size with a sign or other non-hex characters, unreadable framing on the response side
+  and `bad_chunk` on the request side; an unreachable upstream; the operator's proxy's `CONNECT` and its refusal; the label.
+- `tests/unit/test_containment_netns.py`: the mode, a check's network, `--unshare-net` and the binds, the upstream and
+  its refusal, the allowlist, the operator's proxy, the harness's environment (sentinels, `HTTPS_PROXY` only), the
+  label and the counts, a refused start leaving no directory, and the shim's spec.
+- `tests/unit/test_containment_probe.py`: row 1 passing, and failing closed on each protection taken out (the
+  namespace, each direct connection, the host's port and abstract socket, an extra listener, the relay, the egress
+  proxy, the bridge, the server path); row 2's abstract sockets in a private network.
+- `tests/integration/test_network_shim.py` (Linux): each leg both ways with half-closes; a leg that cannot be set up
+  stopping the harness; a termination reaching the harness.
+- `tests/integration/test_containment.py` (Linux): a passing run records rows 1 to 5, with outcome 4's facts; row 1
+  failing closed with `--unshare-net` taken out; a shared run's label and row 1; a check's network.
+- `tests/integration/test_opencode_adapter.py`: on Linux, the projection's relay settings, the sentinel, the egress
+  variables, the label and its counts, the network directory removed at the end; the relay giving the provider each
+  key in its sentinel's place (register V1's rotation); a model the catalog lists only from AEW's configuration
+  refused; a key that would reach the sandbox another way refusing the launch.
+- `tests/integration/test_validation_checks.py` (Linux): a contained check's evidence records `network: isolated`.
+- `tests/unit/test_containment_layout.py`, and `test_containment.py`'s `establish` (Linux, the label integration
+  validation records): a contained run's label without a relay says `provider_relay: none`.
+- `tests/unit/test_opencode_units.py`: the system text's network line for `proxy_only` and `isolated`, without the
+  upstream or the limits, and none on the host's network; `test_opencode_adapter.py` on Linux: the line from the run's
+  label reaching the server's configuration.
+- `tests/unit/test_containment_probe.py`: `aew doctor`'s `ripgrep` line from the containment line's sandbox, passing
+  and warning, absent when that sandbox failed; its wording both ways. `tests/integration/test_containment.py`
+  (Linux): the probe finding `rg` on a directory the sandbox sees, and not finding one the sandbox masks.

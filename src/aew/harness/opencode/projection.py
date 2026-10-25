@@ -26,6 +26,7 @@ only fixed read commands as inline shell (V2 runs those outside the permission f
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from aew.harness.contract import LaunchContract
@@ -115,7 +116,8 @@ def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple
     return dirs + ((sep.join([scratch, "*"]),) if scratch else ())
 
 
-def system_text(contract: LaunchContract, unavailable_skills: list[str]) -> str:
+def system_text(contract: LaunchContract, unavailable_skills: list[str],
+                network: Mapping[str, Any] | None = None) -> str:
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
             else "You must not modify any file: your role is read-only.")
@@ -137,21 +139,39 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str]) -> str:
         "- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.",
         "- Tools that are unavailable here are unavailable by design. Do not work around them.",
     ]
+    if network is not None:
+        lines.append(network_text(network))
     if unavailable_skills:
         lines.append("- Skills your role card requests that this harness does not provide: "
                      f"{', '.join(unavailable_skills)}. Proceed without them and say so in your report.")
     return "\n".join(lines)
 
 
+def network_text(network: Mapping[str, Any]) -> str:
+    """The system text's line for a run on a network of its own (F28; #257's review, F3): what the run reaches, that
+    everything else is refused by design, and how to ask for more. ``network`` is the run's label
+    (``netns.RunNetwork.describe``); its upstream and stated limits are the operator's, not the agent's."""
+    reach = ["your model's provider"] if network.get("provider_relay") == "configured" else []
+    allow = list(network.get("egress_allow") or [])
+    if allow:
+        reach.append(f"through `HTTPS_PROXY`, only {', '.join(f'`{a}`' for a in allow)}")
+    return (f"- This run has a network of its own (`{network['mode']}`): "
+            + (f"it reaches {' and, '.join(reach)}" if reach else "it has no route out")
+            + ". Every other connection is refused by design. If your work needs another host, do not work around "
+            "the refusal: name the `host:port` and what you needed it for in your report, so the Lead can ask the "
+            "operator to add it to `containment.network.egress_allow`.")
+
+
 def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[str] = frozenset(),
-                      private_dirs: tuple[str, ...] = ()) -> dict[str, Any]:
-    """``OPENCODE_CONFIG_CONTENT`` for one run's private server."""
+                      private_dirs: tuple[str, ...] = (), network: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
+    (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's."""
     skill = skills(contract, provided_skills)
     rules = permissions(contract, skill["exposed"], private_dirs)
     profile = contract.execution_profile
     agent: dict[str, Any] = {"mode": "primary", "description": f"AEW {contract.role} for {contract.invocation}",
-                             "model": config_model(profile), "system": system_text(contract, skill["unavailable"]),
-                             "permissions": rules}
+                             "model": config_model(profile),
+                             "system": system_text(contract, skill["unavailable"], network), "permissions": rules}
     if profile.get("max_steps"):
         agent["steps"] = int(profile["max_steps"])
     agents: dict[str, Any] = {AGENT: agent}
@@ -159,6 +179,17 @@ def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[st
         agents[name] = {"model": config_model(profile)}
     return {"snapshots": False, "update": "disable", "share": "disabled", "plugins": [COMPATIBILITY_PLUGIN],
             "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents}
+
+
+def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:
+    """``config`` with the pinned provider pointed at the run's provider relay (F28 §3.5): its ``baseURL`` at the
+    relay's loopback port inside the sandbox, over plain HTTP requests (the provider's ``transport``: 2.0.18's OpenAI
+    provider otherwise opens a WebSocket first). The ``baseURL`` is set for the provider and for the pinned model, whose
+    catalog entry may carry its own, which wins over the provider's (every ``opencode/*`` model's does). Both measured
+    on 2.0.18, 2026-10-24."""
+    return {**config, "providers": {str(profile["provider"]): {
+        "settings": {"baseURL": base_url, "transport": "http"},
+        "models": {str(profile["model"]): {"settings": {"baseURL": base_url}}}}}}
 
 
 def session_body(contract: LaunchContract, directory: str, rules: list[dict[str, str]]) -> dict[str, Any]:

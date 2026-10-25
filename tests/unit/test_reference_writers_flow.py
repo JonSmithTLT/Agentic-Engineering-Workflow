@@ -314,6 +314,9 @@ def test_the_page_states_the_with_limit_and_names_its_live_case():
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
     assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
+    assert "The counts of writer functions reached below are lower bounds." in page, "review of #258, N5"
+    assert ("a write whose destination is not placed (the unresolved records) carries no role reach and is not "
+            "checked") in page, "the designer's stated limit: the unresolved records are not checked"
 
 
 def test_a_sibling_of_a_path_that_is_a_parameter_follows_every_path_the_callers_pass():
@@ -653,10 +656,11 @@ def test_a_store_transaction_write_under_local_that_a_non_writer_role_reaches_is
     assert ("aew.m", "txn_local") in store[NAMED] and ("aew.m", "txn_local") not in local[NAMED]
 
 
-def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_nothing_by_the_call_graph():
-    """The call graph attributes nothing to the environment's role, so a writer the general handlers reach carries one
-    item that says its absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever
-    the writer writes; a writer the named role reaches alone, and one the common path gives every role, do not."""
+def test_a_writer_a_cli_command_reaches_says_the_worker_role_is_given_nothing_by_the_call_graph():
+    """The call graph attributes nothing to the environment's role, so a writer any CLI command's handler reaches (the
+    named roles' too: every command runs as the worker run when the environment says so) carries one item that says its
+    absence from `entry_points` is no evidence and where a non-writer's write is refused, whatever the writer writes;
+    one the common path gives every role, and one no CLI command reaches, do not (addendum 5)."""
     a = cli_analysis(CLI + "\ndef local_only(aew_root):\n    (aew_root / 'local' / 'g').write_text('x')\n\n"
                      "def cmd_local(a):\n    local_only(None)\n\n"
                      "def more(sub):\n    sub.add_parser('other').set_defaults(handler=cmd_local)\n\n"
@@ -666,7 +670,7 @@ def test_a_writer_only_the_general_handlers_reach_says_the_worker_role_is_given_
     listed = {k: r.fact_coverage["writers"]["unresolved"] for k, r in by_key.items()}  # type: ignore[index]
     assert gate in listed["state/s"], "a store write the general handlers reach"
     assert gate in listed["local/g"], "and a local write they reach: the item is not about the lock alone"
-    assert gate not in listed["local/l"], "a writer only the named role reaches"
+    assert gate in listed["local/l"], "a writer only a non-aew command's handler reaches (addendum 5)"
     assert gate not in listed["state/c"], "the common path gives the worker role this one"
     assert (gate["module"], gate["symbol"]) == W.GATE_SYMBOL and W.GATE_TEST in gate["why"]
     records = {r.id: r.as_json() for r in W.records_of(a)}
@@ -698,6 +702,36 @@ def test_a_handler_of_a_command_that_cannot_be_read_is_run_by_every_role_and_its
     cut["writers:local/l"]["fact_coverage"]["writers"]["unresolved"] = [W.pointer_item()]
     problems = W.record_problems(cut, KINDS, a.roles, a.undecided)
     assert any("for a command this reading could not read" in p for p in problems), problems
+
+
+def test_a_root_that_is_not_the_clis_does_not_reach_the_handler_of_a_command_that_cannot_be_read():
+    """Review of #258, N2: the handlers of an unread command are run by every role the CLI declares, and by no other
+    entry point (a second, non-CLI root must not be given them)."""
+    prog = program({"aew.m": HEAD + UNREAD + "\ndef sup_main():\n    pass\n"})
+    roles = K.Roles(GENERAL, frozenset({NAMED}), WORKER)
+    cli = ({CLI_ROOT}, roles, K.cut_of(prog, role_of))
+    roots = {CLI_ROOT: {GENERAL, NAMED, WORKER}, ("aew.m", "sup_main"): {"aew.harness.supervisor"}}
+    a = W.analyse(prog, TOP, roots, KINDS, cli)
+    assert a.reach[("aew.m", "cmd_mcp")] == {GENERAL, NAMED, WORKER}
+    assert all("aew.harness.supervisor" not in keys for keys in a.reach.values() if keys != {"aew.harness.supervisor"})
+
+
+BOTH = ("def both(aew_root):\n    (aew_root / 'state' / 'b').write_text('x')\n"
+        "    (aew_root / 'local' / 'b').write_text('x')\n\n"
+        "def cmd_both(a):\n    both(None)\n\n"
+        "def more(sub):\n    lsub = sub.add_parser('lead').add_subparsers()\n"
+        "    lsub.add_parser('mcp').set_defaults(handler=cmd_both)\n\n"
+        "def build2():\n    more(argparse.ArgumentParser().add_subparsers())\n")
+
+
+def test_a_function_that_writes_both_the_store_and_local_is_a_store_writer_only():
+    """Review of #258, N3: it counts once, as a store writer; it is not also listed as permitted."""
+    a = cli_analysis(CLI + "\n" + BOTH)
+    store, local = W.role_reach(a, W.records_of(a))
+    assert ("aew.m", "both") in store[NAMED] and ("aew.m", "both") not in local[NAMED]
+    lines = W.page(a, W.records_of(a), tuple(sorted(TOP))).splitlines()
+    permitted = next(line for line in lines if line.startswith("**Permitted:**"))
+    assert "`aew.m:both`" not in permitted
 
 
 BYNAME = ("class Eng:\n    def publish(self, aew_root):\n        (aew_root / 'state' / 'p').write_text('x')\n\n"

@@ -32,16 +32,16 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 | # | Row | Item |
 |---|---|---|
-| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) |
+| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (PRs 4 to 9 merged; PR 10 building) |
 | 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
-| 3 | STG-05 | CS-3b, the network namespace (#257) |
-| 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register |
+| 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
+| 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (building) |
 | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it |
+| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building, G3-A first) |
 | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 8 | STG-13 | V-01's oracle rebuilt |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today.
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a slot of its own before CS-4's hand-off, so it is building ahead of H-1.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -55,9 +55,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **V-01, the first vertical slice: before feature work resumes, and before any release**
 
-**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7; O-02; U-01
+**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7; O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report)
 
-**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption); the register rebaseline (design workspace, `b598fdc`)
+**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`)
 
 ### **Internal alpha**
 
@@ -107,11 +107,11 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### STG-05
 
-**Work:** Agent containment, built in slices (CS-1 to CS-5): the store's path and the control lock kept out of agents' reach, the store's modes, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
+**Work:** Agent containment, built in slices (CS-1 to CS-4; CS-5 was cut with the WIS issuer, operator, 2026-10-24, design workspace `f206099`): the store's path and the control lock kept out of agents' reach, the store's modes, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
 
 **Source (governing):** the designer's STG-05 hand-offs and rulings (D-CS1-1 to D-CS1-13, and the amended D-CS1-10 and D-CS1-11); ADR-0009 and its amendments from 2026-10-21
 
-**Belongs to or gated by:** **Stage.** STG-05, in the slice order the designer set: CS-1 (#230 and #231 merged; the CB-08 group follow-up closed when the operator cut the WIS issuer, 2026-10-24, and the store is owner-only again, #256), CS-2 (#244 merged), CS-3 (CS-3a, #246, merged; CS-3b wires it in), then CS-4 and CS-5 in the map's order
+**Belongs to or gated by:** **Stage.** STG-05, in the slice order the designer set: CS-1 (#230 and #231 merged; the CB-08 group follow-up closed when the operator cut the WIS issuer, 2026-10-24, and the store is owner-only again, #256), CS-2 (#244 merged), CS-3 (CS-3a, #246, and CS-3b, #257, merged), then CS-4 in the map's order
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23). CS-1's notes moved here from the closed F2 row.
 
@@ -837,6 +837,66 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** F44 records each fact's owner and consumers; this row uses that record to decide which guards a domain change must run, rather than restating the dependencies by hand. The derived and validated "pins" relationships between tests and what they cover, with demonstrated detection of a missing or stale relationship, are already placed under E53 (affected-test selection) and F22.3's test relationship index (batch-3 ruling #30); this row builds on them and does not restate them
 
 *Later notes: `notes.d/E79/`, oldest first (`python tools/register.py show E79`).*
+
+### E81
+
+**Work:** One bytes-level reader for kernel and OS text files (`/proc` and `/sys` records, mount tables, routing tables): it reads bytes, splits on `b"\n"` only, validates each record against its source's fixed format, and fails closed on a record it cannot parse. #250's mode check extends to the split. The method that closes the class, after three findings of it in one night
+
+**Source:** Review findings #250 M1 and M2 (a comm read with `str.splitlines` could forge a line), #243 F14, and #244's inventory (2026-10-24)
+
+**When:** **After the trace.** Until it is built, containment builder briefs carry the rule: read such files as bytes and split on `b"\n"` only
+
+**Notes:** Parked by the Lead on 2026-10-24 during the build freeze; the triage of stranded insights (design workspace, ST-10) asked for this row
+
+*Later notes: `notes.d/E81/`, oldest first (`python tools/register.py show E81`).*
+
+### E82
+
+**Work:** Prove the command set's fingerprint and its per-member order (CS-03, CS-05): a known-answer test of the SW-02 fingerprint, which G3-C binds consent to, and a two-member continuation set. Tests only
+
+**Source:** STG-12's S12-4 trace, FIX claim "the set fingerprint and the per-member order are unproven" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
+
+**When:** **Internal alpha**, one of the trace's FIX rows (S12-6). Before G3-C binds consent to the fingerprint
+
+**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
+
+*Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
+
+### E83
+
+**Work:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
+
+**Source:** STG-12's S12-4 trace, FIX claim "only the two declared steps auto-run, and only under run" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
+
+**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
+
+**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
+
+*Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
+
+### E84
+
+**Work:** A move keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations
+
+**Source:** STG-12's S12-4 trace, FIX claim of that name (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
+
+**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
+
+**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
+
+*Later notes: `notes.d/E84/`, oldest first (`python tools/register.py show E84`).*
+
+### E85
+
+**Work:** A return from escalation rechecks the gates of the phase it returns to (EW-U06.f), as the designer ruled on 2026-10-25
+
+**Source:** STG-12's S12-4 trace, FIX claim on the return from escalation (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`), which corrects family 5's claim; rulings R1-D2 and R6-1 of 2026-10-12
+
+**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
+
+**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
+
+*Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
 
 ### E47
 

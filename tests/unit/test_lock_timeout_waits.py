@@ -13,8 +13,8 @@ literal at or below ``wedge_threshold_s(T, POLL_S)``, unless ``EXCUSED`` lists t
 - **An injection** is ``x.lock_timeout = T``, a ``lock_timeout=T`` keyword in a call, or ``setattr(x, "lock_timeout",
   T)`` (``monkeypatch.setattr`` too). Two detectors find them over every test file, and must agree: an AST walk, and a
   regular expression over each line. ``T`` is the larger value an injection can take (``0.5 if wedged else 10.0`` is
-  10.0), so the bound is never too small. A ``T`` that does not fold to a number from the function's own literals is
-  unknown, and fails the scan rather than passing it.
+  10.0), so the bound is never too small for a conditional at the top, or under ``+`` and ``*``. A ``T`` that does not
+  fold to a number from the function's own literals is unknown, and fails the scan rather than passing it.
 - **``POLL_S``** is the larger value the function patches it to (``monkeypatch.setattr(lead_broker, "POLL_S", poll)``),
   else ``lead_broker.POLL_S``.
 - **A polled wait** is a call of a helper named in ``test_polling_predicates.POLLERS``, the list that check owns. Its
@@ -32,7 +32,18 @@ What the scan does not see (pinned below), each a defect the reviewer reads for:
 - a poller not in ``POLLERS``, a window given through ``**kwargs``, or at a position its definitions under tests/ do
   not give (src's ``outbox.wait_for`` takes it third);
 - a ``POLL_S`` patched by a fixture, or a component whose poll is not ``POLL_S`` (the steering loop's ``poll_s``);
-- a ``T`` changed by augmented assignment (``x.lock_timeout += 1``).
+- a ``T`` changed by augmented assignment (``x.lock_timeout += 1``);
+- a window that does not fold, whatever the cause: it counts as derived and passes, where an unknown ``T`` fails. So
+  these literal windows at or below the bound are not seen (review of #276, N2):
+  - a window bound to a module-level constant, or given as a parameter (a parametrize value);
+  - ``float(5)`` or ``10 // 2``;
+  - a tuple unpacking (``a, w = 1, 5``);
+  - a name bound twice;
+- a conditional under ``-``, ``/`` or a unary minus, which can fold to the lenient branch, in a window and in a ``T``
+  alike: ``20 - (15 if slow else 5)`` folds to 15, not the strict 5;
+- a test function under a module-level ``if``;
+- ``POLL_S`` patched with a string target (``monkeypatch.setattr("aew.harness.lead_broker.POLL_S", v)``);
+- ``setattr(x, attr, v)`` with the attribute's name in a variable, which the text detector misses too.
 The text detector also sees what is not an injection: a local variable or a default named ``lock_timeout``, and a
 mention in a string or a comment. The agreement test then fails, which is how a new spelling gets looked at. An
 injection spread over lines (``setattr(`` on one, ``"lock_timeout"`` on the next), or an annotated one, is the AST
@@ -115,7 +126,9 @@ def _setattr_of(call: ast.Call, attr: str) -> bool:
 def _fold(node: ast.expr | None, names: dict[str, ast.expr], pick: Callable[[float, float], float] = max,
           depth: int = 0) -> float | None:
     """The number ``node`` folds to from the function's own literals, or None: read at run time. Of a conditional's
-    two branches ``pick`` takes one: the larger for a lock timeout, the smaller for a window (never the lenient one)."""
+    two branches ``pick`` takes one: the larger for a lock timeout, the smaller for a window. That is the strict one for
+    a conditional at the top, or under ``+`` and ``*``; under ``-``, ``/`` or a unary minus it can be the lenient one
+    (review of #276, N2: pinned in MISSED)."""
     if node is None or depth > 32:
         return None
     if isinstance(node, ast.Constant):
@@ -343,6 +356,9 @@ RIGHT = [
     'assert engine.store.lock_timeout == 10.0\nuntil(lambda: ready(), 1, "x")',  # a comparison, not an injection
     'with FileLock(root / LOCK_REL, timeout=10):\n    until(lambda: ready(), 5, "x")',  # the test's own taker
     'engine.store.lock_timeout = 10.0\nwaiting(lambda: ready())\nheld.wait(5)',  # no window; not a poller
+    # a name bound twice is not folded, so its first value never stands in for the one the wait reads (review of
+    # #276, N2: ablation R1)
+    'engine.store.lock_timeout = 10.0\nw = 5\nw = first["wedge_after_s"] + 2 * poll\nuntil(lambda: ready(), w, "x")',
 ]
 MISSED = [  # what the scan does not see: no site, and no unknown
     'engine.store.lock_timeout = 10.0\nchat.receive(5, gone=lambda: ready())',  # a poller not in POLLERS
@@ -351,6 +367,30 @@ MISSED = [  # what the scan does not see: no site, and no unknown
     'engine.store.lock_timeout += 10\nuntil(lambda: ready(), 5, "x")',  # an augmented injection
     'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 13, "x")',  # POLL_S patched to 2.0 by a fixture
     'until(lambda: len(loop.executed) == 2, 30, "the first activation")',  # the default lock timeout, 60 s
+    # a window that does not fold counts as derived (review of #276, N2)
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), slow, "x")',  # a parameter (a parametrize value)
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), float(5), "x")',
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 10 // 2, "x")',
+    'engine.store.lock_timeout = 10.0\na, w = 1, 5\nuntil(lambda: ready(), w, "x")',  # a tuple unpacking
+    'engine.store.lock_timeout = 10.0\nw = 5\nw = 5\nuntil(lambda: ready(), w, "x")',  # a name bound twice (R1)
+    # a conditional under `-` folds to the lenient branch: the window to 15, not the strict 5; T to 5, not 15
+    'engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), 20 - (15 if slow else 5), "x")',
+    'engine.store.lock_timeout = 20 - (15 if case else 5)\nuntil(lambda: ready(), 10, "x")',
+    # POLL_S patched by a string target: the bound is taken as 12 s, not 14 s
+    'engine.store.lock_timeout = 10.0\nmonkeypatch.setattr("aew.harness.lead_broker.POLL_S", 2.0)\n'
+    'until(lambda: ready(), 13, "x")',
+    # setattr with the attribute's name in a variable
+    'name = "lock_timeout"\nsetattr(engine.store, name, 10.0)\nuntil(lambda: ready(), 5, "x")',
+]
+WRONG_MODULES = [  # whole modules: one site each, on the last line
+    # a method of a module-level class is scanned (review of #276, N2: ablation R5)
+    "class TestPlanted:\n    def test_m(self, engine):\n        engine.store.lock_timeout = 10.0\n"
+    "        until(lambda: ready(), 5, 'x')\n",
+]
+MISSED_MODULES = [  # whole modules the scan does not see (review of #276, N2)
+    "W = 5\n\n\n" + planted('engine.store.lock_timeout = 10.0\nuntil(lambda: ready(), W, "x")'),  # a module constant
+    "if True:\n    def test_x(engine):\n        engine.store.lock_timeout = 10.0\n"
+    "        until(lambda: ready(), 5, 'x')\n",  # a test function under a module-level `if`
 ]
 UNKNOWN = [  # reported as unknown, never passed
     'engine.store.lock_timeout = case\nuntil(lambda: ready(), 5, "x")',  # a parameter
@@ -385,6 +425,17 @@ def test_what_the_scan_misses_is_pinned(body):
     assert scan(planted(body)) == ([], [])
 
 
+@pytest.mark.parametrize("source", WRONG_MODULES)
+def test_a_literal_window_in_a_method_is_found(source):
+    sites, unknown = scan(source)
+    assert ([s.line for s in sites], unknown) == ([source.count("\n")], []), sites
+
+
+@pytest.mark.parametrize("source", MISSED_MODULES)
+def test_what_the_scan_misses_in_a_whole_module_is_pinned(source):
+    assert scan(source) == ([], [])
+
+
 @pytest.mark.parametrize("body", UNKNOWN)
 def test_a_lock_timeout_or_poll_that_does_not_fold_is_unknown_never_a_pass(body):
     sites, unknown = scan(planted(body))
@@ -403,9 +454,9 @@ def test_a_function_is_bounded_by_its_own_injections_only():
     assert scan(source) == ([], [])
 
 
-@pytest.mark.parametrize("body", [*WRONG, *RIGHT, *UNKNOWN])
-def test_the_two_detectors_agree_on_each_planted_injection(body):
-    source = planted(body)
+@pytest.mark.parametrize("source", [*map(planted, [*WRONG, *RIGHT, *UNKNOWN, *MISSED]), *WRONG_MODULES,
+                                    *MISSED_MODULES])
+def test_the_two_detectors_agree_on_each_planted_injection(source):
     assert ast_injection_lines(source) == text_injection_lines(source)
 
 

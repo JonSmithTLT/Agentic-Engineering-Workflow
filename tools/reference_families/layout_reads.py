@@ -9,7 +9,7 @@ call is in. ``aew.util`` is the read mechanism (its callers are the readers), as
 
 A lower bound, and a different one from the writers': a read through an API (``store.read()``) is attributed to the
 store function that makes it, not to its callers; a read of a path this reading could not place under ``.aew`` or
-provably outside it is listed as unplaced (any of them may read any entry). A second detector over tokens
+followed to a place outside it is listed as unplaced (any of them may read any entry). A second detector over tokens
 (:mod:`reference_families.layout_reads_text`) finds the same calls, and the two must agree per module.
 """
 
@@ -50,6 +50,9 @@ CANNOT_SEE: tuple[tuple[str, str], ...] = (
      "counted as a read"),
     ("unreadable-mode", "an `open` whose mode is not a literal this reading can read (the writers family lists it as "
      "an unresolved write)"),
+    ("directory-walk", "a directory walk, `os.walk`, and the reads by a primitive this reading does not name "
+     "(`os.fstat`, `os.access`, `os.readlink`, `os.path.lexists`, `os.path.realpath`); the tree has live ones under "
+     "`.aew` (the store's mode check walks `state`; `control_key` walks `policy`)"),
 )
 
 
@@ -131,9 +134,9 @@ def read_sites(program: F.Program, evaluator: F.Evaluator) -> list[ReadSite]:
 
 class Placed(NamedTuple):
     """Where the read sites read: by function, the templates under ``.aew`` (first entry declared); the functions (and
-    primitives) with a site whose path this reading could not place under ``.aew`` or provably outside it; and the
-    sites by class, which add up to ``sites``: all values placed under ``.aew``, all outside it (or the directory
-    itself), and some value not placed."""
+    primitives) with a site whose path this reading could not place under ``.aew`` or follow to a place outside it;
+    and the sites by class, which add up to ``sites``: all values placed under ``.aew``, all outside it (or the
+    directory itself), and some value not placed."""
 
     reads: dict[str, set[tuple[str, str]]]  # template -> the (module, symbol) that read it
     unplaced: list[tuple[str, str, str]]  # (module, symbol, primitive)

@@ -21,9 +21,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
+import importlib.util
 import shutil
 import sys
 from pathlib import Path
+
+import pytest
 
 from aew import process_kind
 
@@ -163,6 +167,30 @@ def test_the_write_mechanism_the_reading_excludes_is_still_the_mechanism():
         names = {mod.aliases.resolve(n) for n in ast.walk(func.node) if isinstance(n, (ast.Name, ast.Attribute))}
         names |= {f"{module}.{n}" for n in names if n in mod.funcs}  # a function of the module, called by its bare name
         assert names & set(W.CALL_PRIMITIVES), (module, qual)
+
+
+def test_the_store_stages_a_file_in_two_places_and_the_page_says_the_one_that_is_no_session_write():
+    """Review of the placement pull request, F1: the apply step is not a writer because the staging sites are, and that
+    holds for every path but the events sidecar `_commit_unprofiled` stages itself. If a third place stages a file, or
+    the sidecar gets a writer, the claim on the page is out of date and this fails."""
+
+    class Stagers(C.Scoped):
+        def __init__(self) -> None:
+            super().__init__()
+            self.where: list[str] = []
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Name) and node.func.id == "PendingWrite":
+                self.where.append(self.symbol or "")
+            self.generic_visit(node)
+
+    visitor = Stagers()
+    visitor.visit(PROGRAM.modules[W.STORE].tree)
+    assert sorted(visitor.where) == ["ControlStore._commit_unprofiled", "Session.write"]
+    sidecar = [w for w in ANALYSIS.writers.get("state/log/{}.events.yaml", [])]
+    assert sidecar and all(w.module != W.STORE for w in sidecar), "the page says nothing here names what creates it"
+    page = W.build(CTX).pages["writers.md"]
+    assert "the events sidecar `state/log/{}.events.yaml`" in page and "has no staging site among the writers" in page
 
 
 # --------------------------------------------------------------------------------------- the owner's table, both ways
@@ -353,12 +381,42 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
 
 # ------------------------------------------------------------------------------------------------------------ the caps
 
-CAPS = ((F, "VALUES"), (F, "DEPTH"), (F, "CALLERS"), (F, "TYPING_DEPTH"), (K, "DEPTH"))
+# The constants to double: derived from `caps()`, the one list, so a cap that is listed cannot escape the hold
+# (review of the placement pull request, F3).
+def cap_constants() -> tuple[tuple[object, str], ...]:
+    return tuple(({"writers_flow": F, "writers_roles": K}[cap.name.split(".")[0]], cap.name.split(".")[1])
+                 for cap in (*F.caps(), *K.caps()))
+
+
+CAPS = cap_constants()
 
 
 def without_the_caps_section(page: str) -> str:
     start = page.index("## Caps of the reading")
     return page[:start] + page[page.index("\n## ", start):]
+
+
+@functools.cache
+def reference_tool():
+    spec = importlib.util.spec_from_file_location("reference_tool_pr6", ROOT / "tools" / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@functools.cache
+def whole_render() -> tuple[dict[str, bytes], dict[str, int]]:
+    """Every file the generator writes, and the largest figure of each measured cap over every family that runs the
+    evaluator (review of #267, C-1): what the writers page prints and what the caps are held to."""
+    return reference_tool()._render(ROOT)
+
+
+def comparable(files: dict[str, bytes]) -> dict[str, bytes]:
+    """The render without the caps' own section, which prints the values being varied."""
+    out = dict(files)
+    out["writers.md"] = without_the_caps_section(files["writers.md"].decode("utf-8")).encode("utf-8")
+    return out
 
 
 def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_caps_own_section(monkeypatch):
@@ -375,18 +433,61 @@ def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_ca
     assert doubled.pages["writers.md"] != base.pages["writers.md"], "the caps' own section prints the doubled values"
 
 
-def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_the_tree_needs(monkeypatch):
-    base = {r.id: r.as_json() for r in W.build(CTX).records}
+def test_halving_the_depth_cap_changes_nothing_in_the_whole_render(monkeypatch):
+    """The same measure as the figures below: every family that runs the evaluator, not the writers family alone."""
+    base = comparable(whole_render()[0])
     monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
-    halved = {r.id: r.as_json() for r in W.build(CTX).records}
+    halved = comparable(reference_tool()._render(ROOT)[0])
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
 
 
-def test_the_value_cap_is_at_least_twice_the_largest_set_the_tree_makes():
-    with F.measuring() as peaks:
-        W.build(CTX)
-    assert peaks["values"] > 0 and F.VALUES >= 2 * peaks["values"], (
-        f"the largest set is {peaks['values']} and the cap {F.VALUES}: raise the cap, and say why")
+def test_a_cap_listed_later_is_doubled_too(monkeypatch):
+    """Review of the placement pull request, F3 (its planted `NEWCAP_DEPTH`): the list the hold doubles is `caps()`'s,
+    read when the test runs, so a cap added to either list is held without a second edit."""
+    real = K.caps()
+    extra = F.Cap("writers_roles.NEWCAP_DEPTH", 5, "a planted cap", "chosen", "nothing")
+    monkeypatch.setattr(K, "caps", lambda: (*real, extra))
+    assert (K, "NEWCAP_DEPTH") in cap_constants() and len(cap_constants()) == len(CAPS) + 1
+
+
+def test_every_cap_the_caps_derive_is_a_constant_of_its_module():
+    assert len(CAPS) == len({(m.__name__, name) for m, name in CAPS}) == len([*F.caps(), *K.caps()])
+    assert all(isinstance(getattr(module, name), int) for module, name in CAPS)
+
+
+def test_every_measured_cap_is_at_least_twice_the_largest_figure_the_whole_render_reaches():
+    """DEPTH, VALUES, FSTRING_LIMIT, MRO_DEPTH and TYPING_DEPTH are measured, not chosen (the page prints the figure,
+    over every family that runs the evaluator): a tree that grows toward one fails here, before the cap binds, and the
+    cap is raised on purpose. The layout's reads ask for more than the writers' (review of #267, C-1)."""
+    files, figures = whole_render()
+    measured = [cap for cap in F.caps(figures) if cap.measured is not None]
+    assert {cap.name for cap in measured} == {cap.name for cap in F.caps() if cap.source.startswith("measured")}
+    assert figures["values"] > 0 and figures["depth"] > 0 and figures["typing"] > 0
+    page = files["writers.md"].decode("utf-8")
+    for cap in measured:
+        assert cap.value >= 2 * (cap.measured or 0), (
+            f"the render reaches {cap.measured} and the cap `{cap.name}` is {cap.value}: raise the cap, and say why")
+        line = next(ln for ln in page.splitlines() if ln.startswith(f"- `{cap.name}`"))
+        assert line.endswith(f"The largest in this render: {cap.measured}."), (cap.name, line[-60:])
+
+
+@pytest.mark.parametrize(("cap", "figure"), [("MRO_DEPTH", "mro"), ("TYPING_DEPTH", "typing")])
+def test_a_cap_with_no_item_to_mark_fails_check_and_render_naming_the_cap_where_it_binds(
+        monkeypatch, capsys, tmp_path, cap, figure):
+    """Addendum 7: `MRO_DEPTH` (a list of classes) and `TYPING_DEPTH` (a call edge) bound something that can carry no
+    mark, so past the cap the reading fails. On this tree the cap one below its figure binds: `check` and `render` stop
+    (exit 2, not 1: nothing differs, nothing can be generated) with the error, and `render` writes nothing."""
+    reference = reference_tool()
+    below = whole_render()[1][figure] - 1
+    assert below >= 1
+    monkeypatch.setattr(F, cap, below)
+    for command in ("check", "render"):
+        assert reference.main([command]) == 2, command
+        said = capsys.readouterr().err
+        assert "cannot generate the reference" in said and f"(cap `writers_flow.{cap}` = {below}:" in said
+    with pytest.raises(C.ReferenceError, match=f"more than {below} "):
+        reference.render(out=tmp_path / "reference")
+    assert not (tmp_path / "reference").exists(), "nothing is written when the reading fails"
 
 
 def test_the_caps_section_of_the_page_is_what_the_caps_say():

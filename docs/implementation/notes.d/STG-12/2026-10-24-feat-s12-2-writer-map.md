@@ -10,9 +10,9 @@ page; `index.json` holds the records (`writers:<path as a template>`, such as `w
   assignments, constants (by import source), `self` attributes and base classes, parameters (the arguments of every
   static call), loops over a directory or a mapping's keys, and the functions that build paths. `aew.util` and the
   store's `write_file` are the write mechanism: their callers are the writers.
-- **What it states.** A path is a template (`{}` is a computed segment). A destination that is not provably under
-  `.aew` and not provably outside it is its own record, `writers:unresolved:<module>:<symbol>:<primitive>`, with the
-  reason; every path record points at those, since any may write it. A destination provably outside `.aew` (a
+- **What it states.** A path is a template (`{}` is a computed segment). A destination that is not followed to a path under
+  `.aew` and not followed to a place outside it is its own record, `writers:unresolved:<module>:<symbol>:<primitive>`, with the
+  reason; every path record points at those, since any may write it. A destination followed to a place outside `.aew` (a
   temporary directory, the console, the repository's working tree) is listed on the page and is no record. The set of
   entries directly under `.aew` is declared in the generator and pinned both ways by a test, so a new directory is a
   decision and not a silent record. Every list is a lower bound, and says what it could not resolve. A call whose

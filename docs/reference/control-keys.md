@@ -35,7 +35,7 @@ The top-level properties of the control schema, which is closed and which the st
 
 ## Unit keys (66)
 
-The keys a unit in `work` carries: the properties of the schema's unit definition (open) joined with the Ticket field registry's inputs and engine bookkeeping. A lower bound: the control schema's unit definition is open and the registry's inventory is checked by the oracle's rule 50 over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it.
+The keys a unit in `work` carries: the properties of the schema's unit definition (open) joined with the Ticket field registry's inputs and engine bookkeeping. A lower bound: the control schema's unit definition is open and the registry's inventory is checked by the oracle's `ticket_field_violations` over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it.
 
 - `archived_children` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `attempts` (bookkeeping): `aew.engine.ticket_fields:load_registry`

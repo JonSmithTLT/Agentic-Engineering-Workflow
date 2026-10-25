@@ -233,3 +233,17 @@ def test_the_page_lists_each_key_with_its_flags_and_anchor_and_the_constants_tha
     assert "`title` (input:card, in the schema, required)" in text
     assert "`m.bridge:ENV_KEY` = `AEW_AGENT_KEY`" in text
     assert "None." in K.page(records, [])
+
+
+# ------------------------------------------------------------- orderings of the anchor (review of #261, N-10)
+
+def test_a_key_named_in_the_initial_state_by_a_constant_keeps_that_constant_though_it_is_also_v2_only():
+    sources = {"m.base": "PINS = 'delta'\n",
+               "m.init": "from m.base import PINS\n\ndef make():\n    return {'alpha': 1, 'gamma': 2, PINS: 3}\n"}
+    got = by_key(K.records_of(inputs(sources)))
+    assert got["delta"].fact["v2_only"] and anchor(got["delta"]) == ("m.base", "PINS")
+
+
+def test_two_constants_that_hold_one_key_anchor_it_at_the_first_by_module_whatever_the_order_given():
+    sources = {"m.init": INIT, "m.b": "Y_KEY = 'beta_slot'\n", "m.a": "X_KEY = 'beta_slot'\n"}
+    assert anchor(by_key(K.records_of(inputs(sources)))["beta_slot"]) == ("m.a", "X_KEY")

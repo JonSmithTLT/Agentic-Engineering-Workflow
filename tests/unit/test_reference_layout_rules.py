@@ -72,7 +72,9 @@ READS = [
     ("open(p, mode='rb')", {"open": 1}),
     ("p.open()", {"Path.open": 1}),
     ("p.open('rb')", {"Path.open": 1}),
+    ("p.open(mode='rb')", {"Path.open": 1}),
     ("os.open(p, os.O_RDONLY)", {"os.open": 1}),
+    ("os.open(p, flags=os.O_RDONLY)", {"os.open": 1}),
     ("os.stat(p)", {"os.stat": 1}),
     ("os.lstat(p)", {"os.lstat": 1}),
     ("os.listdir(p)", {"os.listdir": 1}),
@@ -95,8 +97,9 @@ READS = [
     ("def f(p):\n    flags = os.O_RDONLY\n    os.open(p, flags)", {"os.open": 1}),
 ]
 NOT_READS = [
-    "open(p, 'w')", "open(p, 'a')", "open(p, 'wb')", "open(p, mode='x')", "p.open('w')",
-    "os.open(p, os.O_WRONLY | os.O_CREAT)",
+    "open(p, 'w')", "open(p, 'a')", "open(p, 'wb')", "open(p, mode='x')", "p.open('w')", "p.open(mode='x')",
+    "os.open(p, os.O_WRONLY | os.O_CREAT)", "os.open(p, flags=os.O_WRONLY)",
+    "exists(p)", "glob(p)",                                   # a bare call named like a method is no method call
     "p.write_text('x')", "p.write_bytes(b'x')", "p.mkdir()", "p.unlink()",
     "fh.read()", "fh.readline()", "json.load(fh)",           # a handle, not a path
     "os.path.join(a, b)", "os.getcwd()", "os.fspath(p)",     # path arithmetic, not a read
@@ -140,6 +143,8 @@ PROBES = {
     "other-openers": "codecs.open(p, 'r')\ntarfile.open(p)\nsqlite3.connect(p)\nzipfile.ZipFile(p)\nfh.read()",
     "update-mode": "open(p, 'r+')",
     "unreadable-mode": "def f(p, mode):\n    open(p, mode)",
+    "directory-walk": "os.walk(p)\nos.fstat(fd)\nos.access(p, os.R_OK)\nos.readlink(p)\nos.path.lexists(p)\n"
+                      "os.path.realpath(p)",
 }
 
 
@@ -197,6 +202,13 @@ def test_a_directory_listing_and_a_stat_are_reads_of_the_directory():
     got = placed("def f(aew_root):\n    os.stat(aew_root / 'state')\n"
                  "    list((aew_root / 'local' / 'events').glob('*'))\n")
     assert sorted(got.reads) == ["local/events", "state"]
+
+
+def test_the_path_a_copy_reads_is_its_first_argument_and_never_its_destination():
+    """Review of the layout pull request, N-8: which argument of `shutil.copy*` is the path read."""
+    got = placed("def f(aew_root, other):\n    shutil.copy(aew_root / 'state' / 'a', other)\n"
+                 "    shutil.copy(other, aew_root / 'state' / 'b')\n    shutil.copytree(aew_root / 'work', other)\n")
+    assert sorted(got.reads) == ["state/a", "work"]
 
 
 def test_a_write_mode_open_is_no_read():
@@ -336,9 +348,38 @@ def test_the_store_is_the_store_directory_and_what_is_under_it_and_not_a_name_th
     assert [k for k, r in got.items() if r.fact["store"]] == ["state", "state/log"]
 
 
-def test_an_entry_is_hidden_when_it_is_or_lies_under_an_entry_the_containment_layout_hides():
+def test_an_entry_is_masked_when_it_is_or_lies_under_an_entry_the_containment_layout_masks():
     got = by_key(LY.records_of(inputs({"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}, hidden=("local",))))
-    assert [k for k, r in got.items() if r.fact["hidden_from_contained"]] == ["local", "local/a"]
+    assert [k for k, r in got.items() if r.fact["masked_by_containment"]] == ["local", "local/a"]
+
+
+def test_the_pointer_to_the_unresolved_writes_names_the_writers_family_and_the_key_it_gives_them():
+    """Review of #261, N-2: the layout family points at records that are the writers family's, so a reader looking
+    for `layout:unresolved:*` is told where they are."""
+    record = by_key(LY.records_of(inputs({"work/w": [W1], "state/s": [W1], "local/l": [W1]})))["work"]
+    [pointer] = [i for i in record.coverage["unresolved"] if "write sites" in i["why"]]
+    assert "records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`" in pointer["why"]
+
+
+def test_the_page_and_the_docstring_do_not_gloss_what_git_keeps_and_state_the_rule_for_named_by():
+    """Review of #261, N-6 (the gloss restated `AEW_GITIGNORE`'s comment) and N-12 (the list is a lower bound with
+    nothing listed unresolved, so the rule for what it finds is stated where a reader looks)."""
+    page = LY.page(LY.records_of(inputs({"work/w": [W1], "state/s": [W1], "local/l": [W1]})), NO_READS)
+    doc = " ".join((LY.__doc__ or "").split())
+    for text in (page, doc):
+        assert "spent redo records" not in text and "runtime data" not in text
+    assert "a constant spelled another way, or holding the same text for another purpose, is not found" in page
+    assert "A constant spelled another way, or one that holds the same text for another purpose, is not found" in doc
+
+
+def test_the_mask_fact_says_it_is_a_mask_and_the_page_and_the_docstring_state_the_bind_back():
+    """Review of the layout pull request, N-1: the field is read by the trace and not the page, so its name says what it
+    holds, and the limit (a run's own directories are bound back into the mask) is stated where the fact is defined."""
+    got = by_key(LY.records_of(inputs({"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}, hidden=("local",))))
+    assert "hidden_from_contained" not in got["local"].fact and "masked_by_containment" in got["local"].fact
+    page = LY.page(list(got.values()), NO_READS)
+    assert "bound back into the mask" in page and "that run sees them" in page
+    assert " ".join((LY.__doc__ or "").split()).count("back into the mask") == 1
 
 
 def test_each_record_is_a_lower_bound_that_points_at_the_unresolved_writes_and_the_unplaced_reads():
@@ -380,12 +421,36 @@ def test_the_family_refuses_a_record_that_breaks_its_own_rules(what, mutate, mes
     assert any(message in p for p in LY.problems(records)), what
 
 
-def test_a_flag_that_holds_for_an_entry_must_hold_for_what_is_under_it():
-    records = copy.deepcopy(records_json(writers={"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}))
-    assert LY.problems(records) == []
-    records["layout:local/a"]["fact"]["git_ignored"] = False
+@pytest.mark.parametrize("flag", LY.FLAGS)
+def test_a_flag_that_holds_for_an_entry_must_hold_for_what_is_under_it(flag):
+    """Each flag of `FLAGS` (review of the layout pull request, N-10): all three hold for `local` here."""
+    records = copy.deepcopy(records_json(writers={"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}, store="local"))
+    assert LY.problems(records) == [] and records["layout:local"]["fact"][flag]
+    records["layout:local/a"]["fact"][flag] = False
     [problem] = LY.problems(records)
-    assert "git_ignored holds for 'local' and not for what is under it" in problem
+    assert f"{flag} holds for 'local' and not for what is under it" in problem
+
+
+def test_every_boolean_fact_of_an_entry_is_a_flag_the_family_holds_downward():
+    """Review of #261, N-10: `FLAGS` is the list the downward and boolean rules run over, so a flag left off it is held
+    by nothing. The facts say which are booleans, and the list is held to them."""
+    fact = records_json()["layout:work"]["fact"]
+    assert sorted(k for k, v in fact.items() if isinstance(v, bool)) == sorted(LY.FLAGS)
+
+
+@pytest.mark.parametrize("flag", LY.FLAGS)
+def test_a_flag_that_is_not_a_boolean_is_refused(flag):
+    records = copy.deepcopy(records_json())
+    records["layout:work"]["fact"][flag] = "yes"
+    assert any(f"{flag} is not a boolean" in p for p in LY.problems(records))
+
+
+def test_an_entry_whose_name_starts_like_another_is_not_directly_that_one():
+    """Review of the layout pull request, N-13 (C6): `work2` is not in `work`."""
+    got = by_key(LY.records_of(inputs({"work2/x": [W1], "work/y": [W2], "state/s": [W1], "local/l": [W1]},
+                                      top=("local", "state", "work", "work2"))))
+    assert got["work"].fact["writers"] == [{"module": "m.b", "symbol": "write_two"}]
+    assert got["work2"].fact["writers"] == [{"module": "m.a", "symbol": "write_one"}]
 
 
 def test_another_familys_records_are_not_this_familys_to_check():
@@ -412,6 +477,13 @@ def hidden(layout_source: str, extra: dict[str, str] | None = None) -> set[str]:
 
 def test_the_hidden_entries_are_the_paths_under_aew_the_hide_runs_list_is_built_from():
     assert hidden(HIDE) == {"local"}
+
+
+def test_a_masked_path_under_a_first_entry_nobody_declared_is_no_entry():
+    """Review of the layout pull request, N-13 (C7)."""
+    source = ("def for_run(repo_root):\n    local = Path(repo_root) / '.aew' / 'local'\n"
+              "    odd = Path(repo_root) / '.aew' / 'brand-new'\n    return Layout(hide_runs=(local, odd))\n")
+    assert hidden(source) == {"local"}
 
 
 def test_a_path_a_caller_passes_into_the_hide_runs_list_is_hidden_too():
@@ -449,11 +521,11 @@ def test_the_page_lists_each_entry_under_its_top_level_with_what_holds_of_it_and
     reads = L.Placed({}, [("m.z", "reader", "Path.read_text"), ("m.z", "other", "open")], 6, 2, 1, 3)
     page = LY.page(records, reads)
     assert "## `local`\n" in page and "## `state`\n" in page and "## `work`\n" in page
-    assert "- `local/a` (git-ignored, hidden from a contained process)" in page
+    assert "- `local/a` (git-ignored, masked by containment)" in page
     assert "- `state/log` (store)" in page and "- `work` (kept in git)" in page
     assert "read by `m.d`: `read_two`" in page
     assert "- `m.z`: `reader` (Path.read_text), `other` (open)" in page
-    assert ("Read sites found: 6; placed under `.aew`: 2; provably outside it or the directory itself: 1; "
+    assert ("Read sites found: 6; placed under `.aew`: 2; followed to a place outside it or the directory itself: 1; "
             "not placed: 3.") in page
 
 

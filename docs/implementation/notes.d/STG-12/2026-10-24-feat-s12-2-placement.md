@@ -1,7 +1,7 @@
 **S12-2, pull request 4 of 10 (2026-10-24): place the writes the writer map lost, and hold every cap of the reading.**
 The writer map ([`docs/reference/writers.md`](../../../reference/writers.md)) left 43 write sites as `unresolved`
 records, which the trace takes one by one. This pull request places the ones the reading can place, records the ones that
-are provably outside `.aew`, and says why each of the rest stays: 43 become 22. It also applies the designer's rule for
+are followed to a place outside `.aew`, and says why each of the rest stays: 43 become 22. It also applies the designer's rule for
 caps to the whole generator (below).
 
 - **Why these rules, and not point fixes.** The 43 had a few causes in common, so each rule closes a cause:
@@ -23,12 +23,12 @@ caps to the whole generator (below).
   - *The store's apply step is the write mechanism.* `ControlStore._apply` writes what a transaction staged, from the redo
     record; the paths are the staging sites' (`session.write`), which are the writers and records. Like `aew.util` and
     the store's `write_file` it writes for others, so it is not a writer.
-- **A shape addition: `writers:outside:<module>:<symbol>:<primitive>`.** A write provably outside `.aew` (a temporary
+- **A shape addition: `writers:outside:<module>:<symbol>:<primitive>`.** A write followed to a place outside `.aew` (a temporary
   directory, the task workspaces' directory, the repository's working tree, the console, the null device, an in-memory
   database, an absolute path) was listed on the page only. Each of the 35 is now a record: fact `{primitive, mechanism,
   root}`, coverage `lower-bound` with nothing unresolved. A function that also writes under `.aew` has its path records
   as well. A root names a place, never a path of the machine (the family's record rules refuse a separator, a drive or a
-  home, beside the generator's text rule over `index.json`). The design side's reader takes all 387 records with no
+  home, beside the generator's text rule over `index.json`). The design side's reader takes every record with no
   problem.
 - **Caps (the designer's rule, workspace e350605): the class, not the instance.** Every cap or cut of the generator is
   listed in `writers_flow.caps()` and `writers_roles.caps()`, each with its source, what it bounds and what the reading
@@ -73,3 +73,10 @@ caps to the whole generator (below).
   are identical to those of the layout pull request, so whichever merges second merges clean.
 - **What a change to writing code does** is as before: run `python tools/reference.py render` and commit
   `docs/reference/`. A change that makes a cap bind fails the doubling or halving test, and is a decision.
+- **Amended in pull request 6 (the review of this pull request, F1 to F8).** The page and the docstring now say that the
+  store's apply step is not a writer because the staging sites are, except for the events sidecar `_commit_unprofiled`
+  stages itself (F1). `DEPTH` is 20, not 14: a depth cut under a join read as a computed segment, which hid that the tree
+  needs 10; it is measured now and held to twice that, with `MRO_DEPTH`, `FSTRING_LIMIT` and `ASSIGNMENT_DEPTH`, three
+  limits the sweep did not see, now caps (F2). A reason that a cap makes names the cap, its number and its source, and
+  takes precedence over a later "computed" (addendum 6 of the hand-off). "Outside `.aew`" is "followed to a place
+  outside it" (F5), and the record count above is not restated (F6).

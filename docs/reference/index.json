@@ -1,8 +1,8 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 101,
-      "lower-bound": 427
+      "complete-by-construction": 108,
+      "lower-bound": 420
     },
     "by_family": {
       "configuration-states": 6,
@@ -35,8 +35,8 @@
         "lower-bound": 17
       },
       "transitions": {
-        "complete-by-construction": 22,
-        "lower-bound": 72
+        "complete-by-construction": 29,
+        "lower-bound": 65
       },
       "usage-live-states": {
         "lower-bound": 3
@@ -45,9 +45,9 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:a5ea9467a5f98753e64d1da3c5acf72257f97d04defac4a5603b0f7c4bd6db9a",
+    "digest": "sha256:9857a20f865fa113c82bacc975267d8be710d04982df3383d590c3ad92f08d1a",
     "records": 528,
-    "unresolved": 79
+    "unresolved": 82
   },
   "gaps": [
     {
@@ -88,9 +88,27 @@
     },
     {
       "family": "states",
+      "module": "aew.engine.configuration",
+      "symbol": "_Projector.fv",
+      "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+    },
+    {
+      "family": "states",
       "module": "aew.engine.hierarchy",
       "symbol": "PARENT_STATES",
       "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.queue_ops",
+      "symbol": "Queue.defer",
+      "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+    },
+    {
+      "family": "states",
+      "module": "aew.engine.validation_ops",
+      "symbol": "Validation._terminate",
+      "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
     },
     {
       "family": "states",
@@ -108,7 +126,7 @@
       "family": "transitions",
       "module": "aew.engine.lead_ops",
       "symbol": "Lead._interrupt_invocations",
-      "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+      "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
     },
     {
       "family": "transitions",
@@ -534,6 +552,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -541,7 +561,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 5,
+        "position": 5,
         "state": "ABSENT"
       },
       "fact_coverage": {
@@ -566,6 +586,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -573,7 +595,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 3,
+        "position": 3,
         "state": "ADOPTED"
       },
       "fact_coverage": {
@@ -598,6 +620,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -605,7 +629,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 1,
+        "position": 1,
         "state": "DRIFTED"
       },
       "fact_coverage": {
@@ -630,6 +654,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -637,7 +663,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 2,
+        "position": 2,
         "state": "INVALID"
       },
       "fact_coverage": {
@@ -662,6 +688,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -669,7 +697,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 0,
+        "position": 0,
         "state": "MANIFEST_DRIFTED"
       },
       "fact_coverage": {
@@ -694,6 +722,8 @@
       "basis": "enumerated",
       "coverage": {
         "check": [
+          "tests/integration/test_reference_machines.py::test_every_document_state_configuration_returns_is_in_states",
+          "tests/integration/test_reference_machines.py::test_the_configuration_state_constants_are_the_states_in_order",
           "tests/integration/test_reference_machines.py::test_the_small_machines_are_their_state_tuples_both_ways"
         ],
         "label": "complete-by-construction",
@@ -701,7 +731,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 4,
+        "position": 4,
         "state": "UNPINNED"
       },
       "fact_coverage": {
@@ -6697,9 +6727,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6725,9 +6770,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6753,9 +6813,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6781,9 +6856,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6809,9 +6899,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6837,9 +6942,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6865,9 +6985,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6893,9 +7028,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6921,9 +7071,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6949,9 +7114,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -6977,9 +7157,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7005,9 +7200,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7033,9 +7243,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7061,9 +7286,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7089,9 +7329,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7117,9 +7372,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7145,9 +7415,24 @@
         "label": "lower-bound",
         "unresolved": [
           {
+            "module": "aew.engine.configuration",
+            "symbol": "_Projector.fv",
+            "why": "writes a state key for another machine (a projected field value's state); that machine's states are in no table this reading reads"
+          },
+          {
             "module": "aew.engine.hierarchy",
             "symbol": "PARENT_STATES",
             "why": "a Story's or Epic's phase is derived from its children (PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING, DONE, CANCELLED); that is a second state set, and PLANNING, IN_PROGRESS, ACCEPTANCE_PENDING are in no Ticket state"
+          },
+          {
+            "module": "aew.engine.queue_ops",
+            "symbol": "Queue.defer",
+            "why": "writes a state key for another machine (an integration queue entry's state); that machine's states are in no table this reading reads"
+          },
+          {
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._terminate",
+            "why": "writes a state key for another machine (a validation run's state); that machine's states are in no table this reading reads"
           },
           {
             "module": "aew.schemas",
@@ -7225,7 +7510,7 @@
           {
             "module": "aew.engine.lead_ops",
             "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
           }
         ]
       },
@@ -7398,6 +7683,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7450,7 +7736,7 @@
           {
             "module": "aew.engine.lead_ops",
             "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
           }
         ]
       },
@@ -7523,6 +7809,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7544,6 +7831,7 @@
           "check": [
             "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
             "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+            "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
             "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
             "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
           ],
@@ -7585,14 +7873,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "ESCALATED",
@@ -7713,6 +8002,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7763,6 +8053,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7838,6 +8129,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7863,6 +8155,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7888,6 +8181,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7913,6 +8207,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -7938,6 +8233,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8068,6 +8364,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8140,14 +8437,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "REPLAN_REQUIRED",
@@ -8168,6 +8466,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8240,14 +8539,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "REVIEW_FAILED",
@@ -8368,6 +8668,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8415,14 +8716,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "REVIEW_PASSED",
@@ -8570,7 +8872,7 @@
           {
             "module": "aew.engine.lead_ops",
             "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
           }
         ]
       },
@@ -8618,6 +8920,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8643,6 +8946,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8743,6 +9047,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8795,7 +9100,7 @@
           {
             "module": "aew.engine.lead_ops",
             "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
           }
         ]
       },
@@ -8915,14 +9220,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "VERIFICATION_FAILED",
@@ -8943,6 +9249,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8968,6 +9275,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -8993,6 +9301,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -9065,14 +9374,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "VERIFICATION_INCONCLUSIVE",
@@ -9218,6 +9528,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -9265,14 +9576,15 @@
       },
       "basis": "enumerated",
       "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.engine.lead_ops",
-            "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
-          }
-        ]
+        "check": [
+          "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
+          "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
+          "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
+          "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.engine.transitions:RULES"
       },
       "fact": {
         "from": "VERIFIED",
@@ -9395,7 +9707,7 @@
           {
             "module": "aew.engine.lead_ops",
             "symbol": "Lead._interrupt_invocations",
-            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt)"
+            "why": "assigns the unit's state with no transitions.check in the function; it interrupts the Tickets whose invocation was lost (operation interrupt, from a key of PHASE_DRIVERS)"
           }
         ]
       },
@@ -9468,6 +9780,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -9493,6 +9806,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -9518,6 +9832,7 @@
         "check": [
           "tests/integration/test_reference_machine_writes.py::test_every_state_write_site_is_behind_the_table_or_declared",
           "tests/integration/test_reference_machine_writes.py::test_the_two_state_write_detectors_agree_on_the_tree",
+          "tests/integration/test_reference_machines.py::test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation",
           "tests/integration/test_reference_machines.py::test_the_table_accepts_exactly_its_edges_for_the_operations_it_names",
           "tests/integration/test_reference_machines.py::test_the_transition_records_are_the_rules_both_ways"
         ],
@@ -9551,7 +9866,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 1,
+        "position": 1,
         "state": "final"
       },
       "fact_coverage": {
@@ -9586,7 +9901,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 0,
+        "position": 0,
         "state": "live"
       },
       "fact_coverage": {
@@ -9621,7 +9936,7 @@
       },
       "fact": {
         "exits": [],
-        "precedence": 2,
+        "position": 2,
         "state": "server_gone"
       },
       "fact_coverage": {

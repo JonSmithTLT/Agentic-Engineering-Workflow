@@ -14,6 +14,7 @@ runs the full gate.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import sys
 from functools import cache
@@ -92,17 +93,53 @@ def test_the_table_accepts_exactly_its_edges_for_the_operations_it_names():
                         T.check(frm, to, via)
 
 
-def test_an_edge_is_lower_bound_exactly_when_an_unchecked_site_can_take_its_operation():
-    """The label follows the declared sites: an edge of an operation no unchecked Ticket site performs is complete."""
-    taken = {via for site in M.SITES.values() if site.kind == M.TICKET for via in site.vias}
+def test_an_edge_is_lower_bound_exactly_when_an_unchecked_site_can_take_it():
+    """The label follows the declared sites: an edge is complete unless an unchecked Ticket site performs its operation
+    and, where the site's owner names the states it can take an edge from, leaves one of them."""
+    sources = M.site_sources(M.SITES)
     for key, r in records("transitions").items():
+        frm, _ = key.split("->")
         rule = T.RULES[tuple(key.split("->"))]
-        reachable = bool({rule.via, *rule.also} & taken)
+        reachable = any(site.kind == M.TICKET and {rule.via, *rule.also} & set(site.vias)
+                        and (name not in sources or frm in sources[name])
+                        for name, site in M.SITES.items())
         assert (r["coverage"]["label"] == "lower-bound") is reachable, key
         if reachable:
             assert r["coverage"]["unresolved"], key
         else:
             assert r["coverage"]["registry"] == "aew.engine.transitions:RULES" and r["coverage"]["check"], key
+
+
+def test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation():
+    """The one writer of INTERRUPTED takes an edge only from a state its owner names (``PHASE_DRIVERS``, read from the
+    owner), and that is the set of ``interrupt`` edges the records place it on. Held both ways: every state the owner
+    names is the source of an ``interrupt`` edge, and ``Lead._phase_waits_on`` -- the only gate to the write -- is false
+    for every other source of one, over every role, scope and integration status, for a mutating and a non-mutating
+    Ticket (synthetic units and invocations only)."""
+    import itertools
+
+    from aew.engine.lead_ops import PHASE_DRIVERS, Lead
+
+    interrupt_sources = {frm for (frm, _), rule in T.RULES.items() if rule.via == "interrupt"}
+    assert set(PHASE_DRIVERS) <= interrupt_sources, "PHASE_DRIVERS names a state with no interrupt edge"
+    roles = ("implementer", "reviewer", "verifier", "executor", "investigator", "researcher", "planner")
+    scopes = ("ticket", "integration", "observation", None)
+
+    def waits(state: str) -> bool:
+        for mutating, role, scope, status in itertools.product((True, False), roles, scopes, ("prepared", None)):
+            unit = {"kind": "ticket", "state": state, "mutating": mutating, "execution": {"attempt": 1},
+                    "integration": {"status": status}}
+            if Lead._phase_waits_on(unit, {"role": role, "scope": scope, "attempt": 1}):
+                return True
+        return False
+
+    assert {s for s in interrupt_sources if waits(s)} == set(PHASE_DRIVERS)
+    site = M.SITES[("aew.engine.lead_ops", "Lead._interrupt_invocations")]
+    assert site.sources_from == ("aew.engine.lead_ops", "PHASE_DRIVERS")
+    carrying = {key for key, r in records("transitions").items()
+                if any(i["symbol"] == "Lead._interrupt_invocations" for i in r["coverage"].get("unresolved", []))}
+    assert carrying == {f"{frm}->{to}" for (frm, to), rule in T.RULES.items()
+                        if rule.via == "interrupt" and frm in PHASE_DRIVERS}
 
 
 def test_the_state_records_are_the_state_table_both_ways():
@@ -175,7 +212,7 @@ def test_the_small_machines_are_their_state_tuples_both_ways(family, module):
     assert set(found) == set(owner.STATES)
     for i, state in enumerate(owner.STATES):
         r = found[state]
-        assert r["fact"] == {"state": state, "precedence": i, "exits": []}
+        assert r["fact"] == {"state": state, "position": i, "exits": []}
         assert (r["anchor"]["module"], r["anchor"]["symbol"], r["basis"]) == (module, "STATES", "enumerated")
         # an empty list found by a detector never means none: the edge table is missing, and the record says so
         assert r["fact_coverage"]["exits"]["label"] == "lower-bound"
@@ -192,3 +229,85 @@ def test_a_second_state_tuple_of_a_machines_module_is_an_unresolved_item_of_its_
     items = next(iter(live.values()))["coverage"]["unresolved"]
     assert [(i["symbol"], i["why"]) for i in items] == [
         ("PROMPT_STATES", f"a second state set of this module ({', '.join(usage_live.PROMPT_STATES)}) is not recorded")]
+
+
+# ---------------------------------------------------------------------- the configuration states, by a second reading
+
+def configuration_tree() -> ast.Module:
+    tree = CTX.sources()["aew.engine.configuration"].tree
+    assert tree is not None
+    return tree
+
+
+def test_the_configuration_state_constants_are_the_states_in_order():
+    """``STATES`` is the constants the module defines, in the order it lists them: read from the source, not from the
+    tuple the generator reads. Every constant of the group is a state and every state one."""
+    from aew.engine import configuration as K
+
+    constants: dict[str, str] = {}
+    listed: list[str] = []
+    for node in configuration_tree().body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+            continue
+        target, value = node.targets[0], node.value
+        if isinstance(target, ast.Tuple) and isinstance(value, ast.Tuple) and "MANIFEST_DRIFTED" in ast.unparse(target):
+            names = [n.id for n in target.elts if isinstance(n, ast.Name)]
+            values = [c.value for c in value.elts if isinstance(c, ast.Constant)]
+            constants = dict(zip(names, values, strict=True))
+        elif isinstance(target, ast.Name) and target.id == "STATES" and isinstance(value, ast.Tuple):
+            listed = [n.id for n in value.elts if isinstance(n, ast.Name)]
+    assert constants and listed
+    assert set(constants) == set(listed) and all(name == value for name, value in constants.items())
+    assert [constants[name] for name in listed] == list(K.STATES)
+
+
+def returned_states(fn: ast.FunctionDef, module: Any) -> set[str]:
+    """The first element of every tuple a function returns, a conditional expression read on both of its branches: a
+    name of the module (its value) or a literal."""
+    found: set[str] = set()
+
+    def take(node: ast.expr) -> None:
+        if isinstance(node, ast.IfExp):
+            take(node.body)
+            take(node.orelse)
+        elif isinstance(node, ast.Name):
+            found.add(getattr(module, node.id))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            found.add(node.value)
+
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple) and node.value.elts:
+            take(node.value.elts[0])
+    return found
+
+
+def test_every_document_state_configuration_returns_is_in_states():
+    """The states ``configuration`` gives a document are the states it lists. Read two ways: the source of the function
+    that decides a policy document's state (every state it can return), and running it over every combination of pins,
+    pin, bytes and validity. The manifest level's state is set where the documents are listed, not by that function."""
+    from aew.engine import configuration as K
+    from aew.util import sha256_bytes
+
+    fn = next(n for n in ast.walk(configuration_tree()) if isinstance(n, ast.FunctionDef) and n.name == "_policy_state")
+    by_source = returned_states(fn, K)
+    assert by_source and by_source <= set(K.STATES), sorted(by_source - set(K.STATES))
+    pins: list[dict[str, Any] | None] = [None, {}, {"p": None}, {"p": "not-the-digest"}, {"p": sha256_bytes(b"x")}]
+    by_running = {K._policy_state(p, "p", raw, valid)[0] for p in pins for raw in (None, b"x", b"y")
+                  for valid in (None, True, False)}
+    assert by_running <= set(K.STATES), sorted(by_running - set(K.STATES))
+    assert by_running == by_source == set(K.STATES) - {K.MANIFEST_DRIFTED}
+
+
+def test_the_other_machines_whose_state_key_a_declared_site_writes_are_named_in_the_states_records():
+    """Every machine the declared sites write a ``["state"]`` key for (a queue entry, a validation run, a field value)
+    is an unresolved item of the ``states`` records, anchored at a site that writes it; the copies are not machines."""
+    machines = {site.what for site in M.SITES.values() if site.kind == M.OTHER}
+    assert machines == {"an integration queue entry's state", "a validation run's state",
+                        "a projected field value's state"}
+    items = next(iter(records("states").values()))["coverage"]["unresolved"]
+    named = {i["why"] for i in items if "another machine" in i["why"]}
+    assert len(named) == len(machines)
+    for what in machines:
+        assert any(f"({what})" in why for why in named), what
+    anchors = {(i["module"], i["symbol"]) for i in items if "another machine" in i["why"]}
+    assert anchors <= {key for key, site in M.SITES.items() if site.kind == M.OTHER}

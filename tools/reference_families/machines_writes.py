@@ -16,7 +16,8 @@ Two forms are sites:
 
 Not seen, and pinned by one probe each in that test: ``update(state=...)`` and ``update({"state": ...})``, a
 ``setattr``, a ``|=`` merge, and a key held in a variable. A unit built with an initial state is a creation, not a
-transition.
+transition. A site is a function and a form: a second write of a form in a function already found (or already checked)
+is the same site, so it is not counted.
 ``machines_writes_text.py`` is the second, independently written detector.
 """
 

@@ -143,3 +143,93 @@ def test_the_committed_unchecked_sites_are_on_the_edges_and_in_the_gaps():
     for rid, r in index["records"].items():
         if r["family"] == M.TRANSITIONS and r["coverage"]["label"] == "lower-bound":
             assert {(i["module"], i["symbol"]) for i in r["coverage"]["unresolved"]} <= declared, rid
+
+
+# ---------------------------------------------------------------------------------------- a site narrowed to sources
+
+NARROW = {("m", "f"): M.Site(M.TICKET, ("interrupt",), "interrupts it", ("m", "DRIVERS"))}
+
+
+def test_a_narrowed_site_lands_only_on_the_edges_that_leave_a_source_its_owner_names():
+    found = {("m", "f"): {"assign"}}
+    sources = {("m", "f"): frozenset({"RUNNING", "ASSIGNED"})}
+    on_source = M.edge_unresolved({"interrupt"}, found, NARROW, "RUNNING", sources)  # right: an edge it can take
+    off_source = M.edge_unresolved({"interrupt"}, found, NARROW, "VERIFIED", sources)  # wrong: one it cannot
+    other_via = M.edge_unresolved({"transition"}, found, NARROW, "RUNNING", sources)  # wrong: another operation
+    unspecified = M.edge_unresolved({"interrupt"}, found, NARROW, None, sources)  # missing the source: not narrowed
+    assert [i["symbol"] for i in on_source] == ["f"] and "from a key of DRIVERS" in on_source[0]["why"]
+    assert off_source == [] and other_via == [] and len(unspecified) == 1
+
+
+def test_an_unknown_site_is_unresolved_on_every_edge_even_with_a_narrowed_site_beside_it():
+    found = {("m", "f"): {"assign"}, ("m", "g"): {"set_state"}}
+    sources = {("m", "f"): frozenset({"RUNNING"})}
+    off = M.edge_unresolved({"interrupt"}, found, NARROW, "VERIFIED", sources)
+    assert [i["symbol"] for i in off] == ["g"]
+
+
+def test_the_owner_naming_a_state_the_table_has_no_edge_from_is_a_problem():
+    edges = {("RUNNING", "INTERRUPTED"): {"interrupt"}, ("RUNNING", "CANCELLED"): {"transition"}}
+    sources = {("m", "f"): frozenset({"RUNNING"})}
+    assert M.source_problems(NARROW, sources, edges) == []  # right
+    wrong = M.source_problems(NARROW, {("m", "f"): frozenset({"RUNNING", "VERIFIED"})}, edges)  # a state with no edge
+    assert len(wrong) == 1 and "VERIFIED" in wrong[0] and "no interrupt edge from VERIFIED" in wrong[0]
+    assert M.source_problems(NARROW, {("m", "f"): frozenset({"RUNNING"})}, {("RUNNING", "CANCELLED"): {"transition"}})
+    not_narrowed = {("m", "f"): M.Site(M.TICKET, ("interrupt",), "x")}
+    assert M.source_problems(not_narrowed, {}, edges) == []  # missing: a site with no sources has nothing to check
+
+
+def test_a_registry_that_names_the_sources_is_read_from_its_owner_and_must_be_a_mapping():
+    owner = ("aew.engine.lead_ops", "PHASE_DRIVERS")
+    table = {("aew.engine.lead_ops", "f"): M.Site(M.TICKET, ("interrupt",), "x", owner)}
+    from aew.engine.lead_ops import PHASE_DRIVERS
+
+    assert M.site_sources(table) == {("aew.engine.lead_ops", "f"): frozenset(PHASE_DRIVERS)}
+    not_a_mapping = {("aew.engine.lead_ops", "f"): M.Site(M.TICKET, ("interrupt",), "x",
+                                                         ("aew.engine.lead_ops", "ACTIVE_INVOCATION_STATES"))}
+    with pytest.raises(C.ReferenceError, match="is not a mapping"):
+        M.site_sources(not_a_mapping)
+    missing = {("aew.engine.lead_ops", "f"): M.Site(M.TICKET, ("interrupt",), "x", ("aew.engine.lead_ops", "NOPE"))}
+    with pytest.raises(C.ReferenceError, match="is not a mapping"):
+        M.site_sources(missing)
+
+
+# ---------------------------------------------------------------------------------------- the other machines
+
+def test_the_machines_whose_state_key_a_declared_site_writes_are_named_once_each_at_their_first_site():
+    table = {("m", "a"): M.Site(M.OTHER, (), "a queue entry's state"),
+             ("m", "b"): M.Site(M.OTHER, (), "a queue entry's state"),
+             ("n", "c"): M.Site(M.OTHER, (), "a run's state"), ("n", "d"): M.Site(M.COPY, (), "a copy"),
+             ("n", "e"): M.Site(M.TICKET, ("assign",), "assigns")}
+    found = {key: {"assign"} for key in table}
+    items = M.other_machine_items(found, table)
+    assert [(i["module"], i["symbol"]) for i in items] == [("m", "a"), ("n", "c")]
+    assert "a queue entry's state" in items[0]["why"] and "are in no table this reading reads" in items[0]["why"]
+    assert M.other_machine_items({("m", "a"): {"assign"}}, {}) == []  # missing: a site the table does not know
+    assert M.other_machine_items({}, table) == []  # missing: no unchecked write at all
+
+
+def test_a_machine_with_no_check_cited_claims_nothing_and_one_with_a_second_state_set_is_lower_bound():
+    quiet = M._small("planted-states", "aew.engine.configuration", ())
+    assert {r.coverage["label"] for r in quiet} == {"unknown"}  # configuration holds no second tuple; no check is cited
+    cited = M._small("planted-states", "aew.engine.configuration", ("tests/integration/x.py::t",))
+    assert {r.coverage["label"] for r in cited} == {"complete-by-construction"}
+    live = M._small("planted-states", "aew.harness.usage_live", ("tests/integration/x.py::t",))
+    assert {r.coverage["label"] for r in live} == {"lower-bound"}  # PROMPT_STATES, a second tuple of the module
+
+
+# ---------------------------------------------------------------------------------------- the guard table
+
+def test_an_engine_that_no_longer_holds_its_guard_table_is_a_refusal_naming_where_it_was(monkeypatch):
+    import aew.engine.api as api
+
+    class Bare:
+        def __init__(self, repo_root: Any, aew_root: Any) -> None:
+            self.repo_root = repo_root
+
+    monkeypatch.setattr(api, "Engine", Bare)
+    with pytest.raises(C.ReferenceError, match="no longer holds its guard table at _units.guards"):
+        M.guard_table()
+    monkeypatch.undo()
+    table, queries = M.guard_table()  # the right case: the real Engine gives its table
+    assert table and isinstance(queries, dict)

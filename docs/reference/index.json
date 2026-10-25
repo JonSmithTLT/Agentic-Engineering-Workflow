@@ -29,7 +29,7 @@
         "lower-bound": 161
       }
     },
-    "digest": "sha256:28e4dc52657cc0786ae6d5a834742303bcc294301031b6b85bf37b9e9c99e229",
+    "digest": "sha256:dd42e02f5d7e201b52c26f8e0cf7a753f1ff56810d7e12092f02fbef2add346d",
     "records": 486,
     "unresolved": 72
   },
@@ -3068,7 +3068,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": ".gitignore",
         "readers": [],
@@ -3131,7 +3131,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.coordination.layout",
@@ -3236,7 +3236,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "decisions",
         "readers": [
@@ -3316,7 +3316,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "evidence",
         "readers": [
@@ -3391,7 +3391,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "evidence/{}",
         "readers": [
@@ -3495,7 +3495,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "evidence/{}/logs",
         "readers": [
@@ -3571,7 +3571,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.history.manifest",
@@ -3648,7 +3648,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "knowledge",
         "readers": [
@@ -3720,7 +3720,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local",
         "readers": [
@@ -3896,7 +3896,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.engine.disposition_ops",
@@ -3973,7 +3973,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.engine.custody_ops",
@@ -4041,7 +4041,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.dashboard.service",
@@ -4134,7 +4134,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.harness.event_spool",
@@ -4235,7 +4235,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness",
         "readers": [],
@@ -4293,7 +4293,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.harness.runlog",
@@ -4374,7 +4374,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness/runs/R-{}-{}",
         "readers": [
@@ -4446,7 +4446,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness/runs/R-{}-{}/scratch",
         "readers": [],
@@ -4509,7 +4509,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness/runs/{}",
         "readers": [
@@ -4601,7 +4601,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness/runs/{}/requests",
         "readers": [],
@@ -4664,7 +4664,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/harness/runs/{}/scratch",
         "readers": [],
@@ -4727,7 +4727,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/lead",
         "readers": [
@@ -4815,7 +4815,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.maps.store",
@@ -4920,7 +4920,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.maps.store",
@@ -5009,7 +5009,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.harness.notify",
@@ -5098,7 +5098,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/operator",
         "readers": [
@@ -5186,7 +5186,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/packs",
         "readers": [],
@@ -5244,7 +5244,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/packs/{}",
         "readers": [
@@ -5316,7 +5316,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/recall",
         "readers": [
@@ -5388,7 +5388,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/steering",
         "readers": [
@@ -5456,7 +5456,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [
           {
             "module": "aew.engine.validation_ops",
@@ -5529,7 +5529,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/validation/{}",
         "readers": [
@@ -5617,7 +5617,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/validation/{}/git",
         "readers": [],
@@ -5684,7 +5684,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": true,
+        "masked_by_containment": true,
         "named_by": [],
         "prefix": "local/validation/{}/scratch",
         "readers": [],
@@ -5747,7 +5747,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "policy",
         "readers": [
@@ -5835,7 +5835,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.usage_ops",
@@ -5916,7 +5916,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.knowledge.manifest",
@@ -6029,7 +6029,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "records",
         "readers": [],
@@ -6087,7 +6087,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.disposition_ops",
@@ -6164,7 +6164,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.stage_intents",
@@ -6241,7 +6241,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.steering",
@@ -6314,7 +6314,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "roles",
         "readers": [
@@ -6386,7 +6386,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.store",
@@ -6519,7 +6519,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "state/handoffs",
         "readers": [],
@@ -6582,7 +6582,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.outbox",
@@ -6699,7 +6699,7 @@
       },
       "fact": {
         "git_ignored": true,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [
           {
             "module": "aew.engine.store",
@@ -6800,7 +6800,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work",
         "readers": [
@@ -6872,7 +6872,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}",
         "readers": [
@@ -6960,7 +6960,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}-{}",
         "readers": [],
@@ -7023,7 +7023,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}/annotations",
         "readers": [],
@@ -7086,7 +7086,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}/coordination",
         "readers": [
@@ -7186,7 +7186,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}/dispositions",
         "readers": [],
@@ -7249,7 +7249,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}/stage-intents",
         "readers": [],
@@ -7312,7 +7312,7 @@
       },
       "fact": {
         "git_ignored": false,
-        "hidden_from_contained": false,
+        "masked_by_containment": false,
         "named_by": [],
         "prefix": "work/{}/validation-runs",
         "readers": [],

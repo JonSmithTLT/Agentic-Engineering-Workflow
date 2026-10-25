@@ -336,9 +336,19 @@ def test_the_store_is_the_store_directory_and_what_is_under_it_and_not_a_name_th
     assert [k for k, r in got.items() if r.fact["store"]] == ["state", "state/log"]
 
 
-def test_an_entry_is_hidden_when_it_is_or_lies_under_an_entry_the_containment_layout_hides():
+def test_an_entry_is_masked_when_it_is_or_lies_under_an_entry_the_containment_layout_masks():
     got = by_key(LY.records_of(inputs({"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}, hidden=("local",))))
-    assert [k for k, r in got.items() if r.fact["hidden_from_contained"]] == ["local", "local/a"]
+    assert [k for k, r in got.items() if r.fact["masked_by_containment"]] == ["local", "local/a"]
+
+
+def test_the_mask_fact_says_it_is_a_mask_and_the_page_and_the_docstring_state_the_bind_back():
+    """Review of the layout pull request, N-1: the field is read by the trace and not the page, so its name says what it
+    holds, and the limit (a run's own directories are bound back into the mask) is stated where the fact is defined."""
+    got = by_key(LY.records_of(inputs({"local/a/b": [W1], "state/s": [W1], "work/w": [W1]}, hidden=("local",))))
+    assert "hidden_from_contained" not in got["local"].fact and "masked_by_containment" in got["local"].fact
+    page = LY.page(list(got.values()), NO_READS)
+    assert "bound back into the mask" in page and "that run sees them" in page
+    assert " ".join((LY.__doc__ or "").split()).count("back into the mask") == 1
 
 
 def test_each_record_is_a_lower_bound_that_points_at_the_unresolved_writes_and_the_unplaced_reads():
@@ -449,7 +459,7 @@ def test_the_page_lists_each_entry_under_its_top_level_with_what_holds_of_it_and
     reads = L.Placed({}, [("m.z", "reader", "Path.read_text"), ("m.z", "other", "open")], 6, 2, 1, 3)
     page = LY.page(records, reads)
     assert "## `local`\n" in page and "## `state`\n" in page and "## `work`\n" in page
-    assert "- `local/a` (git-ignored, hidden from a contained process)" in page
+    assert "- `local/a` (git-ignored, masked by containment)" in page
     assert "- `state/log` (store)" in page and "- `work` (kept in git)" in page
     assert "read by `m.d`: `read_two`" in page
     assert "- `m.z`: `reader` (Path.read_text), `other` (open)" in page

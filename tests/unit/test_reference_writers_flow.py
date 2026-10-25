@@ -57,6 +57,12 @@ def reasons(a: Any) -> list[str]:
     return [reason for _, reason in a.unresolved.values()]
 
 
+def cap_text(name: str) -> str:
+    """The cap as a reason names it: its constant, its number and where the number comes from, read from `caps()`."""
+    cap = next(c for c in F.caps() if c.name == f"writers_flow.{name}")
+    return f"(cap `{cap.name}` = {cap.value}: {cap.source})"
+
+
 # ----------------------------------------------------------------------------------- the write primitives, both readers
 
 def counts(source: str) -> tuple[Counter[str], Counter[str]]:
@@ -177,12 +183,6 @@ def test_what_neither_reader_can_see_is_pinned_by_a_probe_each(name):
     assert (dict(ast_found), dict(text_found)) == ({}, {}), name
 
 
-def test_a_path_written_where_it_was_not_built_is_an_unresolved_record_not_a_miss():
-    a = analysed("def f(a):\n    (a.run_dir / 'x').write_text('x')\n")
-    assert a.writers == {} and any("not a value this reading can follow" in r for r in reasons(a))
-
-
-def test_the_page_says_each_class_of_what_it_cannot_see_and_names_the_primitives_it_reads():
 EDITS = {
     "a list extended": "    names = ['a']\n    names.extend(['b'])\n",
     "a list grown with +=": "    names = ['a']\n    names += ['b']\n",
@@ -210,6 +210,12 @@ def test_a_list_argument_a_caller_grows_and_a_dict_key_reassigned_after_its_lite
         assert sorted(a.writers) == ["work/a.md"] and not reasons(a), edit
 
 
+def test_a_path_written_where_it_was_not_built_is_an_unresolved_record_not_a_miss():
+    a = analysed("def f(a):\n    (a.run_dir / 'x').write_text('x')\n")
+    assert a.writers == {} and any("not a value this reading can follow" in r for r in reasons(a))
+
+
+def test_the_page_says_each_class_of_what_it_cannot_see_and_names_the_primitives_it_reads():
     a = analysed("REL = 'state/x.yaml'\n\ndef f(aew_root):\n    atomic_write(aew_root / REL, 'x')\n")
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert all(text in page for _, text in W.CANNOT_SEE)
@@ -492,8 +498,8 @@ def chained(n):
 def test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed():
     assert sorted(analysed(chained(3)).writers) == ["local/d"]
     deep = analysed(chained(F.DEPTH + 2))
-    assert deep.writers == {} and any(f"resolution depth limit ({F.DEPTH} calls or parameters)" in r
-                                      for r in reasons(deep))
+    assert deep.writers == {} and any(f"resolution depth limit: more than {F.DEPTH} calls or parameters" in r
+                                      and cap_text("DEPTH") in r for r in reasons(deep))
 
 
 # -------------------------------------------------------------------------------------------------------- the caps
@@ -569,8 +575,215 @@ def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():
               + "    p.write_text('x')\n")
     over = analysed(values)
     assert over.writers == {}, "not the first VALUES of them: the set is unknown, and the site is an unresolved write"
-    named = f"more than {F.VALUES} possible values of one expression (the cap on values)"
+    named = f"more than {F.VALUES} possible values of one expression {cap_text('VALUES')}"
     assert any(named in r for r in reasons(over))
+
+
+# --------------------------------------------------------------------- a capped value keeps its reason (addendum 6)
+# A join, a sum or a format turns an unknown part into a computed one, so a site a cap stopped would read "computed"
+# where the cause is the cap, and a reader would take it for a genuinely dynamic path. The reason of a value a cap
+# stopped names the cap, its number and its source (read from `caps()`), takes precedence over a later "computed", and
+# is stated beside it where the site is both.
+
+COMPUTED = "first directory or file name is computed"
+
+
+def many(body: str, n: int | None = None) -> str:
+    """A name that takes more values than `VALUES` allows, then `body`, which uses it."""
+    n = F.VALUES + 1 if n is None else n
+    names = "".join(f"    if n == {i}:\n        name = 'v{i}'\n" for i in range(n))
+    return "def f(aew_root, n):\n    other = os.environ['X']\n" + names + body
+
+
+CAPPED_JOINS = {
+    "a tail": "    (aew_root / 'state' / name).write_text('x')\n",
+    "the first segment": "    (aew_root / name).write_text('x')\n",
+}
+
+
+@pytest.mark.parametrize("body", CAPPED_JOINS.values(), ids=list(CAPPED_JOINS))
+def test_a_part_a_cap_stopped_keeps_the_caps_reason_through_a_join_and_is_not_called_computed(body):
+    a = analysed(many(body))
+    assert a.writers == {}, "not a record with a computed segment: nothing is known of the part"
+    [reason] = reasons(a)
+    assert f"more than {F.VALUES} possible values" in reason and cap_text("VALUES") in reason
+    assert "computed" not in reason
+
+
+def test_a_part_a_cap_stopped_after_a_computed_one_states_both_in_one_reason():
+    a = analysed(many("    (aew_root / other / name).write_text('x')\n"))
+    [reason] = reasons(a)
+    assert cap_text("VALUES") in reason and "the path before it is also computed" in reason
+
+
+PIECES = {
+    "a sum": "    (aew_root / ('x' + name)).write_text('x')\n",
+    "an f-string": "    (aew_root / f'{name}.md').write_text('x')\n",
+}
+
+
+@pytest.mark.parametrize("body", PIECES.values(), ids=list(PIECES))
+def test_a_site_both_capped_and_computed_states_the_cap_beside_the_computed_segment(body):
+    a = analysed(many(body))
+    assert a.writers == {}
+    [reason] = reasons(a)
+    assert cap_text("VALUES") in reason and COMPUTED in reason
+
+
+def alternatives(n: int) -> str:
+    names = "".join(f"    if n == {i}:\n        kind = 'k{i}'\n" for i in range(n))
+    return "def f(aew_root, n):\n" + names + "    (aew_root / 'state' / f'{kind}.md').write_text('x')\n"
+
+
+def test_an_f_string_piece_with_more_alternatives_than_the_limit_is_marked_with_the_cap_beside_its_coarser_path():
+    at = analysed(alternatives(F.FSTRING_LIMIT))
+    assert sorted(at.writers) == sorted(f"state/k{i}.md" for i in range(F.FSTRING_LIMIT)) and not reasons(at)
+    over = analysed(alternatives(F.FSTRING_LIMIT + 1))
+    assert sorted(over.writers) == ["state/{}.md"], "the coarser path is still a record"
+    [reason] = reasons(over)
+    assert f"more than {F.FSTRING_LIMIT} alternatives of one f-string piece" in reason
+    assert cap_text("FSTRING_LIMIT") in reason
+
+
+def named_through(links: int) -> str:
+    """`p.with_name(n)` where `n` is made by the process, `links` assignments back: `n0 = os.getpid()`, `n1 = n0`..."""
+    chain = "".join(f"    n{i} = n{i - 1}\n" for i in range(1, links))
+    return ("def f(aew_root):\n    p = aew_root / 'local' / 'a'\n    n0 = os.getpid()\n" + chain
+            + f"    p.with_name(n{links - 1}).write_text('x')\n")
+
+
+def test_a_sibling_named_through_more_assignments_than_the_cap_is_unresolved_and_the_reason_names_the_cap():
+    within = analysed(named_through(F.ASSIGNMENT_DEPTH))
+    assert sorted(within.writers) == ["local/a"], "made by the process, so a temporary of its path"
+    over = analysed(named_through(F.ASSIGNMENT_DEPTH + 1))
+    assert over.writers == {}
+    [reason] = reasons(over)
+    assert f"more than {F.ASSIGNMENT_DEPTH} assignments deep" in reason and cap_text("ASSIGNMENT_DEPTH") in reason
+    assert "neither fixed nor made by the process" in reason, "and the sibling is still unplaced: both are stated"
+
+
+def test_the_bases_of_a_class_are_followed_to_the_cap_and_no_further():
+    n = F.MRO_DEPTH + 3
+    src = "class B0:\n    pass\n\n" + "".join(f"class B{i}(B{i - 1}):\n    pass\n\n" for i in range(1, n))
+    prog = program({"aew.m": src})
+    mod = prog.modules["aew.m"]
+    chain = [cls for _, cls in prog.mro(mod, f"B{n - 1}")]
+    assert chain == [f"B{n - 1 - i}" for i in range(F.MRO_DEPTH + 1)], "the class and MRO_DEPTH bases"
+    short = [cls for _, cls in prog.mro(mod, f"B{F.MRO_DEPTH}")]
+    assert short == [f"B{F.MRO_DEPTH - i}" for i in range(F.MRO_DEPTH + 1)] and short[-1] == "B0"
+
+
+def test_every_cap_reason_comes_from_cap_reason_and_is_told_by_is_cap():
+    for cap in F.caps():
+        name = cap.name.removeprefix("writers_flow.")
+        text = F.cap_reason(name, "something was cut")
+        assert F.is_cap(text) and text == f"something was cut {cap_text(name)}"
+    assert not F.is_cap("a loop variable over `names`, a list this reading cannot read")
+    assert F.cap_unknowns({F.Val(F.UNK, F.cap_reason("DEPTH", "x")), F.Val(F.UNK, "y"), F.Val(F.STR, "z")}) == {
+        F.Val(F.UNK, F.cap_reason("DEPTH", "x"))}
+
+
+# One planted case per site that a cap can stop, each with a union (a placed alternative beside the capped one) so a
+# site that went silent shows as a lost mark and not as a different answer (review of the placement pull request, F4).
+
+def kinds_of(a: Any) -> set[str]:
+    """The caps the reasons of the unresolved writes name."""
+    return {c.name.removeprefix("writers_flow.") for c in F.caps() if any(cap_text(c.name.split(".")[1]) in r
+                                                                         for r in reasons(a))}
+
+
+def loop_over_param(sites: int) -> str:
+    calls = "".join(f"def c{i}(aew_root):\n    run(aew_root, ['a{i}'])\n\n" for i in range(sites))
+    return ("def run(aew_root, names):\n    pick = 'fixed'\n    for pick in names:\n        pass\n"
+            "    (aew_root / 'local' / pick).write_text('x')\n\n" + calls)
+
+
+def test_a_loop_over_a_list_parameter_with_more_call_sites_than_the_cap_is_marked_and_names_the_cap():
+    at = analysed(loop_over_param(F.CALLERS))
+    assert "local/fixed" in at.writers and "local/a0" in at.writers and not reasons(at)
+    over = analysed(loop_over_param(F.CALLERS + 1))
+    assert sorted(over.writers) == ["local/fixed"], "the first few would be a partial answer that looks complete"
+    assert kinds_of(over) == {"CALLERS"}
+    assert any(f"more than {F.CALLERS} call sites" in r for r in reasons(over))
+
+
+def list_chain(links: int) -> str:
+    src = ("def h0(aew_root, names):\n    pick = 'fixed'\n    for pick in names:\n        pass\n"
+           "    (aew_root / 'local' / pick).write_text('x')\n\n")
+    src += "".join(f"def h{k}(aew_root, names):\n    h{k - 1}(aew_root, names)\n\n" for k in range(1, links))
+    return src + f"def top(aew_root):\n    h{links - 1}(aew_root, ['a'])\n"
+
+
+def test_a_list_parameter_handed_down_more_calls_than_the_depth_cap_is_marked_with_the_cap():
+    assert sorted(analysed(list_chain(2)).writers) == ["local/a", "local/fixed"]
+    deep = analysed(list_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+
+
+def typed_attribute_chain(links: int) -> str:
+    src = "class A0:\n    def __init__(self, aew_root):\n        self.path = aew_root / 'local' / 'a'\n\n"
+    src += "".join(f"class A{k}:\n    def __init__(self, inner: A{k - 1}):\n        self.path = inner.path\n\n"
+                   for k in range(1, links))
+    return src + (f"def use(aew_root, box: A{links - 1}):\n    path = aew_root / 'local' / 'fixed'\n"
+                  "    path = box.path\n    path.write_text('x')\n")
+
+
+def test_an_attribute_typed_through_more_classes_than_the_depth_cap_is_marked_with_the_cap():
+    assert sorted(analysed(typed_attribute_chain(2)).writers) == ["local/a", "local/fixed"]
+    deep = analysed(typed_attribute_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+
+
+def keys_chain(links: int) -> str:
+    src = ("def h0(aew_root, files):\n    rel = 'local/fixed'\n    for rel, text in files.items():\n        pass\n"
+           "    (aew_root / rel).write_text('x')\n\n")
+    src += "".join(f"def h{k}(aew_root, files):\n    h{k - 1}(aew_root, files)\n\n" for k in range(1, links))
+    return src + f"def top(aew_root):\n    h{links - 1}(aew_root, {{'local/a': 'x'}})\n"
+
+
+def test_the_keys_of_a_mapping_handed_down_more_calls_than_the_depth_cap_are_marked_with_the_cap():
+    assert sorted(analysed(keys_chain(2)).writers) == ["local/a", "local/fixed"]
+    deep = analysed(keys_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+
+
+def element_chain(links: int) -> str:
+    src = "def r0():\n    return ('local/a', 1)\n\n"
+    src += "".join(f"def r{k}():\n    return (r{k - 1}()[0], 1)\n\n" for k in range(1, links))
+    return src + (f"def use(aew_root):\n    rel = 'local/fixed'\n    rel = r{links - 1}()[0]\n"
+                  "    (aew_root / rel).write_text('x')\n")
+
+
+def test_the_element_of_a_tuple_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap():
+    assert sorted(analysed(element_chain(2)).writers) == ["local/a", "local/fixed"]
+    deep = analysed(element_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+
+
+def test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys():
+    assert kinds_of(analysed(callbacks(F.CALLERS + 1))) == {"CALLERS"}
+    assert kinds_of(analysed(callback_chain(F.DEPTH + 2))) == {"DEPTH"}
+    assert kinds_of(analysed(keyed(F.CALLERS + 1))) == {"CALLERS"}
+
+
+def test_a_row_that_is_not_a_tuple_literal_is_marked_beside_the_rows_that_are():
+    a = analysed("def f(aew_root, other):\n    for rel, text in (('a', '1'), other):\n"
+                 "        (aew_root / 'local' / rel).write_text(text)\n")
+    assert sorted(a.writers) == ["local/a", "local/{}"], "the row nothing can read is a computed segment"
+
+
+MIXED_ARGS = SUPERVISOR_ARGS = (
+    "import argparse\nfrom pathlib import Path\n\n"
+    "def write_it(run_dir):\n    (run_dir / 'heartbeat').write_text('x')\n\n"
+    "def main(parser, other):\n    args = parser.parse_args()\n    args = other\n    write_it(Path(args.run_dir))\n")
+
+
+def test_a_name_bound_to_parsed_arguments_in_one_place_and_to_something_else_in_another_is_not_a_command_line_value():
+    start = ("import sys\n\ndef launch(aew_root):\n    directory = aew_root / 'local' / 'runs' / 'r'\n"
+             "    spawn([sys.executable, '-m', 'aew.sup', '--run-dir', str(directory)])\n")
+    a = analysed(start, extra={"aew.sup": MIXED_ARGS})
+    assert a.writers == {}, "`args` might not be what parse_args returns, so its run_dir is not the start's value"
+    assert all("which no AEW start of it passes" not in r for r in reasons(a))
 
 
 def test_a_refusal_that_lists_problems_says_how_many_it_left_out():
@@ -585,32 +798,93 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
     assert "## Caps of the reading" in page
     for cap in (*F.caps(), *K.caps()):
         assert f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it: {cap.past}." in page
-    measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps({"values": 7}))
-    assert "The largest in this tree: 7." in measured
+    measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps(dict.fromkeys(F.MEASURED, 7)))
+    assert measured.count("The largest in this tree: 7.") == len(F.MEASURED)
 
 
-def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one_by_one():
-    """The sweep, made mechanical: a module-level integer named like a cap, and a slice cut at a number or a
-    constant, in `tools/reference_families` and `tools/reference.py`. Each is a cap of `caps()` (and so on the page,
-    with its source and what the reading does past it) or a slice named here with the reason it bounds nothing the
-    reading follows. A new one fails this test until it is decided."""
-    cap_names = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)")
+CAP_NAMES = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)", re.I)
+LIMIT_CALLS = frozenset({"islice", "nsmallest", "nlargest"})
+
+
+def numeric_limits(path: Path, tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
+    """What in one module can bound how much the generator follows or shows: (integer constants named like a cap, at
+    module or class level, annotated or not, in any case; slices cut at a number, a constant or from the end, and
+    `islice`-like calls with a number; numbers in a comparison and integer parameter defaults)."""
     constants: set[str] = set()
-    slices: set[str] = set()
+    cuts: set[str] = set()
+    literals: set[str] = set()
+    stem = path.stem
+    for scope in (tree, *(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))):
+        for node in scope.body:
+            targets: list[ast.expr] = []
+            if isinstance(node, ast.Assign):
+                targets, value = node.targets, node.value
+            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                targets, value = [node.target], node.value
+            else:
+                continue
+            if isinstance(value, ast.Constant) and type(value.value) is int:
+                constants |= {f"{stem}.{t.id}" for t in targets if isinstance(t, ast.Name) and CAP_NAMES.search(t.id)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
+            upper, lower = node.slice.upper, node.slice.lower
+            if (isinstance(upper, ast.Constant) and type(upper.value) is int) or (
+                    isinstance(upper, ast.Name) and upper.id.isupper()) or (
+                    isinstance(lower, ast.UnaryOp) and isinstance(lower.op, ast.USub)):
+                cuts.add(f"{stem}:{ast.unparse(node)}")
+        elif isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] in LIMIT_CALLS:
+            cuts.add(f"{stem}:{ast.unparse(node)}")
+        elif isinstance(node, ast.Compare):
+            numbers = [c for c in (node.left, *node.comparators) if isinstance(c, ast.Constant)
+                       and type(c.value) is int and c.value not in (0, 1, -1)]
+            if numbers:
+                literals.add(f"{stem}:{ast.unparse(node)}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            args = node.args
+            named = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
+                     *((a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=True) if d is not None)]
+            literals |= {f"{stem}:{node.name}({a.arg}={d.value})" for a, d in named
+                         if isinstance(d, ast.Constant) and type(d.value) is int and d.value not in (0, 1)}
+    return constants, cuts, literals
+
+
+def test_every_cap_and_every_cut_of_the_generator_is_listed_or_excused_one_by_one():
+    """The sweep, made mechanical, over `tools/reference_families` and `tools/reference.py`: an integer constant named
+    like a cap, a slice cut at a number or from the end, and (review of the placement pull request, F2) a number in a
+    comparison or as a parameter default, which is how three limits stayed out of it. Each is a cap of `caps()` (and so
+    on the page, with its source and what the reading does past it) or is named below with the reason it bounds nothing
+    the reading follows. A new one fails this test until it is decided."""
+    constants: set[str] = set()
+    cuts: set[str] = set()
+    literals: set[str] = set()
     for path in sorted([*(ROOT / "tools" / "reference_families").glob("*.py"), ROOT / "tools" / "reference.py"]):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in tree.body:
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and type(node.value.value) is int:
-                constants |= {f"{path.stem}.{t.id}" for t in node.targets
-                              if isinstance(t, ast.Name) and cap_names.search(t.id)}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and node.slice.upper is not None:
-                upper = node.slice.upper
-                if (isinstance(upper, ast.Constant) and type(upper.value) is int) or (
-                        isinstance(upper, ast.Name) and upper.id.isupper()):
-                    slices.add(f"{path.stem}:{ast.unparse(node)}")
+        found = numeric_limits(path, ast.parse(path.read_text(encoding="utf-8")))
+        constants |= found[0]
+        cuts |= found[1]
+        literals |= found[2]
     assert constants == {cap.name for cap in (*F.caps(), *K.caps())}
-    assert slices == set(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
+    assert cuts == set(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
+    assert literals == set(EXCUSED_LITERALS), "decide each new number: a cap goes in caps(), anything else is excused"
+
+
+PLANTED_LIMITS = (
+    "import itertools\n"
+    "NEW_LIMIT: int = 5\nmax_items = 5\nWORDS = 5\nNAMED = 'x'\n"
+    "class Box:\n    CAP = 7\n"
+    "def f(xs, depth=3, flag=1, other=None):\n"
+    "    if depth > 9 or len(xs) <= 4 or depth == 0 or len(xs) >= 1:\n"
+    "        return xs[-5:] + xs[:7] + xs[1:] + xs[:i + 1]\n"
+    "    return list(itertools.islice(xs, 5))\n"
+    "def g(*, window: int = 12):\n    return window\n")
+
+
+def test_the_sweep_sees_each_form_a_limit_can_take_and_not_the_numbers_that_bound_nothing():
+    """The forms that escaped the first sweep (review of the placement pull request, F2): a number in a comparison or a
+    parameter default, an annotated or lower-case constant, a class-level one, a slice from the end, an `islice`."""
+    constants, cuts, literals = numeric_limits(Path("m.py"), ast.parse(PLANTED_LIMITS))
+    assert constants == {"m.NEW_LIMIT", "m.max_items", "m.CAP"}, "a name that says nothing of a cap is not one"
+    assert cuts == {"m:xs[-5:]", "m:xs[:7]", "m:itertools.islice(xs, 5)"}
+    assert literals == {"m:depth > 9", "m:len(xs) <= 4", "m:f(depth=3)", "m:g(window=12)"}
 
 
 # A slice of the generator that bounds nothing it follows: what it shows (the text of an expression quoted in a reason,
@@ -619,6 +893,19 @@ def test_every_cap_and_every_cut_slice_of_the_generator_is_listed_or_excused_one
 # does not see those cuts, and a raw `[:20]` written instead of it is seen.
 EXCUSED_SLICES = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`",
                   "control_keys:target.params[:1]": "a position: the first parameter, `self` or `cls`"}
+# A number in a comparison or a default that bounds nothing the reading follows: the arity a syntactic form needs, or
+# how much of a quoted expression or of a refusal is shown (the refusal says how many it left out).
+EXCUSED_LITERALS = {
+    "common:shown(limit=20)": "how many problems a refusal lists; it says how many it left out",
+    "entry_points:len(node.elts) >= 2": "arity: a (key, value) pair",
+    "entry_points:len(words) >= 2": "arity: a command and its subcommand",
+    "writers:len(call.args) >= 2": "arity: the call has its second argument",
+    "writers:len(expr.args) >= 2": "arity: the call has its second argument",
+    "writers_text:len(arg) >= 2": "arity: the token reader's argument has a second token",
+    "writers_text:i >= 2": "a position: two tokens back, for a dotted name",
+    "writers_text:len(positional) >= 2": "arity: the call has its second argument",
+    "writers_flow:len(text) <= 60": "an expression quoted in a reason, cut with `...`",
+}
 
 
 def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():
@@ -1202,6 +1489,10 @@ FAULTS = [
     # the designer: a root names a place, never a path of the machine the reference was made on
     ("an outside write whose root is a drive path", OUTSIDE_ID, ["fact", "root"], "C:\\work\\tmp", "never a path"),
     ("an outside write whose root is a home path", OUTSIDE_ID, ["fact", "root"], "~/work", "never a path"),
+    # each alternative of PATH_LIKE alone (review of the placement pull request, F8): a drive, a home, a separator
+    ("an outside write whose root is a drive and nothing else", OUTSIDE_ID, ["fact", "root"], "C:", "never a path"),
+    ("an outside write whose root is a home and nothing else", OUTSIDE_ID, ["fact", "root"], "~", "never a path"),
+    ("an outside write whose root has only a separator", OUTSIDE_ID, ["fact", "root"], "a/b", "never a path"),
     ("an outside write one of whose roots is a path", OUTSIDE_ID, ["fact", "root"],
      "a temporary directory; /var/tmp", "never a path"),
 ]
@@ -1213,7 +1504,3 @@ def test_each_planted_fault_in_a_family_record_is_refused_by_its_own_rule(what, 
     assert W.record_problems(records, KINDS) == []
     problems = W.record_problems(mutate(records, rid, path, value), KINDS)
     assert problems and any(fragment in p for p in problems), (what, problems)
-    # each alternative of PATH_LIKE alone (review of the placement pull request, F8): a drive, a home, a separator
-    ("an outside write whose root is a drive and nothing else", OUTSIDE_ID, ["fact", "root"], "C:", "never a path"),
-    ("an outside write whose root is a home and nothing else", OUTSIDE_ID, ["fact", "root"], "~", "never a path"),
-    ("an outside write whose root has only a separator", OUTSIDE_ID, ["fact", "root"], "a/b", "never a path"),

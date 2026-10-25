@@ -42,10 +42,10 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 # it carries the no-chain item), or the roles reader counts a registration as run by every role. `caps()` is the one
 # list, written on the page. A tree test doubles every cap and holds the generated reference unchanged (no record is
 # lost to a cap), and another finds every cap or slice of the generator that is not listed (the sweep).
-# Calls and parameters followed in a chain. Measured, not chosen: a tree test holds the generated reference unchanged
-# when it is halved, so it is at least twice what the tree needs (the longest chain is the run directory a supervisor is
-# handed through the harness).
-DEPTH = 14
+# Calls and parameters followed in a chain. Measured, not chosen: the page prints the deepest chain the tree follows
+# (the run directory a supervisor is handed through the harness) and a tree test holds the cap to at least twice it.
+# (It was 14 while a depth cut under a join read as a computed segment and hid that the tree needs 9: addendum 6.)
+DEPTH = 20
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 # Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
 # the largest set the tree makes (the page prints that size), so a set that grows toward it is a decision and not a
@@ -53,6 +53,14 @@ CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 VALUES = 40
 PLACEHOLDER = "{}"
 TYPING_DEPTH = 3  # receivers typed through receivers
+# Base classes followed from a class to find where an attribute or method is defined. Measured like VALUES: a tree test
+# holds it to at least twice the longest chain of bases the tree follows.
+MRO_DEPTH = 6
+# Alternatives of one f-string piece (`f"{kind}.md"` with `kind` one of N strings) expanded into N templates; more is
+# unknown, with the cap in its reason. Measured like VALUES (review of the placement pull request, F2).
+FSTRING_LIMIT = 8
+# Assignments followed through names to see whether a sibling's name is made by the process (`_process_computed`).
+ASSIGNMENT_DEPTH = 3
 UTIL_MODULE = "aew.util"
 
 # Callees that return their argument's path unchanged, or a sibling of it: by where they were imported from.
@@ -100,37 +108,65 @@ class Cut(Exception):
     asked turns it into an unknown value with this reason."""
 
 
+CAP_MARK = " (cap `"  # every reason a cap makes carries it: `cap_reason` writes it, `is_cap` reads it
+
+
+def cap_reason(name: str, detail: str) -> str:
+    """The reason of a value a cap stopped: what was cut, then the cap, its number and where the number comes from
+    (from :func:`caps`). A reason that said only "computed" where a cap stopped the reading would name a false cause
+    (the designer's addendum 6 to the S12-2 hand-off)."""
+    cap = next(c for c in caps() if c.name == f"writers_flow.{name}")
+    return f"{detail}{CAP_MARK}{cap.name}` = {cap.value}: {cap.source})"
+
+
+def is_cap(reason: str) -> bool:
+    return CAP_MARK in reason
+
+
 def depth_reason() -> str:
-    return f"resolution depth limit ({DEPTH} calls or parameters)"
+    return cap_reason("DEPTH", f"resolution depth limit: more than {DEPTH} calls or parameters to follow")
 
 
 def depth_limit() -> Values:
     return unk(depth_reason())
 
 
+def cap_unknowns(values: Values | set[Val]) -> set[Val]:
+    """The values among ``values`` that a cap stopped. A join, a sum or a format that turns an unknown part into a
+    computed one keeps these, so the reason stays the cap's and not "computed"."""
+    return {v for v in values if v.kind == UNK and is_cap(v.text)}
+
+
 _peak: dict[str, int] | None = None
+# What `measuring()` records: the figure of each measured cap.
+MEASURED = ("depth", "values", "alternatives", "mro", "assignments")
 
 
 @contextmanager
 def measuring() -> Iterator[dict[str, int]]:
-    """Record, while the block runs, the size of the largest value set (the figure the page and a tree test report). A
-    block inside another records into the outer one."""
+    """Record, while the block runs, the largest figure of each measured cap (the figures the page and the tree tests
+    report): the size of a value set, of the alternatives of an f-string piece, the longest chain of bases, the longest
+    chain of assignments. A block inside another records into the outer one."""
     global _peak
     if _peak is not None:
         yield _peak
         return
-    _peak = {"values": 0}
+    _peak = dict.fromkeys(MEASURED, 0)
     try:
         yield _peak
     finally:
         _peak = None
 
 
-def capped(values: set[Val] | Values) -> Values:
+def _note(figure: str, size: int) -> None:
     if _peak is not None:
-        _peak["values"] = max(_peak["values"], len(values))
+        _peak[figure] = max(_peak[figure], size)
+
+
+def capped(values: set[Val] | Values) -> Values:
+    _note("values", len(values))
     if len(values) > VALUES:
-        return unk(f"more than {VALUES} possible values of one expression (the cap on values)")
+        return unk(cap_reason("VALUES", f"more than {VALUES} possible values of one expression"))
     return frozenset(values)
 
 
@@ -145,21 +181,41 @@ class Cap(NamedTuple):
 
 def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
     """The caps of the value flow and the call graph, from the constants themselves."""
+
+    def peak(figure: str) -> int | None:
+        return None if peaks is None else peaks[figure]
+
     return (
         Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through",
             "measured, held to twice what the tree needs", "the value is unknown, with the reason `resolution depth "
-            "limit`; the keys of a mapping a callback returns are unknown with the same reason"),
+            "limit` and this cap; the keys of a mapping a callback returns are unknown with the same reason",
+            peak("depth")),
         Cap("writers_flow.CALLERS", CALLERS,
             "the call sites of one function whose parameter, mapping keys or callback is read", "chosen",
-            "the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the "
-            "registration as run by every role)"),
+            "the parameter is unknown, with a reason that says `more than N call sites` and names this cap (the roles "
+            "reader counts the registration as run by every role)"),
         Cap("writers_flow.VALUES", VALUES, "the distinct values one expression may take",
-            "measured, held to twice the largest", "the expression is unknown, with the reason `more than N possible "
-            "values`", None if peaks is None else peaks["values"]),
+            "measured, held to twice the largest", "the expression is unknown, with a reason that says `more than N "
+            "possible values` and names this cap", peak("values")),
         Cap("writers_flow.TYPING_DEPTH", TYPING_DEPTH,
             "the receivers typed through receivers (`self.a.b.run()`)", "chosen",
             "the call is not followed, as for any receiver whose class is not known, and a writer reached only "
             "through it carries the no-chain item"),
+        Cap("writers_flow.MRO_DEPTH", MRO_DEPTH,
+            "the base classes followed from a class to find where an attribute or a method is defined",
+            "measured, held to twice the longest chain the tree follows",
+            "a base further than this is not followed, so what only it defines is not found; no mark can sit on a "
+            "list of classes, so a tree test fails before the tree needs half of it", peak("mro")),
+        Cap("writers_flow.FSTRING_LIMIT", FSTRING_LIMIT,
+            "the alternatives of one f-string piece that are expanded into templates",
+            "measured, held to twice the largest the tree makes",
+            "the expression is unknown, with a reason that says `more than N alternatives of one f-string piece` and "
+            "names this cap", peak("alternatives")),
+        Cap("writers_flow.ASSIGNMENT_DEPTH", ASSIGNMENT_DEPTH,
+            "the assignments followed through names to see whether a sibling's name is made by the process",
+            "measured, held to twice the longest chain the tree follows",
+            "the sibling is an unresolved write, with a reason that says `more than N assignments` and names this "
+            "cap", peak("assignments")),
     )
 
 
@@ -640,7 +696,7 @@ class Program:
         """The class and its bases that the program holds, most derived first (a depth-first reading: enough to find
         where an attribute or a method is defined)."""
         out = [(mod, cls)]
-        if _depth > 6:
+        if _depth >= MRO_DEPTH:  # MRO_DEPTH bases are followed
             return out
         for base in mod.bases.get(cls, []):
             dotted = mod.aliases.resolve(base)
@@ -652,6 +708,7 @@ class Program:
                 if located and located[1] in self.modules[located[0]].classes:
                     owner, name = self.modules[located[0]], located[1]
             if owner is not None:
+                _note("mro", _depth + 1)
                 for item in self.mro(owner, name, _depth + 1):
                     if item not in out:
                         out.append(item)
@@ -705,7 +762,9 @@ class Env:
 
 def _join(a: Val, b: Val) -> Val:
     """``a / b``. A path joined with the string ``.aew`` is the ``.aew`` directory (the owner's ``AEW_DIR``); a
-    computed segment makes the template's tail (or, under the root, its first segment) a placeholder."""
+    computed segment makes the template's tail (or, under the root, its first segment) a placeholder. A part a cap
+    stopped is not a computed one: the join stays unknown with the cap's reason, and says so when the path before it was
+    computed too (addendum 6)."""
     if a.kind == UNK:
         return a
     if b.kind == STR and b.text == AEW_DIRECTORY:
@@ -715,6 +774,9 @@ def _join(a: Val, b: Val) -> Val:
     if b.kind == OUT:
         return b
     if b.kind == UNK:
+        if is_cap(b.text):
+            before = a.kind == TPL and PLACEHOLDER in a.text
+            return Val(UNK, f"{b.text}; the path before it is also computed" if before else b.text)
         if a.kind == ROOT:
             return Val(TPL, PLACEHOLDER)
         return Val(a.kind, f"{a.text}/{PLACEHOLDER}" if a.text else PLACEHOLDER)
@@ -757,6 +819,7 @@ class Evaluator:
         return self.p.modules[env.module].funcs.get(env.func[1]) if env.func else None
 
     def _ev(self, e: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
+        _note("depth", DEPTH - depth + 1)  # the hops this question is from the start (one past DEPTH: cut)
         memo_key = (id(e), env, depth)  # the depth left is part of the question: a deeper chain asked less
         if not seen and memo_key in self._memo:
             return self._memo[memo_key]
@@ -902,17 +965,24 @@ class Evaluator:
             if lead and all(v.kind in (TPL, OUT) for v in lead):
                 return lead  # `f"{path}.tmp"`, `f"{path}{suffix}"`: a sibling of `path`, taken as the same path
         parts = [""]
+        stopped: set[Val] = set()  # what a cap stopped keeps its reason beside the computed segment it leaves
         for piece in e.values:
             if isinstance(piece, ast.Constant):
                 parts = [p + str(piece.value) for p in parts]
                 continue
             inner = self._ev(piece.value, env, depth, seen) if isinstance(piece, ast.FormattedValue) else unk("?")
+            stopped |= cap_unknowns(inner)
             texts = sorted({v.text for v in inner if v.kind == STR})
-            if inner and len(inner) == len(texts) and len(texts) <= 4:
+            if inner and len(inner) == len(texts):
+                _note("alternatives", len(texts))
+            if inner and len(inner) == len(texts) and len(texts) <= FSTRING_LIMIT:
                 parts = [p + t for p in parts for t in texts]
             else:
+                if inner and len(inner) == len(texts):
+                    stopped |= unk(cap_reason("FSTRING_LIMIT", f"more than {FSTRING_LIMIT} alternatives of one "
+                                                               "f-string piece"))
                 parts = [p + PLACEHOLDER for p in parts]
-        return capped({Val(STR, p) for p in parts})
+        return capped({Val(STR, p) for p in parts} | stopped)
 
     def _binop(self, e: ast.BinOp, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> Values:
         if isinstance(e.op, ast.Div):
@@ -928,6 +998,7 @@ class Evaluator:
                         out.add(Val(STR, a.text + b.text))
                     elif a.kind == STR and b.kind == UNK:
                         out.add(Val(STR, a.text + PLACEHOLDER))
+                        out |= cap_unknowns({b})
                     elif a.kind == UNK:
                         out.add(a)
                     else:
@@ -1125,7 +1196,8 @@ class Evaluator:
         if mapping.id in func.params:
             sites = self.p.callers.get(func.key, [])
             if len(sites) > CALLERS:  # none is read: the first few would be a partial answer that looks complete
-                out.add(Val(UNK, f"the keys of `{mapping.id}`, which has more than {CALLERS} call sites"))
+                out.add(Val(UNK, cap_reason("CALLERS", f"the keys of `{mapping.id}`, which has more than {CALLERS} "
+                                                       "call sites")))
                 sites = []
             for caller, caller_mod, call in sites:
                 arg = _argument(func, mapping.id, call)
@@ -1173,7 +1245,7 @@ class Evaluator:
                 return []
             sites = self.p.callers.get(func.key, [])
             if len(sites) > CALLERS:
-                raise Cut(f"`{callee.id}` of `{func.qual}` has more than {CALLERS} call sites")
+                raise Cut(cap_reason("CALLERS", f"`{callee.id}` of `{func.qual}` has more than {CALLERS} call sites"))
             for caller, caller_mod, call in sites:
                 arg = _argument(func, callee.id, call)
                 if arg is not None:
@@ -1294,7 +1366,10 @@ class Evaluator:
         if token in seen or depth <= 0:
             return frozenset() if token in seen else depth_limit()
         sites = self.p.callers.get(func.key, [])
-        if not sites or len(sites) > CALLERS:
+        if len(sites) > CALLERS:
+            return unk(cap_reason("CALLERS", f"a loop variable over `{name}`, a list passed at more than {CALLERS} "
+                                             "call sites"))
+        if not sites:
             return unk(f"a loop variable over `{name}`, a list this reading cannot read")
         out: set[Val] = set()
         for caller, caller_mod, call in sites:
@@ -1385,11 +1460,15 @@ class Evaluator:
         tail = self._tails[id(arg)]
         fixed = self._ev(arg if tail is None else tail, env, depth, seen)
         if not fixed or any(v.kind != STR or PLACEHOLDER in v.text for v in fixed):
-            if self._process_computed(arg, env):
-                return base
+            stopped = cap_unknowns(fixed)  # a cap that stopped the name keeps its reason beside the sibling's
+            try:
+                if self._process_computed(arg, env):
+                    return base
+            except Cut as cut:
+                stopped |= unk(str(cut))
             why = (f"a sibling of `{_src(receiver)}` named by `{_src(arg)}`, which is neither fixed nor made by "
                    "the process")
-            unplaced: set[Val] = set()
+            unplaced: set[Val] = set(stopped)
             for v in base:
                 unplaced |= unk(why) if v.kind in (TPL, STR) else {v}
             return capped(unplaced)
@@ -1416,9 +1495,10 @@ class Evaluator:
                 out.add(Val(v.kind, f"{head}/{new}" if _has_dir(v.text) else new))
         return capped(out)
 
-    def _process_computed(self, expr: ast.expr, env: Env, depth: int = 3) -> bool:
+    def _process_computed(self, expr: ast.expr, env: Env, depth: int = ASSIGNMENT_DEPTH) -> bool:
         """Whether a name visibly depends on the process: a call of ``PROCESS_CALLS`` (or of ``tempfile``) in the
-        expression, or in an assignment of a name in it."""
+        expression, or in an assignment of a name in it. A name assigned further back than ``ASSIGNMENT_DEPTH`` raises
+        ``Cut``: the sibling is then an unresolved write that names the cap, and not one "neither fixed nor made"."""
         mod = self.p.modules[env.module]
         func = self._func(env)
         for node in ast.walk(expr):
@@ -1426,8 +1506,12 @@ class Evaluator:
                 callee = mod.aliases.resolve(node.func)
                 if callee in PROCESS_CALLS or callee in TEMP_CALLS:
                     return True
-            elif isinstance(node, ast.Name) and depth > 0 and func is not None:
-                if any(self._process_computed(rhs, env, depth - 1) for rhs in func.assigns.get(node.id, [])):
+            elif isinstance(node, ast.Name) and func is not None and func.assigns.get(node.id):
+                _note("assignments", ASSIGNMENT_DEPTH - depth + 1)
+                if depth <= 0:
+                    raise Cut(cap_reason("ASSIGNMENT_DEPTH", f"`{node.id}` is assigned from names more than "
+                                                             f"{ASSIGNMENT_DEPTH} assignments deep"))
+                if any(self._process_computed(rhs, env, depth - 1) for rhs in func.assigns[node.id]):
                     return True
         return False
 
@@ -1460,7 +1544,7 @@ class Evaluator:
                 return self._ev(default, Env(func.module, None), depth - 1, seen)
             return unk(f"`{name}` of `{func.qual}`, which no static call binds")
         if len(sites) > CALLERS:
-            return unk(f"`{name}` of `{func.qual}`, which has more than {CALLERS} call sites")
+            return unk(cap_reason("CALLERS", f"`{name}` of `{func.qual}`, which has more than {CALLERS} call sites"))
         out: set[Val] = set()
         for caller, caller_mod, call in sites:
             inner = Env(caller_mod.name, caller.key if caller else None)

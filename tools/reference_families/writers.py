@@ -835,8 +835,8 @@ def build(ctx: C.Context) -> C.Built:
 
     trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
     kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
-    program = F.Program.of(trees)
-    with F.measuring() as peaks:
+    with F.measuring() as peaks:  # the program too: building it follows bases (`MRO_DEPTH`)
+        program = F.Program.of(trees)
         analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
     records = records_of(analysis)
     problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)

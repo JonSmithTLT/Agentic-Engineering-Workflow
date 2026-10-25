@@ -377,7 +377,10 @@ def test_a_writer_planted_in_a_copy_of_the_tree_is_a_record_and_one_under_a_new_
 
 # ------------------------------------------------------------------------------------------------------------ the caps
 
-CAPS = ((F, "VALUES"), (F, "DEPTH"), (F, "CALLERS"), (F, "TYPING_DEPTH"), (K, "DEPTH"))
+# The constants to double: derived from `caps()`, the one list, so a cap that is listed cannot escape the hold
+# (review of the placement pull request, F3).
+CAPS = tuple(({"writers_flow": F, "writers_roles": K}[cap.name.split(".")[0]], cap.name.split(".")[1])
+             for cap in (*F.caps(), *K.caps()))
 
 
 def without_the_caps_section(page: str) -> str:
@@ -406,11 +409,21 @@ def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_th
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
 
 
-def test_the_value_cap_is_at_least_twice_the_largest_set_the_tree_makes():
+def test_every_cap_the_caps_derive_is_a_constant_of_its_module():
+    assert len(CAPS) == len({(m.__name__, name) for m, name in CAPS}) == len([*F.caps(), *K.caps()])
+    assert all(isinstance(getattr(module, name), int) for module, name in CAPS)
+
+
+def test_every_measured_cap_is_at_least_twice_the_largest_figure_the_tree_reaches():
+    """VALUES, FSTRING_LIMIT, MRO_DEPTH and ASSIGNMENT_DEPTH are measured, not chosen (the page prints the figure): a
+    tree that grows toward one fails here, before the cap binds, and the cap is raised on purpose."""
     with F.measuring() as peaks:
         W.build(CTX)
-    assert peaks["values"] > 0 and F.VALUES >= 2 * peaks["values"], (
-        f"the largest set is {peaks['values']} and the cap {F.VALUES}: raise the cap, and say why")
+    measured = [cap for cap in F.caps(peaks) if cap.measured is not None]
+    assert len(measured) == len(F.MEASURED) and peaks["values"] > 0
+    for cap in measured:
+        assert cap.value >= 2 * (cap.measured or 0), (
+            f"the tree reaches {cap.measured} and the cap `{cap.name}` is {cap.value}: raise the cap, and say why")
 
 
 def test_the_caps_section_of_the_page_is_what_the_caps_say():

@@ -31,9 +31,11 @@ held any other way (a dict, a frozenset, a name that does not end so) is not see
 
 ``configuration-states`` and ``usage-live-states`` read ``STATES`` of ``aew.engine.configuration`` and
 ``aew.harness.usage_live``, each state's ``position`` being its index in the module's order (configuration documents
-it as precedence order; usage-live as a lifecycle). The configuration states are complete-by-construction on a check
-that is not the generator's own reading: the document states ``configuration`` returns, found in its source and by
-running its producer over every input, are in ``STATES`` (``tests/integration/test_reference_machines.py``). Neither
+it as precedence order; usage-live documents no order for ``STATES``). The configuration states are
+complete-by-construction on a check that is not the generator's own reading: the states the policy-document producer
+(``configuration._policy_state``) returns, found in its source and by running it over every input, are in ``STATES``
+(``tests/integration/test_reference_machines.py``). Two other places that give a state are not read: the ``Document``
+built for a drifted manifest, and the manifest's own state in the index projection. Neither
 module has an edge table, so each state's ``exits`` is an empty list whose ``fact_coverage`` is lower-bound with that
 one unresolved item: an empty list found by a detector never means none (addendum 3).
 
@@ -337,6 +339,11 @@ def page(records: list[C.Record]) -> str:
     by = {f: [r for r in records if r.family == f] for f in (TRANSITIONS, STATES, GUARDS, REASONS, CONFIGURATION,
                                                              USAGE_LIVE)}
     operations = sorted({v for site in SITES.values() if site.kind == TICKET for v in site.vias})
+    whole = {v for site in SITES.values() if site.kind == TICKET and site.sources_from is None for v in site.vias}
+    narrowed = {v: site.sources_from for site in SITES.values()
+                if site.kind == TICKET and site.sources_from is not None for v in site.vias if v not in whole}
+    only = "".join(f", and for `{v}` only the edges leaving a key of `{src[0].rsplit('.', 1)[-1]}.{src[1]}`"
+                   for v, src in sorted(narrowed.items()))
     lines = ["# State machines", "",
              "The Ticket machine from `aew.engine.transitions` (`RULES`, `STATES`, `TERMINAL`, `PHASE_ORDER`), its "
              "guards from the engine's guard table, and the two other state sets the product has a table for. "
@@ -344,8 +351,8 @@ def page(records: list[C.Record]) -> str:
              "has a record. An edge is **lower-bound** when code that changes a Ticket's state without asking the "
              "table in the same function can take it (its `coverage.unresolved` names the code); the others are "
              "complete-by-construction. Today the lower-bound edges are those of the operations "
-             f"{', '.join(f'`{o}`' for o in operations)}, and for `interrupt` only the edges leaving a state that "
-             "waits on an invocation; the Coverage column says which. What no table lists (a Story's or Epic's phase, "
+             f"{', '.join(f'`{o}`' for o in operations)}{only}; the Coverage column says which. What no table "
+             "lists (a Story's or Epic's phase, "
              "a second state tuple, the states of another machine) is in [gaps.md](gaps.md). The sites are found per "
              "function: a second write in a function already declared is not seen.", "",
              "## Ticket states", "", "| State | Terminal | Phase |", "|---|---|---|"]
@@ -358,7 +365,7 @@ def page(records: list[C.Record]) -> str:
     for r in by[TRANSITIONS]:
         f = r.fact or {}
         via = f["via"] + (" (also " + ", ".join(f["also"]) + ")" if f.get("also") else "")
-        label = "complete" if r.coverage["label"] == C.COMPLETE else r.coverage["label"]
+        label = r.coverage["label"]
         lines.append(f"| `{f['from']}` | `{f['to']}` | {via} | {'required' if f['reason_required'] else '-'} | "
                      f"{'`' + f['guard'] + '`' if f['guard'] else '-'} | {label} |")
     lines += ["", "## Guards", "", "| Guard | Evaluators, per unit kind |", "|---|---|"]

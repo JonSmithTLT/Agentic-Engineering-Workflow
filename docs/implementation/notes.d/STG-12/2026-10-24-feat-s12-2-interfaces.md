@@ -9,11 +9,14 @@ The reference gains five families, on one page ([`docs/reference/interfaces.md`]
   each by two independent detectors (`ast` and a text reading): the functions that name a route table are the three
   declared; the one call out of a table is `ROUTES.get(route) or CONDITIONAL_HANDLERS[route]`; and every read of the
   request path (`url.path`, `h.path`) in `_handle` and `_respond` is a declared one, by form and by what consumes it
-  (nine, counted). A route served by a hand-written branch, an early return, a test on the raw target or a third table
+  (nine, counted). A route served by a hand-written branch, an early return, a test on `h.path` or a third table
   would read the path or name a table in one of those two functions, so it is a difference (the review's four plants are
   controls). Chosen against the review's options: the recogniser is extended, not the label lowered. What it does not
-  see: a test of the path inside a function those two call (`_admit`, `_conditional`, `_exchange`, `_static`,
-  `match_route`), and a read replaced by another of the same form and consumer. The server also answers a path under
+  see, one probe each: a test of the path inside a function those two call (`_admit`, `_conditional`, `_exchange`,
+  `_static`, `match_route`, or one added later); the path read under another spelling (`raw_target(h)`, `h.requestline`,
+  `url[2]`, `url.geturl()`, an alias, an unpacking, `getattr(url, "path")`); a branch before `_handle` is reached (the
+  nested handler's `do_GET`, `DashboardServer.handle`); a read replaced by another of the same form and consumer (a
+  quote-style change); a route table reached through `getattr` or `vars`. The server also answers a path under
   `/session/` (the one-time URL exchange) and any path outside `/api/` (the static frontend): `_handle` is read for them,
   and they are records of their own, lower-bound, each with the attribute of the server it is answered only while it is
   set (the session store, the static root). The methods are the `do_` methods of the request handler (`GET`, `HEAD`).
@@ -21,8 +24,8 @@ The reference gains five families, on one page ([`docs/reference/interfaces.md`]
   `_catalog` is the one constructor (it refuses a duplicate name or an unknown kind, class, status or profile). The pin
   sees `Tool(` call sites, resolved by where the callee was imported from: `TOOLS` is assigned once from a `_catalog(...)`
   call, every `Tool(` call of the contract is an argument of it, and no other module calls `Tool`. It does not see a
-  `Tool` made by `_replace` or `_make`, an alias of `Tool`, a mutation of `TOOLS` from another module or a second
-  catalog (one probe each). The finders are functions of the generator with planted right, wrong and missing controls.
+  `Tool` made by `_replace` or `_make`, an alias of `Tool`, a lookup through `getattr`, a mutation of `TOOLS` from
+  another module or a second catalog (one probe each). The finders are functions of the generator with planted right, wrong and missing controls.
 - **`schemas`** (30): one record per entry of `aew.schemas.SCHEMAS`, held equal to the directory's `*.schema.json` files
   in both directions, each flattened by path with its types and unconditional requirements (1,598 paths). A `$ref` is
   resolved through the registry the validator itself uses, so a reference to another schema by `$id` is followed. A

@@ -113,9 +113,11 @@ def test_an_edge_is_lower_bound_exactly_when_an_unchecked_site_can_take_it():
 def test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation():
     """The one writer of INTERRUPTED takes an edge only from a state its owner names (``PHASE_DRIVERS``, read from the
     owner), and that is the set of ``interrupt`` edges the records place it on. Held both ways: every state the owner
-    names is the source of an ``interrupt`` edge, and ``Lead._phase_waits_on`` -- the only gate to the write -- is false
-    for every other source of one, over every role, scope and integration status, for a mutating and a non-mutating
-    Ticket (synthetic units and invocations only)."""
+    names is the source of an ``interrupt`` edge, and ``Lead._phase_waits_on`` is false for every other source of one,
+    over every role, scope and integration status, for a mutating and a non-mutating Ticket (synthetic units and
+    invocations only). That the writer asks ``_phase_waits_on`` before the write is not read here: a call replaced by
+    ``if True:`` passes this test, and ``tests/regression/test_compositions.py::
+    test_interruption_keeps_a_review_failure_and_revokes_the_sibling_reviewer`` is what pins it."""
     import itertools
 
     from aew.engine.lead_ops import PHASE_DRIVERS, Lead
@@ -140,6 +142,18 @@ def test_the_interrupt_sites_edges_are_the_phases_that_can_wait_on_an_invocation
                 if any(i["symbol"] == "Lead._interrupt_invocations" for i in r["coverage"].get("unresolved", []))}
     assert carrying == {f"{frm}->{to}" for (frm, to), rule in T.RULES.items()
                         if rule.via == "interrupt" and frm in PHASE_DRIVERS}
+
+
+def test_the_coverage_column_of_the_transitions_table_is_each_records_label():
+    """The page prints a record's label as it is (a column that spelled ``complete`` for ``complete-by-construction``
+    was not joined to its record by any test): each row's last cell is its record's ``coverage.label``."""
+    page = built().pages["state-machines.md"]
+    section = page.split("## Transitions", 1)[1].split("\n## ", 1)[0]
+    rows = [[c.strip(" `") for c in line.split("|")[1:-1]] for line in section.splitlines() if line.startswith("| `")]
+    want = [(r.fact["from"], r.fact["to"], r.coverage["label"]) for r in built().records
+            if r.family == "transitions" and r.fact is not None]
+    assert len(rows) == len(want) == len(T.RULES)
+    assert [(row[0], row[1], row[-1]) for row in rows] == want
 
 
 def test_the_state_records_are_the_state_table_both_ways():
@@ -282,9 +296,10 @@ def returned_states(fn: ast.FunctionDef, module: Any) -> set[str]:
 
 
 def test_every_document_state_configuration_returns_is_in_states():
-    """The states ``configuration`` gives a document are the states it lists. Read two ways: the source of the function
-    that decides a policy document's state (every state it can return), and running it over every combination of pins,
-    pin, bytes and validity. The manifest level's state is set where the documents are listed, not by that function."""
+    """The states the policy-document producer (``_policy_state``) returns are the states ``configuration`` lists. Read
+    two ways: the source of that function (every state it can return), and running it over every combination of pins,
+    pin, bytes and validity. Two other places that give a state are not read: the ``Document`` built for a drifted
+    manifest, and the manifest's own state in the index projection."""
     from aew.engine import configuration as K
     from aew.util import sha256_bytes
 

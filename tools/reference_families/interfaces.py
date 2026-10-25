@@ -15,9 +15,9 @@ refuses a duplicate name, an unknown kind, class, status or profile, and a ``pro
 (:func:`catalog_shape`, :func:`catalog_problems`) holds that ``TOOLS`` is assigned once at the contract's top level from
 a ``_catalog(...)`` call, that every ``Tool(`` call of the contract is an argument of that call, and that no other
 module calls ``Tool`` (a call identified by where its callee was imported from). It does not see a ``Tool`` made by
-``_replace`` or ``_make``, an alias of ``Tool``, a mutation of ``TOOLS`` from another module, or a second catalog. A
-record states the tool's own flags and the names of its arguments, not its description or its argument schema (the
-owner's presentation, which a reader takes from the catalog).
+``_replace`` or ``_make``, an alias of ``Tool``, a lookup through ``getattr``, a mutation of ``TOOLS`` from another
+module, or a second catalog (one probe each). A record states the tool's own flags and the names of its arguments, not
+its description or its argument schema (the owner's presentation, which a reader takes from the catalog).
 """
 
 from __future__ import annotations
@@ -126,10 +126,14 @@ def page(records: list[C.Record]) -> str:
              "## Dashboard routes", "",
              "The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dashboard.server`; the "
              "server also answers two paths that are not the API, read from `_handle`. Every route answers "
-             f"{words(methods)}. The reading counts every read of the request path in `_handle` and `_respond`, so a "
-             "route served by a branch of its own is a difference; a test of the path inside a function they call "
-             "is not read. A route's limit bounds are what the server normalises its limit parameter with: its own, or "
-             "the server's default.", "",
+             f"{words(methods)}. The reading counts every read of `url.path` and `h.path` in `_handle` and `_respond`, "
+             "so a route served by a branch of its own, an early return, a test on `h.path` or a third table is a "
+             "difference. It does not see a test of the path inside a function they call (a new one included), the "
+             "path read under another spelling (`raw_target(h)`, `h.requestline`, `url[2]`, `url.geturl()`, an alias, "
+             "an unpacking, `getattr(url, \"path\")`), a branch before `_handle` is reached (`do_GET`, "
+             "`DashboardServer.handle`), a read replaced by another of the same form and consumer, or a route table "
+             "reached through `getattr` or `vars`. A route's limit bounds are what the server normalises its limit "
+             "parameter with: its own, or the server's default.", "",
              "| Route | Conditional | Query parameters | Repeatable | Limit bounds |", "|---|---|---|---|---|"]
     for r in routes:
         f = r.fact or {}

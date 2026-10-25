@@ -36,7 +36,7 @@ reference = importlib.util.module_from_spec(_spec)
 sys.modules["reference_tool"] = reference
 _spec.loader.exec_module(reference)
 C, PAGES, FAMILIES = reference._families()
-MODULES = FAMILIES[0]
+MODULES = next(f for f in FAMILIES if f.__name__.endswith(".modules"))
 OUT = reference.OUT
 
 
@@ -624,6 +624,18 @@ def test_a_registry_that_names_nothing_that_exists_is_a_problem(registry, why):
     assert why in (registry_problem(registry) or "")
 
 
+def test_a_registry_that_names_a_section_of_a_yaml_file_resolves_or_names_what_it_lacks(monkeypatch, tmp_path):
+    """The ``path#section`` branch, in a tree of its own: a section the file has resolves (the right case), one it lacks
+    and a file that is not a mapping name the section, and a missing file is named."""
+    (tmp_path / "map.yaml").write_text("commands:\n  - name: a\nother: 1\n", encoding="utf-8")
+    (tmp_path / "list.yaml").write_text("- a\n- b\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    assert registry_problem("map.yaml#commands") is None
+    assert "has no section nope" in (registry_problem("map.yaml#nope") or "")
+    assert "has no section commands" in (registry_problem("list.yaml#commands") or "")
+    assert "is not a file of the repository" in (registry_problem("gone.yaml#commands") or "")
+
+
 # ------------------------------------------------------------------------------------------ the entry-points family
 
 def test_the_entry_point_records_are_the_registry_both_ways():
@@ -729,3 +741,34 @@ def test_a_module_that_does_not_parse_is_listed_as_unreadable_not_as_having_no_i
 def test_a_tree_with_no_package_is_refused_not_rendered_empty(tmp_path):
     with pytest.raises(C.ReferenceError, match="no aew package"):
         C.Context(tmp_path).sources()
+
+
+# ------------------------------------------------------------------------------------------------ the family list
+
+def test_every_module_of_the_families_directory_is_a_listed_family_a_shared_module_or_a_part_of_one():
+    """The list in ``tools/reference.py`` is the one place a family is registered, one to a line. A module of the
+    directory that is none of listed, shared or a part (``<family>_<part>``) is a family nobody registered, and a listed
+    name with no file is a family that cannot be imported."""
+    names = [p.stem for p in (ROOT / "tools" / "reference_families").glob("*.py")]
+    assert reference.unlisted(names) == [] and reference.unfound(names) == []
+    assert [m.__name__.rsplit(".", 1)[-1] for m in FAMILIES] == list(reference.FAMILY_MODULES)
+    assert list(reference.FAMILY_MODULES) == sorted(reference.FAMILY_MODULES)  # one to a line, alphabetical
+
+
+def test_a_module_that_nobody_registered_and_a_registered_name_with_no_file_are_named():
+    files = ["common", "pages", "alpha", "alpha_text", "beta", "__init__"]
+    listed = ("alpha", "beta")
+    assert reference.unlisted(files, listed) == [] and reference.unfound(files, listed) == []  # right
+    assert reference.unlisted([*files, "gamma"], listed) == ["gamma"]  # wrong: a family nobody registered
+    assert reference.unlisted([*files, "alphabet"], listed) == ["alphabet"]  # a part needs the underscore
+    assert reference.unfound([f for f in files if f != "beta"], listed) == ["beta"]  # missing: listed, no file
+    assert reference.unfound([f for f in files if f != "pages"], listed) == ["pages"]  # a shared module counts too
+
+
+def test_the_output_does_not_depend_on_the_order_of_the_family_list(monkeypatch):
+    """The list is alphabetical so that two additions rarely meet; the output is the same in any order. The baseline is
+    taken before the list is patched: ``rendered()`` is cached per process, and run alone (or first on an xdist worker)
+    it would otherwise render in the reversed order too, and compare the reversed order with itself."""
+    before = rendered()
+    monkeypatch.setattr(reference, "FAMILY_MODULES", tuple(reversed(reference.FAMILY_MODULES)))
+    assert reference.render_files(ROOT) == before

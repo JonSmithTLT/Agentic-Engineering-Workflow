@@ -13,8 +13,9 @@ other machines the product has a table for, `configuration-states` and `usage-li
   its operations (`SITES` in `tools/reference_families/machines.py`), held to the detector in both directions. The
   interrupt writer is placed only on the `interrupt` edges that leave a state its owner names
   (`lead_ops.PHASE_DRIVERS`, read from the owner: the phases that wait on an invocation), held to `RULES` both ways and
-  to `Lead._phase_waits_on`, the only gate to the write. Today 65 of the 94 edges are lower-bound for that reason and 29
-  are complete-by-construction. A site the table does not know is unresolved on every edge. Whether a direct write is
+  to `Lead._phase_waits_on` (that the writer asks it before the write is not read by this family's tests: a product
+  regression test pins it, `tests/regression/test_compositions.py::test_interruption_keeps_a_review_failure_and_revokes_the_sibling_reviewer`).
+  Today 65 of the 94 edges are lower-bound for that reason and 29 are complete-by-construction. A site the table does not know is unresolved on every edge. Whether a direct write is
   intended is the trace's judgement, not the reference's. The `set_state` docstring, which said it was the single place
   a state changes, now names the three writers: the only `src/` change, comment-only.
 - **The limit of that pin.** Sites are found per function, with the forms of write each makes. A new unchecked write in a
@@ -31,8 +32,10 @@ other machines the product has a table for, `configuration-states` and `usage-li
   empty list whose `fact_coverage` is lower-bound with the one unresolved item "no edge table": an empty list found
   by a detector never means none. A state's `position` is its index in the module's order.
 - **The configuration states have a check of their own.** Their label is complete-by-construction on two readings that are
-  not the generator's: the constants `configuration` defines are `STATES`, in order, and the states its producer returns
-  (read from its source, and by running it over every input) are in `STATES`.
+  not the generator's: the constants `configuration` defines are `STATES`, in order, and the states the policy-document
+  producer (`_policy_state`) returns (read from its source, and by running it over every input) are in `STATES`. Two other
+  places that give a state are not read: the `Document` built for a drifted manifest, and the manifest's own state in the
+  index projection. `usage-live` documents no order for its `STATES`, so its `position` is the module's index and no more.
 - **Guards are read from an `Engine`.** The guard table is filled by the composition root, so the generator builds an
   `Engine` in a temporary directory (its construction touches no file) and reads the table for each guard name a rule
   names: the evaluator per unit kind and whether it has a query form. The names the rules use, the names registered and

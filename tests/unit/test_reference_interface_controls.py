@@ -225,20 +225,69 @@ def test_two_reads_of_a_kind_are_counted_not_merged():
         admit, admit + "            b = h.path\n            c = h.path\n", 1))
     problems = DASH.path_read_problems(twice, declared)
     assert any("2 time(s); 0 are declared" in p and "assign" in p for p in problems)
+    # a read the declaration has once, read twice: a presence test would pass it, a count does not
+    static = "            if not url.path.startswith(\"/api/\"):\n"
+    doubled = reads_of(SERVER.replace(static, "            self._static(h, url.path, head=head)\n" + static, 1))
+    [problem] = DASH.path_read_problems(doubled, declared)
+    assert "(url.path, bare, call:self._static) 2 time(s); 1 are declared" in problem
 
 
-def test_what_the_path_reads_do_not_see_is_pinned_one_probe_each():
+ADMIT = "            self._admit(h, url)\n"
+DO_GET = "            def do_GET(self):\n                pass\n"
+IN_TRY = " " * 12  # the indentation of a statement in the handler's try block
+
+
+def plant(*pairs: tuple[str, str]) -> str:
+    source = SERVER
+    for old, new in pairs:
+        assert source.count(old) == 1, old
+        source = source.replace(old, new, 1)
+    return source
+
+
+def sneaky(test: str, before: str = "") -> str:
+    """A branch on ``test`` in the request handler, right after the admission (``before``: a line it needs)."""
+    return ADMIT + before + f"{IN_TRY}if {test}:\n{IN_TRY}    return\n"
+
+
+def method(name: str, arguments: str, test: str) -> str:
+    """A method of the server that tests ``test``, placed before ``_respond``."""
+    return f"    def {name}({arguments}):\n        if {test}:\n            return\n\n" + RESPOND
+
+
+# Every shape of a route served around the dispatch that the reading does not see, by what it is: a test inside a
+# function the two checked methods call (a new one included), the path read under another spelling, a branch before
+# the handler is reached, and a read replaced by another of the same form and consumer.
+NOT_SEEN = {
+    "a test in a function the two call": plant((RESPOND, method("_admit", "self, h, url", "url.path == '/sneaky'"))),
+    "a test in a new method that the handler calls": plant(
+        (ADMIT, ADMIT + f"{IN_TRY}self._preflight(url)\n"),
+        (RESPOND, method("_preflight", "self, url", "url.path == '/sneaky'"))),
+    "a test in a method that is not checked": plant((RESPOND, method("_other", "self, h, url", "url.path == '/z'"))),
+    "raw_target(h)": plant((ADMIT, sneaky("raw_target(h) == '/sneaky'"))),
+    "h.requestline": plant((ADMIT, sneaky("h.requestline.startswith('GET /sneaky')"))),
+    "url[2]": plant((ADMIT, sneaky("url[2] == '/sneaky'"))),
+    "url.geturl()": plant((ADMIT, sneaky("url.geturl() == '/sneaky'"))),
+    "an alias of the parsed url": plant((ADMIT, sneaky("u.path == '/sneaky'", f"{IN_TRY}u = url\n"))),
+    "an unpacking of the parsed url": plant(
+        (ADMIT, sneaky("route == '/sneaky'", f"{IN_TRY}scheme, netloc, route, *rest = url\n"))),
+    "getattr(url, 'path')": plant((ADMIT, sneaky("getattr(url, 'path') == '/sneaky'"))),
+    "a branch in the nested handler's do_GET": plant(
+        (DO_GET, "            def do_GET(self):\n                if self.path == '/sneaky':\n"
+                 "                    return\n")),
+    "a branch in DashboardServer.handle": plant((RESPOND, method("handle", "self, h", "h.path == '/sneaky'"))),
+    "a read replaced by another of the same form and consumer (a quote-style change)": SERVER.replace(
+        'url.path.startswith("/api/")', "url.path.startswith('/api/')", 1),
+}
+
+
+@pytest.mark.parametrize("name", sorted(NOT_SEEN))
+def test_what_the_path_reads_do_not_see_is_pinned_one_probe_each(name):
+    """Each shape is in neither reading (they agree), so the declared reads still equal the reads: the limit the module,
+    the page and the note state. A reading widened to see one of them fails its probe here, and the probe moves."""
     declared = declared_of()
-    # a test of the path inside a function the two call is not read
-    helper = SERVER.replace(RESPOND, "    def _admit(self, h, url):\n        if url.path == '/sneaky':\n"
-                            "            raise Refusal()\n\n" + RESPOND, 1)
-    assert DASH.path_read_problems(reads_of(helper), declared) == []
-    # a read replaced by another of the same form and consumer is not seen
-    swapped = SERVER.replace('url.path.startswith("/api/")', "url.path.startswith('/api/')", 1)
-    assert DASH.path_read_problems(reads_of(swapped), declared) == []
-    # a read of the path in a method that is not checked is not seen
-    other = SERVER.replace(RESPOND, "    def _other(self, h, url):\n        return url.path == '/z'\n\n" + RESPOND, 1)
-    assert DASH.path_read_problems(reads_of(other), declared) == []
+    assert NOT_SEEN[name] != SERVER
+    assert DASH.path_read_problems(reads_of(NOT_SEEN[name]), declared) == [], name
 
 
 def test_the_dispatch_is_the_one_call_out_of_a_route_table():
@@ -461,8 +510,9 @@ def test_a_required_key_nothing_types_is_a_path_with_no_type_and_a_conditional_o
     assert flat({"type": "object", "required": ["k"]}).properties == {"k": ""}  # missing: nothing to type it by
     miss = flat({"type": "object", "required": ["k"], "patternProperties": {"^x": {"type": "boolean"}}})
     assert miss.properties["k"] == ""  # a pattern the key does not match
-    conditional = flat({"type": "object", "oneOf": [{"required": ["k"]}], "additionalProperties": {"type": "integer"}})
-    assert "k" not in conditional.required  # a conditional requirement is not unconditional
+    conditional = flat({"type": "object",
+                        "oneOf": [{"required": ["k"], "additionalProperties": {"type": "integer"}}]})
+    assert "k" not in conditional.required and "k" not in conditional.properties  # typed only if required for sure
 
 
 def test_a_pattern_the_flattener_cannot_read_is_an_unresolved_item():

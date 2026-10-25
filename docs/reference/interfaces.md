@@ -4,7 +4,7 @@ What the product exposes, each read from its owner: the dashboard's routes, the 
 
 ## Dashboard routes
 
-The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dashboard.server`; the server also answers two paths that are not the API, read from `_handle`. Every route answers `GET`, `HEAD`. The reading counts every read of the request path in `_handle` and `_respond`, so a route served by a branch of its own is a difference; a test of the path inside a function they call is not read. A route's limit bounds are what the server normalises its limit parameter with: its own, or the server's default.
+The API routes are every key of `ROUTES` and `CONDITIONAL_HANDLERS` of `aew.dashboard.server`; the server also answers two paths that are not the API, read from `_handle`. Every route answers `GET`, `HEAD`. The reading counts every read of `url.path` and `h.path` in `_handle` and `_respond`, so a route served by a branch of its own, an early return, a test on `h.path` or a third table is a difference. It does not see a test of the path inside a function they call (a new one included), the path read under another spelling (`raw_target(h)`, `h.requestline`, `url[2]`, `url.geturl()`, an alias, an unpacking, `getattr(url, "path")`), a branch before `_handle` is reached (`do_GET`, `DashboardServer.handle`), a read replaced by another of the same form and consumer, or a route table reached through `getattr` or `vars`. A route's limit bounds are what the server normalises its limit parameter with: its own, or the server's default.
 
 | Route | Conditional | Query parameters | Repeatable | Limit bounds |
 |---|---|---|---|---|

@@ -15,8 +15,12 @@ final counts are the counts of #266's merge.
   reads which entry of `.aew`, drawn from the records alone. A write is a `writers` record's (entry point, entry)
   pair. A read is a function the layout names as a reader that another record also reaches from entry points (a writer
   item, or a lock-free member of the concurrency family). The one trust boundary the records state, the layout's
-  `masked_by_containment`, is a group. What no record states is counted from the records and listed as not drawn: the
-  writes and reads no entry point reaches, the writes outside `.aew` or unplaced, and the bridge and the network. **A
+  `masked_by_containment`, is a group. Every edge is a lower bound, and the page says so. What the joined records say
+  they could not resolve is listed from their own `fact_coverage` (the worker run, the unplaced reads, the writers no
+  entry point reaches), grouped, with the number of records that carry each, so a new kind of item is listed without
+  an edit. What no record states is counted from the records and listed as not drawn by entry point (the writes and
+  reads no entry point reaches, the writes outside `.aew` or unplaced) or only said (the bridge and the network).
+  The families the maps read are named by their owners, and a family they cannot read is refused. **A
   record gap for the designer and the operator:** no record attributes a bridge call or a served route to the process
   that makes or serves it, and which entry points run contained is not a fact of the records, so those boundaries are
   prose in an entry point's `reason` and are not drawn. A record that stated them would be new scope.
@@ -27,13 +31,18 @@ final counts are the counts of #266's merge.
   reference record names the requirement IDs it serves in its description, IDs only; a record that serves none says
   "none" with a line on why; the IDs never go in the generated reference. The pull request carries `operator-merge`,
   because it changes `AGENTS.md`.
-- **Follow-ons, each fixed in this pull request** (review of #267 at `5b8e62e4`, merge check of #266 at `11c3faaa`):
-  - **Q-1 and F-1** (`3e77c537`): one method for the generator's bounds and depth guards. One AST walk finds, over every
-    module of the generator, the constants named like a cap, the slices, the numbers in an ordering or an equality (0,
-    1 and negative numbers included), the integer defaults and the depth tests (`< 1`, `<= 0`, `1 >`, `not depth`),
-    counted per file and text or per function, so a second site of an excused text is a decision. The roles reader's
-    two guards have their boundary tests. Not seen, and pinned as such: a bound spelled through a local name or
-    arithmetic.
+- **Follow-ons, each fixed in this pull request** (quick check of #267 at `5b0d0a93`, merge check of #266 at
+  `11c3faaa`):
+  - **Q-1 and F-1** (`3e77c537`, widened after the review of this pull request, M-3): one method for the generator's
+    bounds and depth guards. One AST walk finds, over every module of the generator, the constants named like a cap, the
+    slices (from the end through a name too), the numbers in an ordering (any number: 0, 1, negative, positive-signed and
+    float ones included) or in an equality (any number but 0, 1 and -1), the number defaults of functions, async
+    functions and lambdas, and the depth tests (`< 1`, `<= 0`, `<= 0.0`, `1 >`, `not depth`, `if depth:`, `depth in
+    (0, 1)`), counted per file and text or per function, so a second site of an excused text is a decision. The roles
+    reader's two guards have their boundary tests. Not seen, and pinned as such (`UNSEEN_BOUNDS`): a bound spelled
+    through a local name or arithmetic; a depth counter not named for depth (`not hops`, `hops == 0`); a number given
+    to a call (`range(50)`, `textwrap.shorten(s, 60)`, `deque(xs, maxlen=50)`, `xs[:min(len(xs), 50)]`); a bound with no
+    literal at all.
   - **Q-2** (`ff75e40f`): every check of the typing-cycle rule is planted, with the same code typed as its control;
     the Name branch's cycle check, which could not be reached, is removed; its `_level` is held by a chain of
     attributes rooted at a local.

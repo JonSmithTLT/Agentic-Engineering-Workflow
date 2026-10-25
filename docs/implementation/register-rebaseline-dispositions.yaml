@@ -1,0 +1,1158 @@
+schema: aew/register-rebaseline/v1
+register_commit: b879f6bd595dcc893d34506e9006d8239dea8c93
+targets:
+- Gate
+- Now
+- Contained
+- V-01
+- Internal alpha
+- After the trace
+- Designer
+- Evaluation
+- On measured need
+- Unscheduled
+- Stage
+due_order:
+- Now
+- Contained
+- V-01
+- 'Gate: before internal alpha'
+- Internal alpha
+- After the trace
+- Evaluation
+- Unscheduled
+groups:
+  HOLD-02:
+    position: A-02
+    title: product cohesion and the operator's and Lead's experience
+    members:
+    - F8
+    - F16
+    - F27
+    - F37
+    - F47.6
+    - U5
+  HOLD-04:
+    position: A-04
+    title: 'the engineering workflow: plan assurance and work conservation'
+    members:
+    - F14
+    - F14.1
+    - F34
+    - F41.12
+    - O3
+    - U3
+    - V3
+  HOLD-05:
+    position: A-05
+    title: authority, delegation and classification
+    members:
+    - F6
+    - F7
+    - F50
+    - Q4
+  HOLD-06:
+    position: A-06
+    title: 'hosting and the execution boundary: isolation, concurrency, recovery, harness adapters'
+    members:
+    - E50
+    - E66
+    - F3
+    - F10
+    - F15.3
+    - F15.6
+    - F15.7
+    - F15.8
+    - F24
+    - F24.1
+    - F24.2
+    - F48
+  HOLD-07:
+    position: A-07
+    title: assurance and evidence
+    members:
+    - E61
+    - E63
+    - E77
+    - F17
+    - F41.9
+    - F41.10
+    - F41.11
+    - F41.13
+    - F49
+    - U10
+  HOLD-08:
+    position: A-08
+    title: 'work identity and scope: hierarchy revision'
+    members:
+    - F4
+    - F5
+  HOLD-09:
+    position: A-09
+    title: coordination and integration
+    members:
+    - E55
+    - E56
+    - E57
+    - E58
+    - E59
+    - E60
+    - E64
+    - E78
+    - F9
+    - F9.1
+    - F9.2
+    - F33
+    - F41
+    - F41.1
+    - F41.2
+    - F41.3
+    - F41.4
+    - F41.5
+    - F41.6
+    - F41.14
+    - F45
+    - Q14
+  HOLD-10:
+    position: A-10
+    title: 'the operator and Lead interface: stages, attention, events, observability'
+    members:
+    - E12
+    - E20
+    - E28
+    - E69
+    - E70
+    - F15
+    - F15.2
+    - F15.4
+    - F15.9
+    - F42
+    - F42.1
+    - F42.2
+    - F42.3
+    - F43
+    - F44
+    - O4
+  HOLD-12:
+    position: A-12
+    title: the shared read wire and the dashboard's reads
+    members:
+    - F20
+    - F20.6
+    - F20.7
+    - F20.8
+  HOLD-13:
+    position: A-13
+    title: knowledge and context
+    members:
+    - F21
+    - F35
+  HOLD-14:
+    position: A-14
+    title: project understanding and maps
+    members:
+    - E62
+    - F22
+    - F22.2
+    - F22.3
+    - F30
+    - F41.7
+  HOLD-15:
+    position: A-15
+    title: resource and progress supervision
+    members:
+    - F11
+    - F36
+    - F41.8
+    - U1
+    - U7
+  HOLD-17:
+    position: A-17
+    title: portable hosting and deployment
+    members:
+    - D2
+    - E21
+    - F18
+    - F18.1
+    - F18.2
+    - F18.3
+    - F18.4
+    - F18.5
+    - F18.6
+    - F18.7
+    - F18.9
+    - F18.10
+    - F18.12
+    - F18.13
+    - F18.14
+    - F31
+  HOLD-19:
+    position: A-19
+    title: 'operator intent: steering, confirmation and settings'
+    members:
+    - F15.5
+    - F46
+    - F46.1
+    - F46.2
+    - F46.3
+    - F46.4
+  HOLD-20:
+    position: A-20
+    title: model access and provider delivery
+    members:
+    - D5
+    - F18.8
+    - F18.15
+    - F32
+    - V5
+  HOLD-21:
+    position: A-21
+    title: 'resource accounting: cost and usage'
+    members:
+    - F25
+    - U4
+new_rows:
+  STG-03: The G3 service build, beside CS-4, briefed from A-37 (G3 revision 7.1)
+  STG-13: 'V-01''s oracle rebuilt: the frozen vertical instrument re-derived as V-01''s oracle and retired in the same PR
+    (exempted by the operator)'
+  STG-15: 'The capability register: CAP-1 (ripgrep), then the rest of the base bundle; MCP servers later, imported from SPT'
+now:
+- row: STG-12
+  item: S12-2's PRs 4 to 10, on two builders, to the pack cut
+- row: STG-05
+  item: the owner-only store (#256)
+- row: STG-05
+  item: CS-3b, the network namespace (#257)
+- row: STG-15
+  item: 'CAP-1: AEW brings ripgrep through the capability register'
+- row: E35
+  item: 'H-1: OpenCode 2.1.4 through the live lane, with its token semantics'
+- row: STG-05
+  item: CS-4, the Lead contained, with STG-03's G3 service beside it
+- row: E35
+  item: H-2 (aew harness qualify and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import)
+- row: STG-13
+  item: V-01's oracle rebuilt
+rows:
+  D1:
+    section: Deferred by the M3 plan (out of M3 scope)
+    disposition: close
+    by: 'the operator''s security depth reset of 2026-10-24, point 1: nothing a contained agent cannot reach is filed'
+    note: 'and the operator''s threat model of 2026-10-19: malicious host code is out of scope'
+  D2:
+    section: Deferred by the M3 plan (out of M3 scope)
+    disposition: hold
+    into: HOLD-17
+  D3:
+    section: Deferred by the M3 plan (out of M3 scope)
+    disposition: absorb
+    into: STG-15
+    note: 'skills: STG-15''s revision 2 decides'
+  D5:
+    section: Deferred by the M3 plan (out of M3 scope)
+    disposition: hold
+    into: HOLD-20
+  E3:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E4:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: the operator's decision is still due; H-3's feed check may answer it
+  E6:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E12:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-10
+  E14:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E16:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: the operator's decision is still due
+  E17:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: absorb
+    into: E35
+    note: 'patch releases without a PR: H-1 (its part 2) and H-3'
+  E18:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: D1 is built; D2, sealing and compaction, is ordinary engineering
+  E19:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: only the name replacement in the two frozen spec documents remains; the index and the re-freeze are superseded by
+      D1 and STG-12
+  E20:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-10
+  E21:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-17
+    note: with F18.1
+  E22:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E23:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: 'decided: the nightly'
+  E24:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E25:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E27:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E28:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-10
+  E30:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: close
+    by: 'built: the register is YAML with a rendered view (register.py)'
+  E31:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E32:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: close
+    by: 'the designer''s family-5 ruling of 2026-10-24 (design workspace, ceaedbb): the direct state writes are by design;
+      set_state''s docstring is corrected in family 5''s PR'
+  E33:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E35:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Now
+    note: 're-sourced to the operator''s OpenCode version-currency decision of 2026-10-24: H-1, then H-2 and H-3; absorbs
+      E17 and F18.11'
+  E39:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E41:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E42:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: CI; the Lead schedules it
+  E46:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: CI
+  E47:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: CI; the Lead schedules it
+  E48:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: deferred by the operator
+  E49:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E50:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-06
+    note: the Lead seat lifecycle is A-28's
+  E51:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E52:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: CI
+  E53:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: CI; the shadow runs decide
+  E54:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: On measured need
+  E55:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E56:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E57:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E58:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E59:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E60:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E61:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-07
+  E62:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-14
+  E63:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-07
+  E64:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E65:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: close
+    by: 'STG-12: the as-built reconciliation and its trace are the composition audit now'
+  E66:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-06
+  E67:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: close
+    by: 'STG-12: S12-4 traces every requirement and every module mechanically; M6a''s gates are closed'
+  E68:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: close
+    by: 'STG-12: the generated, CI-checked reference replaces free-text built claims'
+  E69:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-10
+  E70:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-10
+  E71:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: V-01
+    note: the operator guide follows what V-01 delivers, not M4
+  E72:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: the operator's decision is still due
+  E73:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E74:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E75:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E76:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+  E77:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-07
+  E78:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: hold
+    into: HOLD-09
+  E79:
+    section: Engineering follow-ups (the M3 audits)
+    disposition: keep
+    target: Unscheduled
+    note: an engineering method
+  F3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F4:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-08
+    note: its plan is CLEAR at v8, dormant until S12
+  F5:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-08
+  F6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-05
+    note: with Q4
+  F7:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-05
+    note: its budget part with HOLD-21
+  F8:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-02
+  F9:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+    note: F9-A is built
+  F9.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F9.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F10:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F11:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-15
+  F12:
+    section: Designed, not implemented
+    disposition: absorb
+    into: STG-15
+    note: the capability register position; CAP-1 first
+  F13:
+    section: Designed, not implemented
+    disposition: absorb
+    into: STG-15
+    note: the role catalog (CAPR-06); lazy expansion is a Candidate (CAPR-R04)
+  F14:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-04
+  F14.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-04
+  F15:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+    note: the stages built so far stay
+  F15.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+    note: E3a is built
+  F15.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+    note: no longer waits on M6a
+  F15.4:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F15.5:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+    note: its confirmation is G3's (A-37)
+  F15.6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F15.7:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F15.8:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F15.9:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F16:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-02
+  F17:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+    note: evaluation first
+  F18:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+    note: doctor's capability lines are STG-15's (CAPR-03)
+  F18.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+    note: the bundle import is shared with E35's H-3 and CAPR-04
+  F18.4:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.5:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.7:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.8:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-20
+    note: the gate before a client-certificate provider stays in section 1
+  F18.9:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.10:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.11:
+    section: Designed, not implemented
+    disposition: absorb
+    into: E35
+    note: OpenCode qualification is H-2 (the OpenCode version-currency decision)
+  F18.12:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.13:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.14:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F18.15:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-20
+  F19:
+    section: Designed, not implemented
+    disposition: keep
+    target: Evaluation
+    note: the evaluation program, partly built; unchanged
+  F20:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-12
+    note: F20.1 to F20.5 are done
+  F20.6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-12
+  F20.7:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-12
+  F20.8:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-12
+    note: S1 and S2 are built
+  F21:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-13
+    note: K-01 is selected before I-7
+  F22:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-14
+    note: F22.1 is built; P-01 is selected before I-7
+  F22.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-14
+  F22.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-14
+  F24:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F24.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F24.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+  F25:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-21
+    note: the run ledger is built; the Lead part waits
+  F26:
+    section: Designed, not implemented
+    disposition: absorb
+    into: STG-15
+    note: 'skills: STG-15''s revision 2 decides whether a skill is a register provider'
+  F27:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-02
+    note: after V-01
+  F28:
+    section: Designed, not implemented
+    disposition: absorb
+    into: STG-05
+    note: the network namespace is CS-3b (CB-02, A-33)
+  F28.1:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the operator''s security depth reset of 2026-10-24, point 1: nothing a contained agent cannot reach is filed'
+    note: host network configuration; the operator's deferral of the same day can reopen it
+  F30:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-14
+  F31:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-17
+  F32:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-20
+  F33:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+    note: AEW never pushes without the operator's sign-off
+  F34:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-04
+  F35:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-13
+  F36:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-15
+  F37:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-02
+  F38:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the operator''s decision of 2026-10-24: M6a''s rows close (design workspace, b9d6d01)'
+  F39:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the operator''s decision of 2026-10-24: M6a''s rows close (design workspace, b9d6d01)'
+  F40:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the operator''s decision of 2026-10-24: M6a''s rows close (design workspace, b9d6d01)'
+    note: MCD-01 and MCD-02 lapse with it
+  F41:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+    note: the cross-feature design v0.5 was never adopted; A-09 and the wire track carry integration
+  F41.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.4:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.5:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F41.7:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-14
+  F41.8:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-15
+  F41.9:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+  F41.10:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+  F41.11:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+  F41.12:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-04
+  F41.13:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+  F41.14:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F42:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F42.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F42.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F42.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F43:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F44:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-10
+  F45:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-09
+  F46:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+    note: the operator wants it; CAPR-13's register editor is its first case
+  F46.1:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+  F46.2:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+  F46.3:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+  F46.4:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-19
+  F47:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: the vertical path's outcomes are V-01's (STG-13)
+  F47.1:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: 'A1: D-01 and O-01'
+  F47.2:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: 'A3: D-01 and O-01; A2 not placed'
+  F47.3:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: 'B4: CS-4; B1: G3; B2: A-25 and A-28; B3: I-6'
+  F47.4:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: 'C1: P04; C2: the capabilities read P03 (A-25)'
+  F47.5:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the designer''s vertical-UAT ruling of 2026-10-23 (V-UAT-1 to -6): re-derived as V-01''s oracle, its table places
+      each slice'
+    note: the enforce step is the V-01 milestone
+  F47.6:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-02
+    note: a parked concept
+  F48:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-06
+    note: Windows is outside the release gate
+  F49:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-07
+  F50:
+    section: Designed, not implemented
+    disposition: hold
+    into: HOLD-05
+  F51:
+    section: Designed, not implemented
+    disposition: absorb
+    into: STG-05
+    note: egress is CS-3b's (CB-02); M6 no longer exists
+  F52:
+    section: Designed, not implemented
+    disposition: close
+    by: 'the operator''s security depth reset of 2026-10-24, point 1: nothing a contained agent cannot reach is filed'
+    note: every precondition is the host's own
+  O2:
+    section: Dogfood findings left open (small)
+    disposition: keep
+    target: Unscheduled
+    note: an ordinary Lead-shell friction; CS-4 keeps editing, git and tests unchanged
+  O3:
+    section: Dogfood findings left open (small)
+    disposition: hold
+    into: HOLD-04
+    note: with F14
+  O4:
+    section: Dogfood findings left open (small)
+    disposition: hold
+    into: HOLD-10
+    note: with F15
+  Q4:
+    section: Open questions awaiting a decision
+    disposition: hold
+    into: HOLD-05
+    note: with F6
+  Q5:
+    section: Open questions awaiting a decision
+    disposition: close
+    by: 'the rebaseline: designs are re-derived from the adopted requirements (D1), and their open questions with them'
+  Q8:
+    section: Open questions awaiting a decision
+    disposition: close
+    by: 'STG-15: CAPR-03''s statuses replace the candidate failure classes'
+  Q11:
+    section: Open questions awaiting a decision
+    disposition: close
+    by: 'STG-15: FIRST-BUNDLE.md and COVERAGE.md reconcile the research with the register'
+  Q14:
+    section: Open questions awaiting a decision
+    disposition: hold
+    into: HOLD-09
+    note: deferred by the operator, 2026-10-07
+  STG-05:
+    section: Designed, not implemented
+    disposition: keep
+    target: Stage
+    note: CS-3b, the owner-only store (#256), then CS-4 beside the G3 service
+  STG-12:
+    section: Designed, not implemented
+    disposition: keep
+    target: Stage
+    note: S12-2's PRs 4 to 10 on two builders, then the pack cut; S12-4 to S12-6 are the designer's
+  U1:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-15
+  U3:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-04
+    note: with F14
+  U4:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-21
+    note: with F25
+  U5:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-02
+  U6:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: close
+    by: decided by the F18 hosting design v0.6 section 5; its build is in HOLD-17
+  U7:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-15
+  U9:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: absorb
+    into: STG-15
+    note: 'review skills: STG-15''s revision 2 decides'
+  U10:
+    section: Operator acceptance session (UAT, 2026-09-30)
+    disposition: hold
+    into: HOLD-07
+  V3:
+    section: AEW-Lead review of the M3 tag (dogfood, 2026-10-01)
+    disposition: hold
+    into: HOLD-04
+    note: with F14
+  V4:
+    section: AEW-Lead review of the M3 tag (dogfood, 2026-10-01)
+    disposition: keep
+    target: Unscheduled
+    note: an ordinary harness friction
+  V5:
+    section: AEW-Lead review of the M3 tag (dogfood, 2026-10-01)
+    disposition: hold
+    into: HOLD-20
+decisions_due:
+  F15.5:
+    fate: drop
+    note: its row joins HOLD-19
+  F41.1:
+    fate: drop
+    note: the cross-feature design is superseded; HOLD-09
+  F41.5:
+    fate: drop
+    note: the cross-feature design is superseded; HOLD-09
+  F25:
+    fate: drop
+    note: its row joins HOLD-21
+  E72:
+    fate: keep:Unscheduled
+  F48:
+    fate: drop
+    note: its row joins HOLD-06
+  E19:
+    fate: drop
+    note: the re-freeze is superseded; the name replacement needs no decision
+  F26:
+    fate: drop
+    note: its row is absorbed by STG-15
+  F38:
+    fate: drop
+    note: the row closes (M6a)
+  Q8:
+    fate: drop
+    note: the row closes (STG-15)
+  Q11:
+    fate: drop
+    note: the row closes (STG-15)
+  F15.7:
+    fate: drop
+    note: its row joins HOLD-06
+  F17:
+    fate: drop
+    note: its row joins HOLD-07
+  O3:
+    fate: drop
+    note: its row joins HOLD-04
+  U3:
+    fate: drop
+    note: its row joins HOLD-04
+  E4:
+    fate: keep:Unscheduled
+  E16:
+    fate: keep:Unscheduled
+  F42:
+    fate: drop
+    note: its row joins HOLD-10
+  F46:
+    fate: drop
+    note: its row joins HOLD-19
+  Q4:
+    fate: drop
+    note: its row joins HOLD-05
+  Q5:
+    fate: drop
+    note: the row closes
+  Q14:
+    fate: drop
+    note: its row joins HOLD-09
+  U10:
+    fate: drop
+    note: its row joins HOLD-07
+  V3:
+    fate: drop
+    note: its row joins HOLD-04

@@ -8,14 +8,13 @@ owns this guide: a change to it is merged by the operator (`AGENTS.md` rule 5). 
 
 - **A full review** (a "full round") covers the whole diff against `main`, with the reviewer's own choice of tests. It
   is the default, and a pull request gets one (§8).
-- **A delta review** follows a CLEAR whose only open points are nits (§7).
-- **A quick check** follows a full review or a delta review whose verdict is FINDINGS, or a merge of `main` that is
-  not a re-render, or a rebase (§7, §8). It covers the whole diff since the full review, or after such a merge or a
-  rebase, the whole diff against `main`.
+- **A quick check** follows a full review whose verdict is FINDINGS, or a merge of `main` that is not a re-render, or
+  a rebase (§7, §8). It covers the whole diff since the full review, or after such a merge or a rebase, the whole diff
+  against `main`.
 - **A re-render check** (§7) is mechanical, not a review: it carries the last verdict to a head that only merges
   `main` and re-renders.
-- Delta reviews and quick checks have the same shape (§7). Everything in this guide applies to every kind unless a
-  section says otherwise.
+- A CLEAR whose open points are minors and nits takes no further review: they are fixed or followed on as §7 says.
+  Everything in this guide applies to every kind unless a section says otherwise.
 
 ## 2. The finding format
 
@@ -54,23 +53,24 @@ was observed. An author who hands back fixes posts such a comment; a push alone 
 not CI qualification. A failing required check is named. A failure also seen on the base may inform its attribution
 but does not automatically waive the requirement. Unknown attribution remains UNKNOWN.
 
-## 7. Nits after a CLEAR get one short delta review
+## 7. Minors and nits after a CLEAR are fixed or followed on
 
-The operator, 2026-10-10; the product rule of the Cross-Feature Integration Design v0.5, §15. When the verdict is
-`Review: CLEAR` and its only open points are nits:
-- The author fixes them in ordinary commits on top of the reviewed commit, changing only what the nits name, and posts
-  a comment that cites the CLEAR and lists each nit with how it was fixed.
-- The reviewer, or a new independent one, does one short delta review. It covers the whole diff since the CLEAR, runs
-  only the tests that touch it (CI is the matrix), and ends with a verdict at the new head as usual.
-- If the delta review finds a blocker, major or minor finding, or any change in behaviour beyond the named fixes, its
-  verdict is `Review: FINDINGS`, and the fixes take a quick check (§8). Otherwise its CLEAR closes the nits.
-- **A point the delta review raises.** A nit whose fix changes only the wording of a document, a comment or a
-  docstring, and nothing that runs or that tests or operators read (a doctest, help text, an error message or a reason
-  code), is fixed and checked by one more short delta check of that fix alone. Any other point it raises, or a nit
-  whose fix changes anything else, is fixed and takes a quick check (§8). What either check raises is handled as §8
-  says for a quick check's points.
-- **A merge of `main` or a rebase** takes the work off this path: the next review is a quick check of the whole diff
-  against `main` at the new head, unless the merge is a re-render.
+The operator, 2026-10-25, in place of the delta review after nits of 2026-10-10: a minor or a nit never blocks a
+merge (`AGENTS.md` §2), and none is dropped. A review whose open points are only minors and nits ends `Review: CLEAR`
+and lists each one, with its label and its fix line, as a follow-on. Each is then handled in one of three ways:
+- **In the same pass,** when the author is changing the pull request anyway (for a blocker or a major), and checked
+  by the quick check that follows (§8).
+- **Before merge, when trivial:** a fix that changes only the wording of a document, a comment or a docstring, and
+  nothing that runs or that tests or operators read (a doctest, help text, an error message or a reason code), goes
+  in on top of the CLEAR with no further review round, when it causes no real delay. The author's comment lists each
+  with how it was fixed, and CI at the new head is green (`AGENTS.md` §4).
+- **Otherwise as a tracked follow-on.** In a series, the next pull request fixes it, lists it in its description, and
+  its review checks it; the last pull request of a series fixes its own or tracks them. Outside a series, a register
+  note on the row the work belongs to, or a new row, tracks it until a pull request fixes it.
+
+The rest of this section:
+- **A merge of `main` or a rebase** after the CLEAR takes one quick check of the whole diff against `main` at the new
+  head, unless the merge is a re-render.
 - **A re-render keeps the verdict** (operator, 2026-10-24). With R the reviewed head, H the new head, M the newest
   commit of `main` that H contains, and B the newest commit of `main` that R contains, H is a re-render of R when all of
   these hold:
@@ -84,27 +84,28 @@ The operator, 2026-10-10; the product rule of the Cross-Feature Integration Desi
     or a YAML both sides changed, is not a re-render. The list is closed; another generator joins it only by a change
     to this guide.
 
-  R's verdict and its open points then hold at H, and a delta review or quick check in progress continues. The check
+  R's verdict and its open points then hold at H, and a quick check in progress continues. The check
   needs no judgement, so the reviewer or the Lead runs it, never the pull request's author. Its comment names R, H and
   M, gives the commands and their output and the CI observation at H (§6), and ends with R's verdict line at H. CI at
   H is still required (`AGENTS.md` §4): it is the only check of how `main`'s changes and the pull request's combine.
-- A nit the author disputes goes through `AGENTS.md` §2 before this path applies. A blocker, major or minor finding is
-  never a nit.
+- A point the author disputes goes through `AGENTS.md` §2 before this path applies. A blocker or a major is never a
+  minor or a nit.
 
 ## 8. One full round, then a quick check (operator decision, 2026-10-24, the security depth reset)
 
 It replaces the repeated rounds of the stop rule of 2026-10-21. A pull request gets one full review.
-- **Its findings are all fixed** in the pull request (`AGENTS.md` §2). A full review that has a finding other than a
-  nit gives `Review: FINDINGS`. One whose only open points are nits is CLEAR, and takes §7's delta review.
+- **Its blockers and majors are fixed** in the pull request, with its minors and nits in the same pass (`AGENTS.md`
+  §2). A full review with an open blocker or major gives `Review: FINDINGS`. One whose open points are only minors and
+  nits is CLEAR, and they are handled as §7 says.
 - **The answer is the smallest that meets the finding:** narrowing a claim (a claim in the pull request or its code,
   never an adopted text) or stating a limit where that suffices (M1's known limits), otherwise the smallest code
   change, adding no check, option, module, dependency or call to a host tool that the finding does not name.
-- **One quick check** then covers the whole diff since the full review, in the shape of §7's delta review, and ends
-  with a verdict at the new head. The pull request then merges on green CI (`AGENTS.md` §4).
+- **One quick check** then covers the whole diff since the full review, runs only the tests that touch it (CI is the
+  matrix), and ends with a verdict at the new head. The pull request then merges on green CI (`AGENTS.md` §4).
 - **There is no further full round,** and no sort of minors into those that fail open or closed. If the quick check
   finds an agent-reachable blocker or major in a fix (§10), that fix is mended and checked again quickly. Any other
-  point it raises (a minor, a nit or an ordinary bug) is fixed in the pull request, which then merges on green CI with
-  no further check. So the path ends.
+  blocker or major it raises is fixed in the pull request, which then merges on green CI with no further check. A
+  minor or a nit it raises is handled as §7 says. So the path ends.
 - **A merge of `main` that is not a re-render (§7), or a rebase,** made while the pull request is on this path, takes
   one quick check of the whole diff against `main` at the new head. CI at the head checks how the two combine.
 - **Work already past one full round** on 2026-10-24 gets only its quick check.
@@ -124,7 +125,7 @@ guide applies unchanged.
   that finds it. A gap with no live instance (a spelling, binding or helper that the detectors the pull request adds or
   relies on cannot see) is a nit, whatever else the reviewer would call it. Its fix names the gap among the limits
   stated in the pull request's description and the detector's docstring, as M1 requires, and changes no behaviour.
-  When the review's other points are nits too, the verdict is CLEAR, and the fix takes the delta review of §7.
+  When the review's other points are minors and nits too, the verdict is CLEAR, and the point is handled as §7 says.
 - **Not covered:** a pull request that deletes, skips, marks as expected to fail or loosens a test or a gate (a weaker
   or removed assertion; a changed expected value or pinned fixture; a wider tolerance or timeout; a retry or rerun; a
   lowered baseline or threshold, such as `tests/coverage-baseline.json` or `TOLERANCE` in
@@ -162,8 +163,6 @@ What follows from them:
 - **A refusal an agent meets** says what happened and what to do instead, and it offers a way to ask for more.
 - **Containment stays for the unlikely compromised case,** kept to the core routes of the three guarantees above.
 
-**The one case where a finding is fixed after its pull request** (`AGENTS.md` §2): nits ride the next pull request of
-S12-2's series (operator, 2026-10-24, for the STG-12 S12-2 pull requests 2 to 9). A CLEAR in that series whose only
-open points are nits merges once `assurance` is green, and its nits are fixed in the next pull request of the series,
-listed in its description, and checked by its review. The last pull request of the series fixes its own nits. Only
-nits ride; a minor is fixed in its own pull request.
+**Which findings may be fixed after their pull request** (`AGENTS.md` §2): minors and nits, as §7 says (operator,
+2026-10-25). It generalises the nits-ride of S12-2's series (operator, 2026-10-24, for its pull requests 2 to 10). A
+security finding an agent can reach is never followed on, whatever its label.

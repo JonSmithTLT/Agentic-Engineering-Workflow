@@ -1116,6 +1116,9 @@ EXCUSED_LITERALS = {
     "writers_text:i >= 2": "a position: two tokens back, for a dotted name",
     "writers_text:len(positional) >= 2": "arity: the call has its second argument",
     "writers_flow:len(text) <= 60": "an expression quoted in a reason, cut with `...`",
+    "stg02_commands:len(call.args) < 2": "arity: a refusal call without its second argument, the cause, is not read",
+    "stg02_commands:len(call.args) >= 2": "arity: the call has its second argument, the cause",
+    "stg02_commands:len(node.args) < 2": "arity: a refusal call without its second argument, the cause, is not read",
 }
 
 

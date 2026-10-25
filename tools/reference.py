@@ -20,39 +20,61 @@ declares, or the source it parses) and returns records. The generator runs from 
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "reference"
 INDEX = "index.json"
+# The family modules under ``tools/reference_families/``, one to a line and in alphabetical order, so that two pull
+# requests that each add a family edit different lines and merge without a conflict. The order is not the output's: the
+# index sorts its records. A module of that directory that is neither listed, shared nor a part of a listed family
+# (named ``<family>_<part>``) is refused by ``tests/unit/test_reference.py``, so a family cannot be forgotten.
+FAMILY_MODULES = (
+    "control_keys",
+    "entry_points",
+    "interfaces",
+    "layout",
+    "machines",
+    "modules",
+    "stg02",
+    "writers",
+)
+SHARED_MODULES = ("common", "pages")
+PACKAGE = "reference_families"
+
+
+def unlisted(names: Iterable[str], families: Iterable[str] = FAMILY_MODULES) -> list[str]:
+    """The modules of the families directory that are none of: a listed family, a shared module, or a part of a listed
+    family (``<family>_<part>``)."""
+    listed = set(families)
+    return sorted(n for n in set(names) - listed - set(SHARED_MODULES)
+                  if n != "__init__" and not any(n.startswith(f"{family}_") for family in listed))
+
+
+def unfound(names: Iterable[str], families: Iterable[str] = FAMILY_MODULES) -> list[str]:
+    """The listed family or shared modules that have no file in the directory."""
+    return sorted((set(families) | set(SHARED_MODULES)) - set(names))
 
 
 def _families() -> Any:
-    """The family modules, imported with ``tools/`` on the path for the extent of the import only."""
+    """The shared modules and the family modules, imported with ``tools/`` on the path for the extent of the import
+    only."""
     here = str(Path(__file__).resolve().parent)
     added = here not in sys.path
     if added:
         sys.path.insert(0, here)
     try:
-        from reference_families import (
-            common,
-            control_keys,
-            entry_points,
-            interfaces,
-            layout,
-            machines,
-            modules,
-            pages,
-            stg02,
-            writers,
-        )
+        common, pages = (importlib.import_module(f"{PACKAGE}.{name}") for name in SHARED_MODULES)
+        families = tuple(importlib.import_module(f"{PACKAGE}.{name}") for name in FAMILY_MODULES)
     finally:
         if added:
             sys.path.remove(here)
-    return common, pages, (modules, entry_points, writers, control_keys, layout, machines, interfaces, stg02)
+    return common, pages, families
 
 
 def _one_tree(common: Any, root: Path) -> None:

@@ -34,7 +34,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Protocol, TextIO, cast
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -49,6 +49,7 @@ from aew.dashboard.reader import MapsReader, StateReader
 from aew.dashboard.reasons import reason
 from aew.engine.api import Engine
 from aew.errors import AEWError, MapArtifactCorrupt, NotFound
+from aew.exclusive_server import ExclusiveServer
 
 LOG = logging.getLogger("aew.dashboard")
 API_PREFIX = "/api/v1"
@@ -372,9 +373,10 @@ def match_route(path: str) -> tuple[str, dict[str, str]] | None:
     return None
 
 
-class _Listener(ThreadingHTTPServer):
+class _Listener(ExclusiveServer):
     """``ThreadingHTTPServer`` with its connections bounded at accept, before a handler thread exists or a byte
-    is read: the ``MAX_CONNECTIONS + 1``-th gets a prepared ``503`` and is closed."""
+    is read: the ``MAX_CONNECTIONS + 1``-th gets a prepared ``503`` and is closed. Its port is its own: a second
+    server on it, another project's dashboard on ``--port`` included, fails to start (:mod:`aew.exclusive_server`)."""
 
     daemon_threads = True
 

@@ -146,10 +146,12 @@ unchanged: no edge is added or removed.
   verification entries) cannot be rechecked there, so that return is refused; returning to RUNNING and taking the
   direct edge, which runs that guard, reaches the phase.
 - **Guard roles.** Each guard in the guard table is registered with its role: `gate` (it checks the gates a phase is
-  entered on) or `source` (it checks the edge it guards). A replacement for one unit kind keeps its name's role, and a
-  return refuses a guard with no role.
+  entered on) or `source` (it checks the edge it guards). A replacement for one unit kind keeps its name's role. A
+  return fails closed (R1-D2: an unqualified return is refused) where an entry guard has no role for the unit's kind,
+  or where the Lead's own entries into the phase have no guard at all; neither arises in today's table.
 - **Every refusal names a governed path.** Its `details` carry the reason (`direct_edge_guard_unmet`,
-  `entry_guard_unmet`, `entry_guard_not_queryable`, or `beyond_the_phase_left`), the guard and its own refusal, and
+  `entry_guard_unmet`, `entry_guard_not_queryable`, `entry_guard_unclassified`, `no_entry_guard`, or
+  `beyond_the_phase_left`), the guard and its own refusal, and
   `instead`: meet what the guard requires, return to another phase the hub admits now, or leave the hub (its
   unguarded exits, read from the table).
 - **Placement.** The return is `Gates.return_admitted` (`engine/evidence_ops.py`), not `WorkUnits`, because it reads

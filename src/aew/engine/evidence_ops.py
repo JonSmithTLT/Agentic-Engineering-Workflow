@@ -45,6 +45,7 @@ from aew.engine.work_ops import (
     ENTRY_GUARD_NOT_QUERYABLE,
     ENTRY_GUARD_UNCLASSIFIED,
     ENTRY_GUARD_UNMET,
+    NO_ENTRY_GUARD,
     entry_refused,
 )
 from aew.errors import (
@@ -415,7 +416,8 @@ class Gates:
         argument). In order: no later than the phase it left; through the Lead's direct edge ``origin -> to``, as that
         edge's guard admits (its query; ``NotQueryable`` where it has none); otherwise as the phase is entered, by the
         gate guards of the Lead's own entries into ``to`` for the unit's kind (``GATE`` in the guard table), through
-        their query forms, refused where a query is missing. VERIFY_PENDING has two such guards, which partition by
+        their query forms, refused where a query is missing, and refused where those entries have no guard at all
+        (R1-D2: an unqualified return is refused). VERIFY_PENDING has two such guards, which partition by
         whether a review gate applies: ``review_current`` when one does, else
         ``ready_for_verification_without_review``. It records what it checked in ``args["found"]``; a refusal names
         what the Lead may do instead (``alternatives``)."""
@@ -440,7 +442,11 @@ class Gates:
                     f"{work_id} left {origin}, and the guard {guard} of the direct edge {origin} -> {to} refuses it",
                     guard=guard, refused=found, instead=instead()))
             return found
-        entries = transitions.lead_entry_guards(to)
+        entries = transitions.lead_entry_guards(to, besides="ESCALATED")
+        if not entries:
+            return refusal(entry_refused(
+                work_id, "ESCALATED", to, NO_ENTRY_GUARD,
+                f"the Lead's own entries into {to} have no guard for a return to meet", instead=instead()))
         unclassified = [g for g in entries if self.guards.role_of(g, unit) is None]
         gates = [g for g in entries if self.guards.role_of(g, unit) == GATE]
         if unclassified or len(gates) > 2 or (len(gates) == 2 and set(gates) != set(self.VERIFY_PENDING_ENTRIES)):

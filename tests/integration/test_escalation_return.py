@@ -182,6 +182,21 @@ def test_a_non_mutating_return_to_a_gated_phase_takes_the_direct_edge_instead(tm
     assert_control_invariants(p)
 
 
+def test_a_return_beyond_the_phase_left_names_the_phases_it_may_enter(tmp_path):
+    """A return from escalation goes no later than the phase the unit left: the refusal names the phases it may enter
+    now, and the named return is taken, then the Lead's own entry (a reconcile's bound: test_workspaces)."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    move(p, wid, "ESCALATED")
+    details = refused(p, wid, "REVIEW_PENDING", "beyond_the_phase_left")
+    assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
+    move(p, wid, "RUNNING")
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    assert show(p, wid)["state"] == "REVIEW_PENDING"
+    assert_control_invariants(p)
+
+
 def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None, dict[str, Any] | None]:
     """Ask the transition's guard, then execute it on the same state: the same answer either way (M4-E E4).
     Returns (``admitted`` or the code, the reason code, the refusal's details)."""
@@ -245,6 +260,35 @@ def test_every_escalation_return_meets_what_the_phase_it_enters_requires(tmp_pat
     assert {("admitted", None), ("GATE_UNSATISFIED", "beyond_the_phase_left"),
             ("GATE_UNSATISFIED", "direct_edge_guard_unmet"), ("GATE_UNSATISFIED", "entry_guard_unmet"),
             ("GATE_UNSATISFIED", "entry_guard_not_queryable")} <= seen
+
+
+def test_a_return_with_no_guard_to_recheck_is_refused_and_names_one_that_has(tmp_path, monkeypatch):
+    """Fail closed (R1-D2: an unqualified return is refused): a return to a phase whose entry guard has no role for the
+    unit's kind, or whose Lead entries have no guard at all, is refused. Neither arises in today's table (the role test
+    holds every entry's role); both are planted in the engine, and the named return is taken."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    engine = Engine.discover(p.root)
+    guards, role_of, entries = engine._units.guards, engine._units.guards.role_of, T.lead_entry_guards
+    plants = {
+        "entry_guard_unclassified": lambda: monkeypatch.setattr(
+            guards, "role_of", lambda name, unit: None if name == "ready_for_review" else role_of(name, unit)),
+        "no_entry_guard": lambda: monkeypatch.setattr(
+            T, "lead_entry_guards", lambda to, besides=None: [] if to == "REVIEW_PENDING" else entries(to, besides)),
+    }
+    for reason, plant in plants.items():
+        p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+        move(p, wid, "ESCALATED")
+        plant()
+        code, why, details = _attempt(engine, p, wid, "REVIEW_PENDING")
+        assert (code, why) == ("GATE_UNSATISFIED", reason) and details is not None, (code, why, details)
+        assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
+        engine.work_transition(token=p.token, expect_rev=engine.store.read()["revision"], work_id=wid, to="RUNNING",
+                               reason="the named return")
+        assert show(p, wid)["state"] == "RUNNING"
+        monkeypatch.undo()
+    assert_control_invariants(p)
 
 
 def test_a_reconcile_meets_the_guard_of_the_direct_edge_it_stands_for(tmp_path):

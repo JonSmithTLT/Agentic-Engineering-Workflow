@@ -134,10 +134,11 @@ def direct_lead_edge(origin: str | None, to: str) -> Rule | None:
     return rule if rule is not None and rule.via == "transition" else None
 
 
-def lead_entry_guards(to: str) -> list[str]:
-    """The guards of the Lead's own edges into ``to``, each once, in table order."""
-    return list(dict.fromkeys(r.guard for (_, dst), r in RULES.items()
-                              if dst == to and r.via == "transition" and r.guard))
+def lead_entry_guards(to: str, besides: str | None = None) -> list[str]:
+    """The guards of the Lead's own edges into ``to``, each once, in table order; ``besides`` leaves out the edge from
+    that state (a hub's own return into ``to``)."""
+    return list(dict.fromkeys(r.guard for (src, dst), r in RULES.items()
+                              if dst == to and src != besides and r.via == "transition" and r.guard))
 
 
 # The Lead command behind each operation, for refusals that say what applies instead (M3 audit X1).

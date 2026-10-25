@@ -28,7 +28,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ## 1. Now, the milestones and the gates (in order)
 
-**Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map.
+**Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map. `python tools/register.py check` holds the list to the rows: every row it names is open and targeted **Now** or **Stage**, and every row targeted **Now** is in it. A stage is named once it is queued. A change that closes or retargets a row named here edits this list in the same change.
 
 | # | Row | Item |
 |---|---|---|
@@ -36,12 +36,13 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (building) |
-| 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building: G3-A open as #269) |
-| 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
-| 8 | STG-13 | V-01's oracle rebuilt |
+| 5 | E84, E85 | two of the trace's FIX rows, taken ahead of their milestone (building) |
+| 6 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
+| 7 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building: G3-A open as #269) |
+| 8 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
+| 9 | STG-13 | V-01's oracle rebuilt |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace).
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E84 and E85 (item 5) come before H-1 and CS-4: the operator took them ahead of their milestone on 2026-10-25 (in chat).
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -880,7 +881,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** STG-12's S12-4 trace, FIX claim of that name (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
 
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
+**When:** **Now**, one of the trace's FIX rows (S12-6), taken ahead of its milestone (the operator, in chat, 2026-10-25)
 
 **Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
 
@@ -892,7 +893,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** STG-12's S12-4 trace, FIX claim on the return from escalation (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`), which corrects family 5's claim; rulings R1-D2 and R6-1 of 2026-10-12
 
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
+**When:** **Now**, one of the trace's FIX rows (S12-6), taken ahead of its milestone (the operator, in chat, 2026-10-25)
 
 **Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
 

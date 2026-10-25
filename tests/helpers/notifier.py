@@ -113,8 +113,9 @@ def until(predicate: Any, timeout: float = 30.0, what: str = "the condition", *,
 
 
 def thread_stack(thread: threading.Thread) -> str:
-    """One thread's current stack, as ``autopsy.thread_stacks`` gives every thread's, or why there is none."""
-    frame = sys._current_frames().get(thread.ident) if thread.ident is not None else None
+    """One thread's current stack, as ``autopsy.thread_stacks`` gives every thread's, or why there is none. A thread
+    that has ended has none: its identifier may already name a newer thread (review of #276, N3)."""
+    frame = sys._current_frames().get(thread.ident) if thread.is_alive() and thread.ident is not None else None
     if frame is None:
         return "(no stack: the thread is not running)"
     return "".join(traceback.format_stack(frame))
@@ -126,7 +127,10 @@ def watchdog_wait_s(record: dict[str, Any], poll_s: float) -> float:
     (``broker_liveness.wedge_threshold_s``: ``store.lock_timeout + 2 x POLL_S``), because its read waits out the
     control lock, and ``judge`` never calls it stale before then. A read that times out is "still the Lead"
     (``LeadBroker._authority_lost``), so the next iteration acts: ``2 x POLL_S`` more covers its start, its read and
-    the write that follows. A wait past this bound is on a broker stale by the code's own definition."""
+    the write that follows. Past this window, the stall has outlasted one timed-out read plus the next iteration's
+    start. That is not a stale broker: a timed-out read still ticks, so ``judge`` calls the broker live while each
+    iteration stays inside ``wedge_after_s``, and the swallowed ``LockTimeout`` is what hides the supersession (review
+    of #276, F1)."""
     return float(record["wedge_after_s"]) + 2 * poll_s
 
 

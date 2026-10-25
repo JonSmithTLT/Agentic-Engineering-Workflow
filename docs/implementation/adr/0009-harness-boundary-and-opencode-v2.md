@@ -1430,7 +1430,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   so. A failure after the seat was taken frees the seat again.
 - **What it holds (R-2):** the working tree writable; `.aew` and the git metadata re-bound read-only; `.aew/local`
   masked except the session's run directory (`.aew/local/harness/runs/lead-<UTC>-<hex>`, its label and harness
-  state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions); the
+  state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions, below); the
   operator's OpenCode configuration and login masked wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `OPENCODE_DB`
   put them.
 - **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set
@@ -1451,13 +1451,35 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   `netns.LEAD_RELAY_PORT`. Each provider's `baseURL` is set at the provider level (with `transport: http` for
   openai), which takes every request of that provider to its relay, its title model's included (measured for all
   three). Inside, the provider's variable holds the relay's sentinel; the relay outside swaps in the key.
+- **A refreshing login** (addendum 1, option a): openai's ChatGPT login is relayed as stored, to its own upstream
+  (`netns.REFRESHING_UPSTREAMS`, `https://chatgpt.com/backend-api/codex`, where its plugin sends it; the
+  provider-level `baseURL` alone takes its requests to the relay, measured). The relay asks for the credential on
+  each request (`relay.ProviderRelay`'s `resolve`), and the resolver (`lead.StoredLogin`) re-reads the operator's
+  login store, read-only, so a refresh by the operator's own OpenCode is used from the next request on. It sets the
+  account header from the stored login, replacing the inside placeholder. AEW never refreshes the login and never
+  writes it: once the access token has less than a minute left, the request is answered 401 with a message naming
+  the provider and `opencode auth list` (which makes the operator's own OpenCode refresh it, measured) and saying
+  the next request then works, with no restart. The start line says how long the token has left. Inside, the
+  Lead's own login store holds a row for it whose access token is the relay's sentinel and whose expiry is a year
+  off, so the TUI uses it as it would the operator's and never tries to refresh it; OpenCode makes that database
+  itself the first time (`session list`, offline, in the sandbox).
 - **Not relayed, and said at the start:** opencode's own key (its models carry their own catalog address, so a
   provider-level `baseURL` does not reach them; its free models still work through the egress proxy), a provider
-  AEW has no upstream for, and a refreshing (OAuth) login until it is served (addendum 1).
+  AEW has no upstream for, and a refreshing login whose requests AEW has not measured.
 - **`--provider-env NAME`** feeds that provider's relay on the host instead of the stored login, and never the Lead's
   shell; a name no relayed provider reads is refused. Where the Lead runs not contained it keeps its old meaning.
 - **The stored login** is read on the host, in memory only: SQLite's read-only mode with a busy timeout, never
   `immutable` (addendum 1). Nothing of it is written anywhere.
+
+### The Lead's own OpenCode state (addendum 1, items 2 and 3)
+- Per project, under `.aew/local/harness/lead`, kept between sessions: its database, sessions, prompt history and
+  recent models. The first session starts empty and never shows the operator's own sessions.
+- **The TUI's preferences:** the operator's `cli.json` is read on the host, its `plugins` dropped (A-38's CAPR-05),
+  and the rest passed as `OPENCODE_CLI_CONFIG_CONTENT`, which OpenCode merges over the session's own file. The
+  TUI's own writes go to that file, which is the session's, so a preference changed inside lasts that session; the
+  start line says so, and names the plugins left out.
+- **Recent and favourite models:** the operator's `model.json` (model ids: no credential, no prompt) is copied in
+  once, when the Lead's state is created, if it is small. The prompt history is never copied.
 
 ### The terminal relay (ruling R-7; `procs.run_session_tree(relay=True)`)
 - The session's reaper opens a pseudo-terminal, copies the operator's terminal settings and size to it, starts the
@@ -1492,8 +1514,14 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 ### Tests
 - `tests/integration/test_lead_contained_session.py` (Linux): the session at a terminal the test holds, through the
   broker from the sandbox, with rows 1 to 6, the environment, the label, the system-text line and the terminal given
-  back; each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode not
-  relayed; a failing self-test refused under `required` and labelled under `allow_weaker`.
+  back, the operator's preferences without their plugins and their recent models without their prompt history;
+  each stored provider relayed with only sentinels inside, `--provider-env` feeding google's relay, opencode not
+  relayed; the ChatGPT login relayed as stored, expired then refreshed twice by the operator's own OpenCode within
+  one session, the account header the stored one, nothing of the login inside and nothing of the operator's
+  written; a failing self-test refused under `required` and labelled under `allow_weaker`.
+- `tests/unit/test_provider_relay.py`: a resolved credential read on each request with its headers, and an unusable
+  one answered 401 with the resolver's message and nothing connected. `tests/unit/test_containment_netns.py`
+  (Linux): a refreshing login's own upstream, its sentinel for the login store and never a variable.
 - `tests/integration/test_terminal_relay.py` (Linux): every ending gives the terminal back (the TUI exiting with its
   last output unread, crashing, its sandbox killed, the broker killed, the reaper killed, the terminal hung up),
   bytes unfiltered, the window size followed, a session without a terminal refused.
@@ -1509,4 +1537,6 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   permission rule.
 - `tests/integration/test_non_writer_reads.py`: the CLI inside the contained Lead reads lock-free and refuses a
   lock-taking command before the lock. `tests/unit/test_lead_contained.py`: the start lines, `--provider-env`, the
-  logins read, the refusal that frees the seat, the read-only store's typed refusal.
+  logins read, the refusal that frees the seat, the read-only store's typed refusal; the stored login re-read on
+  each request, expired within the margin, gone or changed kind, and never written; the Lead's own login row; the
+  preferences without their plugins; the recent models seeded once, never the prompt history.

@@ -58,7 +58,7 @@ aew doctor
 Set the key in your own environment, under the name `provider_env` lists (on Windows, as a user environment variable; open a new terminal afterwards). Runs launched from that terminal pass it to their OpenCode servers only.
 
 The Lead's own model is different. By default it uses the credentials OpenCode has stored for you (`opencode auth login`), and its environment holds no provider key.
-- **On Linux** the Lead runs contained (see [Containment](#containment)): AEW reads your stored logins on the host, never inside the sandbox, and gives each provider whose key OpenCode reads from a variable (openai, anthropic, google) a relay of its own; inside, that variable holds only a stand-in the relay swaps for the key. `aew opencode --provider-env NAME` feeds that provider's relay from your environment instead, and the Lead's shell still never sees the key. The session's first lines say which logins are relayed and why any is not.
+- **On Linux** the Lead runs contained (see [Containment](#containment)): AEW reads your stored logins on the host, never inside the sandbox, and gives each provider whose key OpenCode reads from a variable (openai, anthropic, google) a relay of its own; inside, that variable holds only a stand-in the relay swaps for the key. `aew opencode --provider-env NAME` feeds that provider's relay from your environment instead, and the Lead's shell still never sees the key. Your ChatGPT login (openai) is relayed as stored: AEW reads it on each request and never refreshes it, so when it expires the Lead's request fails with a message, `opencode auth list` at your own terminal refreshes it, and the Lead's next request works with no restart. The session's first lines say which logins are relayed, how long a refreshing one has left, and why any is not.
 - **Elsewhere** (Windows) `aew opencode --provider-env NAME` passes a key to the Lead's OpenCode; the Lead's shell can then read that key, and the command says so.
 
 ## 3. Start the Lead
@@ -129,6 +129,7 @@ aew harness config opencode --lead     # the Lead's (the same as `aew opencode -
 **The Lead's session** (`aew opencode`) runs in a `lead` sandbox:
 - it writes the working tree; `.aew/` and the git metadata are read-only, so a commit fails there while `git status`, `diff` and `log` work, and its Lead `aew` commands still reach the broker, which writes AEW state for it;
 - its OpenCode state is its own, under `.aew/local/harness/lead`, kept per project between sessions; your OpenCode configuration and logins are not visible inside, and its first lines name any MCP servers of yours it leaves out;
+- your TUI preferences (theme, keybinds and the like) come from your own OpenCode at each start, without its plugins; one you change inside the Lead lasts that session, so change them in your own OpenCode. Your recent models are copied in once, when the Lead's state is first made; your prompt history never is;
 - its network reaches your providers through AEW's relays and public addresses over https through the egress proxy; a plain `http://` request is refused with the `https://` form to ask for instead;
 - the TUI runs on a terminal AEW relays: what you type and what it draws pass unchanged, and your terminal gets its settings back however the session ends.
 

@@ -136,6 +136,25 @@ def test_the_label_names_the_mode_the_relay_the_allowlist_and_the_stated_limit_a
     assert net.decisions() == {"egress": {"allowed": 2, "not_allowed": 1}}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the relays listen on socket files (AF_UNIX)")
+def test_the_leads_refreshing_login_has_its_own_upstream_and_its_sentinel_is_for_the_login_store_not_a_variable():
+    """STG-05 CS-4, addendum 1: a refreshing login's relay goes to its own upstream (the ChatGPT login's base) unless
+    the policy names one; its sentinel is for the Lead's own login store, never a provider variable; and its access
+    token, as stored now, is in the leak check. An API-key provider beside it keeps its variable and its upstream."""
+    layout = replace(BASE, role="lead", network=L.PROXY_ONLY, net_dir=netns.private_dir())
+    net = netns.RunNetwork.start_lead(layout, keys={"anthropic": KEY}, provider_env=[], policy=None, env={},
+                                      refreshing={"openai": lambda: ("synthetic-access", {"chatgpt-account-id": "a"})})
+    try:
+        assert net.describe()["provider_relays"] == {"anthropic": "https://api.anthropic.com/v1",
+                                                     "openai": "https://chatgpt.com/backend-api/codex"}
+        assert set(net.sentinels) == {"ANTHROPIC_API_KEY"} and set(net.login_sentinels) == {"openai"}
+        assert net.lead_bases()["openai"].endswith(":4112/backend-api/codex")
+        assert net.leaks("... synthetic-access ...") == ["openai login"]
+        assert "OPENAI_API_KEY" not in net.harness_env({})
+    finally:
+        net.close()
+
+
 def test_a_relay_with_no_upstream_refuses_the_launch_and_leaves_no_network_directory(tmp_path):
     layout = replace(BASE, network=L.PROXY_ONLY, net_dir=str(tmp_path / "aew-net-x"))
     (tmp_path / "aew-net-x").mkdir()

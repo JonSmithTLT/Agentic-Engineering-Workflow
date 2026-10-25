@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import sys
+import threading
+import time
+from typing import Any
 
 import pytest
 from fake_harness import contains_credential
-from lead_session import KEYS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
+from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
 
 from aew.harness import procs
 from aew.harness.containment import netns
@@ -79,6 +83,12 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab), contained=label)
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
             in done["stderr"]
+        # addendum 1: the operator's TUI preferences without their plugins; their recent models, never their prompts
+        assert json.loads(env["OPENCODE_CLI_CONFIG_CONTENT"]) == {"theme": {"name": "synthetic"}}
+        assert "its TUI plugins are left out: synthetic-plugin" in done["stderr"]
+        own_state = lab.aew_root / "local" / "harness" / "lead" / "xdg-state" / "opencode"
+        assert json.loads((own_state / "model.json").read_text()) == RECENT_MODELS
+        assert not (own_state / "prompt-history.jsonl").exists()
 
         steps = {e["i"]: e["result"] for e in map(json.loads, (tui / "tui.jsonl").read_text().splitlines())}
         assert steps[1]["exit"] == 0 and "revision" in steps[1]["stdout_json"], steps[1]  # a read, lock-free
@@ -133,6 +143,70 @@ def test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_ho
     finally:
         for u in ups.values():
             u.close()
+
+
+def chatgpt(access: str, expires_s: float) -> dict[str, Any]:
+    """A synthetic ChatGPT login's stored value (OpenCode 2.0.18's shape)."""
+    return {"type": "oauth", "methodID": "chatgpt-browser", "refresh": "synthetic-refresh-0005", "access": access,
+            "expires": int(expires_s * 1000), "metadata": {"accountID": "synthetic-account-0007"}}
+
+
+def test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_refreshes_it(tmp_path):
+    """Addendum 1, option (a): the operator's ChatGPT login (synthetic, and expired) gets a relay; the TUI uses its
+    own login row, whose access token is the relay's sentinel. The first request is answered 401 with what to do
+    (`opencode auth list` at the operator's terminal, then the next request works). The operator's own OpenCode then
+    refreshes the login (the test writes the operator's row, as it would), and the next request, in the same session,
+    reaches the upstream with the new access token and the stored account id; so does the one after the next
+    refresh, read again. AEW wrote nothing of the operator's, and nothing of the operator's login is inside."""
+    up = Upstream()
+    try:
+        lab, tui = make_lab(tmp_path, upstreams={"openai": up.url})
+        try:
+            home = synthetic_home(tmp_path, oauth={"openai": chatgpt("synthetic-access-expired", time.time() - 10)})
+            operator = home / ".local" / "share" / "opencode" / "opencode.db"
+            fresh = [json.dumps(chatgpt(f"synthetic-access-fresh-{n}", time.time() + 3600)) for n in (1, 2)]
+            for name, text in (("mode", "providers"), ("variables.json", "{}"), ("look.json", "[]"),
+                               ("oauth.json", '["openai"]'), ("rounds.json", "3")):
+                (tui / name).write_text(text)
+
+            def refresh() -> None:  # the operator's own OpenCode, before the second and the third request
+                for n, value in enumerate(fresh, start=1):
+                    deadline = time.monotonic() + 90
+                    while not (tui / f"round-{n}").exists() and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    con = sqlite3.connect(operator)
+                    con.execute("UPDATE credential SET value = ?", (value,))
+                    con.commit()
+                    con.close()
+                    (tui / f"go-{n}").write_text("x")
+
+            refresher = threading.Thread(target=refresh, daemon=True)
+            refresher.start()
+            done = at_the_terminal(lab, home)
+            refresher.join(10)
+            assert done["code"] == 0, done["stderr"][-3000:]
+            assert "openai (oauth): relayed as stored, expired now" in done["stderr"]
+            assert done["result"]["containment"]["network"]["provider_relays"] == {"openai": up.url}
+            inside = json.loads((tui / "inside.json").read_text())
+            status, body = inside["calls"]["openai"]
+            assert status == 401, inside["calls"]
+            assert body.startswith("AEW: your stored openai login has expired") and "`opencode auth list`" in body
+            assert "the Lead's next request then works, with no restart" in body
+            assert [r["openai"][0] for r in inside["later"]] == [200, 200], inside["later"]
+            assert up.seen == [("/v1/probe", f"Bearer synthetic-access-fresh-{n}") for n in (1, 2)]
+            assert up.accounts == ["synthetic-account-0007"] * 2
+            [row] = inside["logins"]
+            assert row["integration"] == "openai" and row["access"].startswith("aew-relay-"), row
+            assert row["metadata"] == {"accountID": "aew-relay-placeholder"}
+            blob = json.dumps(inside)
+            assert not any(s in blob for s in ("synthetic-access-", "synthetic-account-", "synthetic-refresh-"))
+            con = sqlite3.connect(operator)
+            assert [v for (v,) in con.execute("SELECT value FROM credential")] == fresh[1:]  # only the refreshes wrote
+            con.close()
+        finally:
+            lab.cleanup()
+    finally:
+        up.close()
 
 
 # --------------------------------------------------------------------------------------------- outcomes 1 and 6

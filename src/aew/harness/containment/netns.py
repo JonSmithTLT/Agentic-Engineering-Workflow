@@ -30,7 +30,7 @@ import shutil
 import socket
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from aew.errors import AEWError, ContainmentUnavailable
@@ -60,6 +60,11 @@ PROVIDER_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_GENERATI
 # baseURL (measured, 2026-10-24 and 25): the Lead, which switches models from the live catalog, cannot point them at a
 # relay, so their key is never relayed for it (STG-05 CS-4). Their free models need no key and go out through egress.
 CATALOG_ADDRESSED = frozenset({"opencode"})
+# A refreshing (OAuth) login's own upstream, by provider id, where it differs from the provider's API: OpenCode
+# 2.0.18's ChatGPT login moves openai's requests here (its `model.request` hook; read in the bundle, and the relay
+# reached through the provider-level baseURL alone, measured on the Rocky VM, 2026-10-25). The contained Lead relays
+# the stored login's access token as it is, never refreshing it (the designer's addendum 1 to the CS-4 hand-off).
+REFRESHING_UPSTREAMS = {"openai": "https://chatgpt.com/backend-api/codex"}
 # The contained Lead's relays, one per provider, on loopback ports inside from here up (4100-4102 are the workers').
 LEAD_RELAY_PORT = 4111
 PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
@@ -99,12 +104,14 @@ def egress_policy(policy: Mapping[str, Any] | None, extra: Iterable[str] = ()) -
     return egress.Allowlist(entries) if entries else None
 
 
-def upstream(provider: str | None, policy: Mapping[str, Any] | None) -> relay.Upstream:
-    """The provider relay's fixed upstream: the policy's ``upstreams.<provider>``, else :data:`UPSTREAMS`. Raises
-    ``ContainmentUnavailable`` when there is none, saying what to set."""
+def upstream(provider: str | None, policy: Mapping[str, Any] | None,
+             known: Mapping[str, str] = UPSTREAMS) -> relay.Upstream:
+    """The provider relay's fixed upstream: the policy's ``upstreams.<provider>``, else ``known``'s
+    (:data:`UPSTREAMS`, or :data:`REFRESHING_UPSTREAMS` for a refreshing login). Raises ``ContainmentUnavailable``
+    when there is none, saying what to set."""
     configured = settings(policy).get("upstreams") or {}
     url = configured.get(provider) if isinstance(configured, dict) else None
-    url = url or UPSTREAMS.get(provider or "")
+    url = url or known.get(provider or "")
     if not url:
         raise ContainmentUnavailable(
             f"the run's provider {provider!r} has no known API address, so its relay has nowhere fixed to send its "
@@ -133,6 +140,13 @@ def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | 
 def _relay_sock(provider: str) -> str:
     """The socket file of the Lead's relay for ``provider``, in the run's network directory."""
     return f"relay-{provider}.sock"
+
+
+def _grant(token: str, resolve: Callable[[], tuple[str, Mapping[str, str]]]) -> relay.Grant:
+    """One request's grant from a refreshing login's resolver: its credential for the relay's sentinel, and its
+    headers."""
+    value, headers = resolve()
+    return {token: value}, headers
 
 
 def shim_argv(spec: Mapping[str, Any], argv: list[str]) -> list[str]:
@@ -187,6 +201,7 @@ class RunNetwork:
         self.sentinels = dict(sentinels or {})  # provider variable -> its sentinel inside
         self._values = dict(values or {})       # provider variable -> its value, for the leak check only
         self.relays: dict[str, tuple[int, relay.ProviderRelay]] = {}  # the Lead's: provider -> (port inside, relay)
+        self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
         self.server_leg = True    # a worker's harness server is reached through the shim; the Lead's TUI uses stdio
         self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
         self._closed = False
@@ -232,11 +247,15 @@ class RunNetwork:
 
     @classmethod
     def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
-                   policy: Mapping[str, Any] | None, env: Mapping[str, str]) -> RunNetwork:
+                   policy: Mapping[str, Any] | None, env: Mapping[str, str],
+                   refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None) -> RunNetwork:
         """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
         ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
         own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
-        (:data:`PROVIDER_KEY_ENV`); and the egress proxy under the any-public policy (the operator's decision 3 of
+        (:data:`PROVIDER_KEY_ENV`); a relay for each provider in ``refreshing`` (provider id -> what gives its stored
+        login's credential and headers for each request, raising ``relay.Unavailable`` when it has none), to
+        :data:`REFRESHING_UPSTREAMS`, whose sentinel the session puts in the Lead's own login store
+        (:attr:`login_sentinels`); and the egress proxy under the any-public policy (the operator's decision 3 of
         2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
         the relays' own route to their upstreams, as a worker's are. Raises ``ContainmentUnavailable`` as
         :meth:`start` does."""
@@ -245,19 +264,30 @@ class RunNetwork:
         net.server_leg, net.http_proxy = False, True
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
+        resolvers = dict(refreshing or {})
         try:
-            for i, (provider, value) in enumerate(sorted(keys.items())):
-                target = upstream(provider, policy)
+            for i, provider in enumerate(sorted({*keys, *resolvers})):
+                resolve = resolvers.get(provider)
+                target = upstream(provider, policy, REFRESHING_UPSTREAMS if resolve else UPSTREAMS)
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
                 token = relay.sentinel()
-                net.sentinels[PROVIDER_KEY_ENV[provider]] = token
-                net._values[PROVIDER_KEY_ENV[provider]] = value
-                net.relays[provider] = (LEAD_RELAY_PORT + i, relay.ProviderRelay(
-                    target, {token: value}, proxy=proxy,
-                    listener=listen(os.path.join(layout.net_dir, _relay_sock(provider)))).start())
+                listener = listen(os.path.join(layout.net_dir, _relay_sock(provider)))
+                if resolve is None:
+                    net.sentinels[PROVIDER_KEY_ENV[provider]] = token
+                    net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
+                    served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener)
+                else:
+                    net.login_sentinels[provider] = token
+                    try:  # what the login holds now, for the leak check; one already expired has nothing to leak
+                        net._values[f"{provider} login"] = resolve()[0]
+                    except relay.Unavailable:
+                        pass
+                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener,
+                                                 resolve=functools.partial(_grant, token, resolve))
+                net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),
                                             listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
         except OSError as exc:

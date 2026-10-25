@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import socket
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -83,12 +83,13 @@ def read_all(sock: socket.socket) -> bytes:
 
 @contextmanager
 def relayed(seam: Seam, *, upstream: str = UPSTREAM, proxy: Proxy | None = None,
-            credentials: dict[str, str] | None = None) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
+            credentials: dict[str, str] | None = None,
+            resolve: Callable[[], relay.Grant] | None = None) -> Iterator[tuple[ProviderRelay, socket.socket, str]]:
     """A relay serving one connection; yields it, the client end, and the sentinel that stands for ``SECRET``."""
     token = relay.sentinel()
     service = ProviderRelay(Upstream(upstream), credentials if credentials is not None else {token: SECRET},
                             proxy=proxy, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
-                            body_timeout=TIMEOUT)
+                            body_timeout=TIMEOUT, resolve=resolve)
     client, served = socket.socketpair()
     client.settimeout(TIMEOUT)
     thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
@@ -139,6 +140,58 @@ def test_the_credential_goes_only_where_its_sentinel_is_and_only_in_a_credential
     assert ("host", "provider.example") in got and ("host", "127.0.0.1:4101") not in got
     assert seam.calls == [("provider.example", 80)]  # the fixed upstream, never what the request named
     assert body == b"{}"
+
+
+def test_a_resolved_credential_is_read_for_each_request_with_its_headers_and_an_unusable_one_is_a_401():
+    """A stored login the operator's own harness may refresh (STG-05 CS-4, addendum 1): the relay asks for the
+    credential on each request, so a changed one is used from the next request on; the grant's headers replace any of
+    the same name the client sent (an account header from inside is a placeholder); and when the resolver has nothing
+    usable, the client gets a 401 whose body is the resolver's message, and nothing is connected."""
+    token = relay.sentinel()
+    grants = [({token: f"synthetic-access-{n}"}, {"ChatGPT-Account-Id": "synthetic-account"}) for n in (1, 2)]
+    asked: list[int] = []
+
+    def resolve() -> relay.Grant:
+        asked.append(1)
+        if len(asked) > len(grants):
+            raise relay.Unavailable("the stored login has expired: refresh it, and the next request works")
+        return grants[len(asked) - 1]
+
+    request = (f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\nchatgpt-account-id: inside\r\n"
+               "Content-Length: 0\r\n\r\n").encode()
+    seam = Seam()
+    service = ProviderRelay(Upstream(UPSTREAM), {}, connect=seam, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
+                            body_timeout=TIMEOUT, resolve=resolve)
+    try:
+        for n in (1, 2):  # one relay, two requests: the second uses what the resolver gives then
+            seam.connected.clear()
+            client, served = socket.socketpair()
+            client.settimeout(TIMEOUT)
+            thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+            thread.start()
+            try:
+                client.sendall(request)
+                upstream = seam.upstream()
+                head, _ = read_head(upstream)
+                upstream.sendall(OK)
+                upstream.close()
+                read_all(client)
+            finally:
+                client.close()
+                thread.join(TIMEOUT)
+            sent = headers(head)
+            assert ("authorization", f"Bearer synthetic-access-{n}") in sent, sent
+            assert ("chatgpt-account-id", "synthetic-account") in sent and ("chatgpt-account-id", "inside") not in sent
+    finally:
+        service.close()
+    seam = Seam()
+    with relayed(seam, credentials={}, resolve=resolve) as (service, client, _):
+        client.sendall(request)
+        answer = read_all(client)
+    assert seam.calls == [], "a request without a usable credential connected to the upstream"
+    assert answer.startswith(b"HTTP/1.1 401 Unauthorized\r\n") and b"X-AEW-Refusal: credential_unavailable" in answer
+    assert answer.endswith(b"the stored login has expired: refresh it, and the next request works")
+    assert service.counts().get("credential_unavailable") == 1
 
 
 def test_a_credential_header_without_a_sentinel_passes_as_it_came():

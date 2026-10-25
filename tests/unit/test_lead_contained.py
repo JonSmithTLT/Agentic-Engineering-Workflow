@@ -11,7 +11,9 @@ import io
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -25,9 +27,10 @@ KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-000
         "mystery": "synthetic-mystery-0004"}
 
 
-def store(home: Path, rows: list[tuple[str, str, int, dict[str, Any], int]]) -> Path:
-    """A synthetic OpenCode 2.0.18 database in ``home``, its ``credential`` table as 2.0.18 creates it."""
-    path = home / ".local" / "share" / "opencode" / login.DB
+def store(home: Path, rows: list[tuple[str, str, int, dict[str, Any], int]], path: Path | None = None) -> Path:
+    """A synthetic OpenCode 2.0.18 database in ``home`` (or at ``path``), its ``credential`` table as 2.0.18 creates
+    it."""
+    path = path or home / ".local" / "share" / "opencode" / login.DB
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value text "
@@ -100,19 +103,107 @@ def contained(tmp_path: Path, provider_env: list[str] = (), **env: str) -> lead.
 def test_each_api_key_login_of_a_known_provider_is_relayed_and_the_others_say_why(tmp_path, at_a_terminal):
     """Outcome 3: every provider of the stored login whose key OpenCode reads from a variable AEW knows gets a relay;
     opencode's is never relayed (each of its models has its own catalog address, measured), an unknown provider's
-    says AEW does not know its variable, and a refreshing login says it is not served yet. Names only."""
+    says AEW does not know its variable; the ChatGPT login is relayed as stored, with how long it has left and what
+    refreshes it, and a refreshing login AEW has not measured says so. Names only."""
+    in_two_hours = int((time.time() + 2 * 3600 + 60) * 1000)
     store(tmp_path, [*(r for r in key_rows() if r[0] != "openai"),
-                     ("openai", "chatgpt-browser", 1, {"type": "oauth", "access": "acc", "expires": 1}, 1)])
+                     ("openai", "chatgpt-browser", 1, {"type": "oauth", "access": "acc", "expires": in_two_hours}, 1),
+                     ("xai", "browser", 1, {"type": "oauth", "access": "xacc", "expires": in_two_hours}, 1)])
     session = contained(tmp_path)
-    assert session.keys == {"anthropic": KEYS["anthropic"]}
+    assert session.keys == {"anthropic": KEYS["anthropic"]} and sorted(session.refreshing) == ["openai"]
     out = io.StringIO()
     session.announce(out)
     text = out.getvalue()
     assert "anthropic (key): relayed" in text
     assert "opencode (key): not relayed; OpenCode's catalog gives each opencode/* model an address of its own" in text
     assert "mystery (key): not relayed; AEW does not know which variable" in text
-    assert "openai (oauth): not relayed; a refreshing login is not served yet" in text
-    assert not any(v in text for v in [*KEYS.values(), "acc"])
+    assert "openai (oauth): relayed as stored, 2 h left; AEW never refreshes it: when it expires, `opencode auth " \
+           "list` at your own terminal refreshes it, and the Lead's next request works" in text
+    assert "xai (oauth): not relayed; of the refreshing logins, AEW serves those whose requests it has measured: " \
+           "openai" in text
+    assert not any(v in text for v in [*KEYS.values(), "acc", "xacc"])
+
+
+def chatgpt(access: str, expires_s: float, account: str = "synthetic-account-0007") -> dict[str, Any]:
+    return {"type": "oauth", "methodID": "chatgpt-browser", "refresh": "synthetic-refresh-0005", "access": access,
+            "expires": int(expires_s * 1000), "metadata": {"accountID": account}}
+
+
+def test_a_refreshing_login_is_read_on_each_request_and_never_refreshed_or_written(tmp_path):
+    """Addendum 1, option (a): the relay's resolver reads the operator's login store on each request, read-only, so a
+    refresh by the operator's own OpenCode is used from the next request on; the account header comes from the
+    stored login. Expired (or within the margin), gone, or no longer a refreshing login: the message names the
+    provider and what to do (`opencode auth list` at their own terminal, then the next request works with no
+    restart), and holds no value. Reading never changes the store."""
+    from aew.harness.containment import relay
+
+    db = store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() + 3600), 1)])
+    resolve = lead.StoredLogin("openai", {"HOME": str(tmp_path)})
+    before = db.read_bytes()
+    assert resolve() == ("synthetic-access-1", {"chatgpt-account-id": "synthetic-account-0007"})
+    assert db.read_bytes() == before
+    con = sqlite3.connect(db)  # the operator's own OpenCode refreshes it
+    con.execute("UPDATE credential SET value = ?", (json.dumps(chatgpt("synthetic-access-2", time.time() + 3600)),))
+    con.commit()
+    con.close()
+    assert resolve()[0] == "synthetic-access-2"
+    for value, words in ((chatgpt("synthetic-access-3", time.time() + lead.EXPIRY_MARGIN_S - 5), "has expired"),
+                         ({"type": "key", "key": "sk-synthetic-now-a-key"}, "is now an API key")):
+        con = sqlite3.connect(db)
+        con.execute("UPDATE credential SET value = ?", (json.dumps(value),))
+        con.commit()
+        con.close()
+        with pytest.raises(relay.Unavailable) as refused:
+            resolve()
+        message = str(refused.value)
+        assert f"your stored openai login {words}" in message and "synthetic" not in message
+    db.unlink()
+    with pytest.raises(relay.Unavailable, match="your stored openai login could not be read .*the Lead's next "
+                                                "request then works, with no restart"):
+        resolve()
+
+
+def test_an_expired_login_says_what_refreshes_it_and_that_the_next_request_works(tmp_path):
+    from aew.harness.containment import relay
+
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-access-1", time.time() - 1), 1)])
+    with pytest.raises(relay.Unavailable) as refused:
+        lead.StoredLogin("openai", {"HOME": str(tmp_path)})()
+    assert str(refused.value) == (
+        "AEW: your stored openai login has expired, and the contained Lead never refreshes it (that would write your "
+        "OpenCode's own login). Run `opencode auth list` at your own terminal: your OpenCode refreshes it there, and "
+        "the Lead's next request then works, with no restart.")
+
+
+def test_the_leads_own_login_row_holds_the_relays_sentinel_and_never_the_operators_login(tmp_path, at_a_terminal):
+    """The Lead's own login store (in its state, never the operator's) gets one AEW row per relayed refreshing login:
+    the relay's sentinel as its access token, a refresh token and account id that are placeholders, an expiry a year
+    off (so the TUI never tries to refresh it), active over any other row of that provider. An AEW row of an earlier
+    session whose login is gone is removed; nothing of the operator's login is written there."""
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-operator-access", time.time() + 3600), 1)])
+    session = contained(tmp_path)
+    state = tmp_path / "state"
+    own = store(tmp_path, [("openai", "api", 1, {"type": "key", "key": "sk-lead-own"}, 1),
+                           ("anthropic", "api", 1, {"type": "key", "key": "aew-relay-old"}, 1)],
+                path=state / "xdg-data" / "opencode" / login.DB)
+    con = sqlite3.connect(own)
+    con.execute("UPDATE credential SET id = 'cred_aew_anthropic' WHERE integration_id = 'anthropic'")
+    con.commit()
+    con.close()
+    token = "aew-relay-" + "0" * 32
+    session._seed_logins(None, {}, "", state, {"openai": token})
+    con = sqlite3.connect(own)
+    rows = {r[0]: r[1:] for r in con.execute("SELECT id, integration_id, active, value FROM credential")}
+    con.close()
+    assert sorted(rows) == ["cred_0", "cred_aew_openai"]
+    integration, active, value = rows["cred_aew_openai"]
+    seeded = json.loads(value)
+    assert (integration, active, seeded["access"], seeded["methodID"]) == ("openai", 1, token, "chatgpt-browser")
+    assert seeded["refresh"] == "aew-relay-no-refresh" and seeded["metadata"] == {"accountID": "aew-relay-placeholder"}
+    assert seeded["expires"] / 1000 > time.time() + 300 * 86400
+    assert rows["cred_0"][1] == 0  # the Lead's own earlier openai row is no longer the active one
+    blob = b"".join(p.read_bytes() for p in own.parent.iterdir() if p.is_file())
+    assert b"synthetic-operator-access" not in blob and b"synthetic-account-0007" not in blob
 
 
 def test_provider_env_feeds_its_providers_relay_and_never_the_lead_shell(tmp_path, at_a_terminal):
@@ -173,6 +264,56 @@ def test_the_start_lines_name_the_mcp_servers_left_out(tmp_path, at_a_terminal):
     contained(tmp_path).announce(out)
     assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
         in out.getvalue()
+
+
+def test_the_operators_tui_preferences_reach_the_lead_without_their_plugins_and_last_a_session(tmp_path, at_a_terminal):
+    """Addendum 1, item 2: the operator's `cli.json` is read on the host and its plugins dropped (A-38's CAPR-05); the
+    rest goes in as OPENCODE_CLI_CONFIG_CONTENT, which OpenCode merges over the session's own file, so a preference
+    changed inside lasts that session. The start line says so and names the plugins left out; an unreadable file
+    says it could not be read, and the Lead uses OpenCode's defaults."""
+    conf = tmp_path / ".config" / "opencode"
+    conf.mkdir(parents=True)
+    prefs = {"theme": {"name": "synthetic"}, "keybinds": {"leader": "ctrl+x"}}
+    (conf / "cli.json").write_text(json.dumps({**prefs, "plugins": ["synthetic-plugin", {"name": "other-plugin"}]}))
+    session = contained(tmp_path)
+    assert session.preferences == prefs
+    out = io.StringIO()
+    session.announce(out)
+    assert "your TUI preferences come from your own OpenCode at each start; one you change in the Lead lasts this " \
+           "session only; its TUI plugins are left out: synthetic-plugin, other-plugin." in out.getvalue()
+    env = session._inside({}, SimpleNamespace(env={}), tmp_path / "run", tmp_path / "state", {}, None)
+    assert json.loads(env["OPENCODE_CLI_CONFIG_CONTENT"]) == prefs
+    assert env["XDG_CONFIG_HOME"].startswith(str(tmp_path / "run"))  # the TUI's own writes: this session's file
+    (conf / "cli.json").write_text("{not json")
+    out = io.StringIO()
+    contained(tmp_path).announce(out)
+    assert "could not read your TUI preferences" in out.getvalue() and "the Lead uses OpenCode's defaults" in \
+        out.getvalue()
+
+
+def test_the_leads_recent_models_are_seeded_once_from_the_operators_and_never_the_prompt_history(tmp_path,
+                                                                                                   at_a_terminal):
+    """Addendum 1, item 3: when the Lead's state is created, the operator's `model.json` (recent and favourite models:
+    no credential, no prompt) is copied in, once; a later session keeps the Lead's own. The prompt history is never
+    copied (it carries other projects' prompts), nor a `model.json` too large to be a list of models."""
+    theirs = tmp_path / ".local" / "state" / "opencode"
+    theirs.mkdir(parents=True)
+    models = {"recent": [{"providerID": "openai", "modelID": "gpt-5.5"}]}
+    (theirs / "model.json").write_text(json.dumps(models))
+    (theirs / "prompt-history.jsonl").write_text('{"input": "synthetic prompt of another project"}\n')
+    session = contained(tmp_path)
+    state = tmp_path / "state"
+    session._inside({}, SimpleNamespace(env={}), tmp_path / "run1", state, {}, None)
+    seeded = state / "xdg-state" / "opencode" / "model.json"
+    assert json.loads(seeded.read_text()) == models
+    assert sorted(p.name for p in seeded.parent.iterdir()) == ["model.json"]
+    own = {"recent": [{"providerID": "anthropic", "modelID": "synthetic"}]}
+    seeded.write_text(json.dumps(own))  # the Lead's own choice since
+    session._inside({}, SimpleNamespace(env={}), tmp_path / "run2", state, {}, None)
+    assert json.loads(seeded.read_text()) == own
+    (theirs / "model.json").write_text(json.dumps({"recent": ["x" * lead.MODEL_SEED_MAX]}))
+    session._inside({}, SimpleNamespace(env={}), tmp_path / "run3", tmp_path / "other", {}, None)
+    assert not (tmp_path / "other" / "xdg-state" / "opencode" / "model.json").exists()
 
 
 # ------------------------------------------------------------------------------------------------ the projection

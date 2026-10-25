@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 395,
-      "lower-bound": 677
+      "lower-bound": 685
     },
     "by_family": {
       "cli-commands": 109,
@@ -14,7 +14,7 @@
       "dashboard-routes": 24,
       "entry-points": 7,
       "guards": 11,
-      "layout": 66,
+      "layout": 71,
       "modules": 179,
       "reason-rules": 56,
       "schemas": 30,
@@ -24,7 +24,7 @@
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 232
+      "writers": 235
     },
     "by_family_and_coverage": {
       "cli-commands": {
@@ -58,7 +58,7 @@
         "complete-by-construction": 11
       },
       "layout": {
-        "lower-bound": 66
+        "lower-bound": 71
       },
       "modules": {
         "lower-bound": 179
@@ -89,12 +89,12 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 232
+        "lower-bound": 235
       }
     },
-    "digest": "sha256:4725666a56e17662ce1d8fe8b34a6a4a189b7eb0d687b9cd7875a25b511fbdbf",
-    "records": 1072,
-    "unresolved": 84
+    "digest": "sha256:d432e5fade98b199ce02d18377f6679750b77928b1e325f7819d14a1bd59f4e5",
+    "records": 1080,
+    "unresolved": 87
   },
   "gaps": [
     {
@@ -196,6 +196,12 @@
     {
       "family": "sqlite-tables",
       "module": "aew.engine.migrate_ops",
+      "symbol": null,
+      "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+    },
+    {
+      "family": "sqlite-tables",
+      "module": "aew.harness.opencode.lead",
       "symbol": null,
       "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
     },
@@ -486,6 +492,18 @@
       "module": "aew.harness.opencode.lead",
       "symbol": "ContainedLead._retire",
       "why": "shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow"
+    },
+    {
+      "family": "writers",
+      "module": "aew.harness.opencode.lead",
+      "symbol": "ContainedLead._seed_logins",
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
+    },
+    {
+      "family": "writers",
+      "module": "aew.harness.opencode.lead",
+      "symbol": "ContainedLead._seed_models",
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
     },
     {
       "family": "writers",
@@ -13277,6 +13295,336 @@
       },
       "family": "layout"
     },
+    "layout:local/harness/lead": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "LEAD_DIR"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": true,
+        "masked_by_containment": true,
+        "named_by": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "LEAD_DIR"
+          }
+        ],
+        "prefix": "local/harness/lead",
+        "readers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._inside"
+          }
+        ],
+        "store": false,
+        "writers": [
+          {
+            "module": "aew.harness.containment.layout",
+            "symbol": "for_run"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
+    "layout:local/harness/lead/xdg-data": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_logins"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": true,
+        "masked_by_containment": true,
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-data",
+        "readers": [],
+        "store": false,
+        "writers": []
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
+    "layout:local/harness/lead/xdg-data/opencode": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_logins"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": true,
+        "masked_by_containment": true,
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-data/opencode",
+        "readers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_logins"
+          }
+        ],
+        "store": false,
+        "writers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_logins"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
+    "layout:local/harness/lead/xdg-state": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_models"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": true,
+        "masked_by_containment": true,
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-state",
+        "readers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._inside"
+          }
+        ],
+        "store": false,
+        "writers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_models"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
+    "layout:local/harness/lead/xdg-state/opencode": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_models"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": true,
+        "masked_by_containment": true,
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-state/opencode",
+        "readers": [],
+        "store": false,
+        "writers": [
+          {
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_models"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
     "layout:local/harness/runs": {
       "anchor": {
         "module": "aew.harness.runlog",
@@ -19740,6 +20088,7 @@
         "aew.harness.containment",
         "aew.harness.containment.egress",
         "aew.harness.containment.netns",
+        "aew.harness.containment.relay",
         "aew.harness.lead_broker",
         "aew.harness.opencode.adapter",
         "aew.harness.opencode.capabilities",
@@ -26147,6 +26496,11 @@
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
+            "module": "aew.harness.opencode.lead",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
             "module": "aew.harness.opencode.login",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
@@ -26210,6 +26564,11 @@
           },
           {
             "module": "aew.engine.migrate_ops",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
+            "module": "aew.harness.opencode.lead",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
@@ -26345,6 +26704,11 @@
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
+            "module": "aew.harness.opencode.lead",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
             "module": "aew.harness.opencode.login",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
@@ -26408,6 +26772,11 @@
           },
           {
             "module": "aew.engine.migrate_ops",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
+            "module": "aew.harness.opencode.lead",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
@@ -26482,6 +26851,11 @@
           },
           {
             "module": "aew.engine.migrate_ops",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
+            "module": "aew.harness.opencode.lead",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
@@ -26667,6 +27041,11 @@
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
+            "module": "aew.harness.opencode.lead",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
             "module": "aew.harness.opencode.login",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
@@ -26777,6 +27156,11 @@
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
+            "module": "aew.harness.opencode.lead",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
             "module": "aew.harness.opencode.login",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
@@ -26851,6 +27235,11 @@
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
           {
+            "module": "aew.harness.opencode.lead",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
             "module": "aew.harness.opencode.login",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
@@ -26921,6 +27310,11 @@
           },
           {
             "module": "aew.engine.migrate_ops",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
+            "module": "aew.harness.opencode.lead",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
@@ -27037,6 +27431,11 @@
           },
           {
             "module": "aew.engine.migrate_ops",
+            "symbol": null,
+            "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
+          },
+          {
+            "module": "aew.harness.opencode.lead",
             "symbol": null,
             "why": "imports sqlite3 and holds no DDL: this reading cannot show that it creates no table"
           },
@@ -34625,6 +35024,174 @@
               "module": "aew.process_kind",
               "symbol": "require_writer",
               "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/lead/xdg-data/opencode/opencode.db": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_logins"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-data/opencode/opencode.db",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_logins",
+            "via": [
+              "sqlite3.connect"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.harness.opencode.lead",
+              "symbol": "ContainedLead._seed_logins",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/lead/xdg-state/opencode": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_models"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-state/opencode",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_models",
+            "via": [
+              "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.harness.opencode.lead",
+              "symbol": "ContainedLead._seed_models",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/lead/xdg-state/opencode/model.json": {
+      "anchor": {
+        "module": "aew.harness.opencode.lead",
+        "symbol": "ContainedLead._seed_models"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/lead/xdg-state/opencode/model.json",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "direct",
+            "module": "aew.harness.opencode.lead",
+            "symbol": "ContainedLead._seed_models",
+            "via": [
+              "Path.write_text"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.harness.opencode.lead",
+              "symbol": "ContainedLead._seed_models",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
             }
           ]
         }

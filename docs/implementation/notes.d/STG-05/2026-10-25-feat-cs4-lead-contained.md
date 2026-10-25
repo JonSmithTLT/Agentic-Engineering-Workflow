@@ -17,6 +17,13 @@ the source.
   the Lead's shell. opencode's own key is not relayed (its models carry their own catalog address), and the start
   line says so; its free models still work through the egress proxy. A plain `http://` request is told its
   `https://` form.
+- **The ChatGPT login (addendum 1, option a):** relayed as stored, to its own upstream. The relay re-reads the
+  operator's login store on each request, read-only, so a refresh by the operator's own OpenCode is used at once; AEW
+  never refreshes or writes it. An expired one is answered with a message naming `opencode auth list` and saying the
+  next request then works, with no restart. Inside, the Lead's own login store holds a row with the relay's sentinel.
+- **The Lead's own OpenCode state:** per project, between sessions; the operator's TUI preferences come in at each
+  start without their plugins (a change made inside lasts the session), and their recent models are copied once,
+  never their prompt history.
 - **The terminal relay (R-7):** a pseudo-terminal between the operator's terminal and the TUI, bytes unfiltered, the
   window size followed, and the terminal given back (the TUI's own exit sequence and the saved settings) on every
   ending, the broker's and the reaper's deaths included.

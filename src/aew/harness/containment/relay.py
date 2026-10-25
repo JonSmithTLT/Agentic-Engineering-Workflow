@@ -8,7 +8,10 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    where the relay connects);
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
-   it carries what the sandbox already had, such as the free provider's catalog key ``public``;
+   it carries what the sandbox already had, such as the free provider's catalog key ``public``. A credential that
+   can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
+   request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
+   with the resolver's message (:class:`Unavailable`), and nothing is connected;
 3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``;
 4. connects to its one fixed upstream (the execution policy's, never the sandbox's; through the operator's own HTTP
    proxy when the provider's environment names one), over TLS for ``https``;
@@ -56,10 +59,18 @@ CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "api-key", "x-goog
 HOP_BY_HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate",
                         "te", "trailer", "upgrade", "expect"})
 _TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
-_PHRASES = {400: "Bad Request", 408: "Request Timeout", 431: "Request Header Fields Too Large", 501: "Not Implemented",
-            502: "Bad Gateway"}
+_PHRASES = {400: "Bad Request", 401: "Unauthorized", 408: "Request Timeout", 431: "Request Header Fields Too Large",
+            501: "Not Implemented", 502: "Bad Gateway"}
 
 Connector = Callable[[str, int, float], socket.socket]
+# What a resolver gives one request: each sentinel's value, and the headers the relay sets (replacing any of the same
+# name the client sent), such as an account header a stored login carries.
+Grant = tuple[Mapping[str, str], Mapping[str, str]]
+
+
+class Unavailable(Exception):
+    """A credential the relay resolves per request cannot be used now. Its message, which says why and what to do,
+    is the 401 answer's body: what the harness shows its user."""
 
 
 def sentinel() -> str:
@@ -111,6 +122,14 @@ def _connect(host: str, port: int, timeout: float) -> socket.socket:
     return socket.create_connection((host, port), timeout=timeout)  # every address the name has, in turn
 
 
+def _credential(value: str, credentials: Mapping[str, str]) -> str:
+    """A credential header's value with its sentinel, alone or after a scheme (``Bearer <sentinel>``), swapped."""
+    scheme, sep, token = value.partition(" ")
+    if sep and token.strip() in credentials:
+        return f"{scheme} {credentials[token.strip()]}"
+    return credentials.get(value.strip(), value)
+
+
 class _Refused(Exception):
     def __init__(self, status: int, reason: str, message: str) -> None:
         super().__init__(message)
@@ -124,19 +143,21 @@ class _Refused(Exception):
 
 
 class ProviderRelay(Service):
-    """Serves ``listener`` for one run's provider. ``credentials`` maps each sentinel to the value it stands for;
-    ``proxy`` is the operator's HTTP proxy, if any. ``connect`` and ``tls`` are seams for tests (a plain connect to the
-    upstream's name, and the system's default verifying context)."""
+    """Serves ``listener`` for one run's provider. ``credentials`` maps each sentinel to the value it stands for, or
+    ``resolve`` gives that map and the headers to set for each request (raising :class:`Unavailable` when it has
+    none to give); ``proxy`` is the operator's HTTP proxy, if any. ``connect`` and ``tls`` are seams for tests (a
+    plain connect to the upstream's name, and the system's default verifying context)."""
 
     name = "aew-relay"
 
     def __init__(self, upstream: Upstream, credentials: Mapping[str, str], *, listener: socket.socket | None = None,
                  proxy: Proxy | None = None, connect: Connector = _connect, tls: ssl.SSLContext | None = None,
                  head_timeout: float = HEAD_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT,
-                 body_timeout: float = BODY_TIMEOUT) -> None:
+                 body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None) -> None:
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
         self._credentials = dict(credentials)
+        self._resolve = resolve
         self._connect, self._tls = connect, tls
         self.head_timeout, self.connect_timeout, self.body_timeout = head_timeout, connect_timeout, body_timeout
 
@@ -147,6 +168,16 @@ class ProviderRelay(Service):
     def close(self) -> None:
         super().close()
         self._credentials.clear()
+        self._resolve = None
+
+    def _grant(self) -> Grant:
+        resolve = self._resolve
+        if resolve is None:
+            return self._credentials, {}
+        try:
+            return resolve()
+        except Unavailable as exc:
+            raise _Refused(401, "credential_unavailable", str(exc)) from None
 
     def handle(self, conn: socket.socket) -> None:
         """Serve one request on ``conn`` to its end, and close it."""
@@ -159,12 +190,13 @@ class ProviderRelay(Service):
             head, early = _read_head(conn, self.head_timeout)
             method, target, headers = self._request(head)
             framing = _framing(headers)
+            credentials, extra = self._grant()  # before anything is connected: a refusal connects nothing
             if any(k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             upstream = self._connect_upstream()
             if not self._track(upstream):
                 return
-            upstream.sendall(_head(f"{method} {target} HTTP/1.1", self._rewrite(headers)))
+            upstream.sendall(_head(f"{method} {target} HTTP/1.1", self._rewrite(headers, credentials, extra)))
             self._send_body(conn, upstream, framing, early)
             reader, response = self._relay_head(conn, upstream)
             answered = True
@@ -220,26 +252,24 @@ class ProviderRelay(Service):
                            "(WebSocket); AEW sets the provider's transport to http")
         return method, target, headers
 
-    def _rewrite(self, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    def _rewrite(self, headers: list[tuple[str, str]], credentials: Mapping[str, str],
+                 extra: Mapping[str, str]) -> list[tuple[str, str]]:
         """Hop-by-hop headers (and any the client's ``Connection`` names) out; ``Host`` the upstream's; the
-        credential in for its sentinel, in a credential header only; ``Connection: close``."""
+        credential in for its sentinel, in a credential header only; the grant's headers in place of any of the same
+        name; ``Connection: close``."""
         named = {t.strip().lower() for k, v in headers if k.lower() == "connection" for t in v.split(",")}
+        replaced = {k.lower() for k in extra}
         out = [("Host", self.upstream.authority)]
         for name, value in headers:
             low = name.lower()
-            if low in HOP_BY_HOP or low in named or low == "host":
+            if low in HOP_BY_HOP or low in named or low == "host" or low in replaced:
                 continue
             if low in CREDENTIAL_HEADERS:
-                value = self._credential(value)
+                value = _credential(value, credentials)
             out.append((name, value))
+        out += list(extra.items())
         out.append(("Connection", "close"))
         return out
-
-    def _credential(self, value: str) -> str:
-        scheme, sep, token = value.partition(" ")
-        if sep and token.strip() in self._credentials:
-            return f"{scheme} {self._credentials[token.strip()]}"
-        return self._credentials.get(value.strip(), value)
 
     def _connect_upstream(self) -> socket.socket:
         if self._closed.is_set():

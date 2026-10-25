@@ -387,6 +387,13 @@ skipped:
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
       every platform in tests/unit/test_lead_contained.py.
+    tests/unit/test_containment_netns.py::test_the_leads_refreshing_login_has_its_own_upstream_and_its_sentinel_is_for_the_login_store_not_a_variable: >-
+      the Lead's relays listen on socket files (AF_UNIX), and the Lead's network is Linux's (STG-05 CS-4); the Windows
+      Lead runs labelled not contained. Covered on Linux.
+    tests/integration/test_lead_contained_session.py::test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_refreshes_it: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4, addendum 1); the Windows Lead runs labelled not
+      contained, with the operator's own OpenCode login. Covered on Linux (CI and the Rocky 8 lane); its host side runs
+      on every platform in tests/unit/test_lead_contained.py.
     tests/integration/test_lead_contained_session.py::test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_labelled_under_allow_weaker: >-
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on

@@ -64,6 +64,9 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/events/{}.1.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/events/{}.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/harness/lead`, named by `aew.harness.opencode.lead:LEAD_DIR`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/lead/xdg-data/opencode/opencode.db`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect)
+- `local/harness/lead/xdg-state/opencode`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
+- `local/harness/lead/xdg-state/opencode/model.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.write_text)
 - `local/harness/runs/R-{}-{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/R-{}-{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
@@ -220,7 +223,7 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 The parser cut: 105 registrations of a command handler; handlers by role (`aew`: 103, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 81; reached from at least one entry point: 57.
+Writer functions with a store-transaction or direct write placed under `.aew`: 83; reached from at least one entry point: 57.
 
 - `aew` (store_writer): 49 writer functions (24 write the store, 25 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)

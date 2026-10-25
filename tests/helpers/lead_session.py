@@ -33,11 +33,24 @@ from aew.harness import procs
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003"}
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
+# OpenCode 2.0.18's credential table, as its migrations create it (read in the pinned bundle, 2026-10-25).
+# The operator's TUI preferences (`cli.json`, with a plugin the Lead leaves out) and recent models (`model.json`).
+PREFERENCES = {"theme": {"name": "synthetic"}, "plugins": ["synthetic-plugin"]}
+RECENT_MODELS = {"recent": [{"providerID": "openai", "modelID": "gpt-5.5"}]}
+CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value "
+                    "text NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
+                    "time_updated integer NOT NULL)")
 
-LAUNCHER = """import json, os, pathlib, sys
+LAUNCHER = """import json, os, pathlib, sqlite3, sys, time
 here = pathlib.Path(__file__).resolve().parent
 if sys.argv[1:2] == ["--version"]:
     print("opencode v2.0.18")
+    sys.exit(0)
+db = pathlib.Path(os.environ.get("XDG_DATA_HOME", "/nonexistent")) / "opencode" / "opencode.db"
+if sys.argv[1:3] == ["session", "list"]:  # its first run makes its database, as 2.0.18's does
+    db.parent.mkdir(parents=True, exist_ok=True)
+    sqlite3.connect(db).execute({table!r}).connection.commit()
+    (here / "made-db").write_text("x")
     sys.exit(0)
 (here / "tui-argv.json").write_text(json.dumps(sys.argv[1:]))
 if (here / "mode").read_text().strip() == "agent":
@@ -45,23 +58,46 @@ if (here / "mode").read_text().strip() == "agent":
     sys.path.insert(0, {helpers!r})
     import fake_agent
     sys.exit(fake_agent.main())
-# The providers: call each relayed provider at the baseURL its configuration names, with the variable its SDK reads.
+# The providers: call each relayed provider at the baseURL its configuration names, with the variable its SDK reads,
+# or, for a provider in oauth.json, with its row in the TUI's own login store, as the ChatGPT login's plugin does
+# (its access token, and its account id in chatgpt-account-id). rounds.json asks for more rounds: before each, the
+# fake says round-<n> and waits for go-<n>.
 import http.client, urllib.parse
 config = json.loads(os.environ["OPENCODE_CONFIG_CONTENT"])
-out = {{"env": dict(os.environ), "calls": {{}}, "visible": {{}}}}
-for provider, variable in json.loads((here / "variables.json").read_text()).items():
+out = {{"env": dict(os.environ), "calls": {{}}, "later": [], "visible": {{}}, "logins": []}}
+oauth = json.loads((here / "oauth.json").read_text()) if (here / "oauth.json").exists() else []
+if oauth:
+    out["logins"] = [{{"integration": i, **json.loads(v)}} for i, v in sqlite3.connect(
+        f"{{db.as_uri()}}?mode=ro", uri=True).execute("SELECT integration_id, value FROM credential WHERE active = 1")]
+def call(provider, headers):
     settings = config.get("providers", {{}}).get(provider, {{}}).get("settings", {{}})
     base = urllib.parse.urlsplit(settings.get("baseURL", ""))
     if not base.port:
-        continue
+        return None
     try:
         conn = http.client.HTTPConnection(base.hostname, base.port, timeout=10)
-        conn.request("POST", base.path + "/probe", body=b"{{}}",
-                     headers={{"Authorization": "Bearer " + os.environ.get(variable, ""), "Content-Type": "x"}})
+        conn.request("POST", base.path + "/probe", body=b"{{}}", headers={{**headers, "Content-Type": "x"}})
         answer = conn.getresponse()
-        out["calls"][provider] = [answer.status, answer.read().decode()]
+        return [answer.status, answer.read().decode()]
     except OSError as exc:
-        out["calls"][provider] = [None, repr(exc)]
+        return [None, repr(exc)]
+def one_round():
+    calls = {{}}
+    for provider, variable in json.loads((here / "variables.json").read_text()).items():
+        calls[provider] = call(provider, {{"Authorization": "Bearer " + os.environ.get(variable, "")}})
+    for row in (r for r in out["logins"] if r["integration"] in oauth and r.get("type") == "oauth"):
+        calls[row["integration"]] = call(row["integration"], {{
+            "Authorization": "Bearer " + row["access"],
+            "chatgpt-account-id": row.get("metadata", {{}}).get("accountID", "")}})
+    return {{p: c for p, c in calls.items() if c is not None}}
+out["calls"] = one_round()
+rounds = int((here / "rounds.json").read_text()) if (here / "rounds.json").exists() else 1
+for n in range(1, rounds):
+    (here / f"round-{{n}}").write_text("x")
+    deadline = time.monotonic() + 60
+    while not (here / f"go-{{n}}").exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    out["later"].append(one_round())
 for path in json.loads((here / "look.json").read_text()):
     out["visible"][path] = sorted(os.listdir(path)) if os.path.isdir(path) else os.path.exists(path)
 (here / "inside.json").write_text(json.dumps(out))
@@ -69,16 +105,19 @@ for path in json.loads((here / "look.json").read_text()):
 
 
 class Upstream:
-    """A provider's stand-in upstream on the host's loopback: it records each request's path and Authorization."""
+    """A provider's stand-in upstream on the host's loopback: it records each request's path and Authorization, and
+    its account header (the ChatGPT login's) apart."""
 
     def __init__(self) -> None:
         self.seen: list[tuple[str, str]] = []
-        seen = self.seen
+        self.accounts: list[str] = []
+        seen, accounts = self.seen, self.accounts
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802  # http.server's naming
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 seen.append((self.path, self.headers.get("Authorization") or ""))
+                accounts.append(self.headers.get("chatgpt-account-id") or "")
                 body = b'{"ok": true}'
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
@@ -97,25 +136,32 @@ class Upstream:
         self.server.server_close()
 
 
-def synthetic_home(root: Path, logins: dict[str, str] | None = None) -> Path:
-    """The operator's home: a synthetic OpenCode login database (2.0.18's schema) and configuration with an MCP
-    server, which the contained Lead must neither show nor load."""
+def synthetic_home(root: Path, logins: dict[str, str] | None = None,
+                   oauth: dict[str, dict[str, Any]] | None = None) -> Path:
+    """The operator's home: a synthetic OpenCode login database (2.0.18's schema), with an API key for each provider
+    in ``logins`` and an OAuth value for each in ``oauth``, and a configuration with an MCP server, which the
+    contained Lead must neither show nor load."""
     from aew.harness.opencode import login
 
     home = root / "home"
     db = home / ".local" / "share" / "opencode" / login.DB
     db.parent.mkdir(parents=True)
     con = sqlite3.connect(db)
-    con.execute("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value text "
-                "NOT NULL, connector_id text, method_id text, active integer, time_created integer NOT NULL, "
-                "time_updated integer NOT NULL)")
-    for i, (provider, key) in enumerate((logins or {}).items()):
-        con.execute("INSERT INTO credential VALUES (?, ?, 'l', ?, NULL, 'api', 1, 1, 1)",
-                    (f"cred_{i}", provider, json.dumps({"type": "key", "key": key})))
+    con.execute(CREDENTIAL_TABLE)
+    rows = [*((p, "api", {"type": "key", "key": k}) for p, k in (logins or {}).items()),
+            *((p, str(v.get("methodID")), v) for p, v in (oauth or {}).items())]
+    for i, (provider, method, value) in enumerate(rows):
+        con.execute("INSERT INTO credential VALUES (?, ?, 'l', ?, NULL, ?, 1, 1, 1)",
+                    (f"cred_{i}", provider, json.dumps(value), method))
     con.commit()
     con.close()
     (home / ".config" / "opencode").mkdir(parents=True)
     (home / ".config" / "opencode" / "opencode.json").write_text('{"mcp": {"servers": {"docs": {}}}}\n')
+    (home / ".config" / "opencode" / "cli.json").write_text(json.dumps(PREFERENCES))
+    state = home / ".local" / "state" / "opencode"
+    state.mkdir(parents=True)
+    (state / "model.json").write_text(json.dumps(RECENT_MODELS))
+    (state / "prompt-history.jsonl").write_text('{"input": "synthetic prompt of another project"}\n')
     return home
 
 
@@ -131,7 +177,8 @@ def make_lab(tmp_path: Path, *, upstreams: dict[str, str] | None = None, mode: s
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy={**POLICY, "containment": containment},
                             extra_env={"OPENAI_API_KEY": SECRET})
     tui.mkdir(parents=True)
-    (tui / "opencode.py").write_text(LAUNCHER.format(helpers=str(AGENT.parent)), encoding="utf-8")
+    (tui / "opencode.py").write_text(LAUNCHER.format(helpers=str(AGENT.parent), table=CREDENTIAL_TABLE),
+                                     encoding="utf-8")
     lab.env["AEW_OPENCODE_BIN"] = str(tui / "opencode.py")
     return lab, tui
 

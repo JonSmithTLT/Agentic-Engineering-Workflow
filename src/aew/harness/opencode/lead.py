@@ -19,7 +19,9 @@ comes from ``aew resume``).
 (``procs.run_session_tree(relay=True)``). Its OpenCode state is AEW's, kept per project under
 ``.aew/local/harness/lead/``: the operator's OpenCode login and configuration are not in it. Each provider of the
 operator's stored login gets a relay on the host, which holds the key (``login``, ``netns.RunNetwork.start_lead``); the
-sandbox holds only a sentinel. ``--provider-env NAME`` feeds NAME's provider relay in the same way.
+sandbox holds only a sentinel. ``--provider-env NAME`` feeds NAME's provider relay in the same way. A refreshing login
+AEW has measured (openai's ChatGPT login) is relayed as stored (:class:`StoredLogin`): re-read on each request and never
+refreshed or written, with a row in the Lead's own login store that holds the relay's sentinel.
 
 **Elsewhere** (Windows) the TUI runs in the operator's normal OpenCode environment (their providers,
 configuration and skills), labelled not contained. The Lead's model then authenticates with the credentials
@@ -34,6 +36,7 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -54,6 +57,25 @@ LEAD_DIR = "local/harness/lead"  # under the AEW root: the contained Lead's Open
 CONTAINED_ENV = process_kind.LEAD_CONTAINED_ENV
 # The operator's OpenCode configuration files, in its configuration directory (OpenCode 2.0.18).
 CONFIG_FILES = ("config.json", "opencode.json", "opencode.jsonc")
+# A refreshing login the contained Lead relays as stored (the designer's addendum 1 to the CS-4 hand-off, option a).
+# Implementation bound: a request that starts with less than this left on the access token may outlive it mid-answer
+# (a 136 KB streamed answer took 7.8 s through a slow client in CS-3b's live lane), so the relay counts it expired.
+EXPIRY_MARGIN_S = 60.0
+# The cheapest use of the operator's own OpenCode that resolves, and so refreshes, a stored login: `opencode auth list`
+# went to the provider's token endpoint with no model call (measured on the Rocky VM, 2026-10-25).
+REFRESH_COMMAND = "opencode auth list"
+# Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
+# values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
+LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
+# The Lead's own row for such a login expires this far off, so the TUI never tries to refresh it (that needs the
+# operator's refresh token, which never goes inside).
+INSIDE_LOGIN_S = 365 * 86400
+# OpenCode makes its database in about 5 s, offline, in a sandbox on the Rocky VM (`session list`, 2026-10-25); the
+# Lead's first session in a project waits this long at most before it goes on without its refreshing logins.
+SEED_TIMEOUT_S = 60.0
+# Implementation bound: the operator's recent and favourite models (`<state>/model.json`) are a list of model ids, a
+# few hundred bytes; a larger file is not that, and is not copied into the Lead's state.
+MODEL_SEED_MAX = 64 * 1024
 
 
 def guide_of(engine: Any) -> str:
@@ -179,11 +201,37 @@ def _jsonc(text: str) -> Any:
     return json.loads(re.sub(r",(\s*[}\]])", r"\1", "".join(out)))
 
 
+def _operator_dir(base: Mapping[str, str], kind: str) -> Path:
+    """The operator's OpenCode directory of ``kind`` (``config`` or ``state``), from their environment."""
+    home = Path(base.get("HOME") or os.path.expanduser("~"))
+    default = {"config": home / ".config", "state": home / ".local" / "state"}[kind]
+    return Path(base.get(f"XDG_{kind.upper()}_HOME") or default) / "opencode"
+
+
+def operator_preferences(base: Mapping[str, str]) -> tuple[dict[str, Any] | None, list[str], str | None]:
+    """``(preferences, plugins, unread)``: the operator's TUI preferences (OpenCode 2.0.18's ``cli.json`` in its
+    configuration directory: theme, keybinds and the like, no credential) without its ``plugins``, which stay out of
+    the contained Lead (A-38's CAPR-05; the designer's addendum 1, item 2); the plugins' names; and the file, when it
+    could not be read. ``None`` when there is no such file."""
+    path = _operator_dir(base, "config") / "cli.json"
+    if not path.is_file():
+        return None, [], None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, [], f"{path} ({type(exc).__name__})"
+    if not isinstance(data, dict):
+        return None, [], f"{path} (not a JSON object)"
+    plugins = data.pop("plugins", None)
+    items = plugins if isinstance(plugins, list) else list(plugins) if isinstance(plugins, dict) else []
+    names = [str(p.get("name", "?") if isinstance(p, dict) else p) for p in items]
+    return data, names, None
+
+
 def operator_mcp_servers(base: Mapping[str, str]) -> tuple[list[str], list[str]]:
     """``(names, unread)``: the MCP servers the operator's own OpenCode configuration names, which the contained Lead
     does not load, and the configuration files that could not be read. Names only."""
-    home = base.get("HOME") or os.path.expanduser("~")
-    directory = Path(base.get("XDG_CONFIG_HOME") or Path(home) / ".config") / "opencode"
+    directory = _operator_dir(base, "config")
     paths = [directory / name for name in CONFIG_FILES] + ([Path(base["OPENCODE_CONFIG"])]
                                                            if base.get("OPENCODE_CONFIG") else [])
     names: list[str] = []
@@ -209,6 +257,49 @@ def _launching_terminal() -> list[int]:
         raise UsageError("the Lead is contained on Linux only (STG-05 CS-4); on Windows it runs labelled not contained")
     rdev = os.fstat(0).st_rdev
     return [os.major(rdev), os.minor(rdev)]
+
+
+def _left(entry: login.Login) -> str:
+    """How long a refreshing login's access token has left, for the start line."""
+    if entry.expires is None:
+        return "its expiry unknown"
+    hours = (entry.expires / 1000 - time.time()) / 3600
+    if hours <= 0:
+        return "expired now"
+    return f"{max(1, round(hours * 60))} min left" if hours < 1 else f"{hours:.0f} h left"
+
+
+class StoredLogin:
+    """A refreshing login the contained Lead's relay serves as stored (the designer's addendum 1, option a): the
+    operator's login store is read on each request, read-only (``login.stored``), so a refresh by the operator's own
+    OpenCode is used from the next request on. AEW never refreshes it and never writes it. Raises
+    ``relay.Unavailable`` with what to do when the login is gone, has changed kind or has expired: the TUI shows that
+    message as the request's error."""
+
+    def __init__(self, integration: str, base: Mapping[str, str]) -> None:
+        self.integration, self.base = integration, dict(base)
+
+    def __call__(self) -> tuple[str, dict[str, str]]:
+        from aew.harness.containment import relay
+
+        logins, why = login.stored(self.base)
+        entry = next((e for e in logins if e.integration == self.integration), None)
+        again = "the Lead's next request then works, with no restart."
+        if entry is None:
+            raise relay.Unavailable(f"AEW: your stored {self.integration} login could not be read "
+                                    f"({why or 'it is no longer there'}). Log in with your own OpenCode "
+                                    f"(`opencode auth login`); {again}")
+        if entry.kind != "oauth":
+            raise relay.Unavailable(f"AEW: your stored {self.integration} login is now an API key, which this Lead "
+                                    "session's relay was not set up for. Restart `aew opencode` to use it.")
+        if entry.expires is None or entry.expires / 1000 - EXPIRY_MARGIN_S <= time.time():
+            raise relay.Unavailable(f"AEW: your stored {self.integration} login has expired, and the contained Lead "
+                                    "never refreshes it (that would write your OpenCode's own login). Run "
+                                    f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refreshes it there, and "
+                                    f"{again}")
+        meta = entry.metadata
+        return entry.secret, {h: str(meta[k]) for h, k in LOGIN_HEADERS.get(self.integration, {}).items()
+                              if meta.get(k)}
 
 
 class ContainedLead:
@@ -246,6 +337,7 @@ class ContainedLead:
             self.keys[provider] = str(agentenv.lookup(base, name))
         self.logins, self.no_logins = login.stored(base)
         self.lines: list[str] = []
+        self.refreshing: dict[str, login.Login] = {}  # provider -> its refreshing login, relayed as stored
         for entry in self.logins:
             if entry.integration in self.keys:
                 self.lines.append(f"{entry.integration} ({entry.kind}): fed by --provider-env instead")
@@ -253,16 +345,23 @@ class ContainedLead:
                 self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; OpenCode's catalog gives each "
                                   f"{entry.integration}/* model an address of its own, so its key cannot reach a "
                                   "relay. Its free models still work, through the egress proxy")
+            elif entry.kind != "key" and entry.integration in netns.REFRESHING_UPSTREAMS:
+                self.refreshing[entry.integration] = entry
+                self.lines.append(f"{entry.integration} ({entry.kind}): relayed as stored, {_left(entry)}; AEW never "
+                                  f"refreshes it: when it expires, `{REFRESH_COMMAND}` at your own terminal refreshes "
+                                  "it, and the Lead's next request works")
+            elif entry.kind != "key":
+                self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; of the refreshing logins, AEW "
+                                  "serves those whose requests it has measured: "
+                                  f"{', '.join(sorted(netns.REFRESHING_UPSTREAMS))}")
             elif entry.integration not in netns.PROVIDER_KEY_ENV:
                 self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; AEW does not know which "
                                   "variable OpenCode reads its key from")
-            elif entry.kind != "key":
-                self.lines.append(f"{entry.integration} ({entry.kind}): not relayed; a refreshing login is not "
-                                  "served yet")
             else:
                 self.keys[entry.integration] = entry.secret
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed")
         self.mcp, self.unread = operator_mcp_servers(base)
+        self.preferences, self.plugins, self.unread_preferences = operator_preferences(base)
 
     def announce(self, out: Any) -> None:
         """The session's start lines: names only, never a value."""
@@ -276,6 +375,13 @@ class ContainedLead:
                       f"are left out: {', '.join(self.mcp)}.\n")
         if self.unread:
             out.write(f"aew opencode: could not read {', '.join(self.unread)} for its MCP servers' names.\n")
+        if self.preferences is not None:
+            out.write("aew opencode: your TUI preferences come from your own OpenCode at each start; one you change in "
+                      "the Lead lasts this session only"
+                      + (f"; its TUI plugins are left out: {', '.join(self.plugins)}" if self.plugins else "") + ".\n")
+        if self.unread_preferences:
+            out.write(f"aew opencode: could not read your TUI preferences, {self.unread_preferences}: the Lead uses "
+                      "OpenCode's defaults.\n")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
         from aew.harness import containment
@@ -302,8 +408,9 @@ class ContainedLead:
         network: netns.RunNetwork | None = None
         try:
             if layout.private_network:
-                network = netns.RunNetwork.start_lead(layout, keys=self.keys, provider_env=self.provider_env,
-                                                      policy=policy, env=self.base)
+                network = netns.RunNetwork.start_lead(
+                    layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
+                    refreshing={p: StoredLogin(p, self.base) for p in self.refreshing})
                 label["network"].update(network.describe())
             config = projection.lead_config(self.guide, contained=label,
                                             relays=network.lead_bases() if network else None)
@@ -312,6 +419,13 @@ class ContainedLead:
             if leaked:  # F28 §3.6, row 6: names only
                 raise ContainmentUnavailable(f"a provider key would be inside the Lead's sandbox: {', '.join(leaked)}",
                                              reason="credential_inside")
+            if network is not None and network.login_sentinels:
+                try:
+                    self._seed_logins(layout, inside, project, state, network.login_sentinels)
+                except (OSError, subprocess.SubprocessError, sqlite3.Error) as exc:  # the Lead goes on without them
+                    sys.stderr.write(f"aew opencode: {', '.join(sorted(network.login_sentinels))} could not be given "
+                                     f"to the contained Lead ({type(exc).__name__}): the Lead cannot use "
+                                     f"{'it' if len(network.login_sentinels) == 1 else 'them'} this session.\n")
             spec = network.spec() if network is not None and network.dir else {"in": [], "out": []}
             argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project)
         except BaseException:
@@ -325,19 +439,77 @@ class ContainedLead:
                 config: dict[str, Any], network: Any) -> dict[str, str]:
         """The TUI's environment in the sandbox: the curated one without the operator's ``XDG_*`` or OpenCode
         configuration file, AEW's own XDG directories (configuration and runtime per session, so a preference
-        changed inside lasts that session; data, state and cache per project), the layout's (its private git), the
-        contained projection, and the network's sentinels and proxies."""
+        changed inside lasts that session; data, state and cache per project, the state seeded once with the
+        operator's recent models), the layout's (its private git), the contained projection, the operator's TUI
+        preferences without their plugins, and the network's sentinels and proxies."""
         env = {k: v for k, v in child_env.items()
                if not k.upper().startswith("XDG_") and k.upper() != "OPENCODE_CONFIG"}
         env.update(layout.env)
         dirs = {"CONFIG": run_dir / "harness" / "xdg-config", "RUNTIME": run_dir / "harness" / "xdg-runtime",
                 "DATA": state / "xdg-data", "STATE": state / "xdg-state", "CACHE": state / "xdg-cache"}
+        created = not dirs["STATE"].exists()
         for kind, directory in dirs.items():
             directory.mkdir(parents=True, exist_ok=True)
             env[f"XDG_{kind}_HOME" if kind != "RUNTIME" else "XDG_RUNTIME_DIR"] = str(directory)
         os.chmod(dirs["RUNTIME"], 0o700)
+        if created:
+            self._seed_models(dirs["STATE"])
         env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True), CONTAINED_ENV: "1"})
+        if self.preferences is not None:  # merged over the session's own cli.json by OpenCode (addendum 1, item 2)
+            env["OPENCODE_CLI_CONFIG_CONTENT"] = json.dumps(self.preferences, sort_keys=True)
         return network.harness_env(env) if network is not None else env
+
+    def _seed_models(self, state_home: Path) -> None:
+        """The Lead's recent and favourite models, once, as its state is created: a copy of the operator's
+        ``model.json`` (model ids: no credential and no prompt), when it is a small JSON object. Never the prompt
+        history, which carries other projects' prompts (the designer's addendum 1, item 3)."""
+        source = _operator_dir(self.base, "state") / "model.json"
+        try:
+            if not source.is_file() or source.stat().st_size > MODEL_SEED_MAX:
+                return
+            data = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if isinstance(data, dict):
+            target = state_home / "opencode" / "model.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(data), encoding="utf-8")
+
+    def _seed_logins(self, layout: Any, inside: Mapping[str, str], project: str, state: Path,
+                     sentinels: Mapping[str, str]) -> None:
+        """The Lead's own login store gets a row for each refreshing login its relays serve: its access token the
+        relay's sentinel, its expiry :data:`INSIDE_LOGIN_S` off and its metadata placeholders, so the TUI's own code
+        uses the login as it would the operator's (the account header included, which the relay replaces) and never
+        tries to refresh it. AEW's rows only (``cred_aew_<provider>``), written each session, since the sentinels
+        are new each time; an AEW row whose login is gone goes. The first time, OpenCode makes the database itself,
+        in the sandbox with no route out (``session list``), so its schema is always its own."""
+        from aew.harness import containment
+
+        db = state / "xdg-data" / "opencode" / login.DB
+        if not db.is_file():
+            subprocess.run(containment.bwrap_argv(layout, [*binary_command(), "session", "list"], cwd=project),
+                           env=dict(inside), capture_output=True, timeout=SEED_TIMEOUT_S, stdin=subprocess.DEVNULL,
+                           check=False)
+        if not db.is_file():
+            raise FileNotFoundError(f"OpenCode made no database at {db}")
+        now = int(time.time() * 1000)
+        con = sqlite3.connect(db, timeout=login.BUSY_TIMEOUT_S)
+        try:
+            with con:
+                con.execute("DELETE FROM credential WHERE id LIKE 'cred_aew_%'")
+                for provider, token in sorted(sentinels.items()):
+                    entry = self.refreshing[provider]
+                    meta = {k: "aew-relay-placeholder" for k in LOGIN_HEADERS.get(provider, {}).values()
+                            if entry.metadata.get(k)}
+                    value = {"type": "oauth", "methodID": entry.method, "refresh": "aew-relay-no-refresh",
+                             "access": token, "expires": now + INSIDE_LOGIN_S * 1000, "metadata": meta}
+                    con.execute("UPDATE credential SET active = 0 WHERE integration_id = ?", (provider,))
+                    con.execute("INSERT INTO credential (id, integration_id, label, value, method_id, active, "
+                                "time_created, time_updated) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                                (f"cred_aew_{provider}", provider, "AEW relay", json.dumps(value), entry.method, now,
+                                 now))
+        finally:
+            con.close()
 
     @staticmethod
     def _record(run_dir: Path, label: dict[str, Any]) -> None:

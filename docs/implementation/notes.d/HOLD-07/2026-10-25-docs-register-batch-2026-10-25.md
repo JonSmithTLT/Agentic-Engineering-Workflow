@@ -1,5 +1,6 @@
-**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the
-Lead's friction log, batch 7 (B7-1, B7-3, B7-6, B7-7, B7-8). Nothing in batch 7 is built before V-01 (B7-S).
+**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the Lead's
+friction log, batch 7 (B7-1, B7-3, B7-6, B7-7, B7-8). Nothing in batch 7 is built before V-01 (B7-S), with one
+exception, in HOLD-15.
 
 - **A flake is AEV-07.e's record of an unreliable check** (B7-1, with no new contract text).
   - **What it holds:** the check's identity and lane; its retained observations and the obligations it affects; the
@@ -16,7 +17,7 @@ Lead's friction log, batch 7 (B7-1, B7-3, B7-6, B7-7, B7-8). Nothing in batch 7 
 - **The review round's default shape** (B7-3), with A-04 (HOLD-04, where the shape is set out).
 - **Findings carry a visibility** (B7-6, AEV-10's findings). A public text names only that a private finding exists.
   "Found in passing" reports default to private until they are classified against the threat model (W13).
-- **A check that claims a property has an ablation in the suite that makes it fail** (#35, AEV-04).
-- **Ablations** (#43, AEV-03). An ablation runner reports ERROR, HANG and BASELINE-FAIL apart from CAUGHT and MISSED,
-  and never counts them as caught. In AEW an ablation is a record: its target, its anchor, and the test expected to
-  fail.
+- **A check that claims a property has an ablation in the suite that makes it fail** (log entry 35, AEV-04).
+- **Ablations** (log entry 43, AEV-03). An ablation runner reports ERROR, HANG and BASELINE-FAIL apart from CAUGHT and
+  MISSED, and never counts them as caught. In AEW an ablation is a record: its target, its anchor, and the test expected
+  to fail.

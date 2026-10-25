@@ -1,5 +1,6 @@
-**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the
-Lead's friction log, batch 7 (B7-1, B7-3, B7-5, B7-8). Nothing in batch 7 is built before V-01 (B7-S).
+**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the Lead's
+friction log, batch 7 (B7-1, B7-3, B7-5, B7-8). Nothing in batch 7 is built before V-01 (B7-S), with one exception, in
+HOLD-15.
 
 - **The flake record is shown here** (B7-1). A-07 owns the record (HOLD-07).
 - **Admission control is an advisory projection field** (B7-3: R-01's advice, R01-01), owned by A-15 (HOLD-15).

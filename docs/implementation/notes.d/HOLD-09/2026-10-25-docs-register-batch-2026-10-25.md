@@ -1,5 +1,6 @@
-**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the
-Lead's friction log, batch 7 (B7-2, B7-4, B7-6). Nothing in batch 7 is built before V-01 (B7-S).
+**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the Lead's
+friction log, batch 7 (B7-2, B7-4, B7-6). Nothing in batch 7 is built before V-01 (B7-S), with one exception, in
+HOLD-15.
 
 - **The merged result is checked before an integration is admitted** (B7-2, derived from CNI-06.b, with A-07's
   AEV-06):

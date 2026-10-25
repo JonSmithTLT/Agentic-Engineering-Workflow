@@ -1,5 +1,5 @@
-**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the
-Lead's friction log, batch 7 (B7-3, B7-8). Nothing in batch 7 is built before V-01 (B7-S).
+**An input for this group's matching** (map v1.20 §7, item 3.4), from the designer's rulings of 2026-10-25 on the Lead's
+friction log, batch 7 (B7-3, B7-8). Nothing in batch 7 is built before V-01 (B7-S), with one exception, in HOLD-15.
 
 - **The review round's default shape, as a policy AEW ships, not a contract change** (B7-3; EW-U06.c routes review
   by the assurance classification, and AEV-01 selects it economically):

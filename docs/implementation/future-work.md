@@ -41,9 +41,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 7 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, building) |
 | 8 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 9 | STG-13 | V-01's oracle rebuilt |
-| 10 | STG-14 | I-6, the resource model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established |
+| 10 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established, which is no sooner than CS-4's merge |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E84 and E85 (item 5) come before H-1 and CS-4: the operator took them ahead of their milestone on 2026-10-25 (in chat).
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 10). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E85 (item 5) comes before H-1 and CS-4: the operator took it and E84 ahead of their milestone on 2026-10-25 (in chat).
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -63,7 +63,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **Internal alpha**
 
-**Done when:** **The trace's removals and FIX rows are done** (S12-6). **The hold groups** the operator keeps for alpha are re-sourced and built. **AEW is packaged for the operator's own trial:** an install the operator can run on their own machine and on a managed Linux host. The trial's order is the operator's: AEW's first real job is SPT's backlog, then the issues it turns up are fixed, then the operator uses AEW on that host and brings the feedback back
+**Done when:** **The trace's removals and FIX rows are done** (S12-6). **The hold groups** the operator keeps for alpha are re-sourced and built. **AEW is packaged for the operator's own trial:** an install the operator can run on their own machine and on a managed Linux host. The trial itself follows the milestone and is the operator's: first SPT's backlog, then, if that goes well, the issues it turns up, then use on that host, with the feedback brought back
 
 **Source:** A-35; the register rebaseline (design workspace, `b598fdc`); the operator's decision of 2026-10-25 on the triage's ST-46 (design workspace `0d6292f`)
 
@@ -137,7 +137,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Source (governing):** the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption); the register rebaseline (design workspace, `b598fdc`)
 
-**Belongs to or gated by:** **Stage.** STG-13; V-01's first row, last in the build order of the Now list (§1)
+**Belongs to or gated by:** **Stage.** STG-13; V-01's first row, after G3 in the contention order (§1)
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
@@ -145,11 +145,11 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### STG-14
 
-**Work:** I-6, the resource model and host policy: the first of the wire increments V-01 needs, with O-01 0.8 (42 actions) as the selected command wire
+**Work:** I-6, the resource, model and host policy: the first of the wire increments V-01 needs, with O-01 0.8 (42 actions) as the selected command wire
 
 **Source (governing):** A-39, I-6 at revision 3 (adopted by the operator on 2026-10-25, design workspace `43e14c0`)
 
-**Belongs to or gated by:** **Stage.** STG-14; after V-01's oracle in the Now list (§1), unless the operator moves it. A contract, not an activation: its protected rows stay held until G3 is established, which is once CS-4 lands
+**Belongs to or gated by:** **Stage.** STG-14; after V-01's oracle in the Now list (§1), unless the operator moves it. A contract, not an activation: its protected rows stay held until G3 is established, which is no sooner than CS-4's merge
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
@@ -902,11 +902,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E87
 
-**Work:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3 and 3.12a, which cover a move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names
+**Work:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3, 3.12 and 3.12a, which cover a Story or Epic move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names
 
 **Source:** The designer's follow-on after E84, from the operator's decision on S12-4's first flags batch (design workspace `fb1fabe`, "a link the Lead needs"); FLAG-12 keeps `carried_obligations` for it under `EW-U05.g` (the second batch, design workspace `ca01a32`)
 
-**When:** **Unscheduled**: FLAG-12 clears when it is built
+**When:** **Internal alpha**, beside the trace's flag work (S12-6): FLAG-12 clears when it is built
 
 **Notes:** Filed by the Lead after #274 merged. The plan's design is its starting point, not its authority: F4 is held in HOLD-08
 
@@ -920,7 +920,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Internal alpha**, one of the trace's removals (S12-6)
 
-**Notes:** Reserved keys removed, F4 still held in HOLD-08: removing the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry's meta-test (invariant 50) makes each later F4 slice add its key back before writing it
+**Notes:** Removing the reserved keys leaves F4 held in HOLD-08: removing the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry's meta-test (invariant 50) makes each later F4 slice add its key back before writing it
 
 *Later notes: `notes.d/E88/`, oldest first (`python tools/register.py show E88`).*
 
@@ -942,7 +942,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The root-cause analysis behind #276 (the notifier's superseded case); the second instance, found on 2026-10-25 and checked on `main`; R-DEC-03, the built supervision set (the operator, 2026-10-25, design workspace `e1f1920`); the designer's ask that the row say how every instance is found
 
-**When:** **Unscheduled**
+**When:** **V-01**: its unattended mission relies on R-DEC-03's supervision
 
 **Notes:** The engine still refuses a superseded broker's requests, so no authority is gained: the defect is a seat loss that goes unseen and unrecorded
 
@@ -950,11 +950,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E91
 
-**Work:** A static check that every pin in `tests/platform-skips.yaml` sits under the platform its module's `skipif` skips. A pin under the wrong platform turns `assurance` red only in CI
+**Work:** A static check that every pin in `tests/platform-skips.yaml` sits under the platform its module's or test's `skipif` skips. A pin under the wrong platform turns `assurance` red only in CI
 
 **Source:** The quick check of #269, which found skip pins under `linux` for tests skipped on `win32`; its reviewer proposed the check as the class's mechanism
 
-**When:** **Unscheduled**
+**When:** **Internal alpha**
 
 **Notes:** Filed by the Lead
 
@@ -966,7 +966,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** CS-4's hand-off, addendum 1, section 4 (design workspace `146f204`); the designer accepted the refusal as a limit for CS-4 on the condition that this row is filed (2026-10-25)
 
-**When:** **Unscheduled**: after CS-4 merges
+**When:** **V-01**, after CS-4 merges
 
 **Notes:** It restricts nothing the threat model asks for (the designer)
 
@@ -980,7 +980,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **On measured need**: the operator has no stored Zen key, and CS-4 fails closed with a message naming the provider
 
-**Notes:** The builder's start line is its input (addendum 2); the Lead adds it as a note when the builder sends it
+**Notes:** The builder's start line is its input (addendum 2); the Lead adds it as a note when the builder sends it. Its target is addendum 2's, which the preamble's rule for a new row does not allow: the designer is asked for a milestone (#280's review, M1)
 
 *Later notes: `notes.d/E93/`, oldest first (`python tools/register.py show E93`).*
 
@@ -995,6 +995,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Owned by the web developer. Its acceptance follows their S3 preparation checklist of 2026-10-11
 
 *Later notes: `notes.d/E94/`, oldest first (`python tools/register.py show E94`).*
+
+### E95
+
+**Work:** `tools/register.py check` refuses a new row whose target is not a milestone (Contained, V-01 or Internal alpha) or After the trace, as the preamble's rule for a new row says. A row is new when its id is above a high-water id recorded from the rebaseline
+
+**Source:** The review of #280 (M1), which found five new rows off the rule that `check` does not test; its reviewer proposed the check as the class's mechanism
+
+**When:** **Internal alpha**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E95/`, oldest first (`python tools/register.py show E95`).*
 
 ### E47
 
@@ -1678,7 +1690,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-10-25
 
-**By:** #274 (`c81eb233`): a move or a promotion that would lower the moved work's class floor or drop an inherited non-waivable gate is refused (`OBLIGATIONS_DROPPED`), with ADR-0007's amendment of 2026-10-25. Carrying the obligations instead is E87
+**By:** #274 (`c81eb233`): a move or a promotion that would lower what a moved unit still to be proven inherits is refused (`OBLIGATIONS_DROPPED`), as ADR-0007's amendment of 2026-10-25 states. Carrying the obligations instead is E87
 
 *Later notes: `notes.d/E84/`, oldest first (`python tools/register.py show E84`).*
 

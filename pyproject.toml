@@ -91,8 +91,8 @@ known-first-party = ["aew", "aew_g3", "aew_g3_confirm"]
 include = ["src", "g3"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
-# The G3 confirmer runs under the host's own Python 3.6 (STG-03 G3-B); 3.7 is the lowest pyright checks against.
-executionEnvironments = [{ root = "g3/aew_g3_confirm", pythonVersion = "3.7" }, { root = "." }]
+# The G3 confirmer runs under the host's own Python 3.6 (STG-03 G3-B), so pyright checks it as 3.6.
+executionEnvironments = [{ root = "g3/aew_g3_confirm", pythonVersion = "3.6" }, { root = "." }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
